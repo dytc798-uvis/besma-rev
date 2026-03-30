@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import LoginEntryPage from "@/pages/LoginEntryPage.vue";
 import LoginPage from "@/pages/LoginPage.vue";
 import HQSafeLayout from "@/layouts/HQSafeLayout.vue";
 import SiteLayout from "@/layouts/SiteLayout.vue";
@@ -40,6 +41,11 @@ import SiteInfoPage from "@/pages/site/SiteInfoPage.vue";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
 
 const routes: RouteRecordRaw[] = [
+  {
+    path: "/",
+    name: "login-entry",
+    component: LoginEntryPage,
+  },
   {
     path: "/login",
     name: "login",
@@ -149,7 +155,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: "/:pathMatch(.*)*",
-    redirect: "/login",
+    redirect: "/",
   },
 ];
 

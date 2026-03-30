@@ -2,6 +2,9 @@
   <div style="display: flex; justify-content: center; align-items: center; height: 100vh">
     <div class="card" style="width: 360px">
       <div class="card-title">BESMA Local MVP 로그인</div>
+      <p v-if="entryLabel" style="font-size: 12px; color: #334155; margin: 0 0 8px">
+        {{ entryLabel }}
+      </p>
       <form @submit.prevent="handleLogin" style="display: flex; flex-direction: column; gap: 8px">
         <label>
           <div style="font-size: 12px; margin-bottom: 2px">로그인 ID</div>
@@ -39,6 +42,12 @@ const errorMessage = ref("");
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
+const entryLabel = (() => {
+  const entry = typeof route.query.entry === "string" ? route.query.entry : "";
+  if (entry === "hq") return "본사 로그인";
+  if (entry === "site") return "현장 로그인";
+  return "";
+})();
 
 async function handleLogin() {
   loading.value = true;
