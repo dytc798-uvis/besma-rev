@@ -426,6 +426,34 @@ async function loadSearchResults() {
   lawLoading.value = false;
 }
 
+async function handleDocumentAction(action: "view" | "download" | "detail" | "favorite", doc: ExplorerDocument) {
+  if (action === "detail" || action === "favorite") return;
+  const disposition = action === "view" ? "inline" : "attachment";
+  try {
+    const res = await api.get("/document-explorer/file", {
+      params: { relative_path: doc.relative_path, disposition },
+      responseType: "blob",
+    });
+    const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
+    const blob = new Blob([res.data], { type: contentType });
+    const url = window.URL.createObjectURL(blob);
+    if (action === "view") {
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = doc.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch {
+    window.alert("파일을 열거나 다운로드하지 못했습니다.");
+  }
+}
+
 function toggleTag(tag: string) {
   selectedTags.value = selectedTags.value.includes(tag)
     ? selectedTags.value.filter((item) => item !== tag)
@@ -480,6 +508,15 @@ function openLawRegistry() {
 }
 
 function noopAction(action: string, payload: unknown) {
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    "relative_path" in payload &&
+    "name" in payload
+  ) {
+    void handleDocumentAction(action as "view" | "download" | "detail" | "favorite", payload as ExplorerDocument);
+    return;
+  }
   console.log(`[document-explorer] ${action}`, payload);
 }
 </script>

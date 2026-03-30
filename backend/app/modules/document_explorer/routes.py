@@ -3,8 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from hashlib import md5
 from pathlib import Path
+import mimetypes
+from urllib.parse import quote
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import FileResponse
 
 from app.config.settings import settings
 from app.core.enums import Role
@@ -110,4 +113,28 @@ def search_document_explorer_files(
     _assert_document_explorer_access(current_user)
     items = [item for item in _scan_document_files() if _matches_query(item, q)]
     return DocumentExplorerListResponse(items=items)
+
+
+@router.get("/file")
+def open_or_download_document_explorer_file(
+    current_user: CurrentUserDep,
+    relative_path: str = Query(...),
+    disposition: str = Query("attachment"),
+):
+    _assert_document_explorer_access(current_user)
+    base_dir = _document_explorer_base_dir().resolve()
+    candidate = (base_dir / relative_path).resolve()
+    if base_dir not in candidate.parents and candidate != base_dir:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+    if not candidate.exists() or not candidate.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    resolved_disposition = (disposition or "attachment").strip().lower()
+    if resolved_disposition not in {"attachment", "inline"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="disposition must be attachment or inline")
+    media_type = mimetypes.guess_type(str(candidate))[0] or "application/octet-stream"
+    filename = candidate.name
+    response = FileResponse(path=candidate, media_type=media_type, filename=filename)
+    response.headers["Content-Disposition"] = f"{resolved_disposition}; filename*=UTF-8''{quote(filename)}"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
