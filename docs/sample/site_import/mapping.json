@@ -1,0 +1,6 @@
+{
+    "현장코드": "site_code",
+    "공사명": "site_name",
+    "공사기간": ["start_date", "end_date"],
+    "도급금액": "project_amount"
+  }

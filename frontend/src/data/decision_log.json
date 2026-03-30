@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "log-sample-hq-doc-001-initial",
+      "decision_id": "sample-hq-doc-001",
+      "title": "문서 취합 기간 프리셋",
+      "action": "APPROVED",
+      "selected_option": "월간 기본",
+      "implementation_directive": "- `HQDocumentsDashboardPage.vue`: `period` ref 초기값을 `month`로 설정.\n- `GET /documents/hq-dashboard` 호출 시 `period=month`와 기준 `date` 전달.",
+      "resolved_at": "2026-03-23T00:00:00.000Z",
+      "scope": "hq_safe.documents",
+      "note": "HQDocumentsDashboardPage.vue에서 period 기본값을 month로 둔다. load()의 GET /documents/hq-dashboard에 period=month와 targetDate(기본 오늘)가 전달되게 한다. API는 변경하지 않는다."
+    }
+  ]
+}

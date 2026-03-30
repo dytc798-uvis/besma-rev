@@ -1,0 +1,304 @@
+{
+  "version": 3,
+  "items": [
+    {
+      "id": "sample-hq-dash-001",
+      "scope": "hq_safe.dashboard",
+      "status": "open",
+      "title": "대시보드 팀 필터 기본값",
+      "summary": "처음 들어왔을 때 어떤 현장·팀 기준으로 목록을 볼지 정해야 합니다.",
+      "refDoc": "docs/OPEN_DECISIONS.md",
+      "options": [
+        {
+          "id": "dash_all_sites",
+          "label": "전체 현장 기본 + 필터로 좁히기",
+          "description": "진입 시 모든 현장을 보여 주고, 드롭다운·검색으로 현장을 줄입니다.",
+          "recommended": true,
+          "expectedOutcome": "운영자가 한 화면에서 전체 현황을 본 뒤 필요 시만 필터합니다.",
+          "implementationDirective": "- `frontend/src/pages/dashboard/HQSafeDashboard.vue`: 마운트 시 `filterSiteId` 기본값을 빈 문자열(전체)로 유지·초기화.\n- 동일 화면: 현장 카드 그리드는 필터 적용 전 전체 `sites` 기준으로 렌더.\n- `docs/DECISION_LOG.md`: 본 안 채택 시 기본 뷰 정책 한 줄 기록."
+        },
+        {
+          "id": "dash_my_sites",
+          "label": "내 담당 현장만 기본 표시",
+          "description": "로그인 사용자에게 배정된 현장만 기본으로 열립니다. (담당 매핑이 있을 때)",
+          "expectedOutcome": "목록이 짧아지고, 담당자는 자기 구역 위주로 바로 작업합니다.",
+          "implementationDirective": "- 백엔드/스토어: 사용자→담당 `site_id` 목록 API 또는 `useAuthStore` 확장 후 HQ 대시보드에서 소비.\n- `HQSafeDashboard.vue`: 진입 시 `filterSiteId`를 첫 담당 현장 ID로 세팅(목록이 1건이면 자동 선택).\n- 담당 현장이 없으면 전체 보기로 폴백하고 안내 배너 표시."
+        },
+        {
+          "id": "dash_last_context",
+          "label": "마지막으로 본 현장·필터 유지",
+          "description": "브라우저 또는 서버에 이전 선택을 저장해 다음 접속 시 그대로 복원합니다.",
+          "expectedOutcome": "반복 업무 시 매번 필터를 다시 고를 필요가 줄어듭니다.",
+          "implementationDirective": "- `HQSafeDashboard.vue`: `localStorage` 키 `besma.hqDash.filters`에 `filterSiteId`, `filterSiteStatus`, `filterKeyword` 등 저장·복원.\n- 민감 환경이면 서버 프로필 API로 대체 검토.\n- 저장 실패 시 전체 현장 기본으로 폴백."
+        }
+      ]
+    },
+    {
+      "id": "sample-hq-tbm-001",
+      "scope": "hq_safe.tbm",
+      "status": "open",
+      "title": "TBM 모니터 문서 선택 UX",
+      "summary": "문서를 고르는 방식을 하나로 정해 일관되게 씁니다.",
+      "refDoc": "docs/OPEN_DECISIONS.md",
+      "options": [
+        {
+          "id": "tbm_top_recent",
+          "label": "상단 고정 + 최근 문서 우선",
+          "description": "문서 목록 상단에 검색·필터를 두고, 정렬 기본값은 최근 업로드·수정 순입니다.",
+          "recommended": true,
+          "expectedOutcome": "자주 쓰는 문서가 위에 모이고, 신규 제출 건부터 빠르게 선택할 수 있습니다.",
+          "implementationDirective": "- `frontend/src/pages/hq/HQTbmMonitorPage.vue`: 문서 테이블 섹션 위에 검색/필터 UI 고정.\n- `loadDocuments` 후 클라이언트 정렬 기본: `id` 또는 `updated_at` 내림차순(최신 우선).\n- 백엔드 `GET /documents`가 정렬 파라미터를 지원하면 `sort=recent` 쿼리로 통일."
+        },
+        {
+          "id": "tbm_search_first",
+          "label": "검색 우선",
+          "description": "먼저 키워드·현장·기간으로 찾고, 결과 목록에서 문서를 고릅니다.",
+          "expectedOutcome": "문서 수가 많을 때 원하는 건만 좁혀 들어가기 쉽습니다.",
+          "implementationDirective": "- `HQTbmMonitorPage.vue`: 최초 진입 시 문서 목록 접기 또는 ‘검색 후 표시’ 플레이스홀더.\n- 제목·현장·기간 입력 후에만 테이블에 `GET /documents` 결과 바인딩.\n- 빈 검색 시 ‘검색어를 입력하세요’ 안내."
+        },
+        {
+          "id": "tbm_recent_default",
+          "label": "최근 문서 기본 표시",
+          "description": "별도 검색 없이 최근 N건을 기본으로 보여 주고, 더 보기로 확장합니다.",
+          "expectedOutcome": "대부분의 모니터링이 ‘가장 최근’ 중심일 때 클릭 수가 줄어듭니다.",
+          "implementationDirective": "- `HQTbmMonitorPage.vue`: `loadDocuments`에서 상위 15~30건만 먼저 표시, ‘더 보기’로 전체 로드.\n- 정렬: 최신 우선 고정.\n- API에 `limit` 없으면 프론트에서 `slice` 적용."
+        }
+      ]
+    },
+    {
+      "id": "sample-hq-doc-001",
+      "scope": "hq_safe.documents",
+      "status": "approved",
+      "title": "문서 취합 기간 프리셋",
+      "resolved_at": "2026-03-23T00:00:00.000Z",
+      "resolved_by": "ui_operator",
+      "selected_option": "월간 기본",
+      "summary": "HQ 문서 취합 화면에 들어왔을 때 기본 period(일/주/월 등)를 무엇으로 둘지 정합니다.",
+      "refDoc": "docs/OPEN_DECISIONS.md",
+      "options": [
+        {
+          "id": "period_day",
+          "label": "일간 기본",
+          "description": "오늘(또는 선택 일자) 기준 일 단위 집계를 기본으로 엽니다.",
+          "recommended": false,
+          "expectedOutcome": "당일 미제출·반려 대응에 맞춘 화면이 첫 화면으로 열립니다.",
+          "implementationDirective": "- `frontend/src/pages/hq/HQDocumentsDashboardPage.vue`: `period` ref 초기값을 `\"day\"`로 변경(현재 `\"all\"`이면 교체).\n- `GET /documents/hq-dashboard` 호출 시 `period=day`와 오늘 `date` 전달.\n- DECISION-008 KPI·정렬 규칙과 충돌 없는지 확인."
+        },
+        {
+          "id": "period_week",
+          "label": "주간 기본",
+          "description": "이번 주 범위 집계를 기본으로 엽니다.",
+          "expectedOutcome": "주 단위 보고·점검 리듬에 맞춘 숫자가 먼저 보입니다.",
+          "implementationDirective": "- `HQDocumentsDashboardPage.vue`: `period` 기본 `\"week\"`.\n- `targetDate`는 해당 주 기준일(예: 금요일 또는 월요일 앵커)로 정책 문서화.\n- API `period=week`와 백엔드 `get_site_requirement_status` 주기 창 일치 검증."
+        },
+        {
+          "id": "period_month",
+          "label": "월간 기본",
+          "description": "선택 일자가 속한 월(또는 월 단위 창) 기준 집계를 기본으로 엽니다.",
+          "recommended": true,
+          "expectedOutcome": "월 단위 보고·집계 리듬에 맞춘 숫자가 먼저 보입니다.",
+          "implementationDirective": "- `HQDocumentsDashboardPage.vue`: `period` ref 초기값을 `\"month\"`로 설정.\n- `GET /documents/hq-dashboard` 호출 시 `period=month`와 기준 `date`(기본 오늘) 전달.\n- 백엔드 `period=month` 창 해석과 일치하는지 확인."
+        },
+        {
+          "id": "period_all",
+          "label": "전체 기간 기본",
+          "description": "period=전체로 열어 누적 요구사항을 한번에 봅니다.",
+          "expectedOutcome": "기간 필터를 덜 바꿔도 되지만, 건수가 많아질 수 있습니다.",
+          "implementationDirective": "- `HQDocumentsDashboardPage.vue`: `period` 기본 `\"all\"` 유지.\n- 성능 이슈 시 로딩 스켈레톤·사이트 단위 지연 로드 검토.\n- 운영 가이드에 ‘전체 뷰는 집계만, 일일 조치는 day 탭’ 명시."
+        }
+      ]
+    },
+    {
+      "id": "sample-hq-worker-001",
+      "scope": "hq_safe.workers",
+      "status": "open",
+      "title": "개인 증빙 조회 권한 범위",
+      "summary": "HQ에서 person_id를 직접 넣어 조회할 수 있는 범위를 정합니다.",
+      "refDoc": "docs/OPEN_DECISIONS.md",
+      "options": [
+        {
+          "id": "worker_hq_safe_only",
+          "label": "HQ_SAFE만 직접 조회 허용",
+          "description": "본사 안전 역할만 person_id 입력 조회를 사용합니다.",
+          "recommended": true,
+          "expectedOutcome": "조회 주체가 명확해지고, 오남용 가능성을 줄입니다.",
+          "implementationDirective": "- `frontend/src/pages/hq/HQWorkerSafetyRecordPage.vue` 또는 호출 API: `useAuthStore`에서 `role`/`ui_type`이 HQ_SAFE일 때만 조회 버튼 활성.\n- 백엔드 해당 엔드포인트에 `require_roles(HQ_SAFE)` 검증 추가(없으면).\n- `ARCHITECTURE_INVARIANTS.md` 권한 표 갱신."
+        },
+        {
+          "id": "worker_hq_safe_admin",
+          "label": "HQ_SAFE + 관리자 역할 확대",
+          "description": "지정된 관리 역할에도 동일 조회를 허용합니다.",
+          "expectedOutcome": "운영 인력이 나뉘어 있을 때 대응 인원이 늘어납니다.",
+          "implementationDirective": "- 백엔드: 허용 역할 목록에 `HQ_SAFE_ADMIN`(또는 정의된 관리 role) 추가.\n- 프론트: 동일 페이지에서 역할 배열에 포함 시 버튼 활성.\n- `OPEN_DECISIONS` / `DECISION_LOG`에 허용 역할 명시."
+        },
+        {
+          "id": "worker_read_audit",
+          "label": "조회 허용 + 감사 로그 필수",
+          "description": "누가 어떤 person_id를 조회했는지 남기고, 화면에 안내합니다.",
+          "expectedOutcome": "범위를 넓히더라도 추적 가능성이 확보됩니다.",
+          "implementationDirective": "- 백엔드: 조회 API 성공 시 `audit_log` 테이블 또는 기존 로그 모듈에 `user_id`, `person_id`, 시각 기록.\n- 프론트: 조회 직후 ‘조회 기록됨’ 토스트.\n- 개인정보 보관 기간 정책 문서화."
+        }
+      ]
+    },
+    {
+      "id": "sample-site-dash-001",
+      "scope": "site.dashboard",
+      "status": "open",
+      "title": "SITE KPI 카드 순서",
+      "summary": "현장 대시보드에서 KPI 카드를 어떤 순서로 보여줄지 정합니다.",
+      "refDoc": "docs/OPEN_DECISIONS.md",
+      "options": [
+        {
+          "id": "kpi_action_first",
+          "label": "조치 필요(미제출·반려·검토중) 먼저",
+          "description": "해야 할 일과 연결된 지표를 앞쪽 카드에 배치합니다.",
+          "recommended": true,
+          "expectedOutcome": "현장 사용자가 ‘오늘 손대야 할 것’을 먼저 봅니다.",
+          "implementationDirective": "- `frontend/src/pages/dashboard/SiteDashboard.vue`: `KpiCard` 순서를 미제출·반려·검토중(또는 미완료 합산)·전체 순으로 재배치.\n- API `GET /dashboard/summary` 필드 매핑 확인; 부족하면 `GET /documents/requirements/status` 요약과 병기.\n- DECISION-009 ‘할 일 중심’ 상단 카피와 정합."
+        },
+        {
+          "id": "kpi_volume_first",
+          "label": "전체·제출 건수 등 물량 지표 먼저",
+          "description": "전체 문서 수·제출률 등을 앞에 두고, 이슈는 뒤쪽에 둡니다.",
+          "expectedOutcome": "보고·공유용으로 규모감을 먼저 전달하기 좋습니다.",
+          "implementationDirective": "- `SiteDashboard.vue`: 첫 카드 `total_documents`, 이어서 `pending_documents`, `rejected_documents` 순으로 배치.\n- 시각 강조(크기/색)는 물량 카드에 우선 적용."
+        },
+        {
+          "id": "kpi_opinion_split",
+          "label": "문서 / 의견 영역 분리 유지",
+          "description": "문서 KPI와 의견 KPI를 시각적으로 구역 나눠 표시합니다.",
+          "expectedOutcome": "두 축을 혼동하지 않고 각각 추적하기 쉽습니다.",
+          "implementationDirective": "- `SiteDashboard.vue`: 문서용 `section`과 의견용 `section`에 `h2` 구분선 또는 `BaseCard` 두 그룹.\n- 그리드는 문서 3열 / 의견 2열 등 레이아웃 분리."
+        }
+      ]
+    },
+    {
+      "id": "sample-site-doc-001",
+      "scope": "site.documents",
+      "status": "open",
+      "title": "현장 문서 업로드 모달 UX",
+      "summary": "업로드·재업로드·이력 버튼의 배치와 포커스를 통일합니다.",
+      "refDoc": "docs/OPEN_DECISIONS.md",
+      "options": [
+        {
+          "id": "modal_upload_primary",
+          "label": "업로드(또는 재업로드)를 주 버튼으로 강조",
+          "description": "반려 시에도 같은 모달에서 재업로드가 가장 눈에 띄게 합니다.",
+          "recommended": true,
+          "expectedOutcome": "제출·재제출이 가장 빠른 경로가 됩니다.",
+          "implementationDirective": "- `frontend/src/pages/site/SiteDocumentsDashboardPage.vue`: 모달 하단에서 `primary` 클래스를 업로드 버튼에만 적용, 이력은 `secondary`.\n- `REJECTED` 행에서 모달 열 때 제목에 ‘재업로드’ 문구·포커스를 파일 input으로 이동(`nextTick` + `focus`)."
+        },
+        {
+          "id": "modal_history_secondary",
+          "label": "이력은 보조 — 텍스트 링크·작은 버튼",
+          "description": "이력 보기는 덜 강조하고, 업로드 흐름을 방해하지 않게 합니다.",
+          "expectedOutcome": "실수로 이력만 보고 빠져나가는 경우가 줄어듭니다.",
+          "implementationDirective": "- 동일 페이지: 테이블 액션에서 ‘이력’을 텍스트 링크 스타일로 축소.\n- 모달 내에는 업로드만 두고 이력은 모달 외 링크로 이동 검토."
+        },
+        {
+          "id": "modal_split_steps",
+          "label": "업로드 1단계 / 확인 2단계",
+          "description": "파일 선택 후 요약·확인 화면을 한 번 더 둡니다.",
+          "expectedOutcome": "잘못된 파일 제출을 줄이고, 대신 클릭이 한 단계 늘어납니다.",
+          "implementationDirective": "- `SiteDocumentsDashboardPage.vue`: 모달에 `step` ref(1=파일,2=확인), 2단계에서 파일명·요구사항 제목 확인 후 업로드 API 호출.\n- `취소` 시 step1으로 복귀."
+        }
+      ]
+    },
+    {
+      "id": "sample-worker-mobile-001",
+      "scope": "worker.mobile",
+      "status": "open",
+      "title": "근로자 목록 빈 상태 안내 문구",
+      "summary": "배포가 없거나 person_id가 없을 때 안내 톤을 정합니다.",
+      "refDoc": "docs/OPEN_DECISIONS.md",
+      "options": [
+        {
+          "id": "empty_neutral",
+          "label": "중립·안내형 문구",
+          "description": "‘현재 표시할 배포가 없습니다’처럼 사실만 짧게 알립니다.",
+          "recommended": true,
+          "expectedOutcome": "불필요한 불안을 주지 않습니다.",
+          "implementationDirective": "- `frontend/src/pages/worker/WorkerMobileListPage.vue`: 빈 상태 `section` 카피를 중립형 한 문단으로 교체.\n- `status-box` 내 불필요한 경고 톤(빨간색) 제거."
+        },
+        {
+          "id": "empty_action",
+          "label": "다음 행동 제시형",
+          "description": "관리자에게 문의·현장 확인 등 구체적 다음 단계를 안내합니다.",
+          "expectedOutcome": "사용자가 막혔을 때 무엇을 할지 알기 쉽습니다.",
+          "implementationDirective": "- `WorkerMobileListPage.vue`: 빈 상태에 번호 목록(1. 현장 관리자 확인 2. …) 추가.\n- 링크가 있으면 `mailto:` 또는 내부 공지 URL."
+        },
+        {
+          "id": "empty_support",
+          "label": "지원 연락처·채널 안내 포함",
+          "description": "문의 전화·담당자 안내를 같은 화면에 노출합니다.",
+          "expectedOutcome": "현장 지원으로 이어지기 쉬워집니다.",
+          "implementationDirective": "- `WorkerMobileListPage.vue`: 환경변수 또는 설정에서 읽은 지원 전화·카톡 채널 표시(하드코딩 시 `constants/support.ts`).\n- 개인정보·스팸 방지 가이드 검토."
+        }
+      ]
+    },
+    {
+      "id": "sample-hq-other-dash-001",
+      "scope": "hq_other.dashboard",
+      "status": "open",
+      "title": "HQ_OTHER 알림 placeholder 대체안",
+      "summary": "실데이터 연동 전 알림 카드에 무엇을 보여줄지 정합니다.",
+      "refDoc": "docs/OPEN_DECISIONS.md",
+      "options": [
+        {
+          "id": "placeholder_hide",
+          "label": "알림 카드 숨김",
+          "description": "연결 전까지 해당 영역을 아예 표시하지 않습니다.",
+          "recommended": true,
+          "expectedOutcome": "빈 placeholder로 신뢰가 깎이지 않습니다.",
+          "implementationDirective": "- `frontend/src/pages/dashboard/HQOtherDashboard.vue`: 알림용 `div.card` 블록 제거 또는 `v-if=\"false\"` 플래그로 비활성.\n- 레이아웃 깨짐 시 그리드를 2열로 조정."
+        },
+        {
+          "id": "placeholder_static",
+          "label": "고정 문구만 표시",
+          "description": "‘알림은 준비 중입니다’ 등 짧은 고정 카피만 둡니다.",
+          "expectedOutcome": "레이아웃은 유지하면서 기대치를 낮춥니다.",
+          "implementationDirective": "- `HQOtherDashboard.vue`: 알림 카드 내용을 고정 문자열로 교체, 숫자 `-` 제거.\n- `aria-label` 접근성 문구 추가."
+        },
+        {
+          "id": "placeholder_link",
+          "label": "문서·의견 화면으로 유도 링크",
+          "description": "알림 대신 조회 가능한 메뉴로 이동하는 링크만 둡니다.",
+          "expectedOutcome": "사용자가 실제로 쓸 수 있는 화면으로 바로 갑니다.",
+          "implementationDirective": "- `HQOtherDashboard.vue`: 카드 내부에 `RouterLink`로 `/hq-other/documents`, `/hq-other/opinions` 연결.\n- 사이드바와 중복되어도 진입 경로 확보 목적."
+        }
+      ]
+    },
+    {
+      "id": "sample-hq-other-doc-001",
+      "scope": "hq_other.documents",
+      "status": "open",
+      "title": "문서 목록 기본 필터",
+      "summary": "조회 화면에 들어왔을 때 상태 필터 기본값을 정합니다.",
+      "refDoc": "docs/OPEN_DECISIONS.md",
+      "options": [
+        {
+          "id": "filter_all",
+          "label": "전체 상태 기본",
+          "description": "필터는 ‘전체’로 두고, 필요 시 좁힙니다.",
+          "recommended": true,
+          "expectedOutcome": "누락 없이 목록을 스캔하기 좋습니다.",
+          "implementationDirective": "- `frontend/src/pages/documents/DocumentListPage.vue`: `statusFilter` ref 초기값을 빈 문자열(전체)로 유지.\n- 첫 `load()` 호출 시 필터 미적용 확인."
+        },
+        {
+          "id": "filter_active",
+          "label": "진행 중(제출·검토·재제출)만 기본",
+          "description": "승인·종료 건은 기본에서 빼고, 토글로 볼 수 있게 합니다.",
+          "expectedOutcome": "‘살아 있는’ 건만 먼저 볼 수 있습니다.",
+          "implementationDirective": "- `DocumentListPage.vue`: 기본 `statusFilter`를 `SUBMITTED` 또는 복수 선택 UI로 확장(프론트에서 OR 필터).\n- 백엔드가 단일 상태만 지원하면 클라이언트 필터로 보완 후 이슈 등록."
+        },
+        {
+          "id": "filter_submitted_review",
+          "label": "제출·검토중만 기본",
+          "description": "승인·반려는 별도 탭이나 필터로 분리합니다.",
+          "expectedOutcome": "결재·검토 큐에 가깝게 씁니다.",
+          "implementationDirective": "- `DocumentListPage.vue`: 초기 필터를 `UNDER_REVIEW` 우선 또는 탭 UI(제출됨/검토중).\n- API 필드명(`UNDER_REVIEW` vs `IN_REVIEW`) 코드베이스와 일치 확인."
+        }
+      ]
+    }
+  ]
+}

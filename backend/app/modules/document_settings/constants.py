@@ -1,0 +1,30 @@
+from __future__ import annotations
+
+
+class RuleStatusReason:
+    DOC_TYPE_INACTIVE_OR_MISSING = "DOC_TYPE_INACTIVE_OR_MISSING"
+    SITE_DISABLED = "SITE_DISABLED"
+    MASTER_DEFAULT = "MASTER_DEFAULT"
+    SITE_OVERRIDE = "SITE_OVERRIDE"
+    CYCLE_INACTIVE = "CYCLE_INACTIVE"
+    CYCLE_MANUAL_ONLY = "CYCLE_MANUAL_ONLY"
+    # generation/orchestration layer reasons (운영 추적/상태전이 포함)
+    MISSING_RULE = "MISSING_RULE"
+    SLOT_NOT_RESOLVED = "SLOT_NOT_RESOLVED"
+    EXCEPTION = "EXCEPTION"
+    DOCUMENT_LINK_BROKEN = "DOCUMENT_LINK_BROKEN"
+
+
+VALID_STATUS_REASONS = {
+    RuleStatusReason.DOC_TYPE_INACTIVE_OR_MISSING,
+    RuleStatusReason.SITE_DISABLED,
+    RuleStatusReason.MASTER_DEFAULT,
+    RuleStatusReason.SITE_OVERRIDE,
+    RuleStatusReason.CYCLE_INACTIVE,
+    RuleStatusReason.CYCLE_MANUAL_ONLY,
+    RuleStatusReason.MISSING_RULE,
+    RuleStatusReason.SLOT_NOT_RESOLVED,
+    RuleStatusReason.EXCEPTION,
+    RuleStatusReason.DOCUMENT_LINK_BROKEN,
+}
+

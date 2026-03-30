@@ -1,0 +1,1443 @@
+<template>
+  <div class="hq-doc-page">
+    <div class="hq-doc-grid">
+      <BaseCard class="main-panel !p-[22px]">
+        <template #head>
+          <div class="flex w-full flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 class="m-0 text-[17px] font-bold text-slate-900">문서취합현황</h2>
+              <p v-if="isDemoPilotSiteScopeEnabled" class="sub" style="margin: 4px 0 0">
+                데모: 문서취합에는 파일럿(청라 C18) 현장만 표시합니다.
+              </p>
+              <p v-else-if="dashboardBackgroundPreparing" class="sub" style="margin: 4px 0 0">
+                1팀 데이터를 먼저 표시했고, 전체 현장을 백그라운드에서 준비 중입니다.
+              </p>
+            </div>
+          </div>
+        </template>
+        <div class="hq-dashboard-body">
+          <div v-if="dashboardLoading" class="dashboard-loading-overlay" aria-live="polite">
+            <p class="dashboard-loading-text">로딩중입니다....</p>
+          </div>
+        <div class="kpi-scroll-wrap">
+          <div class="stitch-kpi-grid kpi-compact kpi-single-row">
+            <KpiCard
+              label="전체현장 업로드 비율"
+              :value="`${hqKpiAggregate.uploadPct}%`"
+              accent="blue"
+              :progress-pct="hqKpiAggregate.uploadPct"
+              footer-note="전 현장 합산: 제출 완료 건수 ÷ 필수 건수"
+              compact
+            />
+            <KpiCard
+              label="제출 미비현장 수"
+              :value="hqKpiAggregate.deficientSites"
+              accent="orange"
+              footer-note="필수 건수가 있으면서 미제출·검토중·반려 등이 남은 현장"
+              compact
+            />
+            <KpiCard
+              label="우수현장 수 (90% 이상)"
+              :value="hqKpiAggregate.excellentSites"
+              accent="slate"
+              footer-note="현장별 제출율 90% 이상 (필수 건수 있는 현장만)"
+              compact
+            />
+          </div>
+        </div>
+
+        <section class="matrix-section">
+          <div class="matrix-head">
+            <h3 class="matrix-title">현장별 서류 제출 현황</h3>
+            <span class="sub">현장 {{ matrixRows.length }}개, 서류 {{ requirementColumns.length }}종</span>
+          </div>
+          <div class="team-slot-filter-row">
+            <button
+              type="button"
+              class="team-all-btn"
+              :class="{ active: activeTeamSlot === 'ALL' }"
+              @click="setAllSitesView"
+            >
+              전체현장
+            </button>
+            <label v-for="slot in teamSlotMeta" :key="slot.key" class="team-slot-field">
+              <span class="team-slot-label">{{ slot.label }}</span>
+              <select
+                v-model="teamSlotFilters[slot.key]"
+                class="control-select team-slot-select"
+                @change="handleTeamSlotChange(slot.key)"
+              >
+                <option value="ALL">전체</option>
+                <option v-for="opt in teamOptionsForSlot(slot.key)" :key="`${slot.key}-${opt}`" :value="opt">
+                  {{ opt }}
+                </option>
+              </select>
+            </label>
+            <FilterBar class="controls team-side-controls !gap-2.5">
+              <input
+                v-model="siteSearch"
+                type="text"
+                class="control-input"
+                placeholder="현장명 검색..."
+              />
+              <select v-model="period" class="control-select" @change="load">
+                <option value="all">전체</option>
+                <option value="day">일간</option>
+                <option value="week">주간</option>
+                <option value="month">월간</option>
+                <option value="quarter">분기</option>
+                <option value="half_year">반기</option>
+                <option value="year">연간</option>
+                <option value="event">이벤트</option>
+              </select>
+              <button type="button" class="stitch-btn-primary" @click="openContractorDocumentItemSettings">
+                문서항목 수정
+              </button>
+              <button type="button" class="stitch-btn-secondary" @click="load">새로고침</button>
+            </FilterBar>
+          </div>
+          <div class="matrix-wrap">
+            <table class="matrix-table">
+              <thead>
+                <tr>
+                  <th class="site-col">현장명</th>
+                  <th v-for="col in requirementColumns" :key="`col-${col.requirement_key}`" class="req-col">
+                    {{ col.title }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in matrixRows" :key="`site-row-${row.site_id}`">
+                  <td class="site-col sticky-site">
+                    <button type="button" class="site-link" @click="selectSite(row.site_id)">
+                      {{ displaySiteName(row.site_name) }}
+                    </button>
+                  </td>
+                  <td v-for="col in requirementColumns" :key="`cell-${row.site_id}-${col.requirement_key}`" class="status-cell">
+                    <button
+                      type="button"
+                      class="status-pill"
+                      :class="statusPillClass(matrixDisplayCell(row.site_id, col.requirement_key).status)"
+                      @click="openReviewDecisionModal(row.site_id, col.requirement_key)"
+                    >
+                      {{ statusCompactLabel(matrixDisplayCell(row.site_id, col.requirement_key).status) }}
+                    </button>
+                  </td>
+                </tr>
+                <tr v-if="matrixRows.length === 0">
+                  <td :colspan="Math.max(2, requirementColumns.length + 1)" class="empty-cell">
+                    필터 조건에 맞는 현장 데이터가 없습니다.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="hq-monitor-extra">
+          <div class="signal-box" :class="`signal-${signalStatus.toLowerCase()}`">
+            문서취합 신호등: <strong>{{ signalLabel }}</strong>
+          </div>
+          <div class="extra-grid">
+            <BaseCard class="extra-card">
+              <div class="pending-summary-row">
+                <strong>미결재 문서</strong>
+                <span class="pending-count-badge">{{ pendingDocuments.length }}</span>
+              </div>
+              <button type="button" class="stitch-btn-secondary pending-open-btn" @click="openPendingDocumentsPage">
+                미결재 문서
+              </button>
+              <p class="sub">버튼을 눌러 새 탭에서 표 형태로 확인하세요.</p>
+            </BaseCard>
+            <BaseCard class="extra-card" title="승인/반려 이력">
+              <ul class="extra-list">
+                <li v-for="row in approvalHistory" :key="`hist-${row.document_id}-${row.reviewed_at}`">
+                  <button type="button" class="link-btn" @click="goDetail(row.document_id)">
+                    {{ displaySiteName(row.site_name) }} · {{ row.title }}
+                  </button>
+                  <span class="sub">{{ statusLabel(row.status) }} · {{ formatDateTime(row.reviewed_at) }}</span>
+                  <span v-if="row.review_note" class="sub">사유: {{ row.review_note }}</span>
+                </li>
+                <li v-if="approvalHistory.length === 0" class="sub">이력 없음</li>
+              </ul>
+            </BaseCard>
+          </div>
+        </section>
+        </div>
+      </BaseCard>
+    </div>
+
+    <div v-if="reviewDecisionModalOpen" class="modal-backdrop" @click.self="closeReviewDecisionModal">
+      <BaseCard class="modal-card !w-full max-w-[520px]" title="검토 결정">
+        <template v-if="reviewDecisionCell">
+          <div class="detail-grid">
+            <div class="detail-span-2"><strong>현장</strong> {{ displaySiteName(reviewDecisionCell.site_name) }}</div>
+            <div class="detail-span-2"><strong>문서</strong> {{ reviewDecisionCell.title }}</div>
+            <div><strong>현재 상태</strong> {{ statusCompactLabel(reviewDecisionCell.status) }}</div>
+            <div><strong>문서 ID</strong> {{ reviewDecisionCell.current_document_id || "-" }}</div>
+            <div class="detail-span-2"><strong>파일명</strong> {{ reviewDecisionCell.current_file_name || "파일 없음" }}</div>
+            <div><strong>업로드 시각</strong> {{ formatDateTime(reviewDecisionCell.uploaded_at) }}</div>
+            <div><strong>업로드자</strong> {{ reviewDecisionCell.uploaded_by_name || "-" }}</div>
+          </div>
+          <div class="modal-actions" style="margin-top: 10px; justify-content: flex-start">
+            <button
+              v-if="canOpenReviewFileInBrowser"
+              type="button"
+              class="stitch-btn-secondary"
+              :disabled="!reviewDecisionCell.current_document_id"
+              @click="openReviewFile"
+            >
+              파일 열기
+            </button>
+            <button
+              type="button"
+              class="stitch-btn-secondary"
+              :disabled="!reviewDecisionCell.current_document_id"
+              @click="downloadReviewFile"
+            >
+              파일 다운로드
+            </button>
+          </div>
+          <p v-if="!canOpenReviewFileInBrowser" class="sub" style="margin-top: 8px">
+            브라우저 미리보기를 지원하지 않는 형식입니다. 다운로드 후 확인하세요.
+          </p>
+          <label class="form-field" style="margin-top: 10px">
+            <span>코멘트 (현장에서 확인)</span>
+            <textarea v-model="reviewDecisionComment" class="modal-textarea" rows="4" />
+          </label>
+          <p v-if="!canApplyReviewDecision" class="sub" style="margin-top: 8px">
+            제출된 문서(검토대기) 상태에서만 승인/반려를 진행할 수 있습니다.
+          </p>
+          <p v-if="reviewDecisionError" class="sub detail-error" style="margin-top: 8px">
+            {{ reviewDecisionError }}
+          </p>
+          <div class="modal-actions">
+            <button type="button" class="stitch-btn-secondary" @click="closeReviewDecisionModal">취소</button>
+            <button
+              type="button"
+              class="stitch-btn-secondary"
+              :disabled="!canApplyReviewDecision || !reviewDecisionComment.trim()"
+              @click="submitReviewDecision('reject')"
+            >
+              반려
+            </button>
+            <button
+              type="button"
+              class="stitch-btn-primary"
+              :disabled="!canApplyReviewDecision"
+              @click="submitReviewDecision('approve')"
+            >
+              승인
+            </button>
+          </div>
+        </template>
+      </BaseCard>
+    </div>
+    <div v-if="detailDocumentId" class="modal-backdrop" @click.self="closeDetailModal">
+      <BaseCard class="modal-card !w-full max-w-[680px]" title="문서 상세 보기">
+        <p v-if="detailLoading" class="sub">불러오는 중...</p>
+        <p v-else-if="detailError" class="sub detail-error">{{ detailError }}</p>
+        <template v-else-if="detailDocument">
+          <div class="detail-grid">
+            <div><strong>문서번호</strong> {{ detailDocument.document_no }}</div>
+            <div><strong>제목</strong> {{ detailDocument.title }}</div>
+            <div><strong>현장</strong> {{ detailDocument.site_id }}</div>
+            <div><strong>상태</strong> {{ statusLabel(detailDocument.current_status) }}</div>
+            <div><strong>제출자</strong> {{ detailDocument.submitter_user_id }}</div>
+            <div><strong>버전</strong> v{{ detailDocument.version_no }}</div>
+            <div class="detail-span-2"><strong>설명</strong> {{ detailDocument.description || "-" }}</div>
+            <div class="detail-span-2"><strong>반려 사유</strong> {{ detailDocument.rejection_reason || "-" }}</div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="stitch-btn-secondary" @click="closeDetailModal">닫기</button>
+            <button
+              type="button"
+              class="stitch-btn-primary"
+              :disabled="!detailDocument.file_path || detailDownloadLoading"
+              @click="downloadDetailFile"
+            >
+              {{ detailDownloadLoading ? "다운로드 중..." : "파일 다운로드" }}
+            </button>
+          </div>
+        </template>
+      </BaseCard>
+    </div>
+    <div v-if="filePreviewModalOpen" class="modal-backdrop" @click.self="closeFilePreviewModal">
+      <BaseCard class="modal-card !w-full max-w-[1000px]" title="파일 미리보기">
+        <template v-if="filePreviewUrl">
+          <iframe
+            v-if="filePreviewType === 'pdf'"
+            :src="filePreviewUrl"
+            style="width: 100%; height: 72vh; border: 1px solid #e2e8f0; border-radius: 8px"
+          />
+          <div v-else-if="filePreviewType === 'image'" style="display: flex; justify-content: center">
+            <img :src="filePreviewUrl" alt="preview" style="max-width: 100%; max-height: 72vh; object-fit: contain" />
+          </div>
+        </template>
+        <div class="modal-actions">
+          <button type="button" class="stitch-btn-secondary" @click="closeFilePreviewModal">닫기</button>
+          <button type="button" class="stitch-btn-primary" @click="downloadReviewFile">파일 다운로드</button>
+        </div>
+      </BaseCard>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { api } from "@/services/api";
+import { DEMO_PILOT_SITE_CODE, isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
+import { BaseCard, FilterBar, KpiCard } from "@/components/product";
+import { canPreviewInBrowser, isImageFile, isPdfFile } from "@/utils/filePreview";
+
+interface SiteSummaryRow {
+  site_id: number;
+  site_name: string;
+  total_required: number;
+  submitted_count: number;
+  approved_count: number;
+  in_review_count: number;
+  rejected_count: number;
+  not_submitted_count: number;
+  incomplete_count: number;
+  submission_rate: number;
+}
+
+interface DashboardItem {
+  site_id: number;
+  site_name: string;
+  requirement_id: number;
+  document_type_code?: string | null;
+  title: string;
+  frequency: string;
+  status: string;
+  review_note: string | null;
+  latest_document_id: number | null;
+  latest_uploaded_at: string | null;
+  current_document_id: number | null;
+  current_file_name: string | null;
+  current_file_download_url: string | null;
+  uploaded_at: string | null;
+  uploaded_by_user_id: number | null;
+  uploaded_by_name?: string | null;
+  workflow_status?: string | null;
+  category?: string | null;
+  section?: string | null;
+}
+interface MatrixCellItem extends DashboardItem {}
+
+interface PendingDocumentRow {
+  document_id: number;
+  title: string;
+  site_name: string;
+  status: string;
+}
+
+interface ApprovalHistoryRow {
+  document_id: number;
+  title: string;
+  site_name: string;
+  status: string;
+  reviewed_at: string | null;
+  review_note: string | null;
+}
+
+interface DocumentDetailModalData {
+  id: number;
+  document_no: string;
+  title: string;
+  site_id: number;
+  submitter_user_id: number;
+  current_status: string;
+  file_path: string | null;
+  description: string | null;
+  rejection_reason: string | null;
+  version_no: number;
+}
+
+const router = useRouter();
+const route = useRoute();
+/** 기본 period: Decision sample-hq-doc-001 (월간 기본) 승인 반영 */
+const period = ref<"all" | "day" | "week" | "month" | "quarter" | "half_year" | "year" | "event">("month");
+const selectedSiteId = ref<number | null>(null);
+const siteSearch = ref("");
+const EXCLUDED_REQUIREMENT_KEYWORDS = ["중대재해", "사고보고"];
+
+const TEAM_SLOT_KEYS = ["1", "2", "3", "4", "5", "6", "gwal"] as const;
+type TeamSlotKey = (typeof TEAM_SLOT_KEYS)[number];
+
+const teamSlotMeta: { key: TeamSlotKey; label: string }[] = [
+  { key: "1", label: "1팀" },
+  { key: "2", label: "2팀" },
+  { key: "3", label: "3팀" },
+  { key: "4", label: "4팀" },
+  { key: "5", label: "5팀" },
+  { key: "6", label: "6팀" },
+  { key: "gwal", label: "관급" },
+];
+
+const teamSlotFilters = reactive<Record<TeamSlotKey, string>>({
+  "1": "ALL",
+  "2": "ALL",
+  "3": "ALL",
+  "4": "ALL",
+  "5": "ALL",
+  "6": "ALL",
+  gwal: "ALL",
+});
+const activeTeamSlot = ref<TeamSlotKey | "ALL">(isDemoPilotSiteScopeEnabled ? "ALL" : "1");
+
+function dashboardQueryDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** hq-dashboard가 중첩 호출될 때(라우트 동기화 등) 로딩이 먼저 꺼지지 않도록 */
+let hqDashboardLoadPending = 0;
+let hqDashboardLoadTicket = 0;
+
+const siteSummaries = ref<SiteSummaryRow[]>([]);
+const items = ref<DashboardItem[]>([]);
+const signalStatus = ref<"GREEN" | "YELLOW" | "RED">("GREEN");
+const pendingDocuments = ref<PendingDocumentRow[]>([]);
+const approvalHistory = ref<ApprovalHistoryRow[]>([]);
+const dashboardLoading = ref(true);
+const dashboardBackgroundPreparing = ref(false);
+const hqKpiAggregate = computed(() => {
+  let totalRequiredSum = 0;
+  let submittedSum = 0;
+  let deficientSites = 0;
+  let excellentSites = 0;
+  for (const s of matrixRows.value) {
+    if (s.total_required <= 0) continue;
+    totalRequiredSum += s.total_required;
+    submittedSum += s.submitted_count;
+    if (s.incomplete_count > 0) deficientSites += 1;
+    if (s.submission_rate >= 90) excellentSites += 1;
+  }
+  const uploadPct =
+    totalRequiredSum > 0 ? Math.round((submittedSum / totalRequiredSum) * 1000) / 10 : 0;
+  return { uploadPct, deficientSites, excellentSites };
+});
+
+const matrixItems = computed(() =>
+  items.value.filter((it) => {
+    const title = (it.title || "").trim();
+    if (EXCLUDED_REQUIREMENT_KEYWORDS.some((kw) => title.includes(kw))) return false;
+    if (it.status === "NOT_REQUIRED") return false;
+    return true;
+  }),
+);
+function requirementColumnKey(item: DashboardItem): string {
+  return (item.document_type_code || "").trim() || `REQ-${item.requirement_id}`;
+}
+const requirementColumns = computed(() => {
+  const seen = new Map<string, { requirement_key: string; requirement_id: number; title: string }>();
+  for (const item of matrixItems.value) {
+    const key = requirementColumnKey(item);
+    if (!seen.has(key)) {
+      seen.set(key, { requirement_key: key, requirement_id: item.requirement_id, title: item.title });
+    }
+  }
+  return Array.from(seen.values()).sort((a, b) => a.title.localeCompare(b.title, "ko"));
+});
+const matrixRows = computed(() =>
+  siteSummaries.value.filter((site) => {
+    const matchesSearch =
+      !siteSearch.value.trim() || site.site_name.toLowerCase().includes(siteSearch.value.trim().toLowerCase());
+    if (!matchesSearch) return false;
+    return siteMatchesTeamSlotFilters(site.site_name);
+  }),
+);
+const matrixCellMap = computed(() => {
+  const map = new Map<string, DashboardItem>();
+  for (const item of matrixItems.value) {
+    map.set(`${item.site_id}-${requirementColumnKey(item)}`, item);
+  }
+  return map;
+});
+
+const signalLabel = computed(() => {
+  if (signalStatus.value === "RED") return "RED (반려 발생)";
+  if (signalStatus.value === "YELLOW") return "YELLOW (미제출/검토중 존재)";
+  return "GREEN (정상)";
+});
+
+const reviewDecisionModalOpen = ref(false);
+const reviewDecisionCell = ref<MatrixCellItem | null>(null);
+const reviewDecisionComment = ref("");
+const reviewDecisionError = ref("");
+const detailDocumentId = ref<number | null>(null);
+const detailDocument = ref<DocumentDetailModalData | null>(null);
+const detailLoading = ref(false);
+const detailDownloadLoading = ref(false);
+const detailError = ref<string>("");
+const filePreviewModalOpen = ref(false);
+const filePreviewUrl = ref<string | null>(null);
+const filePreviewType = ref<"pdf" | "image" | null>(null);
+
+function statusLabel(status: string) {
+  const map: Record<string, string> = {
+    NOT_REQUIRED: "비대상",
+    NOT_SUBMITTED: "제출대기",
+    SUBMITTED: "검토대기",
+    IN_REVIEW: "검토중",
+    APPROVED: "승인",
+    REJECTED: "반려 (재업로드 필요)",
+  };
+  return map[status] ?? status;
+}
+
+function statusCompactLabel(status: string) {
+  if (status === "APPROVED") return "승인";
+  if (status === "SUBMITTED" || status === "IN_REVIEW") return "검토대기";
+  return "미제출";
+}
+
+function statusPillClass(status: string) {
+  if (status === "APPROVED") return "status-pill-approved";
+  if (status === "SUBMITTED" || status === "IN_REVIEW") return "status-pill-pending";
+  return "status-pill-not-submitted";
+}
+
+function matrixCell(siteId: number, requirementKeyOrId: string | number) {
+  if (typeof requirementKeyOrId === "string") {
+    return matrixCellMap.value.get(`${siteId}-${requirementKeyOrId}`) ?? null;
+  }
+  // 구형 쿼리 파라미터(review_requirement_id) 호환: requirement_id로 우선 조회
+  const byId = matrixItems.value.find(
+    (it) => it.site_id === siteId && it.requirement_id === requirementKeyOrId,
+  );
+  if (byId) {
+    return matrixCellMap.value.get(`${siteId}-${requirementColumnKey(byId)}`) ?? byId;
+  }
+  return null;
+}
+
+function extractTeam(siteName: string) {
+  const bracket = siteName.match(/^\[([^\]]+)\]/);
+  if (bracket?.[1]) return bracket[1].trim();
+  const firstToken = siteName.trim().split(/\s+/)[0];
+  return firstToken || "기타";
+}
+
+function siteTeamSlot(siteName: string): TeamSlotKey | null {
+  const m = siteName.match(/^\[([1-6])\./);
+  if (m?.[1]) return m[1] as TeamSlotKey;
+  if (/관급/.test(siteName)) return "gwal";
+  return null;
+}
+
+function teamOptionsForSlot(slotKey: TeamSlotKey): string[] {
+  const teams = new Set<string>();
+  for (const site of siteSummaries.value) {
+    if (siteTeamSlot(site.site_name) === slotKey) {
+      teams.add(extractTeam(site.site_name));
+    }
+  }
+  return Array.from(teams).sort((a, b) => a.localeCompare(b, "ko"));
+}
+
+function setAllSitesView() {
+  activeTeamSlot.value = "ALL";
+}
+
+function handleTeamSlotChange(slotKey: TeamSlotKey) {
+  activeTeamSlot.value = slotKey;
+}
+
+function displaySiteName(siteName: string): string {
+  if (siteName.includes("청라C18") || siteName.includes("C18BL")) {
+    return `(삼성인정제) ${siteName}`;
+  }
+  return siteName;
+}
+
+function siteMatchesTeamSlotFilters(siteName: string): boolean {
+  if (activeTeamSlot.value === "ALL") return true;
+  const slot = siteTeamSlot(siteName);
+  if (slot === null) return false;
+  if (slot !== activeTeamSlot.value) return false;
+  const sel = teamSlotFilters[slot];
+  return sel === "ALL" || sel === extractTeam(siteName);
+}
+
+function matrixDisplayCell(siteId: number, requirementKeyOrId: string | number): MatrixCellItem {
+  const row = matrixCell(siteId, requirementKeyOrId);
+  if (row) return row;
+  const siteName = siteSummaries.value.find((s) => s.site_id === siteId)?.site_name ?? "-";
+  const col =
+    typeof requirementKeyOrId === "string"
+      ? requirementColumns.value.find((c) => c.requirement_key === requirementKeyOrId)
+      : requirementColumns.value.find((c) => c.requirement_id === requirementKeyOrId);
+  return {
+    site_id: siteId,
+    site_name: siteName,
+    requirement_id: typeof requirementKeyOrId === "number" ? requirementKeyOrId : -1,
+    document_type_code: typeof requirementKeyOrId === "string" ? requirementKeyOrId : null,
+    title: col?.title ?? "-",
+    frequency: "",
+    status: "NOT_SUBMITTED",
+    review_note: null,
+    latest_document_id: null,
+    latest_uploaded_at: null,
+    current_document_id: null,
+    current_file_name: null,
+    current_file_download_url: null,
+    uploaded_at: null,
+    uploaded_by_user_id: null,
+    uploaded_by_name: null,
+    workflow_status: null,
+    category: null,
+    section: null,
+  };
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "—";
+  return value.slice(0, 16).replace("T", " ");
+}
+
+function querySiteId(): number | null {
+  const raw = route.query.site_id;
+  if (typeof raw !== "string") return null;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+async function syncSiteIdQuery(nextSiteId: number | null) {
+  const currentRaw = route.query.site_id;
+  const currentSiteId = typeof currentRaw === "string" ? Number(currentRaw) : null;
+  if (currentSiteId === nextSiteId) return;
+
+  const nextQuery: Record<string, unknown> = { ...route.query };
+  if (nextSiteId == null) {
+    delete nextQuery.site_id;
+  } else {
+    nextQuery.site_id = String(nextSiteId);
+  }
+  await router.push({ name: "hq-safe-documents", query: nextQuery });
+}
+
+function applyDashboardPayload(
+  payload: {
+    site_summaries?: SiteSummaryRow[];
+    items?: DashboardItem[];
+    signal_status?: "GREEN" | "YELLOW" | "RED";
+    pending_documents?: PendingDocumentRow[];
+    approval_history?: ApprovalHistoryRow[];
+  },
+  routeSiteId: number | null,
+) {
+  siteSummaries.value = payload.site_summaries ?? [];
+  items.value = payload.items ?? [];
+  signalStatus.value = payload.signal_status ?? "GREEN";
+  pendingDocuments.value = payload.pending_documents ?? [];
+  approvalHistory.value = payload.approval_history ?? [];
+  if (routeSiteId != null && siteSummaries.value.some((s) => s.site_id === routeSiteId)) {
+    selectedSiteId.value = routeSiteId;
+  } else {
+    selectedSiteId.value = siteSummaries.value[0]?.site_id ?? null;
+  }
+}
+
+async function syncFallbackSiteId(routeSiteId: number | null) {
+  if (routeSiteId != null) return;
+  if (selectedSiteId.value != null) {
+    await syncSiteIdQuery(selectedSiteId.value);
+  }
+}
+
+async function load() {
+  const ticket = ++hqDashboardLoadTicket;
+  hqDashboardLoadPending += 1;
+  dashboardLoading.value = true;
+  dashboardBackgroundPreparing.value = false;
+  try {
+    const routeSiteId = querySiteId();
+    const paramsBase: Record<string, string | number> = {
+      period: period.value,
+      date: dashboardQueryDate(),
+      ...(routeSiteId != null ? { site_id: routeSiteId } : {}),
+      ...(isDemoPilotSiteScopeEnabled ? { site_code: DEMO_PILOT_SITE_CODE } : {}),
+    };
+    const useQuickFirst =
+      !isDemoPilotSiteScopeEnabled &&
+      activeTeamSlot.value === "1" &&
+      routeSiteId == null &&
+      !siteSearch.value.trim();
+
+    if (useQuickFirst) {
+      const quick = await api.get("/documents/hq-dashboard", {
+        params: { ...paramsBase, team_slot: "1" },
+      });
+      if (ticket !== hqDashboardLoadTicket) return;
+      applyDashboardPayload(quick.data, routeSiteId);
+      dashboardLoading.value = false;
+      dashboardBackgroundPreparing.value = true;
+      void api
+        .get("/documents/hq-dashboard", { params: paramsBase })
+        .then((full) => {
+          if (ticket !== hqDashboardLoadTicket) return;
+          applyDashboardPayload(full.data, routeSiteId);
+        })
+        .finally(() => {
+          if (ticket === hqDashboardLoadTicket) {
+            dashboardBackgroundPreparing.value = false;
+          }
+        });
+      return;
+    }
+
+    const res = await api.get("/documents/hq-dashboard", { params: paramsBase });
+    if (ticket !== hqDashboardLoadTicket) return;
+    applyDashboardPayload(res.data, routeSiteId);
+    await syncFallbackSiteId(routeSiteId);
+
+    const reviewSiteRaw = route.query.review_site_id;
+    const reviewRequirementRaw = route.query.review_requirement_id;
+    if (typeof reviewSiteRaw === "string" && typeof reviewRequirementRaw === "string") {
+      const reviewSiteId = Number(reviewSiteRaw);
+      const reviewRequirementId = Number(reviewRequirementRaw);
+      if (Number.isInteger(reviewSiteId) && Number.isInteger(reviewRequirementId)) {
+        openReviewDecisionModal(reviewSiteId, reviewRequirementId);
+      }
+    }
+  } finally {
+    hqDashboardLoadPending -= 1;
+    if (hqDashboardLoadPending <= 0) {
+      hqDashboardLoadPending = 0;
+      dashboardLoading.value = false;
+    }
+  }
+}
+
+async function selectSite(siteId: number) {
+  if (selectedSiteId.value === siteId) return;
+  selectedSiteId.value = siteId;
+  await syncSiteIdQuery(siteId);
+}
+
+async function startReview(documentId: number) {
+  await api.post(`/documents/${documentId}/review`, { action: "start_review", comment: "HQ 검토 시작" });
+  await load();
+}
+
+async function approve(documentId: number) {
+  await api.post(`/documents/${documentId}/review`, { action: "approve", comment: "HQ 승인" });
+  await load();
+}
+
+function openReviewDecisionModal(siteId: number, requirementKeyOrId: string | number) {
+  reviewDecisionCell.value = matrixDisplayCell(siteId, requirementKeyOrId);
+  reviewDecisionComment.value = "";
+  reviewDecisionError.value = "";
+  reviewDecisionModalOpen.value = true;
+}
+
+function closeReviewDecisionModal() {
+  reviewDecisionModalOpen.value = false;
+  reviewDecisionCell.value = null;
+  reviewDecisionComment.value = "";
+  reviewDecisionError.value = "";
+}
+
+const canApplyReviewDecision = computed(() => {
+  const status = reviewDecisionCell.value?.status;
+  const docId = reviewDecisionCell.value?.current_document_id;
+  return !!docId && (status === "SUBMITTED" || status === "IN_REVIEW");
+});
+const canOpenReviewFileInBrowser = computed(() =>
+  canPreviewInBrowser(reviewDecisionCell.value?.current_file_name),
+);
+
+async function submitReviewDecision(action: "approve" | "reject") {
+  if (!reviewDecisionCell.value?.current_document_id || !canApplyReviewDecision.value) return;
+  reviewDecisionError.value = "";
+  const documentId = reviewDecisionCell.value.current_document_id;
+  const comment = reviewDecisionComment.value.trim() || (action === "approve" ? "HQ 승인" : "HQ 반려");
+  try {
+    await api.post(`/documents/${documentId}/review`, { action, comment });
+    closeReviewDecisionModal();
+    await load();
+  } catch {
+    try {
+      await api.post(`/documents/${documentId}/review`, {
+        action: "start_review",
+        comment: "HQ 검토 시작",
+      });
+      await api.post(`/documents/${documentId}/review`, { action, comment });
+      closeReviewDecisionModal();
+      await load();
+    } catch {
+      reviewDecisionError.value = "승인/반려 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.";
+    }
+  }
+}
+
+function openPendingDocumentsPage() {
+  const target = router.resolve({
+    name: "hq-safe-documents-pending",
+    query: { date: dashboardQueryDate(), period: period.value },
+  });
+  window.open(target.href, "_blank", "noopener");
+}
+
+function openContractorDocumentItemSettings() {
+  const groupKey = activeTeamSlot.value === "4" ? "SAMSUNG" : "GENERAL";
+  router.push({
+    name: "hq-safe-contractor-document-settings",
+    query: { group_key: groupKey },
+  });
+}
+
+async function openReviewFile() {
+  if (!reviewDecisionCell.value?.current_document_id || !canOpenReviewFileInBrowser.value) return;
+  const res = await api.get(`/documents/${reviewDecisionCell.value.current_document_id}/file`, {
+    params: { disposition: "inline" },
+    responseType: "blob",
+  });
+  const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
+  const blob = new Blob([res.data], { type: contentType });
+  const url = window.URL.createObjectURL(blob);
+  const fileName = reviewDecisionCell.value.current_file_name;
+  if (isPdfFile(fileName)) {
+    filePreviewType.value = "pdf";
+    filePreviewUrl.value = url;
+    filePreviewModalOpen.value = true;
+    return;
+  }
+  if (isImageFile(fileName)) {
+    filePreviewType.value = "image";
+    filePreviewUrl.value = url;
+    filePreviewModalOpen.value = true;
+    return;
+  }
+  window.open(url, "_blank", "noopener");
+  setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+}
+
+async function downloadReviewFile() {
+  if (!reviewDecisionCell.value?.current_document_id) return;
+  const res = await api.get(`/documents/${reviewDecisionCell.value.current_document_id}/file`, {
+    params: { disposition: "attachment" },
+    responseType: "blob",
+  });
+  const blob = new Blob([res.data]);
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = reviewDecisionCell.value.current_file_name || "document.bin";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
+async function goDetail(id: number) {
+  detailDocumentId.value = id;
+  detailDocument.value = null;
+  detailError.value = "";
+  detailLoading.value = true;
+  try {
+    const res = await api.get(`/documents/${id}`);
+    detailDocument.value = res.data as DocumentDetailModalData;
+  } catch (err: unknown) {
+    detailError.value = "문서 상세를 불러오지 못했습니다.";
+  } finally {
+    detailLoading.value = false;
+  }
+}
+
+function closeDetailModal() {
+  detailDocumentId.value = null;
+  detailDocument.value = null;
+  detailError.value = "";
+  detailLoading.value = false;
+  detailDownloadLoading.value = false;
+}
+
+function closeFilePreviewModal() {
+  filePreviewModalOpen.value = false;
+  filePreviewType.value = null;
+  if (filePreviewUrl.value) {
+    window.URL.revokeObjectURL(filePreviewUrl.value);
+  }
+  filePreviewUrl.value = null;
+}
+
+function resolveFilenameFromHeader(headerValue: string | undefined, fallback: string) {
+  if (!headerValue) return fallback;
+  const matchUtf = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  if (matchUtf?.[1]) {
+    try {
+      return decodeURIComponent(matchUtf[1]);
+    } catch {
+      return fallback;
+    }
+  }
+  const matchPlain = headerValue.match(/filename=\"?([^\";]+)\"?/i);
+  return matchPlain?.[1] ?? fallback;
+}
+
+async function downloadDetailFile() {
+  if (!detailDocument.value) return;
+  detailDownloadLoading.value = true;
+  try {
+    const res = await api.get(`/documents/${detailDocument.value.id}/file`, {
+      responseType: "blob",
+    });
+    const blob = new Blob([res.data]);
+    const contentDisposition = res.headers["content-disposition"] as string | undefined;
+    const filename = resolveFilenameFromHeader(
+      contentDisposition,
+      `${detailDocument.value.document_no || "document"}.bin`,
+    );
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } finally {
+    detailDownloadLoading.value = false;
+  }
+}
+
+onMounted(load);
+
+watch(
+  () => route.query.site_id,
+  async () => {
+    await load();
+  },
+);
+
+</script>
+
+<style scoped>
+.hq-dashboard-body {
+  position: relative;
+  min-height: 200px;
+}
+
+.dashboard-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.78);
+  pointer-events: none;
+}
+
+.dashboard-loading-text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #475569;
+  letter-spacing: -0.01em;
+}
+
+.hq-doc-page {
+  width: 100%;
+}
+
+.hq-doc-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.site-panel {
+  padding: 20px 18px;
+}
+
+.panel-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.main-title {
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+
+.site-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.site-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.site-item:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.site-item.active {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+}
+
+.site-name {
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.site-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.main-panel {
+  padding: 22px;
+}
+
+.header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.control-input,
+.control-select {
+  box-sizing: border-box;
+  height: 36px;
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 12px;
+  line-height: 1.25;
+  font-size: 14px;
+  font-weight: 600;
+  background: #fff;
+  color: #0f172a;
+}
+
+.control-input {
+  line-height: normal;
+}
+
+.control-select {
+  -webkit-text-fill-color: #0f172a;
+}
+
+.control-select option {
+  color: #0f172a;
+}
+
+.kpi-compact {
+  margin-bottom: 10px;
+}
+
+.kpi-scroll-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.kpi-single-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.kpi-single-row :deep(article) {
+  padding: 10px 12px 12px;
+  border-top-width: 3px;
+  border: 1px solid #cbd5e1;
+  box-shadow:
+    0 8px 20px rgba(15, 23, 42, 0.12),
+    0 2px 6px rgba(15, 23, 42, 0.08);
+}
+
+.kpi-single-row :deep(article p) {
+  margin-top: 4px;
+}
+
+.kpi-single-row :deep(article .mt-3\.5) {
+  margin-top: 8px;
+  height: 6px;
+}
+
+.hq-monitor-extra {
+  margin: 0 0 16px;
+}
+
+.signal-box {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.signal-green { background: #ecfdf5; color: #166534; border: 1px solid #bbf7d0; }
+.signal-yellow { background: #fefce8; color: #854d0e; border: 1px solid #fde68a; }
+.signal-red { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+.extra-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.extra-card {
+  padding: 12px;
+}
+
+.pending-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.pending-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 22px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pending-open-btn {
+  margin-bottom: 6px;
+}
+
+.extra-list {
+  margin: 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1d4ed8;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sub {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.table-wrap {
+  margin-top: 0;
+}
+
+.matrix-section {
+  margin-top: 14px;
+}
+
+.matrix-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.matrix-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.matrix-wrap {
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.matrix-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11px;
+}
+
+.matrix-table th,
+.matrix-table td {
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 5px 6px;
+  background: #fff;
+  vertical-align: middle;
+}
+
+.matrix-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f8fafc;
+  font-weight: 700;
+  text-align: center;
+}
+
+.site-col {
+  min-width: 150px;
+  max-width: 180px;
+  text-align: left !important;
+}
+
+.sticky-site {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+}
+
+.req-col {
+  min-width: 72px;
+  max-width: 84px;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-cell {
+  text-align: center;
+}
+
+.status-pill {
+  border: 0;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 48px;
+}
+
+.status-pill-empty {
+  display: inline-block;
+  cursor: default;
+}
+
+.cell-actions {
+  margin-top: 6px;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.cell-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.cell-btn-primary {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.status-pill-approved { background: #dcfce7; color: #166534; }
+.status-pill-rejected { background: #fee2e2; color: #991b1b; }
+.status-pill-pending { background: #fef3c7; color: #92400e; }
+.status-pill-not-submitted { background: #ffedd5; color: #9a3412; }
+.status-pill-neutral { background: #e2e8f0; color: #334155; }
+
+.site-link {
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+  max-height: 2.6em;
+  font-size: 11px;
+  width: 100%;
+}
+
+.team-slot-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: flex-end;
+  margin: 0 0 8px;
+}
+
+.team-side-controls {
+  margin-left: auto;
+}
+
+.team-all-btn {
+  height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.team-all-btn.active {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.team-slot-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.team-slot-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.team-slot-select {
+  min-width: 120px;
+  max-width: 200px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-compact {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.cell-muted {
+  color: #64748b;
+  font-size: 13px;
+  max-width: 220px;
+}
+
+.empty-cell {
+  text-align: center;
+  color: #64748b;
+  padding: 32px 16px !important;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal-card {
+  width: min(440px, 92vw);
+  padding: 22px;
+}
+
+.modal-title {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.modal-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.modal-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  font-size: 13px;
+}
+
+.detail-span-2 {
+  grid-column: 1 / -1;
+}
+
+.detail-error {
+  color: #b91c1c;
+}
+
+@media (max-width: 1024px) {
+  .hq-doc-grid {
+    grid-template-columns: 1fr;
+  }
+  .extra-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

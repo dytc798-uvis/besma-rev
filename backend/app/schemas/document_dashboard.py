@@ -1,0 +1,61 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+
+from pydantic import BaseModel
+
+
+class RequirementStatusItem(BaseModel):
+    requirement_id: int
+    document_type_code: str
+    title: str
+    frequency: str
+    is_required: bool
+    status: str
+    latest_document_id: int | None = None
+    latest_instance_id: int | None = None
+    latest_uploaded_at: datetime | None = None
+    review_note: str | None = None
+    due_rule_text: str | None = None
+    category: str | None = None
+    section: str | None = None
+    completion_upload_enabled: bool = False
+
+
+class RequirementStatusResponse(BaseModel):
+    site_id: int
+    period: str
+    date: date
+    summary: dict[str, int]
+    completion_upload_enabled: bool = False
+    completion_window_start: date | None = None
+    completion_window_end: date | None = None
+    items: list[RequirementStatusItem]
+
+
+class HQDashboardSiteSummary(BaseModel):
+    site_id: int
+    site_name: str
+    total_required: int
+    submitted_count: int
+    approved_count: int
+    in_review_count: int
+    rejected_count: int
+    not_submitted_count: int
+    incomplete_count: int
+    submission_rate: float
+
+
+class HQDashboardResponse(BaseModel):
+    period: str
+    date: date
+    total_sites: int
+    pending_review_count: int
+    rejected_count: int
+    not_submitted_count: int
+    approved_count: int
+    site_summaries: list[HQDashboardSiteSummary]
+    items: list[dict]
+    signal_status: str
+    pending_documents: list[dict]
+    approval_history: list[dict]

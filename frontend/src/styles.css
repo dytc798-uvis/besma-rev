@@ -1,0 +1,243 @@
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f5f6f8;
+  color: #222;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+}
+
+.layout-root {
+  display: flex;
+  height: 100vh;
+}
+
+.layout-sidebar {
+  width: 220px;
+  background-color: #1f2933;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.layout-sidebar h1 {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 16px;
+  margin: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.layout-menu {
+  flex: 1;
+  padding: 8px 0;
+}
+
+.layout-menu a {
+  display: block;
+  padding: 8px 16px;
+  color: #e5e7eb;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.layout-menu a.router-link-active {
+  background-color: #374151;
+  color: #fff;
+}
+
+.layout-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.layout-header {
+  height: 48px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 13px;
+}
+
+.layout-main {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.badge-status-DRAFT {
+  background-color: #e5e7eb;
+  color: #374151;
+}
+
+.badge-status-SUBMITTED,
+.badge-status-UNDER_REVIEW,
+.badge-status-RESUBMITTED {
+  background-color: #f97316;
+  color: #fff;
+}
+
+.badge-status-APPROVED {
+  background-color: #22c55e;
+  color: #fff;
+}
+
+.badge-status-REJECTED {
+  background-color: #ef4444;
+  color: #fff;
+}
+
+.card {
+  background-color: #ffffff;
+  border-radius: 6px;
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+table.basic-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.basic-table th,
+table.basic-table td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+table.basic-table th {
+  background-color: #f9fafb;
+  font-weight: 500;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.toolbar-filters {
+  display: flex;
+  gap: 8px;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+button.primary {
+  background-color: #2563eb;
+  border: none;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.secondary {
+  background-color: #e5e7eb;
+  border: none;
+  color: #111827;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button.primary:disabled,
+button.secondary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+input[type="text"],
+input[type="password"],
+select,
+textarea {
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+input[type="text"],
+input[type="password"],
+select {
+  height: 30px;
+}
+
+form.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+
+form.form-grid .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+form.form-grid .form-field label {
+  font-size: 12px;
+  color: #4b5563;
+}
+
+@media (max-width: 900px) {
+  .layout-root {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .layout-sidebar {
+    width: 100%;
+  }
+
+  .layout-menu {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 8px;
+  }
+
+  .layout-menu a {
+    white-space: nowrap;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .layout-header {
+    height: auto;
+    min-height: 48px;
+    padding: 8px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .layout-main {
+    padding: 10px;
+  }
+}
