@@ -14,7 +14,7 @@ from app.seed.demo_login_users import ensure_demo_login_users  # noqa: E402
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create temporary BESMA demo login users")
-    parser.add_argument("--password", default="Temp@1234", help="Temporary password for all demo users")
+    parser.add_argument("--password", default="temp@12", help="Temporary password for all demo users")
     parser.add_argument("--site-code", default="SITE002", help="Preferred site code for SITE demo users")
     args = parser.parse_args()
 

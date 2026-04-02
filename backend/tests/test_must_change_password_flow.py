@@ -89,7 +89,7 @@ def test_must_change_password_forces_password_update(tmp_path: Path):
         headers=headers,
         json={
             "current_password": "InitP@ssw0rd!",
-            "new_password": "NewP@ssw0rd!23",
+            "new_password": "x",
         },
     )
     assert change_res.status_code == 200
@@ -101,4 +101,58 @@ def test_must_change_password_forces_password_update(tmp_path: Path):
     assert users_me_res2.json()["must_change_password"] is False
 
     assert users_me_res2.json()["id"] == token_user_id
+
+
+def test_change_password_rejects_blank_new_password(tmp_path: Path):
+    db_file = tmp_path / "test_blank_new_pw.db"
+    engine = create_engine(
+        f"sqlite:///{db_file}",
+        connect_args={"check_same_thread": False},
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+    session = TestingSessionLocal()
+    user = User(
+        name="u",
+        login_id="u1",
+        password_hash=get_password_hash("old"),
+        role=Role.HQ_SAFE,
+        ui_type=UIType.HQ_SAFE,
+        site_id=None,
+        person_id=None,
+        must_change_password=False,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    session.close()
+
+    app = FastAPI()
+    app.include_router(auth_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    from app.core.auth import get_db as core_get_db  # noqa: WPS433
+
+    app.dependency_overrides[core_get_db] = override_get_db
+
+    client = TestClient(app)
+    login_res = client.post("/auth/login", data={"username": "u1", "password": "old"})
+    assert login_res.status_code == 200
+    token = login_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    bad = client.post(
+        "/auth/change-password",
+        headers=headers,
+        json={"current_password": "old", "new_password": "   "},
+    )
+    assert bad.status_code == 400
+    assert bad.json()["detail"] == "NEW_PASSWORD_REQUIRED"
 

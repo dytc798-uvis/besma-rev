@@ -1,7 +1,7 @@
 <template>
   <div class="layout-root" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="layout-sidebar">
-      <h1>BESMA 현장</h1>
+      <h1>BESMA 임시플랫폼 · 현장</h1>
       <nav class="layout-menu">
         <RouterLink to="/site/dashboard">대시보드</RouterLink>
         <RouterLink to="/site/mobile">모바일 운영</RouterLink>
@@ -14,7 +14,7 @@
         <RouterLink to="/site/communications"
           >소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span></RouterLink
         >
-        <RouterLink to="/site/opinions">현장 의견청취관리대장</RouterLink>
+        <RouterLink to="/site/opinions">운영 아이디어 제안</RouterLink>
         <RouterLink to="/site/info">현장 정보/설정</RouterLink>
       </nav>
     </aside>
@@ -24,7 +24,7 @@
           <button class="sidebar-toggle-btn" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
           </button>
-          <span>SITE 콘솔</span>
+          <span>BESMA 임시플랫폼 · SITE</span>
         </div>
         <div class="layout-header-center">
           {{ headerSiteLabel }}

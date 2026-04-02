@@ -26,6 +26,7 @@ import SiteMobileOpsPage from "@/pages/site/SiteMobileOpsPage.vue";
 import HQTbmMonitorPage from "@/pages/hq/HQTbmMonitorPage.vue";
 import HQWorkerSafetyRecordPage from "@/pages/hq/HQWorkerSafetyRecordPage.vue";
 import HQDocumentsDashboardPage from "@/pages/hq/HQDocumentsDashboardPage.vue";
+import HQDocumentInstanceDetailPage from "@/pages/hq/HQDocumentInstanceDetailPage.vue";
 import HQDocumentExplorerPage from "@/pages/hq/HQDocumentExplorerPage.vue";
 import HQPendingDocumentsPage from "@/pages/hq/HQPendingDocumentsPage.vue";
 import HQSitesPage from "@/pages/hq/HQSitesPage.vue";
@@ -70,6 +71,11 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: "dashboard", name: "hq-safe-dashboard", component: HQSafeDashboard },
       { path: "documents", name: "hq-safe-documents", component: HQDocumentsDashboardPage },
+      {
+        path: "document-instances/:instanceId",
+        name: "hq-safe-document-instance-detail",
+        component: HQDocumentInstanceDetailPage,
+      },
       { path: "document-explorer", name: "hq-safe-document-explorer", component: HQDocumentExplorerPage },
       { path: "documents/pending-review", name: "hq-safe-documents-pending", component: HQPendingDocumentsPage },
       { path: "documents/:id", name: "hq-safe-document-detail", component: DocumentDetailPage },
@@ -209,11 +215,11 @@ router.beforeEach((to, _from, next) => {
         return;
       }
       if (auth.effectiveUiType === "HQ_SAFE") {
-        next({ name: "hq-safe-tbm-monitor" });
+        next({ name: "hq-safe-document-explorer" });
         return;
       }
       if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
-      else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-tbm-monitor" });
+      else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
       else if (auth.user?.ui_type === "SITE") next({ name: "site-mobile-ops" });
       else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next();
@@ -221,7 +227,7 @@ router.beforeEach((to, _from, next) => {
     }
 
     if (to.meta.persona && auth.effectivePersona && to.meta.persona !== auth.effectivePersona) {
-      if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-tbm-monitor" });
+      if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-document-explorer" });
       else if (auth.effectivePersona === "SITE_MANAGER") next({ name: "site-mobile-ops" });
       else next({ name: "worker-mobile-list" });
       return;
@@ -229,14 +235,14 @@ router.beforeEach((to, _from, next) => {
 
     if (to.meta.uiType && auth.effectiveUiType && to.meta.uiType !== auth.effectiveUiType) {
       if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
-      else if (auth.effectiveUiType === "HQ_SAFE") next({ name: "hq-safe-tbm-monitor" });
+      else if (auth.effectiveUiType === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
       else if (auth.effectiveUiType === "SITE") next({ name: "site-mobile-ops" });
       else next({ name: "hq-other-dashboard" });
       return;
     }
   } else if (to.meta.uiType && auth.user && auth.user.ui_type !== to.meta.uiType) {
     if (auth.user.role === "WORKER") next({ name: "worker-mobile-list" });
-    else if (auth.user.ui_type === "HQ_SAFE") next({ name: "hq-safe-tbm-monitor" });
+    else if (auth.user.ui_type === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
     else if (auth.user.ui_type === "SITE") next({ name: "site-mobile-ops" });
     else if (auth.user.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next({ name: "login" });
@@ -245,16 +251,16 @@ router.beforeEach((to, _from, next) => {
 
   if (to.name === "login" && auth.isAuthenticated) {
     if (auth.isTestPersonaMode) {
-      if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-tbm-monitor" });
+      if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-document-explorer" });
       else if (auth.effectivePersona === "SITE_MANAGER") next({ name: "site-mobile-ops" });
       else if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
-      else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-tbm-monitor" });
+      else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
       else if (auth.user?.ui_type === "SITE") next({ name: "site-mobile-ops" });
       else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next();
     } else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
-    else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-tbm-monitor" });
+    else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
     else if (auth.user?.ui_type === "SITE") next({ name: "site-mobile-ops" });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next();

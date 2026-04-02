@@ -36,9 +36,6 @@
             <div><strong>서명 완료 인원</strong><div>{{ workforceSummary.signedWorkers }}명</div></div>
             <div><strong>미서명 인원</strong><div>{{ workforceSummary.unsignedWorkers }}명</div></div>
           </div>
-          <div class="helper">
-            근로자 접속은 QR 또는 문자 링크 방식으로 진행하세요. 예: `/worker/mobile?access_token=...`
-          </div>
           <table class="basic-table" v-if="siteWorkers.length > 0">
             <thead>
               <tr>

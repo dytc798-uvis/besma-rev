@@ -15,6 +15,7 @@ from app.modules.document_settings.routes import router as document_settings_rou
 from app.modules.document_generation.routes import router as document_generation_router
 from app.modules.document_explorer.routes import router as document_explorer_router
 from app.modules.document_submissions.routes import router as document_submissions_ops_router
+from app.modules.document_instances.routes import router as document_instances_router
 from app.modules.workers.routes import router as workers_router
 from app.modules.risk_library.routes import router as daily_work_plans_router
 from app.modules.search.routes import router as search_router
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(document_generation_router)
     app.include_router(document_explorer_router)
     app.include_router(document_submissions_ops_router)
+    app.include_router(document_instances_router)
     app.include_router(workers_router)
     app.include_router(daily_work_plans_router)
     app.include_router(search_router)

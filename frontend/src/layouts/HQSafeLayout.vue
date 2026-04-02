@@ -1,7 +1,7 @@
 <template>
   <div class="hq-safe-shell layout-root" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="layout-sidebar">
-      <h1 class="sidebar-brand">BESMA HQ 안전</h1>
+      <h1 class="sidebar-brand">BESMA 임시플랫폼 · HQ 안전</h1>
       <nav class="layout-menu">
         <RouterLink to="/hq-safe/dashboard">대시보드</RouterLink>
         <RouterLink to="/hq-safe/tbm-monitor">TBM 모니터</RouterLink>
@@ -12,9 +12,9 @@
           >문서 취합 현황
           <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span></RouterLink
         >
-        <RouterLink to="/hq-safe/approvals/inbox">결재함(미결재)</RouterLink>
+        <RouterLink to="/hq-safe/approvals/inbox">결재함(공사중)</RouterLink>
         <RouterLink to="/hq-safe/approvals/history">승인/반려 이력</RouterLink>
-        <RouterLink to="/hq-safe/opinions">의견청취관리대장</RouterLink>
+        <RouterLink to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
         <RouterLink to="/hq-safe/sites">현장 관리</RouterLink>
         <RouterLink to="/hq-safe/users">사용자 관리</RouterLink>
         <RouterLink to="/hq-safe/settings">안전문서 설정관리</RouterLink>
@@ -26,7 +26,7 @@
           <button class="sidebar-toggle-btn" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
           </button>
-          <div class="header-title">HQ_SAFE 콘솔</div>
+          <div class="header-title">BESMA 임시플랫폼 · HQ_SAFE</div>
         </div>
         <div class="header-right">
           <span class="header-user">

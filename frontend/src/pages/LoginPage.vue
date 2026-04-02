@@ -1,7 +1,7 @@
 <template>
   <div style="display: flex; justify-content: center; align-items: center; height: 100vh">
     <div class="card" style="width: 360px">
-      <div class="card-title">BESMA Local MVP 로그인</div>
+      <div class="card-title">BESMA 임시플랫폼 로그인</div>
       <p v-if="entryLabel" style="font-size: 12px; color: #334155; margin: 0 0 8px">
         {{ entryLabel }}
       </p>
@@ -20,22 +20,18 @@
         <p v-if="errorMessage" style="color: #dc2626; font-size: 12px; margin: 0">
           {{ errorMessage }}
         </p>
-        <p style="font-size: 12px; color: #6b7280; margin-top: 4px">
-          샘플 계정: hqsafe1 / P@ssw0rd! (관리자), worker01 / P@ssw0rd! (근로자)
-        </p>
       </form>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import axios from "axios";
 import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 
-const loginId = ref("hqsafe1");
-const password = ref("P@ssw0rd!");
+const loginId = ref("");
+const password = ref("");
 const loading = ref(false);
 const errorMessage = ref("");
 
@@ -64,29 +60,16 @@ async function handleLogin() {
     } else if (auth.user?.role === "WORKER") {
       router.push({ name: "worker-mobile-list" });
     } else if (auth.user?.ui_type === "HQ_SAFE") {
-      router.push({ name: "hq-safe-tbm-monitor" });
+      router.push({ name: "hq-safe-document-explorer" });
     } else if (auth.user?.ui_type === "SITE") {
       router.push({ name: "site-mobile-ops" });
     } else if (auth.user?.ui_type === "HQ_OTHER") {
       router.push({ name: "hq-other-dashboard" });
     } else {
-      router.push({ name: "hq-safe-tbm-monitor" });
+      router.push({ name: "hq-safe-document-explorer" });
     }
-  } catch (e) {
-    console.error(e);
-    if (axios.isAxiosError(e)) {
-      const status = e.response?.status;
-      const url = e.config?.url ?? "";
-      if (status === 401 && url.includes("/auth/login")) {
-        errorMessage.value = "로그인에 실패했습니다. ID/비밀번호를 확인하세요.";
-      } else if (url.includes("/auth/me")) {
-        errorMessage.value = "로그인은 성공했지만 사용자 정보 조회에 실패했습니다. 네트워크/CORS 설정을 확인하세요.";
-      } else {
-        errorMessage.value = "로그인은 요청되었지만 응답 처리 중 오류가 발생했습니다. 네트워크/CORS 설정을 확인하세요.";
-      }
-    } else {
-      errorMessage.value = "로그인 처리 중 오류가 발생했습니다.";
-    }
+  } catch {
+    errorMessage.value = "로그인에 실패했습니다.";
   } finally {
     loading.value = false;
   }

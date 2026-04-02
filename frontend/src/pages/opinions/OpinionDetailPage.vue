@@ -1,13 +1,13 @@
 <template>
   <div class="card" v-if="opinion">
-    <div class="card-title">의견 상세 / 조치</div>
+    <div class="card-title">운영 아이디어 상세 / 조치</div>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 13px">
       <div><strong>ID</strong> {{ opinion.id }}</div>
-      <div><strong>현장</strong> {{ opinion.site_id }}</div>
-      <div><strong>카테고리</strong> {{ opinion.category }}</div>
+      <div><strong>제안자</strong> {{ opinion.reporter_type }}</div>
+      <div><strong>유형</strong> {{ opinion.category }}</div>
       <div><strong>상태</strong> {{ opinion.status }}</div>
       <div style="grid-column: span 2">
-        <strong>내용</strong>
+        <strong>아이디어</strong>
         <div>{{ opinion.content }}</div>
       </div>
       <div><strong>적절성 점수</strong> {{ opinion.score_appropriateness ?? "-" }}</div>

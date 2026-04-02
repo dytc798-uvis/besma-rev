@@ -8,10 +8,8 @@
         <button v-if="auth.isAuthenticated" class="mobile-secondary" @click="handleLogout">로그아웃</button>
       </div>
 
-      <section class="status-box">
-        <div><strong>현재 접속:</strong> {{ accessToken ? "전용 링크" : "근로자 로그인" }}</div>
-        <div><strong>접속 안내:</strong> 문자 또는 QR 링크로 접속 가능</div>
-        <div v-if="auth.user"><strong>계정:</strong> {{ auth.user.login_id }} / person_id: {{ auth.user.person_id ?? "-" }}</div>
+      <section v-if="auth.user" class="status-box">
+        <div><strong>계정:</strong> {{ auth.user.login_id }}</div>
       </section>
 
       <section v-if="offlineQueueEnabled" class="status-box">

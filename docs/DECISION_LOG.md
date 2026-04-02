@@ -463,6 +463,62 @@
 | **Reason** | 즉시 배포 안정성을 유지하면서 사용자 혼선을 제거하고, 업로드/지도 기준 현장을 주소 있는 항목으로 일관화할 수 있다. |
 | **Impact Scope** | `GET /sites/search`, SITE 로그인 기본 site 보정, 시드/데모 사용자 site 매핑, HQ 기본 노출 정렬 |
 
+---
+
+### [DECISION-032]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-03-31 |
+| **Title** | 비밀번호 변경 시 복잡도 규칙 폐지·데모 공통 초기 비밀번호 `temp@12` |
+| **Context** | [OPEN-025]에서 B안 확정. 파일럿·데모에서 사용자가 임의 비밀번호로 바꿀 수 있어야 하며 최소 길이·특수문자 등 복잡도는 요구하지 않는다. 데모 계정(`hq01`~`hq05`, `site01`~`site03`) 시드 기본 비밀번호는 이전 `Temp@1234`에서 짧은 공통값으로 통일한다. |
+| **Options** | A. 복잡도 유지 / B. 복잡도 제거(공백 불가만) + 데모 기본 `temp@12` / C. 복잡도 제거 + 설정 화면 링크 추가 |
+| **Decision** | **B** |
+| **Reason** | 운영·시연 편의와 오너 선택에 따름. [DECISION-018] 최초 로그인 강제 변경(`must_change_password`) 및 서버 403 차단 플로우는 **유지**한다. |
+| **Impact Scope** | `backend/app/modules/auth/routes.py`(`_validate_new_password`), `frontend/src/pages/auth/ChangePasswordPage.vue`, `demo_login_users.py`, `scripts/create_demo_login_users.py`, 관련 테스트 |
+
+---
+
+### [DECISION-033]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-01 |
+| **Title** | 서비스 노출 명칭은 `BESMA 임시플랫폼`, HQ_SAFE 기본 진입은 문서 탐색 |
+| **Context** | 운영 전환 후 `Local` 표기가 사용자 인지와 맞지 않으며, HQ_SAFE 로그인 직후 기본 진입 화면을 기존 TBM 모니터가 아닌 문서 탐색으로 바꾸고자 한다. 또한 미완료 메뉴임을 명확히 하기 위해 특정 메뉴에 `(공사중)` 표기를 추가한다. |
+| **Options** | A. 명칭 일괄 전환 + 기본 진입 `문서 탐색` + 메뉴 `(공사중)` 표기 / B. 명칭만 전환 / C. 기본 진입만 전환 |
+| **Decision** | **A** |
+| **Reason** | 운영 상태에 맞는 브랜드/카피 일관성을 확보하고, 사용자가 요구한 첫 화면 흐름과 미구현 메뉴 인지성을 동시에 최소 변경으로 반영하기 위함. |
+| **Impact Scope** | `frontend/index.html`, `frontend/src/router/index.ts`, `frontend/src/pages/LoginPage.vue`, `frontend/src/layouts/HQSafeLayout.vue`, 기타 `Local` 표기 화면 문자열 |
+
+---
+
+### [DECISION-034]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-01 |
+| **Title** | 테스트 계정은 혼합 권한(B): HQ 읽기전용 + SITE 테스트현장 업로드 허용 |
+| **Context** | 테스트 계정(`test1/test1@`, `site1/site1@`) 운영에서 다른 현장 노출을 막고, 테스트 업로드 후 HQ에서 확인/다운로드 가능한 시나리오가 필요하다. |
+| **Options** | A. 두 계정 완전 읽기전용 / B. `test1` 읽기전용 + `site1` 테스트현장 업로드 허용 / C. 테스트 전용 role 신설 |
+| **Decision** | **B** |
+| **Reason** | 시연 요구(현장 업로드→본사 확인)를 충족하면서 권한 범위를 테스트 현장으로 제한해 회귀 위험을 낮출 수 있기 때문이다. |
+| **Impact Scope** | 인증/권한 분기, 테스트 계정 시드, 테스트 전용 현장 스코프, 업로드 용량 제한(10MB), HQ/SITE 테스트 동선 |
+
+---
+
+### [DECISION-035]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-01 |
+| **Title** | `운영 아이디어 제안`은 기존 `opinions`를 재사용해 서버 저장 |
+| **Context** | 테스트버전/현재버전 모두에서 메뉴를 추가해 운영 아이디어를 수집하되, 별도 모듈 신설 없이 빠르게 운영하고자 한다. 사용자는 메뉴 클릭 시 이름/아이디어를 확인하고, 이름은 자유 입력을 원한다. |
+| **Options** | A. 기존 `opinions` 재사용(메뉴/화면 카피 변경) / B. 신규 전용 모듈·테이블 / C. 메뉴만 추가 후 추후 구현 |
+| **Decision** | **A** |
+| **Reason** | 서버 저장과 조회 요구를 충족하면서 변경 범위를 최소화하고 기존 운영 흐름과 충돌을 줄일 수 있다. |
+| **Impact Scope** | `frontend/src/layouts/*Layout.vue`, `frontend/src/pages/opinions/*`, `backend /opinions` API 재사용 경로 |
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -482,3 +538,4 @@
 | 2026-03-30 | Decision 029 추가 — 소통자료 신규 모듈을 DECISION-002 예외로 승인 |
 | 2026-03-30 | Decision 030 추가 — 지도 기반 현장검색(placeholder 해소 + HQ 접근 라우트) 확정 |
 | 2026-03-30 | Decision 031 추가 — 주소 없는 중복현장 숨김 및 주소 있는 C18 기본 연결 확정 |
+| 2026-03-31 | Decision 032 추가 — 비밀번호 변경 복잡도 규칙 폐지·데모 기본 비밀번호 `temp@12` |

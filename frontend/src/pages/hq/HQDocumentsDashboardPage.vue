@@ -6,12 +6,6 @@
           <div class="flex w-full flex-wrap items-start justify-between gap-4">
             <div>
               <h2 class="m-0 text-[17px] font-bold text-slate-900">문서취합현황</h2>
-              <p v-if="isDemoPilotSiteScopeEnabled" class="sub" style="margin: 4px 0 0">
-                데모: 문서취합에는 파일럿(청라 C18) 현장만 표시합니다.
-              </p>
-              <p v-else-if="dashboardBackgroundPreparing" class="sub" style="margin: 4px 0 0">
-                1팀 데이터를 먼저 표시했고, 전체 현장을 백그라운드에서 준비 중입니다.
-              </p>
             </div>
           </div>
         </template>
@@ -114,14 +108,36 @@
                     </button>
                   </td>
                   <td v-for="col in requirementColumns" :key="`cell-${row.site_id}-${col.requirement_key}`" class="status-cell">
-                    <button
-                      type="button"
-                      class="status-pill"
-                      :class="statusPillClass(matrixDisplayCell(row.site_id, col.requirement_key).status)"
-                      @click="openReviewDecisionModal(row.site_id, col.requirement_key)"
-                    >
-                      {{ statusCompactLabel(matrixDisplayCell(row.site_id, col.requirement_key).status) }}
-                    </button>
+                    <div class="matrix-cell-inner">
+                      <template v-if="matrixDisplayCell(row.site_id, col.requirement_key).latest_instance_id != null">
+                        <button
+                          type="button"
+                          class="status-pill"
+                          :class="statusPillClass(matrixDisplayCell(row.site_id, col.requirement_key).status)"
+                          @click="goInstanceDetail(row.site_id, col.requirement_key)"
+                        >
+                          {{ statusCompactLabel(matrixDisplayCell(row.site_id, col.requirement_key).status) }}
+                        </button>
+                        <button type="button" class="inst-detail-link" @click="goInstanceDetail(row.site_id, col.requirement_key)">
+                          상세
+                        </button>
+                      </template>
+                      <template v-else>
+                        <span
+                          class="status-pill status-pill-no-instance"
+                          :class="statusPillClass(matrixDisplayCell(row.site_id, col.requirement_key).status)"
+                          title="이 주기에 DocumentInstance(회차)가 아직 생성되지 않았습니다. 목록이 갱신되면 회차가 생길 수 있습니다."
+                        >
+                          {{ statusCompactLabel(matrixDisplayCell(row.site_id, col.requirement_key).status) }}
+                        </span>
+                        <span
+                          class="no-instance-badge"
+                          title="DocumentInstance(회차)가 아직 생성되지 않았습니다."
+                        >
+                          회차 미생성
+                        </span>
+                      </template>
+                    </div>
                   </td>
                 </tr>
                 <tr v-if="matrixRows.length === 0">
@@ -166,72 +182,6 @@
       </BaseCard>
     </div>
 
-    <div v-if="reviewDecisionModalOpen" class="modal-backdrop" @click.self="closeReviewDecisionModal">
-      <BaseCard class="modal-card !w-full max-w-[520px]" title="검토 결정">
-        <template v-if="reviewDecisionCell">
-          <div class="detail-grid">
-            <div class="detail-span-2"><strong>현장</strong> {{ displaySiteName(reviewDecisionCell.site_name) }}</div>
-            <div class="detail-span-2"><strong>문서</strong> {{ reviewDecisionCell.title }}</div>
-            <div><strong>현재 상태</strong> {{ statusCompactLabel(reviewDecisionCell.status) }}</div>
-            <div><strong>문서 ID</strong> {{ reviewDecisionCell.current_document_id || "-" }}</div>
-            <div class="detail-span-2"><strong>파일명</strong> {{ reviewDecisionCell.current_file_name || "파일 없음" }}</div>
-            <div><strong>업로드 시각</strong> {{ formatDateTime(reviewDecisionCell.uploaded_at) }}</div>
-            <div><strong>업로드자</strong> {{ reviewDecisionCell.uploaded_by_name || "-" }}</div>
-          </div>
-          <div class="modal-actions" style="margin-top: 10px; justify-content: flex-start">
-            <button
-              v-if="canOpenReviewFileInBrowser"
-              type="button"
-              class="stitch-btn-secondary"
-              :disabled="!reviewDecisionCell.current_document_id"
-              @click="openReviewFile"
-            >
-              파일 열기
-            </button>
-            <button
-              type="button"
-              class="stitch-btn-secondary"
-              :disabled="!reviewDecisionCell.current_document_id"
-              @click="downloadReviewFile"
-            >
-              파일 다운로드
-            </button>
-          </div>
-          <p v-if="!canOpenReviewFileInBrowser" class="sub" style="margin-top: 8px">
-            브라우저 미리보기를 지원하지 않는 형식입니다. 다운로드 후 확인하세요.
-          </p>
-          <label class="form-field" style="margin-top: 10px">
-            <span>코멘트 (현장에서 확인)</span>
-            <textarea v-model="reviewDecisionComment" class="modal-textarea" rows="4" />
-          </label>
-          <p v-if="!canApplyReviewDecision" class="sub" style="margin-top: 8px">
-            제출된 문서(검토대기) 상태에서만 승인/반려를 진행할 수 있습니다.
-          </p>
-          <p v-if="reviewDecisionError" class="sub detail-error" style="margin-top: 8px">
-            {{ reviewDecisionError }}
-          </p>
-          <div class="modal-actions">
-            <button type="button" class="stitch-btn-secondary" @click="closeReviewDecisionModal">취소</button>
-            <button
-              type="button"
-              class="stitch-btn-secondary"
-              :disabled="!canApplyReviewDecision || !reviewDecisionComment.trim()"
-              @click="submitReviewDecision('reject')"
-            >
-              반려
-            </button>
-            <button
-              type="button"
-              class="stitch-btn-primary"
-              :disabled="!canApplyReviewDecision"
-              @click="submitReviewDecision('approve')"
-            >
-              승인
-            </button>
-          </div>
-        </template>
-      </BaseCard>
-    </div>
     <div v-if="detailDocumentId" class="modal-backdrop" @click.self="closeDetailModal">
       <BaseCard class="modal-card !w-full max-w-[680px]" title="문서 상세 보기">
         <p v-if="detailLoading" class="sub">불러오는 중...</p>
@@ -261,24 +211,6 @@
         </template>
       </BaseCard>
     </div>
-    <div v-if="filePreviewModalOpen" class="modal-backdrop" @click.self="closeFilePreviewModal">
-      <BaseCard class="modal-card !w-full max-w-[1000px]" title="파일 미리보기">
-        <template v-if="filePreviewUrl">
-          <iframe
-            v-if="filePreviewType === 'pdf'"
-            :src="filePreviewUrl"
-            style="width: 100%; height: 72vh; border: 1px solid #e2e8f0; border-radius: 8px"
-          />
-          <div v-else-if="filePreviewType === 'image'" style="display: flex; justify-content: center">
-            <img :src="filePreviewUrl" alt="preview" style="max-width: 100%; max-height: 72vh; object-fit: contain" />
-          </div>
-        </template>
-        <div class="modal-actions">
-          <button type="button" class="stitch-btn-secondary" @click="closeFilePreviewModal">닫기</button>
-          <button type="button" class="stitch-btn-primary" @click="downloadReviewFile">파일 다운로드</button>
-        </div>
-      </BaseCard>
-    </div>
   </div>
 </template>
 
@@ -288,7 +220,6 @@ import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { DEMO_PILOT_SITE_CODE, isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
-import { canPreviewInBrowser, isImageFile, isPdfFile } from "@/utils/filePreview";
 
 interface SiteSummaryRow {
   site_id: number;
@@ -321,6 +252,7 @@ interface DashboardItem {
   uploaded_by_user_id: number | null;
   uploaded_by_name?: string | null;
   workflow_status?: string | null;
+  latest_instance_id?: number | null;
   category?: string | null;
   section?: string | null;
 }
@@ -462,19 +394,11 @@ const signalLabel = computed(() => {
   return "GREEN (정상)";
 });
 
-const reviewDecisionModalOpen = ref(false);
-const reviewDecisionCell = ref<MatrixCellItem | null>(null);
-const reviewDecisionComment = ref("");
-const reviewDecisionError = ref("");
 const detailDocumentId = ref<number | null>(null);
 const detailDocument = ref<DocumentDetailModalData | null>(null);
 const detailLoading = ref(false);
 const detailDownloadLoading = ref(false);
 const detailError = ref<string>("");
-const filePreviewModalOpen = ref(false);
-const filePreviewUrl = ref<string | null>(null);
-const filePreviewType = ref<"pdf" | "image" | null>(null);
-
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     NOT_REQUIRED: "비대상",
@@ -587,9 +511,19 @@ function matrixDisplayCell(siteId: number, requirementKeyOrId: string | number):
     uploaded_by_user_id: null,
     uploaded_by_name: null,
     workflow_status: null,
+    latest_instance_id: null,
     category: null,
     section: null,
   };
+}
+
+function goInstanceDetail(siteId: number, requirementKey: string) {
+  const cell = matrixDisplayCell(siteId, requirementKey);
+  if (cell.latest_instance_id == null) return;
+  void router.push({
+    name: "hq-safe-document-instance-detail",
+    params: { instanceId: String(cell.latest_instance_id) },
+  });
 }
 
 function formatDateTime(value: string | null) {
@@ -700,7 +634,13 @@ async function load() {
       const reviewSiteId = Number(reviewSiteRaw);
       const reviewRequirementId = Number(reviewRequirementRaw);
       if (Number.isInteger(reviewSiteId) && Number.isInteger(reviewRequirementId)) {
-        openReviewDecisionModal(reviewSiteId, reviewRequirementId);
+        const cell = matrixDisplayCell(reviewSiteId, reviewRequirementId);
+        if (cell.latest_instance_id != null) {
+          await router.replace({
+            name: "hq-safe-document-instance-detail",
+            params: { instanceId: String(cell.latest_instance_id) },
+          });
+        }
       }
     }
   } finally {
@@ -718,63 +658,6 @@ async function selectSite(siteId: number) {
   await syncSiteIdQuery(siteId);
 }
 
-async function startReview(documentId: number) {
-  await api.post(`/documents/${documentId}/review`, { action: "start_review", comment: "HQ 검토 시작" });
-  await load();
-}
-
-async function approve(documentId: number) {
-  await api.post(`/documents/${documentId}/review`, { action: "approve", comment: "HQ 승인" });
-  await load();
-}
-
-function openReviewDecisionModal(siteId: number, requirementKeyOrId: string | number) {
-  reviewDecisionCell.value = matrixDisplayCell(siteId, requirementKeyOrId);
-  reviewDecisionComment.value = "";
-  reviewDecisionError.value = "";
-  reviewDecisionModalOpen.value = true;
-}
-
-function closeReviewDecisionModal() {
-  reviewDecisionModalOpen.value = false;
-  reviewDecisionCell.value = null;
-  reviewDecisionComment.value = "";
-  reviewDecisionError.value = "";
-}
-
-const canApplyReviewDecision = computed(() => {
-  const status = reviewDecisionCell.value?.status;
-  const docId = reviewDecisionCell.value?.current_document_id;
-  return !!docId && (status === "SUBMITTED" || status === "IN_REVIEW");
-});
-const canOpenReviewFileInBrowser = computed(() =>
-  canPreviewInBrowser(reviewDecisionCell.value?.current_file_name),
-);
-
-async function submitReviewDecision(action: "approve" | "reject") {
-  if (!reviewDecisionCell.value?.current_document_id || !canApplyReviewDecision.value) return;
-  reviewDecisionError.value = "";
-  const documentId = reviewDecisionCell.value.current_document_id;
-  const comment = reviewDecisionComment.value.trim() || (action === "approve" ? "HQ 승인" : "HQ 반려");
-  try {
-    await api.post(`/documents/${documentId}/review`, { action, comment });
-    closeReviewDecisionModal();
-    await load();
-  } catch {
-    try {
-      await api.post(`/documents/${documentId}/review`, {
-        action: "start_review",
-        comment: "HQ 검토 시작",
-      });
-      await api.post(`/documents/${documentId}/review`, { action, comment });
-      closeReviewDecisionModal();
-      await load();
-    } catch {
-      reviewDecisionError.value = "승인/반려 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.";
-    }
-  }
-}
-
 function openPendingDocumentsPage() {
   const target = router.resolve({
     name: "hq-safe-documents-pending",
@@ -789,49 +672,6 @@ function openContractorDocumentItemSettings() {
     name: "hq-safe-contractor-document-settings",
     query: { group_key: groupKey },
   });
-}
-
-async function openReviewFile() {
-  if (!reviewDecisionCell.value?.current_document_id || !canOpenReviewFileInBrowser.value) return;
-  const res = await api.get(`/documents/${reviewDecisionCell.value.current_document_id}/file`, {
-    params: { disposition: "inline" },
-    responseType: "blob",
-  });
-  const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
-  const blob = new Blob([res.data], { type: contentType });
-  const url = window.URL.createObjectURL(blob);
-  const fileName = reviewDecisionCell.value.current_file_name;
-  if (isPdfFile(fileName)) {
-    filePreviewType.value = "pdf";
-    filePreviewUrl.value = url;
-    filePreviewModalOpen.value = true;
-    return;
-  }
-  if (isImageFile(fileName)) {
-    filePreviewType.value = "image";
-    filePreviewUrl.value = url;
-    filePreviewModalOpen.value = true;
-    return;
-  }
-  window.open(url, "_blank", "noopener");
-  setTimeout(() => window.URL.revokeObjectURL(url), 5000);
-}
-
-async function downloadReviewFile() {
-  if (!reviewDecisionCell.value?.current_document_id) return;
-  const res = await api.get(`/documents/${reviewDecisionCell.value.current_document_id}/file`, {
-    params: { disposition: "attachment" },
-    responseType: "blob",
-  });
-  const blob = new Blob([res.data]);
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = reviewDecisionCell.value.current_file_name || "document.bin";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
 }
 
 async function goDetail(id: number) {
@@ -855,15 +695,6 @@ function closeDetailModal() {
   detailError.value = "";
   detailLoading.value = false;
   detailDownloadLoading.value = false;
-}
-
-function closeFilePreviewModal() {
-  filePreviewModalOpen.value = false;
-  filePreviewType.value = null;
-  if (filePreviewUrl.value) {
-    window.URL.revokeObjectURL(filePreviewUrl.value);
-  }
-  filePreviewUrl.value = null;
 }
 
 function resolveFilenameFromHeader(headerValue: string | undefined, fallback: string) {
@@ -1288,6 +1119,21 @@ watch(
 .status-pill-not-submitted { background: #ffedd5; color: #9a3412; }
 .status-pill-neutral { background: #e2e8f0; color: #334155; }
 
+.status-pill-no-instance {
+  cursor: default;
+  opacity: 0.92;
+}
+
+.no-instance-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: help;
+}
+
 .site-link {
   border: 0;
   background: transparent;
@@ -1375,6 +1221,34 @@ watch(
   text-align: center;
   color: #64748b;
   padding: 32px 16px !important;
+}
+
+.matrix-cell-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.inst-detail-link {
+  font-size: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.inst-detail-link:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.status-pill:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .modal-backdrop {

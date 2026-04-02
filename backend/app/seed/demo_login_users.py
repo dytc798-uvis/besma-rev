@@ -134,7 +134,7 @@ def _upsert_demo_user(
 def ensure_demo_login_users(
     db: Session,
     *,
-    password: str = "Temp@1234",
+    password: str = "temp@12",
     site_code: str = "SITE002",
 ) -> DemoUserProvisionResult:
     site, created_site = ensure_demo_site(db, site_code=site_code)

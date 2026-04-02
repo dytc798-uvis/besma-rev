@@ -2,18 +2,14 @@
   <div class="mobile-shell">
     <div class="mobile-card">
       <h1>근로자 작업일보</h1>
-      <p class="helper">
-        로그인한 근로자는 자동으로 내 목록을 조회합니다. 문자 또는 QR 링크(`/worker/mobile?access_token=...`)로도 접속할 수 있습니다.
-      </p>
       <div class="mobile-actions">
         <button class="mobile-primary" :disabled="loading" @click="loadMyPlans">
           {{ loading ? "조회 중..." : "내 배포 목록 조회" }}
         </button>
         <button v-if="auth.isAuthenticated" class="mobile-secondary" @click="handleLogout">로그아웃</button>
       </div>
-      <section class="status-box">
-        <div><strong>현재 접속:</strong> {{ accessToken ? "전용 링크" : "근로자 로그인" }}</div>
-        <div v-if="auth.user"><strong>계정:</strong> {{ auth.user.login_id }} / person_id: {{ auth.user.person_id ?? "-" }}</div>
+      <section v-if="auth.user" class="status-box">
+        <div><strong>계정:</strong> {{ auth.user.login_id }}</div>
       </section>
       <p v-if="message" class="mobile-message">{{ message }}</p>
       <ul class="mobile-list" v-if="plans.length > 0">
@@ -27,16 +23,8 @@
       </ul>
       <section v-else-if="!loading" class="status-box">
         <div><strong>조회 결과</strong></div>
-        <div>현재 계정에 배정된 배포가 없습니다.</div>
-        <div v-if="auth.isAuthenticated && !auth.user?.person_id">
-          이 계정은 근로자 `person_id` 연결이 없어 자동 조회가 되지 않습니다.
-        </div>
-        <div v-else-if="auth.isAuthenticated">
-          관리자 측에서 이 근로자 `person_id`로 배포를 생성했는지 확인하세요.
-        </div>
-        <div v-else>
-          전용 링크(access_token) 또는 근로자 로그인이 필요합니다.
-        </div>
+        <div v-if="!auth.isAuthenticated && !accessToken">접근 권한이 없습니다.</div>
+        <div v-else>표시할 배포가 없습니다.</div>
       </section>
     </div>
   </div>
@@ -69,29 +57,17 @@ async function loadMyPlans() {
   try {
     if (!accessToken.value && auth.isAuthenticated && !auth.user?.person_id) {
       plans.value = [];
-      message.value = "현재 로그인 계정에 person_id가 연결되지 않아 내 배포를 조회할 수 없습니다.";
+      message.value = "조회할 수 없습니다.";
       return;
     }
     const params = accessToken.value ? { access_token: accessToken.value } : undefined;
     const res = await api.get("/worker/my-daily-work-plans", { params });
     plans.value = res.data;
     if (plans.value.length === 0) {
-      if (accessToken.value) {
-        message.value = "이 링크로 조회되는 배포가 없습니다. 링크가 만료되었거나 배포가 아직 visible 상태가 아닐 수 있습니다.";
-      } else if (auth.user?.person_id) {
-        message.value = `person_id ${auth.user.person_id}에 배정된 배포가 없습니다. 관리자에게 확인하세요.`;
-      } else {
-        message.value = "조회된 배포가 없습니다. 관리자에게 확인하세요.";
-      }
+      message.value = "표시할 배포가 없습니다.";
     }
-  } catch (err: any) {
-    const detail = err?.response?.data?.detail;
-    if (detail === "Worker login or access_token is required") {
-      message.value =
-        "근로자 로그인 또는 전용 링크(access_token)가 필요합니다. 예: /worker/mobile?access_token=...";
-    } else {
-      message.value = detail ?? "조회 중 오류가 발생했습니다.";
-    }
+  } catch {
+    message.value = "요청을 처리할 수 없습니다.";
   } finally {
     loading.value = false;
   }
@@ -122,9 +98,6 @@ function ackStatusLabel(status: string) {
 
 if (auth.isAuthenticated || accessToken.value) {
   loadMyPlans();
-} else {
-  message.value =
-    "근로자 로그인 또는 전용 링크(access_token)가 필요합니다. 예: /worker/mobile?access_token=...";
 }
 </script>
 

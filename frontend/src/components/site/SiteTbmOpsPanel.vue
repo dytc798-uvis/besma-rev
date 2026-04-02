@@ -50,8 +50,6 @@
           새로고침
         </button>
       </div>
-      <p class="msg hint">근로자 안내: 문자 또는 QR로 `/worker/mobile?access_token=...` 링크 전달</p>
-
       <p v-if="message" :class="['msg', msgType]">{{ message }}</p>
 
       <div v-if="distribution.workers?.length" class="worker-list">

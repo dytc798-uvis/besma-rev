@@ -92,7 +92,7 @@
               class="panel-link"
               @click="toggleMonitoringSitesExpand"
             >
-              {{ showAllMonitoringSites ? "파일럿만" : "다른 현장 보기" }}
+              {{ showAllMonitoringSites ? "기본 보기" : "전체 현장 보기" }}
             </button>
             <RouterLink class="panel-link" :to="{ name: 'hq-safe-sites' }">전체 보기</RouterLink>
           </template>
@@ -179,7 +179,6 @@ const filterKeyword = ref("");
 const filterTeamDraft = ref("");
 const filterTeamApplied = ref("");
 
-/** 데모: 홈 모니터링 카드는 기본 파일럿만, 클릭 시 전체 */
 const showAllMonitoringSites = ref(false);
 
 function toggleMonitoringSitesExpand() {

@@ -29,8 +29,8 @@ def _setup_db():
 def test_ensure_demo_login_users_is_idempotent_and_links_site_users():
     db = _setup_db()
 
-    first = ensure_demo_login_users(db, password="Temp@1234", site_code="SITE002")
-    second = ensure_demo_login_users(db, password="Temp@1234", site_code="SITE002")
+    first = ensure_demo_login_users(db, password="temp@12", site_code="SITE002")
+    second = ensure_demo_login_users(db, password="temp@12", site_code="SITE002")
 
     assert first.site_code == "SITE002"
     assert second.site_id == first.site_id

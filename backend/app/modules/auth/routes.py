@@ -97,11 +97,9 @@ def me(db: DbDep, current_user=Depends(get_current_user)) -> UserMe:
 
 
 def _validate_new_password(password: str) -> None:
-    # MVP 정책: 최소 8자 + 영문/숫자 외의 문자(특수문자) 1개 이상
-    if len(password) < 8:
-        raise HTTPException(status_code=400, detail="PASSWORD_TOO_SHORT")
-    if not any((not c.isalnum()) for c in password):
-        raise HTTPException(status_code=400, detail="PASSWORD_SPECIAL_CHAR_REQUIRED")
+    # DECISION-032: 길이·복잡도 규칙 없음. 공백만 비밀번호는 불가.
+    if not (password or "").strip():
+        raise HTTPException(status_code=400, detail="NEW_PASSWORD_REQUIRED")
 
 
 @router.post("/change-password")

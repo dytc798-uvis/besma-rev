@@ -1,0 +1,36 @@
+# BESMA FastAPI 백엔드 (systemd)
+# 설치: sudo cp deploy/systemd/besma-backend.service /etc/systemd/system/besma-backend.service
+#       sudo systemctl daemon-reload && sudo systemctl enable --now besma-backend
+#
+# 로그: journalctl -u besma-backend -f
+
+[Unit]
+Description=BESMA FastAPI backend (uvicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+
+# uvicorn이 `app` 패키지를 해석하려면 작업 디렉터리는 backend여야 함
+WorkingDirectory=/home/ubuntu/besma-rev/backend
+
+# 앱은 pydantic_settings로 저장소 루트의 .env를 읽음 (backend/app/config/settings.py의 BASE_DIR 기준)
+Environment=ENV=prod
+
+ExecStart=/home/ubuntu/besma-rev/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+
+Restart=on-failure
+RestartSec=5
+
+# 리소스/보안은 서버 정책에 맞게 조정
+LimitNOFILE=65535
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=besma-backend
+
+[Install]
+WantedBy=multi-user.target

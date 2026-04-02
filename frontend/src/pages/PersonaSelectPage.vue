@@ -27,7 +27,7 @@ const router = useRouter();
 
 function routeByPersona(persona: TestPersona) {
   if (persona === "HQ_ADMIN") {
-    router.push({ name: "hq-safe-tbm-monitor" });
+    router.push({ name: "hq-safe-document-explorer" });
     return;
   }
   if (persona === "SITE_MANAGER") {
@@ -50,7 +50,7 @@ function logout() {
 function goDefault() {
   auth.clearPersona();
   if (auth.user?.ui_type === "HQ_SAFE") {
-    router.push({ name: "hq-safe-tbm-monitor" });
+    router.push({ name: "hq-safe-document-explorer" });
     return;
   }
   if (auth.user?.ui_type === "SITE") {

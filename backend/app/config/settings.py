@@ -36,6 +36,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5174",
         "http://192.168.219.51:5174",
         "http://118.36.137.127:5174",
+        "https://besma.co.kr",
+        "https://www.besma.co.kr",
     ]
     cors_origin_regex: str = r"(^https?://192\.168\.\d+\.\d+:5174$)|(^https://.*\.vercel\.app$)"
 
