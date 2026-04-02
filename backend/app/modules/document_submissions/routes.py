@@ -36,6 +36,8 @@ from app.modules.sites.models import Site
 router = APIRouter(prefix="/document-submissions", tags=["document-submissions-ops"])
 logger = logging.getLogger(__name__)
 
+HQ_DEMO_READONLY_LOGIN_IDS = {"hq01", "hq02", "hq03", "hq04", "hq05"}
+
 
 def _ensure_documents_dir() -> Path:
     d = settings.storage_root / settings.documents_dir_name
@@ -182,6 +184,10 @@ async def upload_document_for_instance(
     - instance.workflow_status: NOT_SUBMITTED/REJECTED -> SUBMITTED
     - 오케스트레이션 status/status_reason는 건드리지 않는다
     """
+    # 데모 혼선 방지를 위해 HQ 데모 계정(hq01~hq05)은 업로드를 읽기전용으로 강제한다.
+    if current_user.role == Role.HQ_SAFE and current_user.login_id in HQ_DEMO_READONLY_LOGIN_IDS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ demo accounts are read-only")
+
     if instance_id is not None:
         try:
             inst = get_instance_or_404(db, instance_id)

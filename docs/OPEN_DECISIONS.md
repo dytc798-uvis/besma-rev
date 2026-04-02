@@ -207,6 +207,8 @@ Recommendation:
 - `OPEN-023` : A (DECISION-002 예외 승인)
 - `OPEN-024` : B
 - `OPEN-027` : B ([DECISION-034])
+- `OPEN-030` : B ([DECISION-036])
+- `OPEN-031` : 취소 (요청 범위 변경: TBM을 “주기 기반 문서 모니터링” 신규 화면의 첫 구현으로 분리) ([DECISION-037])
 - `OPEN-028` : 취소 (요청 철회)
 - `OPEN-029` : A ([DECISION-035])
 - `OPEN-026` : A ([DECISION-033])

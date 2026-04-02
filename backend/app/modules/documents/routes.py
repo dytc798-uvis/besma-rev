@@ -31,12 +31,15 @@ from app.modules.documents.service import (
     get_site_requirement_status,
     get_document_content,
     get_tbm_summary,
+    get_tbm_periodic_monthly_monitoring,
+    get_tbm_periodic_daily_monitoring,
 )
 from app.schemas.document_dashboard import HQDashboardResponse, RequirementStatusResponse
 from app.modules.sites.models import Site
 from app.modules.sites.ordering import site_list_priority_order
 from app.modules.users.models import User
 from app.schemas.document_content import DocumentContentResponse, TbmSummaryResponse
+from app.schemas.periodic_monitoring import TbmDailyMonitoringResponse, TbmMonthlyMonitoringResponse
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -56,6 +59,29 @@ def _parse_period(period: str) -> str:
             detail="period must be one of: all, day, week, month, quarter, half_year, year, event",
         )
     return value
+
+
+def _parse_year_month(year_month: str) -> tuple[int, int, date, date, str]:
+    value = (year_month or "").strip()
+    m = re.match(r"^(\d{4})-(\d{2})$", value)
+    if not m:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="year_month must be in format YYYY-MM",
+        )
+    y = int(m.group(1))
+    month = int(m.group(2))
+    if month < 1 or month > 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="month must be between 01 and 12",
+        )
+    start = date(y, month, 1)
+    if month == 12:
+        end = date(y + 1, 1, 1) - timedelta(days=1)
+    else:
+        end = date(y, month + 1, 1) - timedelta(days=1)
+    return y, month, start, end, f"{y:04d}-{month:02d}"
 
 
 def _site_team_slot(site_name: str) -> str | None:
@@ -353,6 +379,83 @@ def get_hq_dashboard(
         ),
         "pending_documents": pending_documents,
         "approval_history": approval_history,
+    }
+
+
+@router.get(
+    "/periodic-monitoring/tbm/monthly",
+    response_model=TbmMonthlyMonitoringResponse,
+)
+def get_tbm_periodic_monthly(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    year_month: str = Query(..., description="YYYY-MM"),
+    site_id: int | None = None,
+):
+    if current_user.role != Role.HQ_SAFE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    y, m, start, end, ym_label = _parse_year_month(year_month)
+
+    sites = db.query(Site).order_by(site_list_priority_order(), Site.id.asc()).all()
+    if site_id is not None:
+        sites = [s for s in sites if s.id == site_id]
+
+    site_ids = [s.id for s in sites]
+    site_summaries = get_tbm_periodic_monthly_monitoring(
+        db,
+        site_ids=site_ids,
+        start_date=start,
+        end_date=end,
+    )
+
+    return {
+        "year": y,
+        "month": m,
+        "year_month": ym_label,
+        "start_date": start,
+        "end_date": end,
+        "sites": site_summaries,
+    }
+
+
+@router.get(
+    "/periodic-monitoring/tbm/daily",
+    response_model=TbmDailyMonitoringResponse,
+)
+def get_tbm_periodic_daily(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    year_month: str = Query(..., description="YYYY-MM"),
+    site_id: int = Query(..., description="Site id"),
+):
+    if current_user.role != Role.HQ_SAFE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    y, m, start, end, ym_label = _parse_year_month(year_month)
+
+    try:
+        payload = get_tbm_periodic_daily_monitoring(
+            db,
+            site_id=site_id,
+            start_date=start,
+            end_date=end,
+        )
+    except ValueError as exc:
+        if str(exc) == "site_not_found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+        raise
+
+    return {
+        "site_id": payload["site_id"],
+        "site_name": payload["site_name"],
+        "year": y,
+        "month": m,
+        "year_month": ym_label,
+        "start_date": start,
+        "end_date": end,
+        "summary": payload["summary"],
+        "days": payload["days"],
     }
 
 

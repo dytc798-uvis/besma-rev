@@ -8,6 +8,7 @@
         <RouterLink to="/hq-safe/risk-library">위험성평가 DB 조회</RouterLink>
         <RouterLink to="/hq-safe/site-search">현장 검색</RouterLink>
         <RouterLink to="/hq-safe/document-explorer">문서 탐색</RouterLink>
+        <RouterLink to="/hq-safe/periodic-monitoring">주기 기반 문서 모니터링</RouterLink>
         <RouterLink to="/hq-safe/documents" @click="collapseSidebar"
           >문서 취합 현황
           <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span></RouterLink

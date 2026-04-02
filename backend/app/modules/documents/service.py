@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from types import SimpleNamespace
 
-from sqlalchemy import or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
@@ -17,6 +17,7 @@ from app.modules.users.models import User
 from app.modules.workers.models import Person
 from app.modules.risk_library.models import (
     DailyWorkPlan,
+    DailyWorkPlanConfirmation,
     DailyWorkPlanDocumentLink,
     DailyWorkPlanDistribution,
     DailyWorkPlanDistributionWorker,
@@ -574,6 +575,213 @@ def get_top_risks(*, plans: list[dict[str, Any]], limit: int = 5) -> list[dict[s
                 all_risks.append(risk)
     all_risks.sort(key=lambda r: int(r.get("risk_level", 0)), reverse=True)
     return all_risks[: max(1, limit)]
+
+
+def _compute_tbm_daily_monitoring_rows(
+    db: Session,
+    *,
+    site_id: int,
+    start_date: date,
+    end_date: date,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """
+    TBM 월간 집계에서 쓰는 “일별 운영데이터 요약”을 계산한다.
+
+    생성 기준(분모): 해당 월 범위 내 `DailyWorkPlan.work_date` distinct 개수
+    완료 기준: 해당 일의 distribution_worker 모두에 대해 `end_signed_at` 존재
+    """
+
+    work_date_rows = (
+        db.query(DailyWorkPlan.work_date)
+        .filter(
+            DailyWorkPlan.site_id == site_id,
+            DailyWorkPlan.work_date >= start_date,
+            DailyWorkPlan.work_date <= end_date,
+        )
+        .distinct()
+        .order_by(DailyWorkPlan.work_date.asc())
+        .all()
+    )
+    work_dates = [row.work_date for row in work_date_rows]
+
+    # 분모가 되는 “생성된 일”은 work_date distinct를 그대로 사용한다.
+    generated_days = len(work_dates)
+    if generated_days == 0:
+        return (
+            {
+                "generated_days": 0,
+                "completed_days": 0,
+                "distributed_days": 0,
+                "confirmed_days": 0,
+                "missing_days": 0,
+                "completion_rate_pct": 0.0,
+            },
+            [],
+        )
+
+    dist_counts = (
+        db.query(
+            DailyWorkPlan.work_date.label("work_date"),
+            func.count(DailyWorkPlanDistribution.id).label("distribution_count"),
+        )
+        .join(DailyWorkPlanDistribution, DailyWorkPlanDistribution.plan_id == DailyWorkPlan.id)
+        .filter(
+            DailyWorkPlan.site_id == site_id,
+            DailyWorkPlan.work_date >= start_date,
+            DailyWorkPlan.work_date <= end_date,
+        )
+        .group_by(DailyWorkPlan.work_date)
+        .all()
+    )
+    dist_count_map = {row.work_date: int(row.distribution_count) for row in dist_counts}
+
+    worker_counts = (
+        db.query(
+            DailyWorkPlan.work_date.label("work_date"),
+            func.count(DailyWorkPlanDistributionWorker.id).label("worker_total"),
+            func.sum(
+                case(
+                    (DailyWorkPlanDistributionWorker.end_signed_at.is_not(None), 1),
+                    else_=0,
+                )
+            ).label("worker_completed"),
+        )
+        .join(
+            DailyWorkPlanDistribution,
+            DailyWorkPlanDistribution.id == DailyWorkPlanDistributionWorker.distribution_id,
+        )
+        .join(DailyWorkPlan, DailyWorkPlan.id == DailyWorkPlanDistribution.plan_id)
+        .filter(
+            DailyWorkPlan.site_id == site_id,
+            DailyWorkPlan.work_date >= start_date,
+            DailyWorkPlan.work_date <= end_date,
+        )
+        .group_by(DailyWorkPlan.work_date)
+        .all()
+    )
+    worker_total_map = {row.work_date: int(row.worker_total) for row in worker_counts}
+    worker_completed_map = {row.work_date: int(row.worker_completed) for row in worker_counts}
+
+    conf_counts = (
+        db.query(
+            DailyWorkPlan.work_date.label("work_date"),
+            func.count(DailyWorkPlanConfirmation.id).label("confirmation_count"),
+        )
+        .join(DailyWorkPlanConfirmation, DailyWorkPlanConfirmation.plan_id == DailyWorkPlan.id)
+        .filter(
+            DailyWorkPlan.site_id == site_id,
+            DailyWorkPlan.work_date >= start_date,
+            DailyWorkPlan.work_date <= end_date,
+        )
+        .group_by(DailyWorkPlan.work_date)
+        .all()
+    )
+    conf_count_map = {row.work_date: int(row.confirmation_count) for row in conf_counts}
+
+    completed_days = 0
+    distributed_days = 0
+    confirmed_days = 0
+    missing_days = 0
+
+    daily_rows: list[dict[str, Any]] = []
+    for wd in work_dates:
+        distribution_count = dist_count_map.get(wd, 0)
+        confirmation_count = conf_count_map.get(wd, 0)
+        worker_total = worker_total_map.get(wd, 0)
+        worker_completed = worker_completed_map.get(wd, 0)
+
+        distributed = distribution_count > 0
+        confirmed = confirmation_count > 0
+        completed = worker_total > 0 and worker_completed == worker_total
+        missing = not completed
+
+        if completed:
+            completed_days += 1
+        if distributed:
+            distributed_days += 1
+        if confirmed:
+            confirmed_days += 1
+        if missing:
+            missing_days += 1
+
+        daily_rows.append(
+            {
+                "work_date": wd,
+                "distributed": distributed,
+                "confirmed": confirmed,
+                "confirmation_count": confirmation_count,
+                "distribution_count": distribution_count,
+                "worker_total": worker_total,
+                "worker_completed": worker_completed,
+                "completed": completed,
+                "missing": missing,
+            }
+        )
+
+    completion_rate_pct = round((completed_days / generated_days) * 100, 1)
+    monthly_summary = {
+        "generated_days": generated_days,
+        "completed_days": completed_days,
+        "distributed_days": distributed_days,
+        "confirmed_days": confirmed_days,
+        "missing_days": missing_days,
+        "completion_rate_pct": completion_rate_pct,
+    }
+    return monthly_summary, daily_rows
+
+
+def get_tbm_periodic_monthly_monitoring(
+    db: Session,
+    *,
+    site_ids: list[int],
+    start_date: date,
+    end_date: date,
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for site_id in site_ids:
+        site = db.query(Site).filter(Site.id == site_id).first()
+        if site is None:
+            continue
+        summary, _ = _compute_tbm_daily_monitoring_rows(
+            db,
+            site_id=site_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        result.append(
+            {
+                "site_id": site_id,
+                "site_name": site.site_name,
+                **summary,
+            }
+        )
+    return result
+
+
+def get_tbm_periodic_daily_monitoring(
+    db: Session,
+    *,
+    site_id: int,
+    start_date: date,
+    end_date: date,
+) -> dict[str, Any]:
+    site = db.query(Site).filter(Site.id == site_id).first()
+    if site is None:
+        raise ValueError("site_not_found")
+
+    summary, daily_rows = _compute_tbm_daily_monitoring_rows(
+        db,
+        site_id=site_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    summary_with_site = {"site_id": site_id, "site_name": site.site_name, **summary}
+    return {
+        "site_id": site_id,
+        "site_name": site.site_name,
+        "summary": summary_with_site,
+        "days": daily_rows,
+    }
 
 
 def get_tbm_summary(

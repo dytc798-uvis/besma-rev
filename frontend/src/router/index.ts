@@ -33,6 +33,7 @@ import HQSitesPage from "@/pages/hq/HQSitesPage.vue";
 import HQUsersPage from "@/pages/hq/HQUsersPage.vue";
 import HQDocumentSettingsPage from "@/pages/hq/HQDocumentSettingsPage.vue";
 import HQContractorDocumentBundleSettingsPage from "@/pages/hq/HQContractorDocumentBundleSettingsPage.vue";
+import HQPeriodicDocumentMonitoringPage from "@/pages/hq/HQPeriodicDocumentMonitoringPage.vue";
 import RiskLibraryPage from "@/pages/risk/RiskLibraryPage.vue";
 import SiteDocumentsDashboardPage from "@/pages/site/SiteDocumentsDashboardPage.vue";
 import SiteCommunicationsPage from "@/pages/site/SiteCommunicationsPage.vue";
@@ -80,6 +81,7 @@ const routes: RouteRecordRaw[] = [
       { path: "documents/pending-review", name: "hq-safe-documents-pending", component: HQPendingDocumentsPage },
       { path: "documents/:id", name: "hq-safe-document-detail", component: DocumentDetailPage },
       { path: "documents/:id/tbm-view", name: "hq-safe-document-tbm-view", component: DocumentTbmViewPage },
+      { path: "periodic-monitoring", name: "hq-safe-periodic-monitoring", component: HQPeriodicDocumentMonitoringPage },
       { path: "approvals/inbox", name: "hq-safe-approval-inbox", component: ApprovalInboxPage },
       {
         path: "approvals/history",

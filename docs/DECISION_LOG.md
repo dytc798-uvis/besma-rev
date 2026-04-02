@@ -519,6 +519,36 @@
 | **Reason** | 서버 저장과 조회 요구를 충족하면서 변경 범위를 최소화하고 기존 운영 흐름과 충돌을 줄일 수 있다. |
 | **Impact Scope** | `frontend/src/layouts/*Layout.vue`, `frontend/src/pages/opinions/*`, `backend /opinions` API 재사용 경로 |
 
+---
+
+### [DECISION-036]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-02 |
+| **Title** | 데모 활성 계정 범위(B): hq01~hq05 읽기전용, site01~site03만 업로드 허용 |
+| **Context** | 운영/시연 혼선을 줄이기 위해 활성 로그인 계정을 hq01~hq05, site01~site03로 한정하고, 업로드는 현장 테스트 계정(site01~site03)만 수행할 수 있어야 한다. HQ 데모 계정은 읽기 전용이어야 한다. |
+| **Options** | A. HQ/SITE 모두 업로드 허용 / B. HQ(hq01~hq05)는 업로드 차단 + SITE(site01~site03)만 업로드 허용 / C. HQ/SITE 업로드 모두 차단 |
+| **Decision** | **B** |
+| **Reason** | “현장 업로드 → 본사 검토” 시나리오를 유지하면서 HQ 데모 계정 업로드로 인한 데이터 혼선을 막기 위해서다. |
+| **Impact Scope** | `backend/app/modules/document_submissions/routes.py` 업로드 권한 가드 |
+
+---
+
+### [DECISION-037]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-02 |
+| **Title** | HQ에 “주기 기반 문서 모니터링” 레이어를 추가하고 TBM을 월간 집계형 운영데이터로 분리 표시 |
+| **Context** | TBM은 일일 누적 데이터이며 일반 월간 문서처럼 HQ 문서취합 메인 매트릭스에 혼합하면 화면 과밀화 및 승인/반려 단위 왜곡이 발생한다. HQ 문서취합/문서탐색/로그인/배포 흐름은 유지하면서, TBM을 “주기 기반 모니터링”의 첫 대표 케이스로 구현해야 한다. |
+| **Decision** | **TBM은 신규 “주기 기반 문서 모니터링” 화면에서 월간 집계 + 일별 drill-down으로 관리한다.** |
+| **Options** | A. 기존 `HQDocumentsDashboardPage` 매트릭스에 TBM을 “월간 집계형”으로 억지 결합 / B. HQ 문서취합 메인과 분리된 “주기 기반 문서 모니터링” 신규 화면(이 레이어의 첫 케이스로 TBM 월간 집계/일별 drill-down 구현) |
+| **Reason** | TBM만 예외 처리하는 임시방편이 아니라, 향후 주간/격주/월간/분기/연간 항목으로 확장 가능한 역할 분리 레이어를 확보하기 위해서다. |
+| **Impact Scope** | 프론트: HQ 신규 라우트/화면 추가 + drill-down UI / 백엔드: TBM 월간 집계 및 일별 drill-down API 추가 + 테스트 추가 |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
