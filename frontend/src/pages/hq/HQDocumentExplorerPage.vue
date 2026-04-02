@@ -223,6 +223,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import type { AxiosError } from "axios";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
 import { api } from "@/services/api";
 
@@ -449,7 +450,17 @@ async function handleDocumentAction(action: "view" | "download" | "detail" | "fa
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
-  } catch {
+  } catch (err: unknown) {
+    const statusCode = (err as AxiosError)?.response?.status;
+    if (statusCode === 401) {
+      window.alert("인증이 만료되었거나 로그인 정보가 없습니다. 다시 로그인 후 시도해주세요.");
+      return;
+    }
+    if (statusCode === 404) {
+      window.alert(`파일이 존재하지 않습니다.\n경로: ${doc.relative_path}`);
+      await loadAllDocuments();
+      return;
+    }
     window.alert("파일을 열거나 다운로드하지 못했습니다.");
   }
 }

@@ -53,3 +53,39 @@ def test_document_explorer_list_and_search(tmp_path: Path):
     finally:
         settings.document_explorer_base_dir = original_base_dir
 
+
+def test_document_explorer_file_open_and_not_found(tmp_path: Path):
+    docs_dir = tmp_path / "docs" / "base"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    (docs_dir / "template" / "TBM_양식.xlsx").parent.mkdir(parents=True, exist_ok=True)
+    file_path = docs_dir / "template" / "TBM_양식.xlsx"
+    file_path.write_text("dummy", encoding="utf-8")
+
+    original_base_dir = settings.document_explorer_base_dir
+    settings.document_explorer_base_dir = docs_dir
+
+    app = FastAPI()
+    app.include_router(document_explorer_router)
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=1,
+        role=Role.HQ_SAFE,
+        ui_type="HQ_SAFE",
+    )
+    client = TestClient(app)
+
+    try:
+        ok_res = client.get(
+            "/document-explorer/file",
+            params={"relative_path": "template/TBM_양식.xlsx", "disposition": "inline"},
+        )
+        assert ok_res.status_code == 200
+        assert "content-disposition" in {k.lower() for k in ok_res.headers.keys()}
+
+        nf_res = client.get(
+            "/document-explorer/file",
+            params={"relative_path": "template/not-exists.xlsx", "disposition": "inline"},
+        )
+        assert nf_res.status_code == 404
+    finally:
+        settings.document_explorer_base_dir = original_base_dir
+
