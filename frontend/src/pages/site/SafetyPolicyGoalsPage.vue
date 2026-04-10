@@ -18,7 +18,7 @@
           <a v-if="payload.policy?.file_url" :href="resolveFileUrl(payload.policy.file_url)" target="_blank" rel="noopener">파일 보기</a>
           <div v-if="isHqUi" class="upload-box">
             <input v-model="hqPolicyTitle" type="text" placeholder="본사 방침 제목" />
-            <input type="file" @change="onFileChange($event, 'policy')" />
+            <input type="file" accept="image/*,.pdf" @change="onFileChange($event, 'policy')" />
             <button class="primary" :disabled="!hqPolicyFile || !hqPolicyTitle.trim() || uploading" @click="uploadHq('POLICY')">
               업로드
             </button>
@@ -32,13 +32,14 @@
           <a v-if="payload.target?.file_url" :href="resolveFileUrl(payload.target.file_url)" target="_blank" rel="noopener">파일 보기</a>
           <div v-if="isHqUi" class="upload-box">
             <input v-model="hqTargetTitle" type="text" placeholder="본사 목표 제목" />
-            <input type="file" @change="onFileChange($event, 'target')" />
+            <input type="file" accept="image/*,.pdf" @change="onFileChange($event, 'target')" />
             <button class="primary" :disabled="!hqTargetFile || !hqTargetTitle.trim() || uploading" @click="uploadHq('TARGET')">
               업로드
             </button>
           </div>
         </section>
       </div>
+      <p v-if="uploadMessage" class="upload-message">{{ uploadMessage }}</p>
     </BaseCard>
   </div>
 </template>
@@ -63,6 +64,7 @@ const hqTargetTitle = ref("");
 const hqPolicyFile = ref<File | null>(null);
 const hqTargetFile = ref<File | null>(null);
 const uploading = ref(false);
+const uploadMessage = ref("");
 
 const isSiteUi = computed(() => auth.user?.ui_type === "SITE");
 const isHqUi = computed(() => auth.user?.ui_type === "HQ_SAFE");
@@ -111,6 +113,7 @@ async function uploadHq(kind: "POLICY" | "TARGET") {
   const file = kind === "POLICY" ? hqPolicyFile.value : hqTargetFile.value;
   const title = kind === "POLICY" ? hqPolicyTitle.value : hqTargetTitle.value;
   if (!file || !title.trim()) return;
+  uploadMessage.value = "";
   uploading.value = true;
   try {
     const form = new FormData();
@@ -130,6 +133,10 @@ async function uploadHq(kind: "POLICY" | "TARGET") {
     }
     viewScope.value = "HQ";
     await load();
+    uploadMessage.value = "업로드가 완료되었습니다.";
+  } catch (error: unknown) {
+    const responseData = (error as { response?: { data?: { detail?: string } } })?.response?.data;
+    uploadMessage.value = responseData?.detail || "업로드에 실패했습니다. 파일 크기(최대 10MB)와 형식을 확인해주세요.";
   } finally {
     uploading.value = false;
   }
@@ -149,5 +156,6 @@ onMounted(() => {
 .title { font-weight: 700; margin: 0; }
 .meta { margin: 0; color: #64748b; font-size: 12px; }
 .upload-box { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.upload-message { margin-top: 12px; color: #b91c1c; font-weight: 600; }
 @media (max-width: 920px) { .panel-grid { grid-template-columns: 1fr; } }
 </style>

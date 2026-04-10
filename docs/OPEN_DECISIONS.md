@@ -202,6 +202,7 @@ Recommendation:
 - `OPEN-037` : A2+B1+C1+D2 ([DECISION-043], 안전 교육/점검/부적합사항 메뉴 및 대장/소통 구현)
 - `OPEN-038` : A ([DECISION-044], 근로자의견청취 3단계 워크플로우 확정)
 - `OPEN-039` : A ([DECISION-045], HQ 설정 기반 동적 메뉴 + 방침/목표 아래 DnD 정렬/저장 확정)
+- `OPEN-040` : A ([DECISION-047], 공지사항 메뉴를 HQ_SAFE에도 노출하고 SITE와 동일 게시판 공유)
 - `OPEN-008` : A ([DECISION-046], 중복 현장 숨김/샘플 최소 노출)
 - `OPEN-009` : A ([DECISION-046], SITE 기본 연결/노출을 C18 중심으로 고정)
 

@@ -4,32 +4,33 @@
       <h1>BESMA 임시플랫폼 · 현장</h1>
       <nav class="layout-menu">
         <RouterLink to="/site/dashboard">대시보드</RouterLink>
-        <RouterLink to="/site/notices">공지사항</RouterLink>
-        <RouterLink v-if="!isMobileViewport" to="/site/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
+        <RouterLink :style="menuOrderStyle('notices')" to="/site/notices">공지사항</RouterLink>
+        <RouterLink v-if="!isMobileViewport" :style="menuOrderStyle('safety-policy-goals')" to="/site/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
         <RouterLink
           v-for="m in dynamicMenus"
           :key="`site-dyn-${m.slug}`"
+          :style="menuOrderStyle(`dynamic:${m.id}`)"
           :to="`/site/custom-menus/${m.slug}`"
         >
           {{ m.title }}
         </RouterLink>
-        <RouterLink to="/site/safety-education">안전 교육</RouterLink>
-        <RouterLink to="/site/safety-inspections">안전 점검</RouterLink>
-        <RouterLink to="/site/nonconformities">부적합사항</RouterLink>
-        <RouterLink to="/site/worker-voice">근로자의견청취</RouterLink>
-        <RouterLink to="/site/mobile">모바일 운영</RouterLink>
-        <RouterLink to="/site/mobile/site-search">현장 검색</RouterLink>
-        <RouterLink to="/site/document-explorer">문서 탐색</RouterLink>
-        <RouterLink to="/site/risk-library">위험성평가 DB 조회</RouterLink>
-        <RouterLink to="/site/documents"
+        <RouterLink :style="menuOrderStyle('safety-education')" to="/site/safety-education">안전 교육</RouterLink>
+        <RouterLink :style="menuOrderStyle('safety-inspections')" to="/site/safety-inspections">안전 점검</RouterLink>
+        <RouterLink :style="menuOrderStyle('nonconformities')" to="/site/nonconformities">부적합사항</RouterLink>
+        <RouterLink :style="menuOrderStyle('worker-voice')" to="/site/worker-voice">근로자의견청취</RouterLink>
+        <RouterLink :style="menuOrderStyle('mobile')" to="/site/mobile">모바일 운영</RouterLink>
+        <RouterLink :style="menuOrderStyle('mobile-site-search')" to="/site/mobile/site-search">현장 검색</RouterLink>
+        <RouterLink :style="menuOrderStyle('document-explorer')" to="/site/document-explorer">문서 탐색</RouterLink>
+        <RouterLink :style="menuOrderStyle('risk-library')" to="/site/risk-library">위험성평가 DB 조회</RouterLink>
+        <RouterLink :style="menuOrderStyle('documents')" to="/site/documents"
           >내 현장 문서 <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span></RouterLink
         >
-        <RouterLink to="/site/communications"
+        <RouterLink :style="menuOrderStyle('communications')" to="/site/communications"
           >소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span></RouterLink
         >
-        <RouterLink to="/site/opinions">운영 아이디어 제안</RouterLink>
-        <RouterLink to="/site/info">설정</RouterLink>
-        <RouterLink to="/site/user-guide">사용설명서</RouterLink>
+        <RouterLink :style="menuOrderStyle('opinions')" to="/site/opinions">운영 아이디어 제안</RouterLink>
+        <RouterLink :style="menuOrderStyle('info')" to="/site/info">설정</RouterLink>
+        <RouterLink :style="menuOrderStyle('user-guide')" to="/site/user-guide">사용설명서</RouterLink>
       </nav>
     </aside>
     <section class="layout-content">
@@ -79,7 +80,25 @@ const badge = ref({ incomplete_count: 0 });
 const communicationUnreadCount = ref(0);
 const siteName = ref<string>("");
 const tickerTitles = ref<string[]>([]);
-const dynamicMenus = ref<Array<{ slug: string; title: string }>>([]);
+const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
+const menuOrderMap = ref<Record<string, number>>({});
+const SITE_FIXED_MENU_KEYS = [
+  "notices",
+  "safety-policy-goals",
+  "safety-education",
+  "safety-inspections",
+  "nonconformities",
+  "worker-voice",
+  "mobile",
+  "mobile-site-search",
+  "document-explorer",
+  "risk-library",
+  "documents",
+  "communications",
+  "opinions",
+  "info",
+  "user-guide",
+] as const;
 const sidebarCollapsed = ref(false);
 const isMobileViewport = ref(false);
 let unreadTimer: number | null = null;
@@ -165,9 +184,30 @@ async function loadDynamicMenus() {
   try {
     const res = await api.get("/dynamic-menus/sidebar", { params: { ui_type: "SITE" } });
     dynamicMenus.value = res.data?.items ?? [];
+    await loadMenuOrder();
   } catch {
     dynamicMenus.value = [];
+    menuOrderMap.value = {};
   }
+}
+
+async function loadMenuOrder() {
+  const dynamicKeys = dynamicMenus.value.map((m) => `dynamic:${m.id}`);
+  const fallback = [...SITE_FIXED_MENU_KEYS, ...dynamicKeys];
+  try {
+    const res = await api.get("/dynamic-menus/menu-order/SITE");
+    const ordered = Array.isArray(res.data?.ordered_keys) ? (res.data.ordered_keys as string[]) : [];
+    const merged = [...ordered, ...fallback.filter((k) => !ordered.includes(k))];
+    menuOrderMap.value = Object.fromEntries(merged.map((k, idx) => [k, idx + 1]));
+  } catch {
+    menuOrderMap.value = Object.fromEntries(fallback.map((k, idx) => [k, idx + 1]));
+  }
+}
+
+function menuOrderStyle(key: string) {
+  const order = menuOrderMap.value[key];
+  if (!order) return undefined;
+  return { order };
 }
 
 function handleLogout() {
@@ -193,6 +233,11 @@ function toggleSidebar() {
 .layout-root.sidebar-collapsed .layout-sidebar {
   width: 0;
   overflow: hidden;
+}
+
+.layout-menu {
+  display: flex;
+  flex-direction: column;
 }
 
 .layout-header {

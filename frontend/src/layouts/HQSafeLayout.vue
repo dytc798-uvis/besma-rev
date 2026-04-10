@@ -4,34 +4,36 @@
       <h1 class="sidebar-brand">BESMA 임시플랫폼 · HQ 안전</h1>
       <nav class="layout-menu">
         <RouterLink to="/hq-safe/dashboard">대시보드</RouterLink>
-        <RouterLink to="/hq-safe/tbm-monitor">TBM 모니터</RouterLink>
-        <RouterLink to="/hq-safe/risk-library">위험성평가 DB 조회</RouterLink>
-        <RouterLink to="/hq-safe/site-search">현장 검색</RouterLink>
-        <RouterLink to="/hq-safe/document-explorer">문서 탐색</RouterLink>
-        <RouterLink to="/hq-safe/periodic-monitoring">주기 기반 문서 모니터링</RouterLink>
-        <RouterLink to="/hq-safe/documents" @click="collapseSidebar"
+        <RouterLink :style="menuOrderStyle('tbm-monitor')" to="/hq-safe/tbm-monitor">TBM 모니터</RouterLink>
+        <RouterLink :style="menuOrderStyle('risk-library')" to="/hq-safe/risk-library">위험성평가 DB 조회</RouterLink>
+        <RouterLink :style="menuOrderStyle('site-search')" to="/hq-safe/site-search">현장 검색</RouterLink>
+        <RouterLink :style="menuOrderStyle('document-explorer')" to="/hq-safe/document-explorer">문서 탐색</RouterLink>
+        <RouterLink :style="menuOrderStyle('periodic-monitoring')" to="/hq-safe/periodic-monitoring">주기 기반 문서 모니터링</RouterLink>
+        <RouterLink :style="menuOrderStyle('documents')" to="/hq-safe/documents" @click="collapseSidebar"
           >문서 취합 현황
           <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span></RouterLink
         >
-        <RouterLink to="/hq-safe/approvals/inbox">결재함(공사중)</RouterLink>
-        <RouterLink to="/hq-safe/approvals/history">승인/반려 이력</RouterLink>
-        <RouterLink to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
-        <RouterLink to="/hq-safe/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
+        <RouterLink :style="menuOrderStyle('approvals-inbox')" to="/hq-safe/approvals/inbox">결재함(공사중)</RouterLink>
+        <RouterLink :style="menuOrderStyle('approvals-history')" to="/hq-safe/approvals/history">승인/반려 이력</RouterLink>
+        <RouterLink :style="menuOrderStyle('opinions')" to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
+        <RouterLink :style="menuOrderStyle('notices')" to="/hq-safe/notices">공지사항</RouterLink>
+        <RouterLink :style="menuOrderStyle('safety-policy-goals')" to="/hq-safe/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
         <RouterLink
           v-for="m in dynamicMenus"
           :key="`hq-dyn-${m.slug}`"
+          :style="menuOrderStyle(`dynamic:${m.id}`)"
           :to="`/hq-safe/custom-menus/${m.slug}`"
         >
           {{ m.title }}
         </RouterLink>
-        <RouterLink to="/hq-safe/safety-education">안전 교육</RouterLink>
-        <RouterLink to="/hq-safe/safety-inspections">안전 점검</RouterLink>
-        <RouterLink to="/hq-safe/nonconformities">부적합사항</RouterLink>
-        <RouterLink to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
-        <RouterLink to="/hq-safe/sites">현장 관리</RouterLink>
-        <RouterLink to="/hq-safe/users">사용자 관리</RouterLink>
-        <RouterLink to="/hq-safe/settings">안전문서 설정관리</RouterLink>
-        <RouterLink to="/hq-safe/user-guide">사용설명서</RouterLink>
+        <RouterLink :style="menuOrderStyle('safety-education')" to="/hq-safe/safety-education">안전 교육</RouterLink>
+        <RouterLink :style="menuOrderStyle('safety-inspections')" to="/hq-safe/safety-inspections">안전 점검</RouterLink>
+        <RouterLink :style="menuOrderStyle('nonconformities')" to="/hq-safe/nonconformities">부적합사항</RouterLink>
+        <RouterLink :style="menuOrderStyle('worker-voice')" to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
+        <RouterLink :style="menuOrderStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
+        <RouterLink :style="menuOrderStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
+        <RouterLink :style="menuOrderStyle('settings')" to="/hq-safe/settings">안전문서 설정관리</RouterLink>
+        <RouterLink :style="menuOrderStyle('user-guide')" to="/hq-safe/user-guide">사용설명서</RouterLink>
       </nav>
     </aside>
     <section class="layout-content">
@@ -69,7 +71,29 @@ const auth = useAuthStore();
 const router = useRouter();
 const badge = ref({ incomplete_count: 0 });
 const sidebarCollapsed = ref(false);
-const dynamicMenus = ref<Array<{ slug: string; title: string }>>([]);
+const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
+const menuOrderMap = ref<Record<string, number>>({});
+const HQ_FIXED_MENU_KEYS = [
+  "tbm-monitor",
+  "risk-library",
+  "site-search",
+  "document-explorer",
+  "periodic-monitoring",
+  "documents",
+  "approvals-inbox",
+  "approvals-history",
+  "opinions",
+  "notices",
+  "safety-policy-goals",
+  "safety-education",
+  "safety-inspections",
+  "nonconformities",
+  "worker-voice",
+  "sites",
+  "users",
+  "settings",
+  "user-guide",
+] as const;
 
 onMounted(() => {
   if (!auth.user) {
@@ -94,9 +118,30 @@ async function loadDynamicMenus() {
   try {
     const res = await api.get("/dynamic-menus/sidebar", { params: { ui_type: "HQ_SAFE" } });
     dynamicMenus.value = res.data?.items ?? [];
+    await loadMenuOrder();
   } catch {
     dynamicMenus.value = [];
+    menuOrderMap.value = {};
   }
+}
+
+async function loadMenuOrder() {
+  const dynamicKeys = dynamicMenus.value.map((m) => `dynamic:${m.id}`);
+  const fallback = [...HQ_FIXED_MENU_KEYS, ...dynamicKeys];
+  try {
+    const res = await api.get("/dynamic-menus/menu-order/HQ_SAFE");
+    const ordered = Array.isArray(res.data?.ordered_keys) ? (res.data.ordered_keys as string[]) : [];
+    const merged = [...ordered, ...fallback.filter((k) => !ordered.includes(k))];
+    menuOrderMap.value = Object.fromEntries(merged.map((k, idx) => [k, idx + 1]));
+  } catch {
+    menuOrderMap.value = Object.fromEntries(fallback.map((k, idx) => [k, idx + 1]));
+  }
+}
+
+function menuOrderStyle(key: string) {
+  const order = menuOrderMap.value[key];
+  if (!order) return undefined;
+  return { order };
 }
 
 function toggleSidebar() {
@@ -148,6 +193,8 @@ function handleLogout() {
   flex: 1;
   padding: 10px 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .hq-safe-shell .layout-menu a {

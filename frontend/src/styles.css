@@ -180,12 +180,14 @@ textarea {
   border-radius: 4px;
   padding: 6px 8px;
   font-size: 13px;
+  line-height: 1.4;
 }
 
 input[type="text"],
 input[type="password"],
 select {
-  height: 30px;
+  min-height: 36px;
+  height: auto;
 }
 
 form.form-grid {

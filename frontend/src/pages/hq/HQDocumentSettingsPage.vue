@@ -44,11 +44,11 @@
 
     <BaseCard class="group-card !p-4" title="동적 메뉴 설정 (방침 및 목표 아래)">
       <p class="page-sub" style="margin:0 0 10px">
-        메뉴를 드래그로 순서 조정한 뒤 <strong>메뉴 순서 저장</strong>을 눌러 확정하세요.
+        동적 메뉴 추가/수정/삭제 후, 아래 <strong>전체 메뉴 순서 설정</strong>에서 대시보드를 제외한 전체 메뉴 순서를 확정하세요.
       </p>
       <div class="doc-actions" style="margin-bottom:10px">
         <button type="button" class="stitch-btn-primary btn-sm" @click="openDynamicMenuCreate">+ 메뉴 추가</button>
-        <button type="button" class="stitch-btn-secondary btn-sm" @click="saveDynamicMenuOrder">메뉴 순서 저장</button>
+        <button type="button" class="stitch-btn-secondary btn-sm" @click="saveDynamicMenuOrder">동적메뉴 내부 순서 저장</button>
       </div>
       <ul class="doc-list">
         <li
@@ -67,6 +67,33 @@
           <div class="doc-actions">
             <button type="button" class="stitch-btn-secondary btn-sm" @click="openDynamicMenuEdit(menu)">수정</button>
             <button type="button" class="stitch-btn-secondary btn-sm btn-danger" @click="removeDynamicMenu(menu.id)">삭제</button>
+          </div>
+        </li>
+      </ul>
+    </BaseCard>
+
+    <BaseCard class="group-card !p-4" title="전체 메뉴 순서 설정 (대시보드 제외)">
+      <div class="filters" style="margin-bottom:10px">
+        <select v-model="menuOrderUiType" class="control-select" @change="reloadMenuOrderItems">
+          <option value="SITE">SITE 메뉴</option>
+          <option value="HQ_SAFE">HQ_SAFE 메뉴</option>
+        </select>
+        <button type="button" class="stitch-btn-secondary btn-sm" @click="reloadMenuOrderItems">목록 새로고침</button>
+        <button type="button" class="stitch-btn-primary btn-sm" @click="saveSidebarMenuOrder">메뉴 순서 저장</button>
+      </div>
+      <ul class="doc-list">
+        <li
+          v-for="(item, idx) in menuOrderItems"
+          :key="`menu-order-${item.key}`"
+          class="doc-row"
+          draggable="true"
+          @dragstart="onMenuOrderDragStart(idx)"
+          @dragover.prevent
+          @drop="onMenuOrderDrop(idx)"
+        >
+          <div class="doc-main">
+            <div class="doc-name">{{ idx + 1 }}. {{ item.label }}</div>
+            <div class="doc-meta">{{ item.kind === "dynamic" ? "동적 메뉴" : "고정 메뉴" }} / key: {{ item.key }}</div>
           </div>
         </li>
       </ul>
@@ -218,6 +245,11 @@ interface DynamicMenuItem {
   is_active: boolean;
   custom_config: Record<string, unknown>;
 }
+interface MenuOrderItem {
+  key: string;
+  label: string;
+  kind: "fixed" | "dynamic";
+}
 
 const auth = useAuthStore();
 
@@ -257,6 +289,49 @@ const dynamicMenuForm = ref({
 });
 const dynamicMenuConfigText = ref('{"allow_comments": true}');
 const dynamicMenuColumnsText = ref("name|이름\nnote|내용");
+const menuOrderUiType = ref<"SITE" | "HQ_SAFE">("SITE");
+const menuOrderItems = ref<MenuOrderItem[]>([]);
+const menuOrderDragIndex = ref<number | null>(null);
+const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: string }>> = {
+  SITE: [
+    { key: "notices", label: "공지사항" },
+    { key: "safety-policy-goals", label: "안전보건 방침 및 목표" },
+    { key: "safety-education", label: "안전 교육" },
+    { key: "safety-inspections", label: "안전 점검" },
+    { key: "nonconformities", label: "부적합사항" },
+    { key: "worker-voice", label: "근로자의견청취" },
+    { key: "mobile", label: "모바일 운영" },
+    { key: "mobile-site-search", label: "현장 검색" },
+    { key: "document-explorer", label: "문서 탐색" },
+    { key: "risk-library", label: "위험성평가 DB 조회" },
+    { key: "documents", label: "내 현장 문서" },
+    { key: "communications", label: "소통자료" },
+    { key: "opinions", label: "운영 아이디어 제안" },
+    { key: "info", label: "설정" },
+    { key: "user-guide", label: "사용설명서" },
+  ],
+  HQ_SAFE: [
+    { key: "tbm-monitor", label: "TBM 모니터" },
+    { key: "risk-library", label: "위험성평가 DB 조회" },
+    { key: "site-search", label: "현장 검색" },
+    { key: "document-explorer", label: "문서 탐색" },
+    { key: "periodic-monitoring", label: "주기 기반 문서 모니터링" },
+    { key: "documents", label: "문서 취합 현황" },
+    { key: "approvals-inbox", label: "결재함(공사중)" },
+    { key: "approvals-history", label: "승인/반려 이력" },
+    { key: "opinions", label: "운영 아이디어 제안" },
+    { key: "notices", label: "공지사항" },
+    { key: "safety-policy-goals", label: "안전보건 방침 및 목표" },
+    { key: "safety-education", label: "안전 교육" },
+    { key: "safety-inspections", label: "안전 점검" },
+    { key: "nonconformities", label: "부적합사항" },
+    { key: "worker-voice", label: "근로자의견청취" },
+    { key: "sites", label: "현장 관리" },
+    { key: "users", label: "사용자 관리" },
+    { key: "settings", label: "안전문서 설정관리" },
+    { key: "user-guide", label: "사용설명서" },
+  ],
+};
 
 const cycleNameById = computed(() =>
   Object.fromEntries(cycles.value.map((cycle) => [cycle.id, cycle.name])) as Record<number, string>,
@@ -306,6 +381,7 @@ async function load() {
   }
   const menuRes = await api.get("/settings/document-cycles/dynamic-menus");
   dynamicMenus.value = menuRes.data?.items ?? [];
+  await reloadMenuOrderItems();
 }
 
 function openCreate() {
@@ -383,6 +459,54 @@ async function saveDynamicMenuOrder() {
     items: dynamicMenus.value.map((m, idx) => ({ id: m.id, sort_order: idx + 1 })),
   });
   await load();
+}
+
+function onMenuOrderDragStart(index: number) {
+  menuOrderDragIndex.value = index;
+}
+
+function onMenuOrderDrop(index: number) {
+  if (menuOrderDragIndex.value === null || menuOrderDragIndex.value === index) return;
+  const copied = [...menuOrderItems.value];
+  const [moved] = copied.splice(menuOrderDragIndex.value, 1);
+  copied.splice(index, 0, moved);
+  menuOrderItems.value = copied;
+  menuOrderDragIndex.value = null;
+}
+
+async function reloadMenuOrderItems() {
+  const uiType = menuOrderUiType.value;
+  const fixed = FIXED_MENU_LABELS[uiType].map((item) => ({ ...item, kind: "fixed" as const }));
+  const dynamic = dynamicMenus.value
+    .filter((menu) => menu.target_ui_type === "BOTH" || menu.target_ui_type === uiType)
+    .map((menu) => ({
+      key: `dynamic:${menu.id}`,
+      label: menu.title,
+      kind: "dynamic" as const,
+    }));
+  const defaults = [...fixed, ...dynamic];
+  try {
+    const res = await api.get(`/settings/document-cycles/menu-orders/${uiType}`);
+    const orderedKeys = Array.isArray(res.data?.ordered_keys) ? (res.data.ordered_keys as string[]) : [];
+    const indexMap = Object.fromEntries(orderedKeys.map((key, idx) => [key, idx]));
+    menuOrderItems.value = [...defaults].sort((a, b) => {
+      const ai = indexMap[a.key];
+      const bi = indexMap[b.key];
+      if (ai === undefined && bi === undefined) return 0;
+      if (ai === undefined) return 1;
+      if (bi === undefined) return -1;
+      return ai - bi;
+    });
+  } catch {
+    menuOrderItems.value = defaults;
+  }
+}
+
+async function saveSidebarMenuOrder() {
+  const uiType = menuOrderUiType.value;
+  await api.put(`/settings/document-cycles/menu-orders/${uiType}`, {
+    ordered_keys: menuOrderItems.value.map((item) => item.key),
+  });
 }
 
 function openDynamicMenuCreate() {

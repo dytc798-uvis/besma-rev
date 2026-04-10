@@ -202,3 +202,14 @@ class DynamicMenuTableRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
+
+class UIMenuOrderConfig(Base):
+    __tablename__ = "ui_menu_order_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    ui_type: Mapped[str] = mapped_column(String(20), unique=True, index=True, nullable=False)  # SITE | HQ_SAFE
+    ordered_keys: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # JSON string list
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+

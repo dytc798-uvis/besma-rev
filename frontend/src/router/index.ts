@@ -86,6 +86,7 @@ const routes: RouteRecordRaw[] = [
         component: HQDocumentInstanceDetailPage,
       },
       { path: "document-explorer", name: "hq-safe-document-explorer", component: HQDocumentExplorerPage },
+      { path: "notices", name: "hq-safe-notices", component: SiteNoticeBoardPage },
       { path: "safety-policy-goals", name: "hq-safe-safety-policy-goals", component: SafetyPolicyGoalsPage },
       { path: "safety-education", name: "hq-safe-safety-education", component: SafetyEducationPage },
       { path: "safety-inspections", name: "hq-safe-safety-inspections", component: SafetyInspectionBoardPage },

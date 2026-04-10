@@ -58,9 +58,9 @@ def list_sites(db: DbDep, current_user: CurrentUserDep):
     # 1) C18(실업로드 대상) 1개만 유지
     # 2) 그 외 현장은 샘플 1개만 유지
     c18_candidates = [s for s in rows if ("C18BL" in (s.site_name or "")) or ("청라C18" in (s.site_name or ""))]
-    chosen_c18 = None
-    if c18_candidates:
-        # 업로드 이력이 있는 C18 현장을 우선 사용
+    chosen_c18 = next((s for s in c18_candidates if s.site_code == "SITE002"), None)
+    if chosen_c18 is None and c18_candidates:
+        # SITE002가 없으면 업로드 이력 있는 C18 현장을 사용
         c18_ids = [s.id for s in c18_candidates]
         uploaded = (
             db.query(Document.site_id)
@@ -92,7 +92,7 @@ def search_sites(db: DbDep, _: CurrentUserDep):
         .all()
     )
     c18_rows = [s for s in rows if ("C18BL" in (s.site_name or "")) or ("청라C18" in (s.site_name or ""))]
-    chosen_c18 = c18_rows[0] if c18_rows else None
+    chosen_c18 = next((s for s in c18_rows if s.site_code == "SITE002"), None) or (c18_rows[0] if c18_rows else None)
     sample_other = next((s for s in rows if chosen_c18 is None or (s.id != chosen_c18.id and "C18BL" not in (s.site_name or "") and "청라C18" not in (s.site_name or ""))), None)
     visible = [r for r in [chosen_c18, sample_other] if r is not None] or rows[:1]
     return [

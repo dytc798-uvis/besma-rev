@@ -15,6 +15,7 @@ from app.modules.document_settings.models import (
     DynamicMenuBoardPost,
     DynamicMenuConfig,
     DynamicMenuTableRow,
+    UIMenuOrderConfig,
     DocumentRequirement,
     DocumentTypeMaster,
     SubmissionCycle,
@@ -48,6 +49,30 @@ def _normalize_slug(text: str) -> str:
 def _parse_menu_config(raw: str | None) -> dict:
     if not raw:
         return {}
+
+
+def _parse_menu_order_keys(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if not isinstance(parsed, list):
+            return []
+        keys: list[str] = []
+        for item in parsed:
+            text = str(item or "").strip()
+            if text:
+                keys.append(text)
+        return keys
+    except Exception:
+        return []
+
+
+def _normalize_ui_type(value: str) -> str:
+    v = (value or "").strip().upper()
+    if v not in {"SITE", "HQ_SAFE"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ui_type must be SITE or HQ_SAFE")
+    return v
     try:
         parsed = json.loads(raw)
         return parsed if isinstance(parsed, dict) else {}
@@ -504,6 +529,48 @@ def reorder_dynamic_menus(payload: dict, db: DbDep, __=Depends(require_cycle_adm
     return {"ok": True}
 
 
+@router.get("/menu-orders/{ui_type}")
+def get_menu_order_config(ui_type: str, db: DbDep, __=Depends(require_cycle_admin)):
+    normalized_ui_type = _normalize_ui_type(ui_type)
+    row = db.query(UIMenuOrderConfig).filter(UIMenuOrderConfig.ui_type == normalized_ui_type).first()
+    return {"ui_type": normalized_ui_type, "ordered_keys": _parse_menu_order_keys(row.ordered_keys if row else "[]")}
+
+
+@router.put("/menu-orders/{ui_type}")
+def upsert_menu_order_config(
+    ui_type: str,
+    payload: dict,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    __=Depends(require_cycle_admin),
+):
+    normalized_ui_type = _normalize_ui_type(ui_type)
+    keys_raw = payload.get("ordered_keys")
+    if not isinstance(keys_raw, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ordered_keys must be list")
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in keys_raw:
+        key = str(item or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(key)
+    row = db.query(UIMenuOrderConfig).filter(UIMenuOrderConfig.ui_type == normalized_ui_type).first()
+    if row is None:
+        row = UIMenuOrderConfig(
+            ui_type=normalized_ui_type,
+            ordered_keys=json.dumps(deduped, ensure_ascii=False),
+            updated_by_user_id=current_user.id,
+        )
+    else:
+        row.ordered_keys = json.dumps(deduped, ensure_ascii=False)
+        row.updated_by_user_id = current_user.id
+    db.add(row)
+    db.commit()
+    return {"ok": True}
+
+
 @router.delete("/dynamic-menus/{menu_id}")
 def delete_dynamic_menu(menu_id: int, db: DbDep, __=Depends(require_cycle_admin)):
     row = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.id == menu_id).first()
@@ -546,6 +613,15 @@ def list_sidebar_dynamic_menus(ui_type: str, db: DbDep, current_user: CurrentUse
         .all()
     )
     return {"items": [{"id": r.id, "slug": r.slug, "title": r.title, "menu_type": r.menu_type} for r in rows]}
+
+
+@public_router.get("/menu-order/{ui_type}")
+def get_sidebar_menu_order(ui_type: str, db: DbDep, current_user: CurrentUserDep):
+    req_ui = _normalize_ui_type(ui_type)
+    if str(getattr(current_user, "ui_type", "") or "") != req_ui:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    row = db.query(UIMenuOrderConfig).filter(UIMenuOrderConfig.ui_type == req_ui).first()
+    return {"ui_type": req_ui, "ordered_keys": _parse_menu_order_keys(row.ordered_keys if row else "[]")}
 
 
 @public_router.get("/{slug}")

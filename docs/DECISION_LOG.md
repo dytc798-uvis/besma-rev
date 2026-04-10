@@ -678,6 +678,34 @@
 
 ---
 
+### [DECISION-047]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | 공지사항 메뉴를 HQ_SAFE에도 노출하고 SITE와 동일 게시판을 공유 |
+| **Context** | 기존 구현은 SITE 전용 공지사항 메뉴/라우트만 있어 hq01(HQ_SAFE) 로그인 시 공지사항 접근이 불가능했다. 사용자 선택 `A`에 따라 HQ_SAFE에서도 동일 공지 게시판을 사용해야 한다. |
+| **Options** | A. HQ_SAFE에 공지사항 메뉴 추가 + SITE와 동일 게시판 공유 / B. HQ_SAFE 읽기전용 / C. SITE 전용 유지 |
+| **Decision** | **A** |
+| **Reason** | 본사-현장 공지를 단일 게시판으로 운영하면 전달 경로가 단순해지고, HQ 로그인 사용자도 동일 공지 흐름을 즉시 확인할 수 있다. |
+| **Impact Scope** | `frontend/src/layouts/HQSafeLayout.vue`, `frontend/src/router/index.ts` |
+
+---
+
+### [DECISION-048]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | 사이드바 메뉴는 대시보드 제외 전 항목을 순서 조정 가능하도록 통합 |
+| **Context** | 사용자가 동적 메뉴만 따로 정렬하는 방식은 실제 운영 순서 조정에 불편하다고 판단하여, 고정 메뉴와 동적 메뉴를 함께 보고 순서를 맞추길 요청했다. 또한 대시보드는 최상단 고정으로 유지하길 명시했다. |
+| **Options** | A. 동적 메뉴만 정렬 유지 / B. 대시보드 제외 전체 메뉴(고정+동적) 정렬 저장 / C. UI별 일부 메뉴만 정렬 허용 |
+| **Decision** | **B** |
+| **Reason** | 실제 사이드바 노출 순서와 설정 UI를 일치시켜 운영자가 직관적으로 메뉴 구조를 관리할 수 있다. |
+| **Impact Scope** | `backend/app/modules/document_settings/models.py`, `backend/app/modules/document_settings/routes.py`, `backend/alembic/versions/20260410_0025_ui_menu_order_configs.py`, `frontend/src/pages/hq/HQDocumentSettingsPage.vue`, `frontend/src/layouts/SiteLayout.vue`, `frontend/src/layouts/HQSafeLayout.vue` |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -707,3 +735,5 @@
 | 2026-04-10 | Decision 044 추가 — 근로자의견청취 3단계 워크플로우(A) 확정 |
 | 2026-04-10 | Decision 045 추가 — HQ 설정 기반 동적 메뉴(A), 방침/목표 아래 DnD 정렬 후 저장 확정 |
 | 2026-04-10 | Decision 046 추가 — C18BL 중심 노출/지표 고정 및 로그인 기본 진입(문서취합/내현장문서) 확정 |
+| 2026-04-10 | Decision 047 추가 — 공지사항을 HQ_SAFE에도 노출하고 SITE와 동일 게시판을 공유 |
+| 2026-04-10 | Decision 048 추가 — 대시보드 제외 전체 메뉴(고정+동적) 순서 조정/저장 지원 |
