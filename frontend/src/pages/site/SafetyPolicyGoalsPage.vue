@@ -101,12 +101,23 @@ function switchScope(scope: "SITE" | "HQ") {
 }
 
 async function load() {
-  const params: Record<string, unknown> = { scope: viewScope.value };
-  if (viewScope.value === "SITE" && auth.user?.site_id) {
-    params.site_id = auth.user.site_id;
+  uploadMessage.value = "";
+  try {
+    const params: Record<string, unknown> = { scope: viewScope.value };
+    if (viewScope.value === "SITE" && auth.user?.site_id) {
+      params.site_id = auth.user.site_id;
+    }
+    const res = await api.get("/safety-policy-goals/view", { params });
+    payload.value = { policy: res.data.policy, target: res.data.target };
+  } catch (error: unknown) {
+    const statusCode = (error as { response?: { status?: number } })?.response?.status;
+    if (statusCode === 404) {
+      uploadMessage.value = "서버에 안전보건 방침/목표 API가 배포되지 않았습니다. 백엔드 최신 배포가 필요합니다.";
+    } else {
+      uploadMessage.value = "조회에 실패했습니다. 잠시 후 다시 시도해주세요.";
+    }
+    payload.value = { policy: null, target: null };
   }
-  const res = await api.get("/safety-policy-goals/view", { params });
-  payload.value = { policy: res.data.policy, target: res.data.target };
 }
 
 async function uploadHq(kind: "POLICY" | "TARGET") {

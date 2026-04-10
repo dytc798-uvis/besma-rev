@@ -15,6 +15,17 @@
     <section class="guide-content">
       <h1>{{ currentSection?.title || "사용설명서" }}</h1>
       <div class="content-box">{{ currentSection?.body || "불러오는 중..." }}</div>
+      <div v-if="isHqUi" class="upload-panel">
+        <h3>화면 예시 업로드</h3>
+        <div class="upload-row">
+          <input v-model="uploadLabel" type="text" class="upload-input" placeholder="이미지 설명(선택)" />
+          <input type="file" accept="image/*" @change="onUploadFileChange" />
+          <button class="menu-btn" :disabled="!uploadFile || uploadLoading" @click="uploadShot">
+            {{ uploadLoading ? "업로드 중..." : "이미지 업로드" }}
+          </button>
+        </div>
+        <p v-if="uploadMessage" class="upload-message">{{ uploadMessage }}</p>
+      </div>
       <div class="shot-wrap">
         <h3>화면 예시</h3>
         <div class="shot-grid">
@@ -44,7 +55,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { api } from "@/services/api";
+import { useAuthStore } from "@/stores/auth";
 
 interface GuideSection {
   title: string;
@@ -54,6 +67,13 @@ interface GuideSection {
 const sections = ref<GuideSection[]>([]);
 const selectedTitle = ref("");
 const failedImageMap = ref<Record<string, boolean>>({});
+const uploadedShotsMap = ref<Record<string, Array<{ src: string; label: string; guide: string }>>>({});
+const uploadLabel = ref("");
+const uploadFile = ref<File | null>(null);
+const uploadLoading = ref(false);
+const uploadMessage = ref("");
+const auth = useAuthStore();
+const isHqUi = computed(() => auth.user?.ui_type === "HQ_SAFE");
 
 const currentSection = computed(() => sections.value.find((s) => s.title === selectedTitle.value) ?? sections.value[0]);
 const screenshotConfig: Record<string, Array<{ src: string; label: string; guide: string }>> = {
@@ -84,11 +104,62 @@ const screenshotConfig: Record<string, Array<{ src: string; label: string; guide
 };
 const currentShots = computed(() => {
   const title = currentSection.value?.title || "";
-  return screenshotConfig[title] || [{ src: "/guide-shots/default.png", label: "기본 화면", guide: "해당 메뉴 대표 화면 1장을 배치하세요." }];
+  const uploaded = uploadedShotsMap.value[title] || [];
+  const defaults = screenshotConfig[title] || [{ src: "/guide-shots/default.png", label: "기본 화면", guide: "해당 메뉴 대표 화면 1장을 배치하세요." }];
+  return [...uploaded, ...defaults];
 });
 
 function markImageFailed(src: string) {
   failedImageMap.value = { ...failedImageMap.value, [src]: true };
+}
+
+function resolveShotUrl(path: string) {
+  if (!path.startsWith("/")) return path;
+  return `${api.defaults.baseURL}${path}`;
+}
+
+function onUploadFileChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  uploadFile.value = target.files?.[0] ?? null;
+}
+
+async function loadUploadedShots(sectionTitle: string) {
+  try {
+    const res = await api.get("/user-guide-shots/list", { params: { section: sectionTitle } });
+    const items = (res.data?.items ?? []).map((item: { src: string; label: string }) => ({
+      src: resolveShotUrl(item.src),
+      label: item.label || "업로드 이미지",
+      guide: "사용자 업로드 이미지",
+    }));
+    uploadedShotsMap.value = { ...uploadedShotsMap.value, [sectionTitle]: items };
+  } catch {
+    uploadedShotsMap.value = { ...uploadedShotsMap.value, [sectionTitle]: [] };
+  }
+}
+
+async function uploadShot() {
+  const sectionTitle = currentSection.value?.title || "";
+  if (!sectionTitle || !uploadFile.value) return;
+  uploadLoading.value = true;
+  uploadMessage.value = "";
+  try {
+    const form = new FormData();
+    form.append("section", sectionTitle);
+    if (uploadLabel.value.trim()) form.append("label", uploadLabel.value.trim());
+    form.append("file", uploadFile.value);
+    await api.post("/settings/document-cycles/user-guide-shots/upload", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    uploadMessage.value = "업로드 완료";
+    uploadFile.value = null;
+    uploadLabel.value = "";
+    await loadUploadedShots(sectionTitle);
+  } catch (error: unknown) {
+    const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    uploadMessage.value = detail || "업로드 실패";
+  } finally {
+    uploadLoading.value = false;
+  }
 }
 
 function parseSections(markdown: string): GuideSection[] {
@@ -114,10 +185,21 @@ function parseSections(markdown: string): GuideSection[] {
 }
 
 onMounted(async () => {
+  if (!auth.user) {
+    await auth.loadMe();
+  }
   const res = await fetch("/BESMA_USER_GUIDE.md", { cache: "no-cache" });
   const text = await res.text();
   sections.value = parseSections(text);
   selectedTitle.value = sections.value[0]?.title ?? "";
+  if (selectedTitle.value) {
+    await loadUploadedShots(selectedTitle.value);
+  }
+});
+
+watch(selectedTitle, (title) => {
+  if (!title) return;
+  void loadUploadedShots(title);
 });
 </script>
 
@@ -130,6 +212,11 @@ onMounted(async () => {
 .guide-content { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
 .guide-content h1 { margin:0 0 10px; font-size:20px; }
 .content-box { white-space:pre-wrap; line-height:1.7; color:#1f2937; }
+.upload-panel { margin-top: 14px; padding: 10px; border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc; }
+.upload-panel h3 { margin:0 0 8px; font-size: 15px; }
+.upload-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.upload-input { min-width: 220px; border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; }
+.upload-message { margin:8px 0 0; font-size:12px; color:#b91c1c; }
 .shot-wrap { margin-top: 16px; }
 .shot-wrap h3 { margin: 0 0 8px; font-size: 16px; }
 .shot-grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(240px,1fr)); gap:10px; }

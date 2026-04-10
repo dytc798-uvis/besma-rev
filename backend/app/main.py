@@ -14,6 +14,7 @@ from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.notifications.routes import router as notifications_router
 from app.modules.document_settings.routes import router as document_settings_router
 from app.modules.document_settings.routes import public_router as dynamic_menus_router
+from app.modules.document_settings.routes import user_guide_shots_router
 from app.modules.document_generation.routes import router as document_generation_router
 from app.modules.document_explorer.routes import router as document_explorer_router
 from app.modules.document_submissions.routes import router as document_submissions_ops_router
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router)
     app.include_router(document_settings_router)
     app.include_router(dynamic_menus_router)
+    app.include_router(user_guide_shots_router)
     app.include_router(document_generation_router)
     app.include_router(document_explorer_router)
     app.include_router(document_submissions_ops_router)

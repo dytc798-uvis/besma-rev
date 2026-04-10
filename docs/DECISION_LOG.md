@@ -706,6 +706,20 @@
 
 ---
 
+### [DECISION-049]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | 사용설명서 화면 예시는 HQ 업로드 방식으로 운영하고, 방침/목표 404는 배포 미반영 안내를 표시 |
+| **Context** | 사용설명서 스크린샷이 정적 파일 배치만 가능해 운영자가 즉시 반영하기 어려웠고, 운영 API 미반영 상태에서는 방침/목표 조회/업로드가 404로 실패해 원인 파악이 어려웠다. |
+| **Options** | A. 정적 파일 수동 배치 유지 / B. HQ 업로드로 스크린샷 등록 + 404 배포 안내 문구 표시 / C. 전용 CMS 별도 구축 |
+| **Decision** | **B** |
+| **Reason** | 운영자가 화면에서 바로 이미지를 반영할 수 있어 유지보수성이 높고, API 미배포 상태를 사용자에게 명확히 알려 장애 대응 시간을 줄일 수 있다. |
+| **Impact Scope** | `backend/app/modules/document_settings/routes.py`, `backend/app/main.py`, `frontend/src/pages/common/UserGuidePage.vue`, `frontend/src/pages/site/SafetyPolicyGoalsPage.vue` |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -737,3 +751,4 @@
 | 2026-04-10 | Decision 046 추가 — C18BL 중심 노출/지표 고정 및 로그인 기본 진입(문서취합/내현장문서) 확정 |
 | 2026-04-10 | Decision 047 추가 — 공지사항을 HQ_SAFE에도 노출하고 SITE와 동일 게시판을 공유 |
 | 2026-04-10 | Decision 048 추가 — 대시보드 제외 전체 메뉴(고정+동적) 순서 조정/저장 지원 |
+| 2026-04-10 | Decision 049 추가 — 사용설명서 이미지 HQ 업로드 및 방침/목표 404 배포 안내 표시 |

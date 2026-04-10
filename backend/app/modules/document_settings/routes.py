@@ -3,9 +3,13 @@ from __future__ import annotations
 import json
 import re
 from datetime import date
+from pathlib import Path
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 
+from app.config.settings import settings
 from app.core.auth import DbDep
 from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
@@ -38,6 +42,7 @@ router = APIRouter(prefix="/settings/document-cycles", tags=["document-cycles"])
 _PILOT_SITE_CODE = "SITE002"  # MVP: 파일럿 = 청라 C18BL(대우건설) 시드 현장
 _GROUP_KEY_SAMSUNG = "SAMSUNG"
 _GROUP_KEY_GENERAL = "GENERAL"
+_USER_GUIDE_SHOTS_ROOT = settings.storage_root / "user_guide_shots"
 
 
 def _normalize_slug(text: str) -> str:
@@ -78,6 +83,12 @@ def _normalize_ui_type(value: str) -> str:
         return parsed if isinstance(parsed, dict) else {}
     except Exception:
         return {}
+
+
+def _sanitize_path_segment(value: str, *, fallback: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9\-_]+", "_", (value or "").strip())
+    cleaned = cleaned.strip("_")
+    return (cleaned[:80] or fallback)
 
 
 def require_cycle_admin(user: CurrentUserDep):
@@ -587,7 +598,52 @@ def delete_dynamic_menu(menu_id: int, db: DbDep, __=Depends(require_cycle_admin)
     return {"ok": True}
 
 
+@router.post("/user-guide-shots/upload")
+async def upload_user_guide_shot(
+    section: str = Form(...),
+    label: str | None = Form(None),
+    file: UploadFile = File(...),
+    current_user: CurrentUserDep = Depends(require_cycle_admin),
+):
+    section_text = (section or "").strip()
+    if not section_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="section is required")
+    upload_bytes = await file.read()
+    if not upload_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty file")
+    if len(upload_bytes) > settings.document_upload_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"파일 크기는 {settings.document_upload_max_bytes // (1024 * 1024)}MB 이하만 업로드할 수 있습니다.",
+        )
+    source_name = file.filename or "guide-shot.png"
+    ext = (Path(source_name).suffix or ".png").lower()
+    if ext not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미지 파일만 업로드할 수 있습니다.")
+
+    section_dir_name = _sanitize_path_segment(section_text, fallback="section")
+    section_dir = _USER_GUIDE_SHOTS_ROOT / section_dir_name
+    section_dir.mkdir(parents=True, exist_ok=True)
+    label_text = (label or Path(source_name).stem or "image").strip()
+    safe_label = _sanitize_path_segment(label_text, fallback="image")
+    stored_name = f"{safe_label}_{current_user.id}_{int(date.today().strftime('%Y%m%d'))}{ext}"
+    stored_path = section_dir / stored_name
+    suffix = 1
+    while stored_path.exists():
+        stored_name = f"{safe_label}_{current_user.id}_{int(date.today().strftime('%Y%m%d'))}_{suffix}{ext}"
+        stored_path = section_dir / stored_name
+        suffix += 1
+    stored_path.write_bytes(upload_bytes)
+    return {
+        "ok": True,
+        "section": section_text,
+        "label": label_text,
+        "file_url": f"/user-guide-shots/file/{quote(section_dir_name)}/{quote(stored_name)}",
+    }
+
+
 public_router = APIRouter(prefix="/dynamic-menus", tags=["dynamic-menus"])
+user_guide_shots_router = APIRouter(prefix="/user-guide-shots", tags=["user-guide-shots"])
 
 
 def _check_menu_access(current_user: CurrentUserDep, menu: DynamicMenuConfig) -> None:
@@ -622,6 +678,40 @@ def get_sidebar_menu_order(ui_type: str, db: DbDep, current_user: CurrentUserDep
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     row = db.query(UIMenuOrderConfig).filter(UIMenuOrderConfig.ui_type == req_ui).first()
     return {"ui_type": req_ui, "ordered_keys": _parse_menu_order_keys(row.ordered_keys if row else "[]")}
+
+
+@user_guide_shots_router.get("/list")
+def list_user_guide_shots(section: str):
+    section_text = (section or "").strip()
+    if not section_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="section is required")
+    section_dir_name = _sanitize_path_segment(section_text, fallback="section")
+    section_dir = _USER_GUIDE_SHOTS_ROOT / section_dir_name
+    if not section_dir.exists():
+        return {"items": []}
+    files = [p for p in section_dir.iterdir() if p.is_file()]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    items = [
+        {
+            "src": f"/user-guide-shots/file/{quote(section_dir_name)}/{quote(f.name)}",
+            "label": Path(f.name).stem,
+        }
+        for f in files
+        if f.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+    ]
+    return {"items": items}
+
+
+@user_guide_shots_router.get("/file/{section_dir}/{file_name}")
+def open_user_guide_shot_file(section_dir: str, file_name: str):
+    safe_section = _sanitize_path_segment(section_dir, fallback="section")
+    safe_file = Path(file_name).name
+    target = _USER_GUIDE_SHOTS_ROOT / safe_section / safe_file
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    response = FileResponse(path=target, filename=safe_file)
+    response.headers["Content-Disposition"] = f"inline; filename*=UTF-8''{quote(safe_file)}"
+    return response
 
 
 @public_router.get("/{slug}")
