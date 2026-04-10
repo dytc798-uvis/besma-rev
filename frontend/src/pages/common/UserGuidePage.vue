@@ -147,9 +147,7 @@ async function uploadShot() {
     form.append("section", sectionTitle);
     if (uploadLabel.value.trim()) form.append("label", uploadLabel.value.trim());
     form.append("file", uploadFile.value);
-    await api.post("/settings/document-cycles/user-guide-shots/upload", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    await api.post("/settings/document-cycles/user-guide-shots/upload", form);
     uploadMessage.value = "업로드 완료";
     uploadFile.value = null;
     uploadLabel.value = "";

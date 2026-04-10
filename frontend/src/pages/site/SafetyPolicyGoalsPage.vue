@@ -132,9 +132,7 @@ async function uploadHq(kind: "POLICY" | "TARGET") {
     form.append("kind", kind);
     form.append("title", title.trim());
     form.append("file", file);
-    await api.post("/safety-policy-goals/upload", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    await api.post("/safety-policy-goals/upload", form);
     if (kind === "POLICY") {
       hqPolicyFile.value = null;
       hqPolicyTitle.value = "";
