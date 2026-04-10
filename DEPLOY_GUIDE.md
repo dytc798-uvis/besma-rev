@@ -179,3 +179,17 @@ cd backend
 .venv\Scripts\python -m alembic upgrade head
 .venv\Scripts\python -m app.seed.seed_data
 ```
+
+---
+
+## 운영 배포 자동화 (Windows)
+
+운영 서버(`api.besma.co.kr`)로 백엔드를 자동 배포하려면:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1
+```
+
+- 기본값: `C:\Users\win10\Downloads\besma-key.pem` 키 사용
+- 동작: 프론트 빌드(검증) -> `git push` -> 서버 `deploy_backend.sh` 실행
+- 상세 옵션/운영 명령은 `deploy/BACKEND_OPERATIONS.md` 참고

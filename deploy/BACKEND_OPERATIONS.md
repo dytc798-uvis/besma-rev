@@ -10,6 +10,16 @@
 | systemd 유닛 파일(저장소) | `deploy/systemd/besma-backend.service` |
 | 배포 스크립트 | `deploy/deploy_backend.sh` |
 
+확인된 운영 접속값(2026-04-10):
+
+| 항목 | 값 |
+|------|------|
+| SSH Host | `api.besma.co.kr` |
+| SSH User | `ubuntu` |
+| SSH Key (로컬) | `C:\Users\win10\Downloads\besma-key.pem` |
+| 서비스 유닛 | `besma-backend.service` |
+| 헬스체크 | `http://127.0.0.1:8001/health` |
+
 nginx·Vercel 프론트는 이 문서 범위 밖입니다.
 
 ---
@@ -122,6 +132,30 @@ Alembic을 같이 돌릴 때만:
 
 ```bash
 RUN_MIGRATIONS=1 ./deploy/deploy_backend.sh
+```
+
+---
+
+## 로컬(Windows) 원클릭 배포
+
+저장소 루트에서 아래 PowerShell 스크립트를 실행하면
+`frontend build -> git push -> 서버 backend 배포`를 순차 실행합니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1
+```
+
+옵션 예시:
+
+```powershell
+# 프론트 빌드 생략
+powershell -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1 -SkipFrontendBuild
+
+# DB migration 생략
+powershell -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1 -RunMigrations:$false
+
+# push 없이 서버 배포만
+powershell -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1 -SkipPush
 ```
 
 ---
