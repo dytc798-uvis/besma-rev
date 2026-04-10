@@ -54,6 +54,11 @@ def _normalize_slug(text: str) -> str:
 def _parse_menu_config(raw: str | None) -> dict:
     if not raw:
         return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
 
 
 def _parse_menu_order_keys(raw: str | None) -> list[str]:
@@ -78,11 +83,6 @@ def _normalize_ui_type(value: str) -> str:
     if v not in {"SITE", "HQ_SAFE"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ui_type must be SITE or HQ_SAFE")
     return v
-    try:
-        parsed = json.loads(raw)
-        return parsed if isinstance(parsed, dict) else {}
-    except Exception:
-        return {}
 
 
 def _sanitize_path_segment(value: str, *, fallback: str) -> str:
