@@ -603,7 +603,7 @@ async def upload_user_guide_shot(
     section: str = Form(...),
     label: str | None = Form(None),
     file: UploadFile = File(...),
-    current_user: CurrentUserDep = Depends(require_cycle_admin),
+    current_user=Depends(require_cycle_admin),
 ):
     section_text = (section or "").strip()
     if not section_text:
