@@ -1,7 +1,7 @@
 <template>
   <div style="display: flex; justify-content: center; align-items: center; height: 100vh">
     <div class="card" style="width: 360px">
-      <div class="card-title">BESMA 임시플랫폼 로그인</div>
+      <div class="card-title">BESMA CSMS 안전보건플랫폼 로그인</div>
       <p v-if="entryLabel" style="font-size: 12px; color: #334155; margin: 0 0 8px">
         {{ entryLabel }}
       </p>

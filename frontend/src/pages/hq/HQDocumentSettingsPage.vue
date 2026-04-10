@@ -289,7 +289,7 @@ const dynamicMenuForm = ref({
 });
 const dynamicMenuConfigText = ref('{"allow_comments": true}');
 const dynamicMenuColumnsText = ref("name|이름\nnote|내용");
-const menuOrderUiType = ref<"SITE" | "HQ_SAFE">("SITE");
+const menuOrderUiType = ref<"SITE" | "HQ_SAFE">("HQ_SAFE");
 const menuOrderItems = ref<MenuOrderItem[]>([]);
 const menuOrderDragIndex = ref<number | null>(null);
 const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: string }>> = {
@@ -507,6 +507,7 @@ async function saveSidebarMenuOrder() {
   await api.put(`/settings/document-cycles/menu-orders/${uiType}`, {
     ordered_keys: menuOrderItems.value.map((item) => item.key),
   });
+  window.dispatchEvent(new CustomEvent("besma-menu-order-updated", { detail: { uiType } }));
 }
 
 function openDynamicMenuCreate() {

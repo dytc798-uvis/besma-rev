@@ -1,7 +1,7 @@
 <template>
   <div class="hq-safe-shell layout-root" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="layout-sidebar">
-      <h1 class="sidebar-brand">BESMA 임시플랫폼 · HQ 안전</h1>
+      <h1 class="sidebar-brand">BESMA CSMS 안전보건플랫폼 · HQ 안전</h1>
       <nav class="layout-menu">
         <RouterLink to="/hq-safe/dashboard">대시보드</RouterLink>
         <RouterLink :style="menuOrderStyle('tbm-monitor')" to="/hq-safe/tbm-monitor">TBM 모니터</RouterLink>
@@ -42,7 +42,7 @@
           <button class="sidebar-toggle-btn" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
           </button>
-          <div class="header-title">BESMA 임시플랫폼 · HQ_SAFE</div>
+          <div class="header-title">BESMA CSMS 안전보건플랫폼 · HQ_SAFE</div>
         </div>
         <div class="header-right">
           <span class="header-user">
@@ -62,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
@@ -101,6 +101,11 @@ onMounted(() => {
   }
   loadBadge();
   loadDynamicMenus();
+  window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
 });
 
 async function loadBadge() {
@@ -142,6 +147,13 @@ function menuOrderStyle(key: string) {
   const order = menuOrderMap.value[key];
   if (!order) return undefined;
   return { order };
+}
+
+function handleMenuOrderUpdated(event: Event) {
+  const uiType = (event as CustomEvent<{ uiType?: string }>).detail?.uiType;
+  if (uiType === "HQ_SAFE") {
+    void loadMenuOrder();
+  }
 }
 
 function toggleSidebar() {

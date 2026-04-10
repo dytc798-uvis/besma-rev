@@ -61,6 +61,7 @@
         </div>
       </form>
     </div>
+    <p v-if="errorMessage" style="margin-top: 10px; color: #b91c1c; font-weight: 600">{{ errorMessage }}</p>
   </div>
 </template>
 
@@ -83,17 +84,28 @@ const showNew = ref(false);
 const newCategory = ref("운영 아이디어");
 const newReporterType = ref("현장");
 const newContent = ref("");
+const errorMessage = ref("");
 
 const router = useRouter();
 
 async function load() {
-  const res = await api.get("/opinions", {
-    params: {
-      status_filter: statusFilter.value || undefined,
-      keyword: keyword.value || undefined,
-    },
-  });
-  opinions.value = res.data;
+  errorMessage.value = "";
+  try {
+    const res = await api.get("/opinions", {
+      params: {
+        status_filter: statusFilter.value || undefined,
+        keyword: keyword.value || undefined,
+      },
+    });
+    opinions.value = res.data;
+  } catch (error: unknown) {
+    opinions.value = [];
+    const statusCode = (error as { response?: { status?: number } })?.response?.status;
+    errorMessage.value =
+      statusCode === 404
+        ? "운영 아이디어 API가 서버에 배포되지 않았습니다. 백엔드 최신 배포가 필요합니다."
+        : "운영 아이디어 목록을 불러오지 못했습니다.";
+  }
 }
 
 function goDetail(id: number) {
@@ -107,17 +119,23 @@ function openNew() {
 }
 
 async function createOpinion() {
-  await api.post("/opinions", {
-    site_id: null,
-    category: newCategory.value,
-    content: newContent.value,
-    reporter_type: newReporterType.value,
-  });
-  showNew.value = false;
-  newCategory.value = "운영 아이디어";
-  newReporterType.value = "현장";
-  newContent.value = "";
-  await load();
+  errorMessage.value = "";
+  try {
+    await api.post("/opinions", {
+      site_id: null,
+      category: newCategory.value,
+      content: newContent.value,
+      reporter_type: newReporterType.value,
+    });
+    showNew.value = false;
+    newCategory.value = "운영 아이디어";
+    newReporterType.value = "현장";
+    newContent.value = "";
+    await load();
+  } catch (error: unknown) {
+    const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    errorMessage.value = detail || "운영 아이디어 등록에 실패했습니다.";
+  }
 }
 
 onMounted(load);

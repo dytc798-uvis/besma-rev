@@ -19,6 +19,10 @@ class NoticeCommentCreateBody(BaseModel):
     body: str
 
 
+def _is_notice_admin(role_value: str | None) -> bool:
+    return role_value in {Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}
+
+
 def _serialize_notice_item(row: Notice, user_name_map: dict[int, str]) -> dict:
     return {
         "id": row.id,
@@ -146,3 +150,21 @@ def create_notice_comment(
     db.commit()
     db.refresh(comment)
     return {"id": comment.id}
+
+
+@router.delete("/{notice_id}")
+def delete_notice(
+    notice_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    notice = db.query(Notice).filter(Notice.id == notice_id).first()
+    if notice is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notice not found")
+    is_author = int(notice.created_by_user_id) == int(current_user.id)
+    if not is_author and not _is_notice_admin(getattr(current_user, "role", None)):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    db.query(NoticeComment).filter(NoticeComment.notice_id == notice_id).delete(synchronize_session=False)
+    db.delete(notice)
+    db.commit()
+    return {"ok": True}

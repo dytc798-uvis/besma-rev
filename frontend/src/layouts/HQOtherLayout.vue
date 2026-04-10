@@ -1,7 +1,7 @@
 <template>
   <div class="layout-root" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="layout-sidebar">
-      <h1>BESMA 임시플랫폼 · 본사(타부서)</h1>
+      <h1>BESMA CSMS 안전보건플랫폼 · 본사(타부서)</h1>
       <nav class="layout-menu">
         <RouterLink to="/hq-other/dashboard">대시보드</RouterLink>
         <RouterLink to="/hq-other/documents">조회 가능한 문서</RouterLink>
@@ -15,7 +15,7 @@
           <button class="sidebar-toggle-btn" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
           </button>
-          <span>BESMA 임시플랫폼 · HQ_OTHER</span>
+          <span>BESMA CSMS 안전보건플랫폼 · HQ_OTHER</span>
         </div>
         <div>
           <span style="margin-right: 8px">

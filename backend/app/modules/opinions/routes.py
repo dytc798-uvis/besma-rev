@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, status
 from app.core.auth import DbDep
 from app.core.permissions import CurrentUserDep, Role
 from app.modules.opinions.models import Opinion, OpinionStatus
+from app.modules.sites.models import Site
 from app.schemas.opinions import OpinionCreate, OpinionUpdate
 
 
@@ -52,6 +53,16 @@ def create_opinion(
     site_id = body.site_id
     if current_user.role == Role.SITE and current_user.site_id:
         site_id = current_user.site_id
+    if not site_id and current_user.site_id:
+        site_id = current_user.site_id
+    if not site_id:
+        pilot_site = db.query(Site).filter(Site.site_code == "SITE002").order_by(Site.id.asc()).first()
+        if pilot_site is not None:
+            site_id = pilot_site.id
+    if not site_id:
+        first_site = db.query(Site).order_by(Site.id.asc()).first()
+        if first_site is not None:
+            site_id = first_site.id
     if not site_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="site_id is required")
 

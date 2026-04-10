@@ -1,7 +1,7 @@
 <template>
   <div class="layout-root" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="layout-sidebar">
-      <h1>BESMA 임시플랫폼 · 현장</h1>
+      <h1>BESMA CSMS 안전보건플랫폼 · 현장</h1>
       <nav class="layout-menu">
         <RouterLink to="/site/dashboard">대시보드</RouterLink>
         <RouterLink :style="menuOrderStyle('notices')" to="/site/notices">공지사항</RouterLink>
@@ -39,7 +39,7 @@
           <button class="sidebar-toggle-btn" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
           </button>
-          <span>BESMA 임시플랫폼 · SITE</span>
+          <span>BESMA CSMS 안전보건플랫폼 · SITE</span>
         </div>
         <div class="layout-header-center">
           {{ headerSiteLabel }}
@@ -108,6 +108,7 @@ onMounted(() => {
   initializeLayout();
   syncViewport();
   window.addEventListener("resize", syncViewport);
+  window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   unreadTimer = window.setInterval(() => {
     void Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker()]);
   }, 30000);
@@ -115,6 +116,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener("resize", syncViewport);
+  window.removeEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   if (unreadTimer) {
     window.clearInterval(unreadTimer);
     unreadTimer = null;
@@ -208,6 +210,13 @@ function menuOrderStyle(key: string) {
   const order = menuOrderMap.value[key];
   if (!order) return undefined;
   return { order };
+}
+
+function handleMenuOrderUpdated(event: Event) {
+  const uiType = (event as CustomEvent<{ uiType?: string }>).detail?.uiType;
+  if (uiType === "SITE") {
+    void loadMenuOrder();
+  }
 }
 
 function handleLogout() {
