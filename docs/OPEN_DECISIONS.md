@@ -111,26 +111,6 @@ Recommendation:
 
 ---
 
-### [OPEN-008]
-| 항목 | 내용 |
-|------|------|
-| **Title** | 중복 현장 “예비/숨김” 상태 표현 방식 |
-| **Context** | 중복된 현장(=운영 화면/현장 로그인에서 재등장하면 안 되는 현장)을 “버리지 않고” 보존하되, 운영 화면 및 `SITE` 컨텍스트 계산에서는 제외해야 한다. 또한 숨김 현장의 혼동을 줄이기 위해 “예비현장”으로 표기(표시명 변경)가 필요하다. |
-| **Options** | A. `sites`에 `is_reserved`(또는 `visibility`) 같은 새 컬럼 추가 + 표시명(예: `site_name` 오버라이드 또는 별도 `display_site_name`)을 API에서만 “예비현장”으로 노출하고, 운영용 조회에서는 `is_reserved=true`를 필터한다. / B. 스키마 변경 없이 기존 `Site.status`를 `RESERVED` 마커로 재사용하고, 운영용 조회는 `status != 'RESERVED'`로 필터하며 숨김 현장의 `site_name`을 “예비현장”으로 변경한다. / C. API는 그대로 두고 프론트 목록 화면(HQ/Site)에서만 숨긴다(직접 호출/다른 진입에서 재등장 가능). |
-| **Required Decision** | YES |
-
----
-
-### [OPEN-009]
-| 항목 | 내용 |
-|------|------|
-| **Title** | `SITE` 로그인/컨텍스트 선택 시 숨김 현장 처리 |
-| **Context** | `SITE` 역할은 `auth.user.site_id` 또는 `_resolve_default_pilot_site` 같은 기본 결정 로직으로 `site_id`가 확정된다. 이 과정에서 숨김/예비현장이 선택되면 “숨긴현장이 나오면 안돼” 요구사항을 위반한다. |
-| **Options** | A. 숨김/예비현장은 기본 선택 후보에서 제외한다. 후보 중 하나도 없으면 `site_id=null`로 두고 운영자가 현장 선택(또는 안내)하도록 한다. 또한 `user.site_id`가 이미 숨김일 경우에는 서버에서 `site_id`를 교체한다(교체 기준 필요). / B. 숨김/예비현장이 선택될 경우 로그인 자체를 차단(403/안내)하고 현장 연결정보를 관리자에게 수정 요청한다. / C. 현행 유지(숨김/예비현장도 선택될 수 있음). |
-| **Required Decision** | YES |
-
----
-
 ### [OPEN-019]
 | 항목 | 내용 |
 |------|------|
@@ -214,6 +194,16 @@ Recommendation:
 - `OPEN-026` : A ([DECISION-033])
 - `OPEN-005` : C
 - `OPEN-025` : B ([DECISION-032])
+- `OPEN-032` : B ([DECISION-038], 문서탐색 검색 범위 `docs/base` + `storage/documents`)
+- `OPEN-033` : A ([DECISION-039], SITE 문서취합 단일 전체 목록 + 승인 하단 정렬)
+- `OPEN-034` : A ([DECISION-040], SITE 공지사항 게시판+댓글 및 상단 최근 2건 티커)
+- `OPEN-035` : A ([DECISION-041], 안전보건 방침/목표 단일 메뉴 역할별 분기)
+- `OPEN-036` : A ([DECISION-042], 모바일 동선 우선 및 문서탐색 PDF 전용 제한)
+- `OPEN-037` : A2+B1+C1+D2 ([DECISION-043], 안전 교육/점검/부적합사항 메뉴 및 대장/소통 구현)
+- `OPEN-038` : A ([DECISION-044], 근로자의견청취 3단계 워크플로우 확정)
+- `OPEN-039` : A ([DECISION-045], HQ 설정 기반 동적 메뉴 + 방침/목표 아래 DnD 정렬/저장 확정)
+- `OPEN-008` : A ([DECISION-046], 중복 현장 숨김/샘플 최소 노출)
+- `OPEN-009` : A ([DECISION-046], SITE 기본 연결/노출을 C18 중심으로 고정)
 
 ---
 

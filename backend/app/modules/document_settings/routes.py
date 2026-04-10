@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,6 +11,10 @@ from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
 from app.modules.document_settings.models import (
     ContractorDocumentBundleItem,
+    DynamicMenuBoardComment,
+    DynamicMenuBoardPost,
+    DynamicMenuConfig,
+    DynamicMenuTableRow,
     DocumentRequirement,
     DocumentTypeMaster,
     SubmissionCycle,
@@ -31,6 +37,22 @@ router = APIRouter(prefix="/settings/document-cycles", tags=["document-cycles"])
 _PILOT_SITE_CODE = "SITE002"  # MVP: 파일럿 = 청라 C18BL(대우건설) 시드 현장
 _GROUP_KEY_SAMSUNG = "SAMSUNG"
 _GROUP_KEY_GENERAL = "GENERAL"
+
+
+def _normalize_slug(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9\-]+", "-", (text or "").strip().lower())
+    slug = re.sub(r"-{2,}", "-", slug).strip("-")
+    return slug[:80] or "menu"
+
+
+def _parse_menu_config(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
 
 
 def require_cycle_admin(user: CurrentUserDep):
@@ -384,3 +406,303 @@ def upsert_contractor_bundle_items(
     # 클라이언트는 GET으로 전체를 다시 로드하는 패턴이 안전하지만,
     # MVP에서는 response_model로 간단히 업데이트된 payload만 반환합니다.
     return updated_items
+
+
+@router.get("/dynamic-menus")
+def list_dynamic_menus(db: DbDep, __=Depends(require_cycle_admin)):
+    rows = db.query(DynamicMenuConfig).order_by(DynamicMenuConfig.sort_order.asc(), DynamicMenuConfig.id.asc()).all()
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "slug": r.slug,
+                "title": r.title,
+                "menu_type": r.menu_type,
+                "target_ui_type": r.target_ui_type,
+                "sort_order": r.sort_order,
+                "is_active": r.is_active,
+                "custom_config": _parse_menu_config(r.custom_config),
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.post("/dynamic-menus")
+def create_dynamic_menu(payload: dict, db: DbDep, current_user: CurrentUserDep, __=Depends(require_cycle_admin)):
+    title = str(payload.get("title") or "").strip()
+    menu_type = str(payload.get("menu_type") or "").strip().upper()
+    target_ui_type = str(payload.get("target_ui_type") or "SITE").strip().upper()
+    if not title:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="title is required")
+    if menu_type not in {"BOARD", "TABLE"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="menu_type must be BOARD or TABLE")
+    if target_ui_type not in {"SITE", "HQ_SAFE", "BOTH"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_ui_type must be SITE/HQ_SAFE/BOTH")
+    slug = _normalize_slug(str(payload.get("slug") or title))
+    suffix = 1
+    while db.query(DynamicMenuConfig.id).filter(DynamicMenuConfig.slug == slug).first() is not None:
+        suffix += 1
+        slug = f"{_normalize_slug(str(payload.get('slug') or title))}-{suffix}"
+    max_order = db.query(DynamicMenuConfig).order_by(DynamicMenuConfig.sort_order.desc()).first()
+    config = payload.get("custom_config") if isinstance(payload.get("custom_config"), dict) else {}
+    row = DynamicMenuConfig(
+        slug=slug,
+        title=title,
+        menu_type=menu_type,
+        target_ui_type=target_ui_type,
+        sort_order=(max_order.sort_order + 1) if max_order else 1,
+        is_active=bool(payload.get("is_active", True)),
+        custom_config=json.dumps(config, ensure_ascii=False),
+        created_by_user_id=current_user.id,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "slug": row.slug}
+
+
+@router.put("/dynamic-menus/{menu_id}")
+def update_dynamic_menu(menu_id: int, payload: dict, db: DbDep, __=Depends(require_cycle_admin)):
+    row = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.id == menu_id).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menu not found")
+    if "title" in payload:
+        row.title = str(payload.get("title") or "").strip() or row.title
+    if "menu_type" in payload:
+        mt = str(payload.get("menu_type") or "").strip().upper()
+        if mt not in {"BOARD", "TABLE"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="menu_type must be BOARD or TABLE")
+        row.menu_type = mt
+    if "target_ui_type" in payload:
+        tui = str(payload.get("target_ui_type") or "").strip().upper()
+        if tui not in {"SITE", "HQ_SAFE", "BOTH"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="target_ui_type must be SITE/HQ_SAFE/BOTH")
+        row.target_ui_type = tui
+    if "is_active" in payload:
+        row.is_active = bool(payload.get("is_active"))
+    if "custom_config" in payload and isinstance(payload.get("custom_config"), dict):
+        row.custom_config = json.dumps(payload["custom_config"], ensure_ascii=False)
+    db.add(row)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/dynamic-menus/reorder")
+def reorder_dynamic_menus(payload: dict, db: DbDep, __=Depends(require_cycle_admin)):
+    items = payload.get("items")
+    if not isinstance(items, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="items is required")
+    for idx, it in enumerate(items, start=1):
+        menu_id = int(it.get("id"))
+        row = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.id == menu_id).first()
+        if row is None:
+            continue
+        row.sort_order = idx
+        db.add(row)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/dynamic-menus/{menu_id}")
+def delete_dynamic_menu(menu_id: int, db: DbDep, __=Depends(require_cycle_admin)):
+    row = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.id == menu_id).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menu not found")
+    db.query(DynamicMenuTableRow).filter(DynamicMenuTableRow.menu_id == menu_id).delete()
+    posts = db.query(DynamicMenuBoardPost).filter(DynamicMenuBoardPost.menu_id == menu_id).all()
+    post_ids = [p.id for p in posts]
+    if post_ids:
+        db.query(DynamicMenuBoardComment).filter(DynamicMenuBoardComment.post_id.in_(post_ids)).delete(synchronize_session=False)
+        db.query(DynamicMenuBoardPost).filter(DynamicMenuBoardPost.id.in_(post_ids)).delete(synchronize_session=False)
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
+public_router = APIRouter(prefix="/dynamic-menus", tags=["dynamic-menus"])
+
+
+def _check_menu_access(current_user: CurrentUserDep, menu: DynamicMenuConfig) -> None:
+    user_ui = str(getattr(current_user, "ui_type", "") or "")
+    if menu.target_ui_type not in {"BOTH", user_ui}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+
+@public_router.get("/sidebar")
+def list_sidebar_dynamic_menus(ui_type: str, db: DbDep, current_user: CurrentUserDep):
+    req_ui = (ui_type or "").upper()
+    if req_ui not in {"SITE", "HQ_SAFE"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ui_type must be SITE or HQ_SAFE")
+    if str(getattr(current_user, "ui_type", "") or "") != req_ui:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    rows = (
+        db.query(DynamicMenuConfig)
+        .filter(
+            DynamicMenuConfig.is_active.is_(True),
+            DynamicMenuConfig.target_ui_type.in_([req_ui, "BOTH"]),
+        )
+        .order_by(DynamicMenuConfig.sort_order.asc(), DynamicMenuConfig.id.asc())
+        .all()
+    )
+    return {"items": [{"id": r.id, "slug": r.slug, "title": r.title, "menu_type": r.menu_type} for r in rows]}
+
+
+@public_router.get("/{slug}")
+def get_dynamic_menu_detail(slug: str, db: DbDep, current_user: CurrentUserDep):
+    menu = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.slug == slug, DynamicMenuConfig.is_active.is_(True)).first()
+    if menu is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menu not found")
+    _check_menu_access(current_user, menu)
+    return {
+        "menu": {
+            "id": menu.id,
+            "slug": menu.slug,
+            "title": menu.title,
+            "menu_type": menu.menu_type,
+            "target_ui_type": menu.target_ui_type,
+            "custom_config": _parse_menu_config(menu.custom_config),
+        }
+    }
+
+
+@public_router.get("/{slug}/board-posts")
+def list_dynamic_menu_board_posts(slug: str, db: DbDep, current_user: CurrentUserDep):
+    menu = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.slug == slug, DynamicMenuConfig.is_active.is_(True)).first()
+    if menu is None or menu.menu_type != "BOARD":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board menu not found")
+    _check_menu_access(current_user, menu)
+    posts = (
+        db.query(DynamicMenuBoardPost)
+        .filter(DynamicMenuBoardPost.menu_id == menu.id)
+        .order_by(DynamicMenuBoardPost.created_at.desc(), DynamicMenuBoardPost.id.desc())
+        .all()
+    )
+    post_ids = [p.id for p in posts]
+    comments = (
+        db.query(DynamicMenuBoardComment)
+        .filter(DynamicMenuBoardComment.post_id.in_(post_ids))
+        .order_by(DynamicMenuBoardComment.created_at.asc(), DynamicMenuBoardComment.id.asc())
+        .all()
+        if post_ids
+        else []
+    )
+    user_ids = {p.created_by_user_id for p in posts} | {c.created_by_user_id for c in comments}
+    users = db.query(User).filter(User.id.in_(list(user_ids))).all() if user_ids else []
+    name_map = {u.id: u.name for u in users}
+    comment_map: dict[int, list[dict]] = {}
+    for c in comments:
+        comment_map.setdefault(c.post_id, []).append(
+            {"id": c.id, "body": c.body, "created_by_name": name_map.get(c.created_by_user_id), "created_at": c.created_at}
+        )
+    return {
+        "items": [
+            {
+                "id": p.id,
+                "title": p.title,
+                "body": p.body,
+                "created_by_name": name_map.get(p.created_by_user_id),
+                "created_at": p.created_at,
+                "comments": comment_map.get(p.id, []),
+            }
+            for p in posts
+        ]
+    }
+
+
+@public_router.post("/{slug}/board-posts")
+def create_dynamic_menu_board_post(slug: str, payload: dict, db: DbDep, current_user: CurrentUserDep):
+    menu = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.slug == slug, DynamicMenuConfig.is_active.is_(True)).first()
+    if menu is None or menu.menu_type != "BOARD":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board menu not found")
+    _check_menu_access(current_user, menu)
+    title = str(payload.get("title") or "").strip()
+    body = str(payload.get("body") or "").strip()
+    if not title or not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="title and body are required")
+    row = DynamicMenuBoardPost(menu_id=menu.id, title=title, body=body, created_by_user_id=current_user.id)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id}
+
+
+@public_router.post("/{slug}/board-posts/{post_id}/comments")
+def create_dynamic_menu_board_comment(slug: str, post_id: int, payload: dict, db: DbDep, current_user: CurrentUserDep):
+    menu = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.slug == slug, DynamicMenuConfig.is_active.is_(True)).first()
+    if menu is None or menu.menu_type != "BOARD":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board menu not found")
+    _check_menu_access(current_user, menu)
+    post = db.query(DynamicMenuBoardPost).filter(DynamicMenuBoardPost.id == post_id, DynamicMenuBoardPost.menu_id == menu.id).first()
+    if post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    body = str(payload.get("body") or "").strip()
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="body is required")
+    row = DynamicMenuBoardComment(post_id=post_id, body=body, created_by_user_id=current_user.id)
+    db.add(row)
+    db.commit()
+    return {"ok": True}
+
+
+@public_router.get("/{slug}/table-rows")
+def list_dynamic_menu_table_rows(slug: str, db: DbDep, current_user: CurrentUserDep):
+    menu = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.slug == slug, DynamicMenuConfig.is_active.is_(True)).first()
+    if menu is None or menu.menu_type != "TABLE":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table menu not found")
+    _check_menu_access(current_user, menu)
+    rows = (
+        db.query(DynamicMenuTableRow)
+        .filter(DynamicMenuTableRow.menu_id == menu.id)
+        .order_by(DynamicMenuTableRow.created_at.desc(), DynamicMenuTableRow.id.desc())
+        .all()
+    )
+    return {"items": [{"id": r.id, "row_data": _parse_menu_config(r.row_data), "created_at": r.created_at} for r in rows]}
+
+
+@public_router.post("/{slug}/table-rows")
+def create_dynamic_menu_table_row(slug: str, payload: dict, db: DbDep, current_user: CurrentUserDep):
+    menu = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.slug == slug, DynamicMenuConfig.is_active.is_(True)).first()
+    if menu is None or menu.menu_type != "TABLE":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table menu not found")
+    _check_menu_access(current_user, menu)
+    data = payload.get("row_data")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="row_data must be object")
+    row = DynamicMenuTableRow(menu_id=menu.id, row_data=json.dumps(data, ensure_ascii=False), created_by_user_id=current_user.id)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id}
+
+
+@public_router.put("/{slug}/table-rows/{row_id}")
+def update_dynamic_menu_table_row(slug: str, row_id: int, payload: dict, db: DbDep, current_user: CurrentUserDep):
+    menu = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.slug == slug, DynamicMenuConfig.is_active.is_(True)).first()
+    if menu is None or menu.menu_type != "TABLE":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table menu not found")
+    _check_menu_access(current_user, menu)
+    row = db.query(DynamicMenuTableRow).filter(DynamicMenuTableRow.id == row_id, DynamicMenuTableRow.menu_id == menu.id).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Row not found")
+    data = payload.get("row_data")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="row_data must be object")
+    row.row_data = json.dumps(data, ensure_ascii=False)
+    db.add(row)
+    db.commit()
+    return {"ok": True}
+
+
+@public_router.delete("/{slug}/table-rows/{row_id}")
+def delete_dynamic_menu_table_row(slug: str, row_id: int, db: DbDep, current_user: CurrentUserDep):
+    menu = db.query(DynamicMenuConfig).filter(DynamicMenuConfig.slug == slug, DynamicMenuConfig.is_active.is_(True)).first()
+    if menu is None or menu.menu_type != "TABLE":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table menu not found")
+    _check_menu_access(current_user, menu)
+    row = db.query(DynamicMenuTableRow).filter(DynamicMenuTableRow.id == row_id, DynamicMenuTableRow.menu_id == menu.id).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Row not found")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}

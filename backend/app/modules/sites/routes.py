@@ -9,6 +9,7 @@ from app.core.permissions import CurrentUserDep, Role, require_roles
 from app.modules.sites.models import Site
 from app.modules.sites.ordering import site_list_priority_order
 from app.modules.sites.service import ImportResult, import_sites_from_workbook, upsert_site_from_row
+from app.modules.documents.models import Document
 from app.modules.workers.models import Employment, Person
 from app.schemas.sites import (
     SiteCreateRequest,
@@ -49,7 +50,37 @@ def list_sites(db: DbDep, current_user: CurrentUserDep):
             query = query.filter(Site.id == current_user.site_id)
         else:
             query = query.filter(False)
-    return query.order_by(site_list_priority_order(), Site.id.asc()).all()
+    rows = query.order_by(site_list_priority_order(), Site.id.asc()).all()
+    if current_user.role == Role.SITE:
+        return rows
+
+    # 운영 고정 노출:
+    # 1) C18(실업로드 대상) 1개만 유지
+    # 2) 그 외 현장은 샘플 1개만 유지
+    c18_candidates = [s for s in rows if ("C18BL" in (s.site_name or "")) or ("청라C18" in (s.site_name or ""))]
+    chosen_c18 = None
+    if c18_candidates:
+        # 업로드 이력이 있는 C18 현장을 우선 사용
+        c18_ids = [s.id for s in c18_candidates]
+        uploaded = (
+            db.query(Document.site_id)
+            .filter(Document.site_id.in_(c18_ids), Document.file_path.isnot(None))
+            .group_by(Document.site_id)
+            .all()
+        )
+        uploaded_ids = {row[0] for row in uploaded}
+        chosen_c18 = next((s for s in c18_candidates if s.id in uploaded_ids), c18_candidates[0])
+
+    non_c18 = [s for s in rows if chosen_c18 is None or s.id != chosen_c18.id]
+    # 나머지는 샘플 1개만 노출
+    sample_other = next((s for s in non_c18 if (s.site_name or "") and ("C18BL" not in s.site_name and "청라C18" not in s.site_name)), None)
+
+    filtered: list[Site] = []
+    if chosen_c18 is not None:
+        filtered.append(chosen_c18)
+    if sample_other is not None:
+        filtered.append(sample_other)
+    return filtered or rows[:1]
 
 
 @router.get("/search", response_model=list[SiteSearchResponse])
@@ -60,13 +91,17 @@ def search_sites(db: DbDep, _: CurrentUserDep):
         .order_by(site_list_priority_order(), Site.id.asc())
         .all()
     )
+    c18_rows = [s for s in rows if ("C18BL" in (s.site_name or "")) or ("청라C18" in (s.site_name or ""))]
+    chosen_c18 = c18_rows[0] if c18_rows else None
+    sample_other = next((s for s in rows if chosen_c18 is None or (s.id != chosen_c18.id and "C18BL" not in (s.site_name or "") and "청라C18" not in (s.site_name or ""))), None)
+    visible = [r for r in [chosen_c18, sample_other] if r is not None] or rows[:1]
     return [
         SiteSearchResponse(
             id=site.id,
             name=site.site_name,
             address=site.address,
         )
-        for site in rows
+        for site in visible
     ]
 
 

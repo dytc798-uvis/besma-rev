@@ -31,5 +31,8 @@ def init_db() -> None:
     from app.modules.risk_library import models as risk_library_models  # noqa: F401
     from app.modules.law_registry import models as law_registry_models  # noqa: F401
     from app.modules.communications import models as communications_models  # noqa: F401
+    from app.modules.notices import models as notices_models  # noqa: F401
+    from app.modules.safety_policy_goals import models as safety_policy_goal_models  # noqa: F401
+    from app.modules.safety_features import models as safety_features_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

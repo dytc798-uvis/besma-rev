@@ -42,6 +42,36 @@
       </div>
     </BaseCard>
 
+    <BaseCard class="group-card !p-4" title="동적 메뉴 설정 (방침 및 목표 아래)">
+      <p class="page-sub" style="margin:0 0 10px">
+        메뉴를 드래그로 순서 조정한 뒤 <strong>메뉴 순서 저장</strong>을 눌러 확정하세요.
+      </p>
+      <div class="doc-actions" style="margin-bottom:10px">
+        <button type="button" class="stitch-btn-primary btn-sm" @click="openDynamicMenuCreate">+ 메뉴 추가</button>
+        <button type="button" class="stitch-btn-secondary btn-sm" @click="saveDynamicMenuOrder">메뉴 순서 저장</button>
+      </div>
+      <ul class="doc-list">
+        <li
+          v-for="(menu, idx) in dynamicMenus"
+          :key="`dyn-${menu.id}`"
+          class="doc-row"
+          draggable="true"
+          @dragstart="onDynamicMenuDragStart(idx)"
+          @dragover.prevent
+          @drop="onDynamicMenuDrop(idx)"
+        >
+          <div class="doc-main">
+            <div class="doc-name">{{ idx + 1 }}. {{ menu.title }}</div>
+            <div class="doc-meta">{{ menu.menu_type }} / {{ menu.target_ui_type }} / {{ menu.is_active ? "활성" : "비활성" }}</div>
+          </div>
+          <div class="doc-actions">
+            <button type="button" class="stitch-btn-secondary btn-sm" @click="openDynamicMenuEdit(menu)">수정</button>
+            <button type="button" class="stitch-btn-secondary btn-sm btn-danger" @click="removeDynamicMenu(menu.id)">삭제</button>
+          </div>
+        </li>
+      </ul>
+    </BaseCard>
+
     <BaseCard
       v-for="group in groupedTypes"
       :key="`group-${group.cycleId}`"
@@ -100,6 +130,56 @@
         </div>
       </BaseCard>
     </div>
+
+    <div v-if="dynamicMenuModalOpen" class="modal-backdrop" @click.self="closeDynamicMenuModal">
+      <BaseCard class="modal-card !w-full max-w-[640px]" :title="dynamicMenuEditingId ? '동적 메뉴 수정' : '동적 메뉴 추가'">
+        <div class="form-grid">
+          <label class="form-field">
+            <span>메뉴명</span>
+            <input v-model="dynamicMenuForm.title" class="control-input" placeholder="예: 안전 캠페인 게시판" />
+          </label>
+          <label class="form-field">
+            <span>메뉴 타입</span>
+            <select v-model="dynamicMenuForm.menu_type" class="control-select">
+              <option value="BOARD">게시판형</option>
+              <option value="TABLE">표형</option>
+            </select>
+          </label>
+          <label class="form-field">
+            <span>노출 대상</span>
+            <select v-model="dynamicMenuForm.target_ui_type" class="control-select">
+              <option value="SITE">SITE</option>
+              <option value="HQ_SAFE">HQ_SAFE</option>
+              <option value="BOTH">BOTH</option>
+            </select>
+          </label>
+          <label class="form-field">
+            <span>활성 여부</span>
+            <select v-model="dynamicMenuForm.is_active" class="control-select">
+              <option :value="true">활성</option>
+              <option :value="false">비활성</option>
+            </select>
+          </label>
+          <label v-if="dynamicMenuForm.menu_type === 'BOARD'" class="form-field form-field-span-2">
+            <span>게시판 옵션(JSON)</span>
+            <textarea v-model="dynamicMenuConfigText" rows="4" class="control-textarea" placeholder='{"allow_comments": true}' />
+          </label>
+          <label v-else class="form-field form-field-span-2">
+            <span>표 컬럼(한 줄에 key|label)</span>
+            <textarea
+              v-model="dynamicMenuColumnsText"
+              rows="5"
+              class="control-textarea"
+              placeholder="name|이름&#10;date|일자&#10;status|상태"
+            />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="stitch-btn-secondary" @click="closeDynamicMenuModal">취소</button>
+          <button type="button" class="stitch-btn-primary" @click="submitDynamicMenu">저장</button>
+        </div>
+      </BaseCard>
+    </div>
   </div>
 </template>
 
@@ -128,6 +208,17 @@ interface DocumentTypeItem {
   default_cycle_id: number;
 }
 
+interface DynamicMenuItem {
+  id: number;
+  slug: string;
+  title: string;
+  menu_type: "BOARD" | "TABLE";
+  target_ui_type: "SITE" | "HQ_SAFE" | "BOTH";
+  sort_order: number;
+  is_active: boolean;
+  custom_config: Record<string, unknown>;
+}
+
 const auth = useAuthStore();
 
 const cycles = ref<SubmissionCycle[]>([]);
@@ -154,6 +245,18 @@ const form = ref({
   sort_order: 0,
   default_cycle_id: 0,
 });
+const dynamicMenus = ref<DynamicMenuItem[]>([]);
+const dynamicMenuDragIndex = ref<number | null>(null);
+const dynamicMenuModalOpen = ref(false);
+const dynamicMenuEditingId = ref<number | null>(null);
+const dynamicMenuForm = ref({
+  title: "",
+  menu_type: "BOARD" as "BOARD" | "TABLE",
+  target_ui_type: "SITE" as "SITE" | "HQ_SAFE" | "BOTH",
+  is_active: true,
+});
+const dynamicMenuConfigText = ref('{"allow_comments": true}');
+const dynamicMenuColumnsText = ref("name|이름\nnote|내용");
 
 const cycleNameById = computed(() =>
   Object.fromEntries(cycles.value.map((cycle) => [cycle.id, cycle.name])) as Record<number, string>,
@@ -201,6 +304,8 @@ async function load() {
   if (!form.value.default_cycle_id && cycles.value.length > 0) {
     form.value.default_cycle_id = cycles.value[0].id;
   }
+  const menuRes = await api.get("/settings/document-cycles/dynamic-menus");
+  dynamicMenus.value = menuRes.data?.items ?? [];
 }
 
 function openCreate() {
@@ -257,6 +362,97 @@ async function submitForm() {
 async function removeItem(item: DocumentTypeItem) {
   if (!window.confirm(`'${item.code}' 항목을 삭제하시겠습니까?`)) return;
   await api.delete(`/settings/document-cycles/document-types/${item.id}`);
+  await load();
+}
+
+function onDynamicMenuDragStart(index: number) {
+  dynamicMenuDragIndex.value = index;
+}
+
+function onDynamicMenuDrop(index: number) {
+  if (dynamicMenuDragIndex.value === null || dynamicMenuDragIndex.value === index) return;
+  const copied = [...dynamicMenus.value];
+  const [moved] = copied.splice(dynamicMenuDragIndex.value, 1);
+  copied.splice(index, 0, moved);
+  dynamicMenus.value = copied;
+  dynamicMenuDragIndex.value = null;
+}
+
+async function saveDynamicMenuOrder() {
+  await api.post("/settings/document-cycles/dynamic-menus/reorder", {
+    items: dynamicMenus.value.map((m, idx) => ({ id: m.id, sort_order: idx + 1 })),
+  });
+  await load();
+}
+
+function openDynamicMenuCreate() {
+  dynamicMenuEditingId.value = null;
+  dynamicMenuForm.value = { title: "", menu_type: "BOARD", target_ui_type: "SITE", is_active: true };
+  dynamicMenuConfigText.value = '{"allow_comments": true}';
+  dynamicMenuColumnsText.value = "name|이름\nnote|내용";
+  dynamicMenuModalOpen.value = true;
+}
+
+function openDynamicMenuEdit(menu: DynamicMenuItem) {
+  dynamicMenuEditingId.value = menu.id;
+  dynamicMenuForm.value = {
+    title: menu.title,
+    menu_type: menu.menu_type,
+    target_ui_type: menu.target_ui_type,
+    is_active: menu.is_active,
+  };
+  dynamicMenuConfigText.value = JSON.stringify(menu.custom_config || {}, null, 2);
+  const cols = Array.isArray((menu.custom_config as any)?.columns) ? (menu.custom_config as any).columns : [];
+  dynamicMenuColumnsText.value = cols.map((c: any) => `${c.key}|${c.label}`).join("\n") || "name|이름\nnote|내용";
+  dynamicMenuModalOpen.value = true;
+}
+
+function closeDynamicMenuModal() {
+  dynamicMenuModalOpen.value = false;
+}
+
+function buildDynamicMenuCustomConfig() {
+  if (dynamicMenuForm.value.menu_type === "BOARD") {
+    try {
+      const obj = JSON.parse(dynamicMenuConfigText.value || "{}");
+      return typeof obj === "object" && obj ? obj : {};
+    } catch {
+      return {};
+    }
+  }
+  const lines = dynamicMenuColumnsText.value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const columns = lines.map((line) => {
+    const [key, label] = line.split("|").map((v) => (v || "").trim());
+    return { key: key || "col", label: label || key || "컬럼" };
+  });
+  return { columns };
+}
+
+async function submitDynamicMenu() {
+  const title = dynamicMenuForm.value.title.trim();
+  if (!title) return;
+  const payload = {
+    title,
+    menu_type: dynamicMenuForm.value.menu_type,
+    target_ui_type: dynamicMenuForm.value.target_ui_type,
+    is_active: dynamicMenuForm.value.is_active,
+    custom_config: buildDynamicMenuCustomConfig(),
+  };
+  if (dynamicMenuEditingId.value) {
+    await api.put(`/settings/document-cycles/dynamic-menus/${dynamicMenuEditingId.value}`, payload);
+  } else {
+    await api.post("/settings/document-cycles/dynamic-menus", payload);
+  }
+  dynamicMenuModalOpen.value = false;
+  await load();
+}
+
+async function removeDynamicMenu(menuId: number) {
+  if (!window.confirm("이 동적 메뉴를 삭제하시겠습니까?")) return;
+  await api.delete(`/settings/document-cycles/dynamic-menus/${menuId}`);
   await load();
 }
 

@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     documents_dir_name: str = "documents"
     images_dir_name: str = "images"
     document_explorer_base_dir: Path = BASE_DIR / "docs" / "base"
+    upload_max_part_size_bytes: int = Field(default=30 * 1024 * 1024, validation_alias="BESMA_UPLOAD_MAX_PART_SIZE_BYTES")
+    document_upload_max_bytes: int = Field(default=10 * 1024 * 1024, validation_alias="BESMA_DOCUMENT_UPLOAD_MAX_BYTES")
 
     cors_origins: list[str] = [
         "http://localhost:5173",

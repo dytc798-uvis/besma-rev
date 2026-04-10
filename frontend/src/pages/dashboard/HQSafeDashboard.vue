@@ -355,7 +355,9 @@ async function load() {
       dashParams.site_code = DEMO_PILOT_SITE_CODE;
     }
     const [sumRes, sitesRes, dashRes, opRes] = await Promise.all([
-      api.get<DashboardSummary>("/dashboard/summary"),
+      api.get<DashboardSummary>("/dashboard/summary", {
+        params: { site_code: DEMO_PILOT_SITE_CODE },
+      }),
       api.get<SiteRow[]>("/sites"),
       api.get("/documents/hq-dashboard", { params: dashParams }),
       api.get<OpinionRow[]>("/opinions"),

@@ -549,6 +549,135 @@
 
 ---
 
+### [DECISION-038]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | 문서 탐색 검색 범위를 `docs/base` + `storage/documents`로 확장 |
+| **Context** | 문서 탐색은 `docs/base`만 스캔하여 현장에서 업로드된 실제 제출 서류(`storage/documents`)가 검색되지 않았다. 사용자 요청으로 기준자료와 현장 제출본을 한 화면에서 함께 탐색해야 한다. |
+| **Options** | A. `docs/base`만 유지 / B. `docs/base`와 `storage/documents`를 함께 검색 / C. `storage/documents`를 별도 동기화 후 `docs/base`만 검색 |
+| **Decision** | **B** |
+| **Reason** | 현장 업로드 문서가 즉시 탐색되어야 운영 흐름(업로드 -> 탐색/확인)에 맞고, 별도 동기화 작업 없이 가장 작은 변경으로 요구를 충족한다. |
+| **Impact Scope** | `backend/app/modules/document_explorer/routes.py`, `backend/tests/test_document_explorer_routes.py`, 문서탐색의 현장문서 필터(`field`) 분류 규칙 |
+
+---
+
+### [DECISION-039]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | SITE 문서취합 화면은 전체 목록 단일 뷰 + 승인 하단 정렬로 전환 |
+| **Context** | 현장 사용자가 법적 서류 안내문구와 상단 `오늘/이번주/이번달` 전환 없이 전체 문서를 한 번에 보고, 승인 완료 문서는 목록 하단으로 내려 우선 처리 대상을 먼저 보길 원했다. |
+| **Options** | A. 요청안 그대로(단일 전체 목록, 안내문구/기간탭 제거, 승인 하단 정렬, 주기 한글 라벨) / B. 안내문구만 제거하고 기존 기간탭/작업큐 유지 / C. 현행 유지 |
+| **Decision** | **A** |
+| **Reason** | 현장 실행 흐름에서 “무엇을 지금 올릴지”를 빠르게 판단하려면 단일 전체 목록과 승인 하단 정렬이 가장 직관적이며, 기간 탭 전환 비용을 줄일 수 있다. |
+| **Impact Scope** | `frontend/src/pages/site/SiteDocumentsDashboardPage.vue` (탭 제거, 단일 목록 정렬, 주기 라벨 한글화, 안내문구 제거) |
+| **Supersedes** | [DECISION-009]의 “작업 큐 중심/기본 숨김” 표현 중 SITE 기본 화면 정책을 본 결정으로 대체한다. (상태 문자열 불변 원칙 [DECISION-005], [DECISION-010]은 유지) |
+
+---
+
+### [DECISION-040]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | SITE에 공지사항 게시판(댓글 포함)과 상단 티커를 추가 |
+| **Context** | 현장 사용자가 대시보드 하위 메뉴에서 공지사항을 게시판 형태로 확인하고, 문서처럼 공지에 대해 댓글로 소통할 수 있어야 한다. 또한 최근 공지 2건 제목을 현장명 헤더 바로 아래에서 깜빡이는 띠로 항상 노출해야 한다. |
+| **Options** | A. 최소 MVP(게시판+댓글+최근 2건 깜빡이는 티커) / B. 운영형 확장(고정공지/첨부/검색 포함) / C. 댓글 없는 공지 목록 |
+| **Decision** | **A** |
+| **Reason** | 요구 핵심(게시판형 + 댓글 + 상단 즉시 노출)을 가장 빠르게 충족하면서 기존 UI/권한 구조를 크게 흔들지 않는다. |
+| **Impact Scope** | `backend/app/modules/notices/*`, `backend/app/main.py`, `backend/app/core/database.py`, `frontend/src/pages/site/SiteNoticeBoardPage.vue`, `frontend/src/layouts/SiteLayout.vue`, `frontend/src/router/index.ts` |
+
+---
+
+### [DECISION-041]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | 단일 메뉴 `안전보건 방침 및 목표`를 역할별로 분기해 노출 |
+| **Context** | 공지사항 아래에 신규 메뉴를 두고, HQ는 본사 방침/목표를 업로드 및 2패널 동시 조회해야 하며, SITE는 기본적으로 현장 방침/목표를 보되 버튼으로 본사 방침/목표로 전환 조회해야 한다. |
+| **Options** | A. 단일 메뉴 + 역할별 화면 분기 / B. 메뉴 2개 분리 / C. 탭 구조 고정 |
+| **Decision** | **A** |
+| **Reason** | 사용자 요청 흐름(HQ 업로드, SITE 기본 현장 표시, 본사 전환 버튼)을 가장 적은 구조 변경으로 일관되게 충족한다. |
+| **Impact Scope** | `backend/app/modules/safety_policy_goals/*`, `backend/app/main.py`, `backend/app/core/database.py`, `frontend/src/pages/site/SafetyPolicyGoalsPage.vue`, `frontend/src/layouts/SiteLayout.vue`, `frontend/src/layouts/HQSafeLayout.vue`, `frontend/src/router/index.ts` |
+
+---
+
+### [DECISION-042]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | 모바일 운영에서 방침/목표 메뉴 제외, 문서탐색은 PDF 전용으로 제한 |
+| **Context** | 모바일 사용자는 현장 실행 중심으로 `미업로드 문서 확인`, `현장 검색`, `위험성평가 DB 검색` 동선이 우선이며, 모바일에서 방침/목표 메뉴는 제외 요청이 확정되었다. 또한 문서탐색은 PDF 파일만 검색/열람하도록 단순화해야 한다. |
+| **Options** | A. 모바일 실행 동선 우선 + PDF 전용 탐색 / B. 기존 메뉴·탐색 범위 유지 / C. 모바일/데스크톱 동일 유지 |
+| **Decision** | **A** |
+| **Reason** | 모바일 현장 사용성(즉시 실행)과 탐색 결과 일관성(PDF 문서만) 요구를 동시에 충족한다. |
+| **Impact Scope** | `frontend/src/layouts/SiteLayout.vue`, `frontend/src/pages/site/SiteMobileOpsPage.vue`, `backend/app/modules/document_explorer/routes.py`, `frontend/src/pages/hq/HQDocumentExplorerPage.vue` |
+
+---
+
+### [DECISION-043]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | 안전 교육/안전 점검/부적합사항 메뉴를 추천값(A2+B1+C1+D2)으로 구현 |
+| **Context** | 신규 메뉴 3종에 대해 교육자료 업로드/조회, 점검 파일 게시판+코멘트 소통, 부적합사항관리대장 엑셀 업로드 후 표시/다운로드/PDF 보기 및 개선조치(사진 리사이즈, 일자, 담당자) 편집 요구가 확정되었다. |
+| **Decision — 분류 기준** | 교육자료는 **전용 업로드 버튼(A2)** 으로 등록한다. |
+| **Decision — 점검 소스** | 안전 점검 게시판은 문서취합의 **`INSPECTION` 계열 전체(B1)** 를 업로드 순으로 노출한다. |
+| **Decision — 대장 원본** | 부적합사항관리대장은 **엑셀(xlsx) 업로드 후 서버 파싱(C1)** 으로 표시한다. |
+| **Decision — 편집 권한** | 개선조치(내용/일자/담당자)와 사진 업로드는 **SITE/HQ 모두 작성 가능(D2)** 으로 둔다. |
+| **Reason** | 요청 기능을 최소 확장으로 빠르게 제공하면서 기존 문서 저장소/권한 구조를 재사용해 운영 전환 속도를 높인다. |
+| **Impact Scope** | `backend/app/modules/safety_features/*`, `backend/app/main.py`, `backend/app/core/database.py`, `frontend/src/pages/site/SafetyEducationPage.vue`, `SafetyInspectionBoardPage.vue`, `NonconformityPage.vue`, `frontend/src/layouts/SiteLayout.vue`, `frontend/src/layouts/HQSafeLayout.vue`, `frontend/src/router/index.ts` |
+
+---
+
+### [DECISION-044]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | `근로자의견청취`는 3단계 워크플로우(현장승인 -> 본사확인 -> 포상후보)로 구현 |
+| **Context** | 사용자 요청으로 `근로자 의견청취 관리대장` 업로드 기반 목록에서 상태 전이와 권한(현장/본사)을 명확히 분리해야 했다. |
+| **Options** | A. 3단계 고정 워크플로우(현장승인 -> 본사확인 -> 포상후보) / B. 단일 상태 + 자유 코멘트 / C. 2단계(현장확인 -> 본사확인) |
+| **Decision** | **A** |
+| **Reason** | 사용자 행동 흐름과 권한 책임 구분을 가장 명확히 반영하며, 대장 기반 운영에서 후속 포상후보 선별까지 일관된 상태 전이가 가능하다. |
+| **Impact Scope** | `backend/app/modules/safety_features/routes.py`, `backend/app/modules/safety_features/models.py`, `frontend/src/pages/site/WorkerVoiceBoardPage.vue`, `frontend/src/layouts/SiteLayout.vue`, `frontend/src/layouts/HQSafeLayout.vue`, `frontend/src/router/index.ts` |
+
+---
+
+### [DECISION-045]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | HQ 설정 기반 동적 메뉴(A) + 방침/목표 아래 정렬(DnD) + 저장 확정 |
+| **Context** | 사용자는 기본 고정 메뉴는 유지하되 HQ 로그인 시 게시판형/표형 메뉴를 수시로 추가·변형·삭제하고, 메뉴 순서를 드래그앤드롭으로 조정한 뒤 저장 버튼으로 확정하길 원했다. |
+| **Options** | A. 전역 동적 메뉴 레지스트리 + 타입별 공통 렌더러 / B. 메뉴별 코드 생성 / C. 하이브리드(JSON 공용 저장) |
+| **Decision** | **A** |
+| **Reason** | 운영 중 메뉴 증감/변형이 잦은 요구에 가장 유연하고, 방침/목표 아래 동적 정렬과 저장 확정 UX를 일관되게 제공할 수 있다. |
+| **Impact Scope** | `backend/app/modules/document_settings/models.py`, `backend/app/modules/document_settings/routes.py`, `backend/alembic/versions/*dynamic_menus*.py`, `frontend/src/pages/hq/HQDocumentSettingsPage.vue`, `frontend/src/layouts/SiteLayout.vue`, `frontend/src/layouts/HQSafeLayout.vue`, `frontend/src/pages/site/DynamicMenuRuntimePage.vue`, `frontend/src/router/index.ts` |
+
+---
+
+### [DECISION-046]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-10 |
+| **Title** | 현장 노출/지표는 C18BL 중심으로 축소하고 로그인 기본 진입을 문서취합/내현장문서로 고정 |
+| **Context** | C18 현장이 중복 노출되어 운영 혼선이 발생했고, 대시보드/지표를 C18BL 기준으로 단순화하며 로그인 직후 기본 화면을 문서 실행 중심으로 통일할 필요가 있었다. |
+| **Options** | A. C18 업로드 현장 1개 유지 + 기타 샘플 최소 노출 + 지표 C18 고정 + 기본진입 HQ 문서취합/SITE 내현장문서 / B. 현행 유지 |
+| **Decision** | **A** |
+| **Reason** | 시연·운영에서 노이즈를 줄이고 핵심 동선(문서취합/내현장문서)으로 즉시 진입하게 해 사용 혼선을 최소화한다. |
+| **Impact Scope** | `backend/app/modules/sites/routes.py`, `backend/app/modules/auth/routes.py`, `backend/app/modules/dashboard/routes.py`, `frontend/src/config/demoPilotSite.ts`, `frontend/src/pages/dashboard/HQSafeDashboard.vue`, `frontend/src/router/index.ts` |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -569,3 +698,12 @@
 | 2026-03-30 | Decision 030 추가 — 지도 기반 현장검색(placeholder 해소 + HQ 접근 라우트) 확정 |
 | 2026-03-30 | Decision 031 추가 — 주소 없는 중복현장 숨김 및 주소 있는 C18 기본 연결 확정 |
 | 2026-03-31 | Decision 032 추가 — 비밀번호 변경 복잡도 규칙 폐지·데모 기본 비밀번호 `temp@12` |
+| 2026-04-10 | Decision 038 추가 — 문서 탐색 범위를 `docs/base` + `storage/documents`로 확장 |
+| 2026-04-10 | Decision 039 추가 — SITE 문서취합을 단일 전체 목록 + 승인 하단 정렬로 전환 |
+| 2026-04-10 | Decision 040 추가 — SITE 공지사항 게시판+댓글 및 상단 티커 추가 |
+| 2026-04-10 | Decision 041 추가 — 안전보건 방침/목표 단일 메뉴 역할별 분기(HQ 업로드, SITE 현장기본+본사전환) |
+| 2026-04-10 | Decision 042 추가 — 모바일 동선 우선(방침/목표 제외) 및 문서탐색 PDF 전용 제한 |
+| 2026-04-10 | Decision 043 추가 — 안전 교육/점검/부적합사항 메뉴를 추천값(A2+B1+C1+D2)으로 구현 |
+| 2026-04-10 | Decision 044 추가 — 근로자의견청취 3단계 워크플로우(A) 확정 |
+| 2026-04-10 | Decision 045 추가 — HQ 설정 기반 동적 메뉴(A), 방침/목표 아래 DnD 정렬 후 저장 확정 |
+| 2026-04-10 | Decision 046 추가 — C18BL 중심 노출/지표 고정 및 로그인 기본 진입(문서취합/내현장문서) 확정 |

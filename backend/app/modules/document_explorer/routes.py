@@ -44,7 +44,15 @@ def _document_explorer_base_dir() -> Path:
     return base_dir
 
 
-def _infer_category(relative_path: str, extension: str) -> str:
+def _document_explorer_field_docs_dir() -> Path:
+    field_dir = settings.storage_root / settings.documents_dir_name
+    field_dir.mkdir(parents=True, exist_ok=True)
+    return field_dir
+
+
+def _infer_category(relative_path: str, extension: str, source: str) -> str:
+    if source == "field":
+        return "field"
     value = f"{relative_path} {extension}".lower()
     field_markers = {
         "현장문서",
@@ -65,26 +73,33 @@ def _infer_category(relative_path: str, extension: str) -> str:
 
 
 def _scan_document_files() -> list[DocumentExplorerFileItem]:
-    base_dir = _document_explorer_base_dir()
     items: list[DocumentExplorerFileItem] = []
+    scan_sources: dict[str, Path] = {
+        "base": _document_explorer_base_dir(),
+        "field": _document_explorer_field_docs_dir(),
+    }
 
-    for path in sorted(base_dir.rglob("*")):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(base_dir).as_posix()
-        stat = path.stat()
-        ext = path.suffix.lower()
-        items.append(
-            DocumentExplorerFileItem(
-                id=md5(rel.encode("utf-8")).hexdigest(),
-                name=path.name,
-                relative_path=rel,
-                modified_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                size_bytes=stat.st_size,
-                extension=ext,
-                category=_infer_category(rel, ext),
+    for source, root_dir in scan_sources.items():
+        for path in sorted(root_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            root_rel = path.relative_to(root_dir).as_posix()
+            rel = f"{source}/{root_rel}" if root_rel else source
+            stat = path.stat()
+            ext = path.suffix.lower()
+            if ext != ".pdf":
+                continue
+            items.append(
+                DocumentExplorerFileItem(
+                    id=md5(rel.encode("utf-8")).hexdigest(),
+                    name=path.name,
+                    relative_path=rel,
+                    modified_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    size_bytes=stat.st_size,
+                    extension=ext,
+                    category=_infer_category(root_rel, ext, source),
+                )
             )
-        )
 
     items.sort(key=lambda item: (item.modified_at, item.relative_path), reverse=True)
     return items
@@ -122,12 +137,26 @@ def open_or_download_document_explorer_file(
     disposition: str = Query("attachment"),
 ):
     _assert_document_explorer_access(current_user)
-    base_dir = _document_explorer_base_dir().resolve()
-    candidate = (base_dir / relative_path).resolve()
-    if base_dir not in candidate.parents and candidate != base_dir:
+    normalized = (relative_path or "").replace("\\", "/").strip("/")
+    if not normalized:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+    source, sep, remainder = normalized.partition("/")
+    if not sep or not remainder:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="relative_path must start with base/ or field/")
+    source_dirs: dict[str, Path] = {
+        "base": _document_explorer_base_dir().resolve(),
+        "field": _document_explorer_field_docs_dir().resolve(),
+    }
+    root_dir = source_dirs.get(source)
+    if root_dir is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown document source")
+    candidate = (root_dir / remainder).resolve()
+    if root_dir not in candidate.parents and candidate != root_dir:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
     if not candidate.exists() or not candidate.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    if candidate.suffix.lower() != ".pdf":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Only PDF files are allowed")
     resolved_disposition = (disposition or "attachment").strip().lower()
     if resolved_disposition not in {"attachment", "inline"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="disposition must be attachment or inline")

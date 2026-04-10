@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
+from app.modules.approvals.models import ApprovalHistory
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
 from app.modules.document_settings.models import ContractorDocumentBundleItem, DocumentRequirement
 from app.modules.documents.models import Document, DocumentUploadHistory
@@ -43,6 +44,32 @@ _STATUS_SUBMITTED = "SUBMITTED"
 _STATUS_IN_REVIEW = "IN_REVIEW"
 _STATUS_APPROVED = "APPROVED"
 _STATUS_REJECTED = "REJECTED"
+
+
+def _latest_review_comment_map(db: Session, document_ids: list[int]) -> dict[int, str]:
+    if not document_ids:
+        return {}
+    rows = (
+        db.query(ApprovalHistory)
+        .filter(
+            ApprovalHistory.document_id.in_(document_ids),
+            ApprovalHistory.action_type.in_(["APPROVE", "REJECT"]),
+            ApprovalHistory.comment.isnot(None),
+            ApprovalHistory.comment != "",
+        )
+        .order_by(
+            ApprovalHistory.document_id.asc(),
+            ApprovalHistory.action_at.desc(),
+            ApprovalHistory.id.desc(),
+        )
+        .all()
+    )
+    latest: dict[int, str] = {}
+    for row in rows:
+        if row.document_id in latest:
+            continue
+        latest[row.document_id] = row.comment
+    return latest
 
 
 def _period_window(period: str, target_date: date) -> tuple[date, date]:
@@ -365,6 +392,16 @@ def get_site_requirement_status(
                 "completion_upload_enabled": completion_upload_enabled,
             }
         )
+    latest_doc_ids = [int(row["latest_document_id"]) for row in items if row.get("latest_document_id")]
+    comment_map = _latest_review_comment_map(db, latest_doc_ids)
+    for row in items:
+        doc_id = row.get("latest_document_id")
+        if not doc_id:
+            continue
+        latest_comment = comment_map.get(int(doc_id))
+        if latest_comment:
+            row["review_note"] = latest_comment
+
     def sort_key(row: dict[str, Any]) -> tuple[int, int, str]:
         status = str(row.get("status") or "")
         if status == _STATUS_NOT_SUBMITTED:

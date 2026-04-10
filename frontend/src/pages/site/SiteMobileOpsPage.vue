@@ -4,7 +4,9 @@
       <div class="page-header">
         <h1>{{ pageTitle }}</h1>
         <div class="header-actions">
+          <button class="btn-secondary" @click="goMissingDocuments">미업로드 문서</button>
           <button class="btn-secondary" @click="goSiteSearch">현장 검색</button>
+          <button class="btn-secondary" @click="goRiskLibrary">위험성평가 DB</button>
           <button class="btn-secondary" @click="goCommunications">소통자료</button>
           <button class="btn-secondary" @click="startNewScenario">새 작업 시작</button>
         </div>
@@ -228,6 +230,14 @@ function goCommunications() {
 
 function goSiteSearch() {
   router.push({ name: "site-mobile-site-search" });
+}
+
+function goRiskLibrary() {
+  router.push({ name: "site-risk-library" });
+}
+
+function goMissingDocuments() {
+  router.push({ name: "site-documents" });
 }
 
 async function refreshPlan() {

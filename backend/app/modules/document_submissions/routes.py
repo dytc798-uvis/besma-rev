@@ -37,6 +37,12 @@ router = APIRouter(prefix="/document-submissions", tags=["document-submissions-o
 logger = logging.getLogger(__name__)
 
 HQ_DEMO_READONLY_LOGIN_IDS = {"hq01", "hq02", "hq03", "hq04", "hq05"}
+DAILY_UPLOAD_DOC_CODES = {"DAILY_TBM", "SUPERVISOR_CHECKLIST"}
+DAILY_UPLOAD_NAME_BY_CODE = {
+    "DAILY_TBM": "TBM",
+    "SUPERVISOR_CHECKLIST": "SUPERVISOR_CHECKLIST",
+}
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
 
 def _ensure_documents_dir() -> Path:
@@ -59,6 +65,82 @@ def _sanitize_filename_component(value: str) -> str:
     text = re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:120] if text else "미지정"
+
+
+def _resolve_upload_frequency(document_type_code: str, requirement_frequency: str | None) -> str | None:
+    code = (document_type_code or "").strip().upper()
+    if code in DAILY_UPLOAD_DOC_CODES:
+        return "DAILY"
+    return requirement_frequency
+
+
+def _build_saved_filename(
+    *,
+    document_type_code: str,
+    requirement_title: str | None,
+    site_code: str | None,
+    site_name: str,
+    period_start: date,
+    extension: str,
+) -> str:
+    code = (document_type_code or "").strip().upper()
+    if code in DAILY_UPLOAD_DOC_CODES:
+        base_label = DAILY_UPLOAD_NAME_BY_CODE.get(code, code)
+        site_label = _sanitize_filename_component((site_code or "").strip().upper() or site_name)
+        return f"{base_label}_{site_label}_{period_start.strftime('%y%m%d')}{extension}"
+
+    item_label = _sanitize_filename_component(requirement_title or code)
+    site_label = _sanitize_filename_component(site_name)
+    return f"{item_label}_{site_label}{extension}"
+
+
+def _optimize_uploaded_content(content: bytes, source_name: str, content_type: str | None) -> tuple[bytes, str]:
+    ext = Path(source_name or "upload.bin").suffix.lower()
+    content_type_value = (content_type or "").lower()
+
+    if ext in IMAGE_EXTENSIONS or content_type_value.startswith("image/"):
+        try:
+            from PIL import Image
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Image upload optimization requires Pillow dependency",
+            ) from exc
+
+        img = Image.open(io.BytesIO(content))
+        # 과도한 해상도는 축소하여 PDF 용량을 줄인다.
+        max_px = 1800
+        if img.width > max_px or img.height > max_px:
+            img.thumbnail((max_px, max_px))
+        if img.mode not in {"RGB", "L"}:
+            img = img.convert("RGB")
+        out = io.BytesIO()
+        img.save(out, format="PDF", resolution=150.0, optimize=True, quality=70)
+        return out.getvalue(), ".pdf"
+
+    if ext == ".pdf" and len(content) > settings.document_upload_max_bytes:
+        try:
+            from pypdf import PdfReader, PdfWriter
+        except Exception:
+            return content, ext
+        try:
+            reader = PdfReader(io.BytesIO(content))
+            writer = PdfWriter()
+            for page in reader.pages:
+                try:
+                    page.compress_content_streams()
+                except Exception:
+                    pass
+                writer.add_page(page)
+            out = io.BytesIO()
+            writer.write(out)
+            optimized = out.getvalue()
+            if optimized and len(optimized) < len(content):
+                return optimized, ext
+        except Exception:
+            return content, ext
+
+    return content, ext
 
 
 def _get_or_create_instance_for_upload(
@@ -214,9 +296,14 @@ async def upload_document_for_instance(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Requirement/site mismatch")
         if period_start is None or period_end is None:
             if requirement is not None:
-                period_start, period_end = _resolve_period_bounds(work_date, requirement.frequency)
+                effective_frequency = _resolve_upload_frequency(document_type_code, requirement.frequency)
+                period_start, period_end = _resolve_period_bounds(work_date, effective_frequency)
             else:
                 period_start, period_end = work_date, work_date
+        effective_frequency = _resolve_upload_frequency(
+            document_type_code,
+            requirement.frequency if requirement is not None else None,
+        )
         inst = _get_or_create_instance_for_upload(
             db,
             site_id=site_id,
@@ -224,7 +311,7 @@ async def upload_document_for_instance(
             period_start=period_start,
             period_end=period_end,
             requirement_id=requirement_id,
-            frequency=requirement.frequency if requirement is not None else None,
+            frequency=effective_frequency,
         )
 
     # SITE 사용자는 자기 site만
@@ -260,7 +347,13 @@ async def upload_document_for_instance(
 
     storage_dir = _ensure_documents_dir()
     source_name = file.filename or "upload.bin"
-    ext = Path(source_name).suffix
+    content = await file.read()
+    optimized_content, ext = _optimize_uploaded_content(content, source_name, file.content_type)
+    if len(optimized_content) > settings.document_upload_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"파일 크기는 최적화 후 기준 {settings.document_upload_max_bytes // (1024 * 1024)}MB 이하만 업로드할 수 있습니다.",
+        )
     requirement_title = (
         db.query(DocumentRequirement.title)
         .filter(DocumentRequirement.id == inst.selected_requirement_id)
@@ -268,18 +361,24 @@ async def upload_document_for_instance(
         if inst.selected_requirement_id
         else None
     )
-    site_name = db.query(Site.site_name).filter(Site.id == inst.site_id).scalar() or f"site_{inst.site_id}"
-    item_label = _sanitize_filename_component(requirement_title or inst.document_type_code or doc.title)
-    site_label = _sanitize_filename_component(site_name)
-    safe_name = f"{item_label}_{site_label}{ext}"
+    site_row = db.query(Site.site_code, Site.site_name).filter(Site.id == inst.site_id).first()
+    site_code = site_row[0] if site_row else None
+    site_name = site_row[1] if site_row and site_row[1] else f"site_{inst.site_id}"
+    safe_name = _build_saved_filename(
+        document_type_code=inst.document_type_code or doc.document_type,
+        requirement_title=requirement_title or doc.title,
+        site_code=site_code,
+        site_name=site_name,
+        period_start=inst.period_start,
+        extension=ext,
+    )
     filename = f"instance_{inst.id}_{int(utc_now().timestamp())}_{safe_name}"
     stored_path = storage_dir / filename
-    content = await file.read()
-    stored_path.write_bytes(content)
+    stored_path.write_bytes(optimized_content)
 
     doc.file_path = str(stored_path.relative_to(settings.storage_root))
     doc.file_name = safe_name
-    doc.file_size = len(content)
+    doc.file_size = len(optimized_content)
     doc.uploaded_by_user_id = current_user.id
     doc.uploaded_at = utc_now()
     doc.current_status = DocumentStatus.SUBMITTED

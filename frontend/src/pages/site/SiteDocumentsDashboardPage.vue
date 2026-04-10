@@ -3,21 +3,8 @@
     <div class="header-row">
       <div class="card-title">현장 문서취합 (Requirement 기반)</div>
       <div class="controls">
-        <input v-model="targetDate" type="date" />
         <button class="secondary" @click="load">새로고침</button>
       </div>
-    </div>
-
-    <div class="tabs">
-      <button
-        v-for="tab in tabs"
-        :key="tab.value"
-        class="tab-btn"
-        :class="{ active: period === tab.value }"
-        @click="changePeriod(tab.value)"
-      >
-        {{ tab.label }}
-      </button>
     </div>
 
     <div class="summary-grid">
@@ -29,8 +16,7 @@
 
     <section class="section-card">
       <div class="section-head">
-        <h3>법적 서류</h3>
-        <p>제출/검토/반려/승인 상태를 확인하고 업로드합니다.</p>
+        <h3>전체 서류</h3>
       </div>
       <table class="basic-table">
       <thead>
@@ -41,104 +27,51 @@
           <th>카테고리</th>
           <th>주기</th>
           <th>상태</th>
-          <th>반려 사유</th>
           <th>최근 제출</th>
           <th>액션</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="item in legalItems" :key="item.requirement_id">
+        <template v-for="item in sortedItems" :key="item.requirement_id">
+        <tr>
           <td><code>{{ item.requirement_id }}</code></td>
           <td>{{ item.title }}</td>
           <td>{{ sectionLabel(item.section) }}</td>
           <td>{{ categoryLabel(item.category) }}</td>
-          <td>{{ item.frequency }}</td>
+          <td>{{ frequencyLabel(item.frequency) }}</td>
           <td>
             <span class="badge" :class="statusClass(item.status)">
               {{ statusLabel(item.status) }}
             </span>
           </td>
-          <td class="review-note-cell">{{ item.review_note || "-" }}</td>
           <td>{{ formatDateTime(item.latest_uploaded_at) }}</td>
           <td class="actions">
-            <button class="secondary" @click="openUpload(item)">{{ item.status === "REJECTED" ? "수정 업로드" : "업로드" }}</button>
+            <button class="secondary" :disabled="item.section === 'COMPLETION' && !completionUploadEnabled" @click="openUpload(item)">
+              {{ item.status === "REJECTED" ? "수정 업로드" : "업로드" }}
+            </button>
             <button
               v-if="item.latest_document_id"
               class="secondary"
-              @click="goDetail(item.latest_document_id)"
+              :class="{ danger: item.status === 'REJECTED' }"
+              @click="toggleConversation(item)"
             >
               보기
             </button>
             <button class="secondary" @click="openHistory(item)">이력 보기</button>
           </td>
         </tr>
-        <tr v-if="legalItems.length === 0">
-          <td colspan="9" style="text-align: center; color: #6b7280">법적 서류 대상이 없습니다.</td>
+        <tr v-if="isConversationOpen(item.requirement_id)" class="conversation-row">
+          <td colspan="8" class="conversation-cell">
+            <p class="conversation-text">
+              {{ item.review_note || "코멘트가 없습니다." }}
+            </p>
+          </td>
+        </tr>
+        </template>
+        <tr v-if="sortedItems.length === 0">
+          <td colspan="8" style="text-align: center; color: #6b7280">표시할 서류가 없습니다.</td>
         </tr>
       </tbody>
-      </table>
-    </section>
-
-    <section class="section-card">
-      <div class="section-head">
-        <h3>준공서류</h3>
-        <p>
-          준공 전 6개월 구간에서만 업로드 가능합니다.
-          <strong v-if="completionUploadEnabled" class="state-ok">현재 활성</strong>
-          <strong v-else class="state-off">현재 비활성 (준공 6개월 전 구간 아님)</strong>
-        </p>
-      </div>
-      <p v-if="completionWindowText" class="completion-window-text">{{ completionWindowText }}</p>
-      <table class="basic-table">
-        <thead>
-          <tr>
-            <th>Req ID</th>
-            <th>문서명</th>
-            <th>구분</th>
-            <th>카테고리</th>
-            <th>주기</th>
-            <th>상태</th>
-            <th>반려 사유</th>
-            <th>최근 제출</th>
-            <th>액션</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="item in completionItems" :key="item.requirement_id">
-            <td><code>{{ item.requirement_id }}</code></td>
-            <td>{{ item.title }}</td>
-            <td>{{ sectionLabel(item.section) }}</td>
-            <td>{{ categoryLabel(item.category) }}</td>
-            <td>{{ item.frequency }}</td>
-            <td>
-              <span class="badge" :class="statusClass(item.status)">
-                {{ statusLabel(item.status) }}
-              </span>
-            </td>
-            <td class="review-note-cell">{{ item.review_note || "-" }}</td>
-            <td>{{ formatDateTime(item.latest_uploaded_at) }}</td>
-            <td class="actions">
-              <button
-                class="secondary"
-                :disabled="!completionUploadEnabled"
-                @click="openUpload(item)"
-              >
-                {{ item.status === "REJECTED" ? "수정 업로드" : "업로드" }}
-              </button>
-              <button
-                v-if="item.latest_document_id"
-                class="secondary"
-                @click="goDetail(item.latest_document_id)"
-              >
-                보기
-              </button>
-              <button class="secondary" @click="openHistory(item)">이력 보기</button>
-            </td>
-          </tr>
-          <tr v-if="completionItems.length === 0">
-            <td colspan="9" style="text-align: center; color: #6b7280">준공서류 대상이 없습니다.</td>
-          </tr>
-        </tbody>
       </table>
     </section>
   </div>
@@ -191,7 +124,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 
@@ -218,20 +150,10 @@ interface HistoryItem {
 }
 
 const auth = useAuthStore();
-const router = useRouter();
 
-const tabs = [
-  { value: "day", label: "오늘" },
-  { value: "week", label: "이번주" },
-  { value: "month", label: "이번달" },
-] as const;
-
-const period = ref<(typeof tabs)[number]["value"]>("day");
 const targetDate = ref(new Date().toISOString().slice(0, 10));
 const items = ref<RequirementStatusItem[]>([]);
 const completionUploadEnabled = ref(false);
-const completionWindowStart = ref<string | null>(null);
-const completionWindowEnd = ref<string | null>(null);
 const summary = ref({
   total_required: 0,
   submitted_count: 0,
@@ -246,14 +168,26 @@ const selectedFile = ref<File | null>(null);
 const uploading = ref(false);
 const historyTarget = ref<RequirementStatusItem | null>(null);
 const historyItems = ref<HistoryItem[]>([]);
+const openedConversationRequirementId = ref<number | null>(null);
 
 const siteId = computed(() => auth.effectiveSiteId ?? auth.user?.site_id ?? null);
 const incompleteCount = computed(() => summary.value.not_submitted_count + summary.value.in_review_count + summary.value.rejected_count);
-const legalItems = computed(() => items.value.filter((item) => item.section !== "COMPLETION"));
-const completionItems = computed(() => items.value.filter((item) => item.section === "COMPLETION"));
-const completionWindowText = computed(() => {
-  if (!completionWindowStart.value || !completionWindowEnd.value) return "";
-  return `활성 기간: ${completionWindowStart.value} ~ ${completionWindowEnd.value}`;
+const sortedItems = computed(() => {
+  const validItems = items.value.filter((item) => isDisplayableRequirementId(item.requirement_id));
+  const statusPriority: Record<string, number> = {
+    REJECTED: 0,
+    NOT_SUBMITTED: 1,
+    IN_REVIEW: 2,
+    SUBMITTED: 3,
+    NOT_REQUIRED: 4,
+    APPROVED: 99,
+  };
+  return [...validItems].sort((a, b) => {
+    const pa = statusPriority[a.status] ?? 50;
+    const pb = statusPriority[b.status] ?? 50;
+    if (pa !== pb) return pa - pb;
+    return a.requirement_id - b.requirement_id;
+  });
 });
 
 function statusLabel(status: string) {
@@ -285,13 +219,46 @@ function sectionLabel(section: string | null | undefined) {
   return "법적 서류";
 }
 
+function frequencyLabel(frequency: string | null | undefined) {
+  const key = (frequency || "").toUpperCase();
+  const map: Record<string, string> = {
+    DAILY: "일별",
+    WEEKLY: "주별",
+    MONTHLY: "월별",
+    HALF_YEARLY: "반기",
+    YEARLY: "연간",
+    QUARTERLY: "분기",
+    ROLLING: "수시",
+    ADHOC: "수시",
+    EVENT: "이벤트",
+    ONE_TIME: "1회",
+  };
+  return map[key] ?? frequency ?? "-";
+}
+
 function statusClass(status: string) {
   return `badge-status-${status}`;
 }
 
+function isDisplayableRequirementId(requirementId: unknown) {
+  if (typeof requirementId !== "number") return false;
+  if (!Number.isFinite(requirementId)) return false;
+  return requirementId > 0;
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return "-";
-  return value.slice(0, 16).replace("T", " ");
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(dt);
 }
 
 async function load() {
@@ -299,24 +266,22 @@ async function load() {
   const res = await api.get("/documents/requirements/status", {
     params: {
       site_id: siteId.value,
-      period: period.value,
+      period: "all",
       date: targetDate.value,
     },
   });
   items.value = res.data.items;
   summary.value = res.data.summary;
   completionUploadEnabled.value = !!res.data.completion_upload_enabled;
-  completionWindowStart.value = res.data.completion_window_start ?? null;
-  completionWindowEnd.value = res.data.completion_window_end ?? null;
 }
 
-function changePeriod(next: "day" | "week" | "month") {
-  period.value = next;
-  load();
+function toggleConversation(item: RequirementStatusItem) {
+  const rid = item.requirement_id;
+  openedConversationRequirementId.value = openedConversationRequirementId.value === rid ? null : rid;
 }
 
-function goDetail(id: number) {
-  router.push({ name: "site-document-detail", params: { id } });
+function isConversationOpen(requirementId: number) {
+  return openedConversationRequirementId.value === requirementId;
 }
 
 function openUpload(item: RequirementStatusItem) {
@@ -390,12 +355,13 @@ onMounted(async () => {
 .review-note-cell { max-width: 280px; color: #334155; white-space: pre-wrap; word-break: break-word; }
 .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .controls { display: flex; gap: 8px; }
-.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
-.tab-btn { border: 1px solid #d1d5db; background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
-.tab-btn.active { background: #111827; color: #fff; border-color: #111827; }
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
 .summary-card { background: #f3f4f6; border-radius: 8px; padding: 10px; font-weight: 600; }
 .actions { display: flex; gap: 6px; }
+.secondary.danger { border-color: #ef4444; color: #b91c1c; background: #fef2f2; }
+.conversation-row td { background: #fff; }
+.conversation-cell { padding: 6px 10px 12px; }
+.conversation-text { margin: 0; color: #b91c1c; font-weight: 700; white-space: pre-wrap; word-break: break-word; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.4); display: flex; align-items: center; justify-content: center; }
 .modal-card { width: 420px; background: #fff; border-radius: 8px; padding: 16px; }
 .history-card { width: 760px; max-height: 80vh; overflow: auto; }

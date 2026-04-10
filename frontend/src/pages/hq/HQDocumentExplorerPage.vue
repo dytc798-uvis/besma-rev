@@ -3,8 +3,8 @@
     <section class="hero-panel">
       <div class="hero-copy">
         <h1 class="page-title">문서 탐색</h1>
-        <p class="page-subtitle">현장 문서, 양식, 기준자료를 한곳에서 탐색합니다.</p>
-        <p class="page-note">검색은 파일명과 경로 기준으로만 동작합니다.</p>
+        <p class="page-subtitle">PDF 문서만 탐색합니다.</p>
+        <p class="page-note">검색은 PDF 파일명과 경로 기준으로만 동작합니다.</p>
       </div>
       <button type="button" class="law-registry-link" @click="openLawRegistry">법규등록부</button>
     </section>

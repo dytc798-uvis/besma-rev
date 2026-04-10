@@ -36,11 +36,19 @@ import HQContractorDocumentBundleSettingsPage from "@/pages/hq/HQContractorDocum
 import HQPeriodicDocumentMonitoringPage from "@/pages/hq/HQPeriodicDocumentMonitoringPage.vue";
 import RiskLibraryPage from "@/pages/risk/RiskLibraryPage.vue";
 import SiteDocumentsDashboardPage from "@/pages/site/SiteDocumentsDashboardPage.vue";
+import SiteNoticeBoardPage from "@/pages/site/SiteNoticeBoardPage.vue";
+import SafetyPolicyGoalsPage from "@/pages/site/SafetyPolicyGoalsPage.vue";
+import SafetyEducationPage from "@/pages/site/SafetyEducationPage.vue";
+import SafetyInspectionBoardPage from "@/pages/site/SafetyInspectionBoardPage.vue";
+import NonconformityPage from "@/pages/site/NonconformityPage.vue";
+import WorkerVoiceBoardPage from "@/pages/site/WorkerVoiceBoardPage.vue";
+import DynamicMenuRuntimePage from "@/pages/site/DynamicMenuRuntimePage.vue";
 import SiteCommunicationsPage from "@/pages/site/SiteCommunicationsPage.vue";
 import SiteMobileCommunicationsPage from "@/pages/site/SiteMobileCommunicationsPage.vue";
 import SiteMobileSiteSearchPage from "@/pages/site/SiteMobileSiteSearchPage.vue";
 import SiteInfoPage from "@/pages/site/SiteInfoPage.vue";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
+import UserGuidePage from "@/pages/common/UserGuidePage.vue";
 
 const routes: RouteRecordRaw[] = [
   {
@@ -78,6 +86,12 @@ const routes: RouteRecordRaw[] = [
         component: HQDocumentInstanceDetailPage,
       },
       { path: "document-explorer", name: "hq-safe-document-explorer", component: HQDocumentExplorerPage },
+      { path: "safety-policy-goals", name: "hq-safe-safety-policy-goals", component: SafetyPolicyGoalsPage },
+      { path: "safety-education", name: "hq-safe-safety-education", component: SafetyEducationPage },
+      { path: "safety-inspections", name: "hq-safe-safety-inspections", component: SafetyInspectionBoardPage },
+      { path: "nonconformities", name: "hq-safe-nonconformities", component: NonconformityPage },
+      { path: "worker-voice", name: "hq-safe-worker-voice", component: WorkerVoiceBoardPage },
+      { path: "custom-menus/:slug", name: "hq-safe-dynamic-menu", component: DynamicMenuRuntimePage },
       { path: "documents/pending-review", name: "hq-safe-documents-pending", component: HQPendingDocumentsPage },
       { path: "documents/:id", name: "hq-safe-document-detail", component: DocumentDetailPage },
       { path: "documents/:id/tbm-view", name: "hq-safe-document-tbm-view", component: DocumentTbmViewPage },
@@ -106,6 +120,7 @@ const routes: RouteRecordRaw[] = [
         name: "hq-safe-contractor-document-settings",
         component: HQContractorDocumentBundleSettingsPage,
       },
+      { path: "user-guide", name: "hq-safe-user-guide", component: UserGuidePage },
     ],
   },
   {
@@ -114,6 +129,13 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, uiType: "SITE" },
     children: [
       { path: "dashboard", name: "site-dashboard", component: SiteDashboard },
+      { path: "notices", name: "site-notices", component: SiteNoticeBoardPage },
+      { path: "safety-policy-goals", name: "site-safety-policy-goals", component: SafetyPolicyGoalsPage },
+      { path: "safety-education", name: "site-safety-education", component: SafetyEducationPage },
+      { path: "safety-inspections", name: "site-safety-inspections", component: SafetyInspectionBoardPage },
+      { path: "nonconformities", name: "site-nonconformities", component: NonconformityPage },
+      { path: "worker-voice", name: "site-worker-voice", component: WorkerVoiceBoardPage },
+      { path: "custom-menus/:slug", name: "site-dynamic-menu", component: DynamicMenuRuntimePage },
       { path: "documents", name: "site-documents", component: SiteDocumentsDashboardPage },
       { path: "document-explorer", name: "site-document-explorer", component: HQDocumentExplorerPage },
       { path: "documents/upload", name: "site-document-upload", component: DocumentUploadPage },
@@ -127,6 +149,7 @@ const routes: RouteRecordRaw[] = [
       { path: "info", name: "site-info", component: SiteInfoPage },
       { path: "opinions", name: "site-opinions", component: OpinionListPage },
       { path: "opinions/:id", name: "site-opinion-detail", component: OpinionDetailPage },
+      { path: "user-guide", name: "site-user-guide", component: UserGuidePage },
     ],
   },
   {
@@ -213,39 +236,39 @@ router.beforeEach((to, _from, next) => {
         return;
       }
       if (auth.effectivePersona === "SITE_MANAGER") {
-        next({ name: "site-mobile-ops" });
+        next({ name: "site-documents" });
         return;
       }
       if (auth.effectiveUiType === "HQ_SAFE") {
-        next({ name: "hq-safe-document-explorer" });
+        next({ name: "hq-safe-documents" });
         return;
       }
       if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
-      else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
-      else if (auth.user?.ui_type === "SITE") next({ name: "site-mobile-ops" });
+      else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
+      else if (auth.user?.ui_type === "SITE") next({ name: "site-documents" });
       else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next();
       return;
     }
 
     if (to.meta.persona && auth.effectivePersona && to.meta.persona !== auth.effectivePersona) {
-      if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-document-explorer" });
-      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: "site-mobile-ops" });
+      if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-documents" });
+      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: "site-documents" });
       else next({ name: "worker-mobile-list" });
       return;
     }
 
     if (to.meta.uiType && auth.effectiveUiType && to.meta.uiType !== auth.effectiveUiType) {
       if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
-      else if (auth.effectiveUiType === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
-      else if (auth.effectiveUiType === "SITE") next({ name: "site-mobile-ops" });
+      else if (auth.effectiveUiType === "HQ_SAFE") next({ name: "hq-safe-documents" });
+      else if (auth.effectiveUiType === "SITE") next({ name: "site-documents" });
       else next({ name: "hq-other-dashboard" });
       return;
     }
   } else if (to.meta.uiType && auth.user && auth.user.ui_type !== to.meta.uiType) {
     if (auth.user.role === "WORKER") next({ name: "worker-mobile-list" });
-    else if (auth.user.ui_type === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
-    else if (auth.user.ui_type === "SITE") next({ name: "site-mobile-ops" });
+    else if (auth.user.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
+    else if (auth.user.ui_type === "SITE") next({ name: "site-documents" });
     else if (auth.user.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next({ name: "login" });
     return;
@@ -253,17 +276,17 @@ router.beforeEach((to, _from, next) => {
 
   if (to.name === "login" && auth.isAuthenticated) {
     if (auth.isTestPersonaMode) {
-      if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-document-explorer" });
-      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: "site-mobile-ops" });
+      if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-documents" });
+      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: "site-documents" });
       else if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
-      else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
-      else if (auth.user?.ui_type === "SITE") next({ name: "site-mobile-ops" });
+      else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
+      else if (auth.user?.ui_type === "SITE") next({ name: "site-documents" });
       else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next();
     } else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
-    else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-document-explorer" });
-    else if (auth.user?.ui_type === "SITE") next({ name: "site-mobile-ops" });
+    else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
+    else if (auth.user?.ui_type === "SITE") next({ name: "site-documents" });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next();
     return;

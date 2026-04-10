@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from app.config.security import get_password_hash, verify_password
 from app.core.auth import authenticate_user, create_user_access_token, DbDep, get_current_user
 from app.core.permissions import Role
+from app.modules.documents.models import Document
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.schemas.auth import ChangePasswordRequest, Token, UserMe
@@ -23,7 +24,7 @@ def _resolve_default_pilot_site(db, user: User) -> int | None:
         return user.site_id
 
     def _preferred_c18_site() -> Site | None:
-        return (
+        candidates = (
             db.query(Site)
             .filter(
                 (Site.site_name.contains("C18BL")) | (Site.site_name.contains("청라C18")),
@@ -31,8 +32,19 @@ def _resolve_default_pilot_site(db, user: User) -> int | None:
                 Site.address != "",
             )
             .order_by(Site.id.asc())
-            .first()
+            .all()
         )
+        if not candidates:
+            return None
+        ids = [s.id for s in candidates]
+        uploaded = (
+            db.query(Document.site_id)
+            .filter(Document.site_id.in_(ids), Document.file_path.isnot(None))
+            .group_by(Document.site_id)
+            .all()
+        )
+        uploaded_ids = {row[0] for row in uploaded}
+        return next((s for s in candidates if s.id in uploaded_ids), candidates[0])
 
     # 기존에 연결된 site가 C18 중복의 주소 없는 항목이면, 주소 있는 C18로 교정한다.
     if user.site_id:

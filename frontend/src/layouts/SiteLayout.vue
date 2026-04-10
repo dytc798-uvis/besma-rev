@@ -4,6 +4,19 @@
       <h1>BESMA 임시플랫폼 · 현장</h1>
       <nav class="layout-menu">
         <RouterLink to="/site/dashboard">대시보드</RouterLink>
+        <RouterLink to="/site/notices">공지사항</RouterLink>
+        <RouterLink v-if="!isMobileViewport" to="/site/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
+        <RouterLink
+          v-for="m in dynamicMenus"
+          :key="`site-dyn-${m.slug}`"
+          :to="`/site/custom-menus/${m.slug}`"
+        >
+          {{ m.title }}
+        </RouterLink>
+        <RouterLink to="/site/safety-education">안전 교육</RouterLink>
+        <RouterLink to="/site/safety-inspections">안전 점검</RouterLink>
+        <RouterLink to="/site/nonconformities">부적합사항</RouterLink>
+        <RouterLink to="/site/worker-voice">근로자의견청취</RouterLink>
         <RouterLink to="/site/mobile">모바일 운영</RouterLink>
         <RouterLink to="/site/mobile/site-search">현장 검색</RouterLink>
         <RouterLink to="/site/document-explorer">문서 탐색</RouterLink>
@@ -15,7 +28,8 @@
           >소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span></RouterLink
         >
         <RouterLink to="/site/opinions">운영 아이디어 제안</RouterLink>
-        <RouterLink to="/site/info">현장 정보/설정</RouterLink>
+        <RouterLink to="/site/info">설정</RouterLink>
+        <RouterLink to="/site/user-guide">사용설명서</RouterLink>
       </nav>
     </aside>
     <section class="layout-content">
@@ -39,6 +53,13 @@
           <button class="secondary" @click="handleLogout">로그아웃</button>
         </div>
       </header>
+      <div v-if="tickerTitles.length > 0" class="notice-ticker">
+        <div class="notice-ticker-track">
+          <span class="notice-ticker-item" v-for="(title, idx) in tickerTitles" :key="`${idx}-${title}`">
+            [공지] {{ title }}
+          </span>
+        </div>
+      </div>
       <main class="layout-main">
         <RouterView />
       </main>
@@ -57,30 +78,40 @@ const router = useRouter();
 const badge = ref({ incomplete_count: 0 });
 const communicationUnreadCount = ref(0);
 const siteName = ref<string>("");
+const tickerTitles = ref<string[]>([]);
+const dynamicMenus = ref<Array<{ slug: string; title: string }>>([]);
 const sidebarCollapsed = ref(false);
+const isMobileViewport = ref(false);
 let unreadTimer: number | null = null;
 const headerSiteLabel = computed(() => (siteName.value ? `현장: ${siteName.value}` : "현장: -"));
 
 onMounted(() => {
   initializeLayout();
+  syncViewport();
+  window.addEventListener("resize", syncViewport);
   unreadTimer = window.setInterval(() => {
-    void loadCommunicationUnreadCount();
+    void Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker()]);
   }, 30000);
 });
 
 onUnmounted(() => {
+  window.removeEventListener("resize", syncViewport);
   if (unreadTimer) {
     window.clearInterval(unreadTimer);
     unreadTimer = null;
   }
 });
 
+function syncViewport() {
+  isMobileViewport.value = window.innerWidth <= 768;
+}
+
 async function initializeLayout() {
   if (auth.token) {
     await auth.loadMe();
   }
   await Promise.all([loadBadge(), loadSiteName()]);
-  await loadCommunicationUnreadCount();
+  await Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDynamicMenus()]);
 }
 
 async function loadBadge() {
@@ -118,6 +149,24 @@ async function loadSiteName() {
     siteName.value = res.data?.site_name ?? "";
   } catch {
     siteName.value = "";
+  }
+}
+
+async function loadNoticeTicker() {
+  try {
+    const res = await api.get("/notices/latest", { params: { limit: 2 } });
+    tickerTitles.value = (res.data?.items ?? []).map((row: { title?: string }) => row.title || "").filter(Boolean);
+  } catch {
+    tickerTitles.value = [];
+  }
+}
+
+async function loadDynamicMenus() {
+  try {
+    const res = await api.get("/dynamic-menus/sidebar", { params: { ui_type: "SITE" } });
+    dynamicMenus.value = res.data?.items ?? [];
+  } catch {
+    dynamicMenus.value = [];
   }
 }
 
@@ -167,6 +216,38 @@ function toggleSidebar() {
   max-width: 48%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.notice-ticker {
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff7ed;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.notice-ticker-track {
+  display: inline-flex;
+  min-width: 100%;
+  gap: 36px;
+  padding: 6px 12px;
+  animation: ticker-move 18s linear infinite;
+}
+
+.notice-ticker-item {
+  color: #b91c1c;
+  font-weight: 700;
+  animation: ticker-blink 1s step-start infinite;
+}
+
+@keyframes ticker-move {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes ticker-blink {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.35; }
 }
 
 .sidebar-toggle-btn {

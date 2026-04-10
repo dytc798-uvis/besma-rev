@@ -16,9 +16,22 @@
         <RouterLink to="/hq-safe/approvals/inbox">결재함(공사중)</RouterLink>
         <RouterLink to="/hq-safe/approvals/history">승인/반려 이력</RouterLink>
         <RouterLink to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
+        <RouterLink to="/hq-safe/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
+        <RouterLink
+          v-for="m in dynamicMenus"
+          :key="`hq-dyn-${m.slug}`"
+          :to="`/hq-safe/custom-menus/${m.slug}`"
+        >
+          {{ m.title }}
+        </RouterLink>
+        <RouterLink to="/hq-safe/safety-education">안전 교육</RouterLink>
+        <RouterLink to="/hq-safe/safety-inspections">안전 점검</RouterLink>
+        <RouterLink to="/hq-safe/nonconformities">부적합사항</RouterLink>
+        <RouterLink to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
         <RouterLink to="/hq-safe/sites">현장 관리</RouterLink>
         <RouterLink to="/hq-safe/users">사용자 관리</RouterLink>
         <RouterLink to="/hq-safe/settings">안전문서 설정관리</RouterLink>
+        <RouterLink to="/hq-safe/user-guide">사용설명서</RouterLink>
       </nav>
     </aside>
     <section class="layout-content">
@@ -56,12 +69,14 @@ const auth = useAuthStore();
 const router = useRouter();
 const badge = ref({ incomplete_count: 0 });
 const sidebarCollapsed = ref(false);
+const dynamicMenus = ref<Array<{ slug: string; title: string }>>([]);
 
 onMounted(() => {
   if (!auth.user) {
     auth.loadMe();
   }
   loadBadge();
+  loadDynamicMenus();
 });
 
 async function loadBadge() {
@@ -72,6 +87,15 @@ async function loadBadge() {
     badge.value = res.data;
   } catch {
     badge.value = { incomplete_count: 0 };
+  }
+}
+
+async function loadDynamicMenus() {
+  try {
+    const res = await api.get("/dynamic-menus/sidebar", { params: { ui_type: "HQ_SAFE" } });
+    dynamicMenus.value = res.data?.items ?? [];
+  } catch {
+    dynamicMenus.value = [];
   }
 }
 

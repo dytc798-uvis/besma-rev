@@ -153,3 +153,52 @@ class ContractorDocumentBundleItem(Base):
         sa.UniqueConstraint("group_key", "document_type_id", name="uq_contractor_bundle_item_group_doc"),
     )
 
+
+class DynamicMenuConfig(Base):
+    __tablename__ = "dynamic_menu_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    slug: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    menu_type: Mapped[str] = mapped_column(String(20), nullable=False)  # BOARD | TABLE
+    target_ui_type: Mapped[str] = mapped_column(String(20), nullable=False, default="SITE")  # SITE | HQ_SAFE | BOTH
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    custom_config: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class DynamicMenuBoardPost(Base):
+    __tablename__ = "dynamic_menu_board_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    menu_id: Mapped[int] = mapped_column(ForeignKey("dynamic_menu_configs.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class DynamicMenuBoardComment(Base):
+    __tablename__ = "dynamic_menu_board_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    post_id: Mapped[int] = mapped_column(ForeignKey("dynamic_menu_board_posts.id"), nullable=False, index=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class DynamicMenuTableRow(Base):
+    __tablename__ = "dynamic_menu_table_rows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    menu_id: Mapped[int] = mapped_column(ForeignKey("dynamic_menu_configs.id"), nullable=False, index=True)
+    row_data: Mapped[str] = mapped_column(Text, nullable=False)  # JSON string
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
