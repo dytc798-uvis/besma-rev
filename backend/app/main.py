@@ -33,12 +33,21 @@ _original_request_form = Request.form
 
 
 def _patched_request_form(self, *, max_files=1000, max_fields=1000, max_part_size=settings.upload_max_part_size_bytes):
-    return _original_request_form(
-        self,
-        max_files=max_files,
-        max_fields=max_fields,
-        max_part_size=max_part_size,
-    )
+    # Starlette 버전에 따라 form() 시그니처가 달라 max_part_size를 받지 못할 수 있다.
+    # 로그인(application/x-www-form-urlencoded)까지 깨지지 않도록 호환 경로를 둔다.
+    try:
+        return _original_request_form(
+            self,
+            max_files=max_files,
+            max_fields=max_fields,
+            max_part_size=max_part_size,
+        )
+    except TypeError:
+        return _original_request_form(
+            self,
+            max_files=max_files,
+            max_fields=max_fields,
+        )
 
 
 Request.form = _patched_request_form
