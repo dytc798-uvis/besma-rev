@@ -17,8 +17,8 @@
         <tr v-for="l in ledgers" :key="l.id">
           <td><button class="secondary" @click="selectLedger(l.id)">{{ l.title }}</button></td>
           <td>{{ formatDateTime(l.uploaded_at) }}</td>
-          <td><a :href="resolveUrl(l.download_url)" target="_blank" rel="noopener">다운로드</a></td>
-          <td><a :href="resolveUrl(l.pdf_view_url)" target="_blank" rel="noopener">보기</a></td>
+          <td><button class="link-btn" type="button" @click="downloadLedger(l.download_url, l.file_name)">다운로드</button></td>
+          <td><button class="link-btn" type="button" @click="openLedgerPdf(l.pdf_view_url, `${l.title || 'nonconformity'}.pdf`)">보기</button></td>
         </tr>
       </tbody>
     </table>
@@ -34,7 +34,7 @@
             <td><input v-model="draftItems[it.id].improvement_date" type="date" /></td>
             <td><input v-model="draftItems[it.id].improvement_owner" type="text" /></td>
             <td>
-              <a v-if="it.improvement_photo_url" :href="resolveUrl(it.improvement_photo_url)" target="_blank" rel="noopener">보기</a>
+              <button v-if="it.improvement_photo_url" class="link-btn" type="button" @click="openFile(it.improvement_photo_url, `nonconformity-photo-${it.id}.jpg`)">보기</button>
               <input type="file" @change="onItemPhotoChange($event, it.id)" />
             </td>
             <td><button class="secondary" @click="saveItem(it.id)">저장</button></td>
@@ -57,12 +57,57 @@ const uploadingLedger = ref(false);
 const draftItems = ref<Record<number, { improvement_action: string; improvement_date: string; improvement_owner: string }>>({});
 const itemPhotos = ref<Record<number, File | null>>({});
 
-function resolveUrl(path: string) { return `${api.defaults.baseURL}${path}`; }
 function formatDateTime(v?: string) {
   if (!v) return "-";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return v;
   return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+}
+
+function canPreviewInBrowser(fileName: string | null) {
+  const ext = (fileName || "").split(".").pop()?.toLowerCase() || "";
+  return ["pdf", "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext);
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
+async function openFile(path: string, fileName: string | null) {
+  const previewable = canPreviewInBrowser(fileName);
+  const res = await api.get(path, {
+    params: { disposition: previewable ? "inline" : "attachment" },
+    responseType: "blob",
+  });
+  const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
+  const blob = new Blob([res.data], { type: contentType });
+  if (!previewable) {
+    downloadBlob(blob, fileName || "download.bin");
+    return;
+  }
+  const url = window.URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+  setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+}
+
+async function downloadLedger(path: string, fileName: string | null) {
+  const res = await api.get(path, {
+    params: { disposition: "attachment" },
+    responseType: "blob",
+  });
+  const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
+  downloadBlob(new Blob([res.data], { type: contentType }), fileName || "nonconformity-ledger.bin");
+}
+
+async function openLedgerPdf(path: string, fileName: string | null) {
+  await openFile(path, fileName);
 }
 
 function onLedgerFileChange(e: Event) { ledgerFile.value = (e.target as HTMLInputElement).files?.[0] ?? null; }
@@ -113,3 +158,12 @@ async function saveItem(itemId: number) {
 void loadLedgers();
 </script>
 
+<style scoped>
+.link-btn {
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  cursor: pointer;
+  padding: 0;
+}
+</style>

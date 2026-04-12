@@ -71,7 +71,6 @@ import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { BaseCard } from "@/components/product";
 import { api } from "@/services/api";
-import { DEMO_PILOT_SITE_CODE, isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
 import { canPreviewInBrowser } from "@/utils/filePreview";
 
 interface PendingRow {
@@ -102,9 +101,7 @@ function formatDateTime(value: string | null) {
 }
 
 async function load() {
-  const params: Record<string, string> = {};
-  if (isDemoPilotSiteScopeEnabled) params.site_code = DEMO_PILOT_SITE_CODE;
-  const res = await api.get("/documents/hq-pending", { params });
+  const res = await api.get("/documents/hq-pending");
   rows.value = res.data.items ?? [];
 }
 

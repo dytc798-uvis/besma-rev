@@ -42,6 +42,30 @@ RequireSiteAdmin = Annotated[
 ]
 
 
+def _uploaded_document_site_ids(db: DbDep) -> set[int]:
+    rows = (
+        db.query(Document.site_id)
+        .filter(Document.site_id.isnot(None), Document.file_path.isnot(None))
+        .group_by(Document.site_id)
+        .all()
+    )
+    return {int(site_id) for (site_id,) in rows if site_id is not None}
+
+
+def _preferred_site(rows: list[Site], uploaded_site_ids: set[int]) -> Site | None:
+    if not rows:
+        return None
+    return sorted(
+        rows,
+        key=lambda s: (
+            0 if s.id in uploaded_site_ids else 1,
+            0 if (s.address or "").strip() else 1,
+            0 if s.site_code == "SITE002" else 1,
+            s.id,
+        ),
+    )[0]
+
+
 @router.get("", response_model=list[SiteResponse])
 def list_sites(db: DbDep, current_user: CurrentUserDep):
     query = db.query(Site)
@@ -54,22 +78,13 @@ def list_sites(db: DbDep, current_user: CurrentUserDep):
     if current_user.role == Role.SITE:
         return rows
 
+    uploaded_site_ids = _uploaded_document_site_ids(db)
+
     # 운영 고정 노출:
     # 1) C18(실업로드 대상) 1개만 유지
     # 2) 그 외 현장은 샘플 1개만 유지
     c18_candidates = [s for s in rows if ("C18BL" in (s.site_name or "")) or ("청라C18" in (s.site_name or ""))]
-    chosen_c18 = next((s for s in c18_candidates if s.site_code == "SITE002"), None)
-    if chosen_c18 is None and c18_candidates:
-        # SITE002가 없으면 업로드 이력 있는 C18 현장을 사용
-        c18_ids = [s.id for s in c18_candidates]
-        uploaded = (
-            db.query(Document.site_id)
-            .filter(Document.site_id.in_(c18_ids), Document.file_path.isnot(None))
-            .group_by(Document.site_id)
-            .all()
-        )
-        uploaded_ids = {row[0] for row in uploaded}
-        chosen_c18 = next((s for s in c18_candidates if s.id in uploaded_ids), c18_candidates[0])
+    chosen_c18 = _preferred_site(c18_candidates, uploaded_site_ids)
 
     non_c18 = [s for s in rows if chosen_c18 is None or s.id != chosen_c18.id]
     # 나머지는 샘플 1개만 노출
@@ -84,17 +99,21 @@ def list_sites(db: DbDep, current_user: CurrentUserDep):
 
 
 @router.get("/search", response_model=list[SiteSearchResponse])
-def search_sites(db: DbDep, _: CurrentUserDep):
+def search_sites(db: DbDep, current_user: CurrentUserDep):
     rows = (
         db.query(Site)
         .filter(Site.address.isnot(None), Site.address != "")
         .order_by(site_list_priority_order(), Site.id.asc())
         .all()
     )
-    c18_rows = [s for s in rows if ("C18BL" in (s.site_name or "")) or ("청라C18" in (s.site_name or ""))]
-    chosen_c18 = next((s for s in c18_rows if s.site_code == "SITE002"), None) or (c18_rows[0] if c18_rows else None)
-    sample_other = next((s for s in rows if chosen_c18 is None or (s.id != chosen_c18.id and "C18BL" not in (s.site_name or "") and "청라C18" not in (s.site_name or ""))), None)
-    visible = [r for r in [chosen_c18, sample_other] if r is not None] or rows[:1]
+    if current_user.role == Role.SITE:
+        visible = rows
+    else:
+        uploaded_site_ids = _uploaded_document_site_ids(db)
+        c18_rows = [s for s in rows if ("C18BL" in (s.site_name or "")) or ("청라C18" in (s.site_name or ""))]
+        chosen_c18 = _preferred_site(c18_rows, uploaded_site_ids)
+        sample_other = next((s for s in rows if chosen_c18 is None or (s.id != chosen_c18.id and "C18BL" not in (s.site_name or "") and "청라C18" not in (s.site_name or ""))), None)
+        visible = [r for r in [chosen_c18, sample_other] if r is not None] or rows[:1]
     return [
         SiteSearchResponse(
             id=site.id,

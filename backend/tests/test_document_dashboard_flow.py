@@ -425,3 +425,128 @@ def test_site_requirement_read_model_weekly_and_rolling_uploads(tmp_path: Path):
     assert rolling_item["current_cycle_status"] == "SUBMITTED"
     assert rolling_item["site_display_bucket"] == "CURRENT_TASK"
     assert rolling_item["current_period_label"] == today
+
+
+def test_hq_document_queries_prioritize_site_id_over_site_code(tmp_path: Path):
+    db_file = tmp_path / "test_hq_document_queries_prioritize_site_id.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.workers import models as worker_models  # noqa: F401
+    from app.modules.documents import models as document_models  # noqa: F401
+    from app.modules.approvals import models as approval_models  # noqa: F401
+    from app.modules.opinions import models as opinion_models  # noqa: F401
+    from app.modules.document_settings import models as document_settings_models  # noqa: F401
+    from app.modules.document_generation import models as document_generation_models  # noqa: F401
+    from app.modules.document_submissions import models as document_submissions_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    db = TestingSessionLocal()
+    pilot_site = Site(site_code="SITE002", site_name="[1.팀] 청라C18BL")
+    actual_site = Site(site_code="SITE999", site_name="[1.팀] 청라C18BL")
+    db.add_all([pilot_site, actual_site])
+    db.flush()
+
+    cycle = SubmissionCycle(code="DAILY", name="일간", sort_order=1, is_auto_generatable=True)
+    db.add(cycle)
+    db.flush()
+    dt = DocumentTypeMaster(
+        code="DAILY_DOC",
+        name="일상점검",
+        default_cycle_id=cycle.id,
+        generation_rule="DAILY",
+        generation_value=None,
+        due_offset_days=0,
+        is_required_default=True,
+    )
+    db.add(dt)
+    db.flush()
+    req = DocumentRequirement(
+        site_id=actual_site.id,
+        document_type_id=dt.id,
+        code="DAILY_SAFETY_LOG",
+        title="일일안전일지",
+        frequency="DAILY",
+        is_required=True,
+        is_enabled=True,
+        display_order=1,
+        due_rule_text="매일 업무 종료 전 제출",
+    )
+    db.add(req)
+
+    hq_user = User(
+        id=2,
+        name="hq-safe",
+        login_id="hq_dash_reviewer",
+        password_hash="x",
+        site_id=actual_site.id,
+        role=Role.HQ_SAFE,
+    )
+    site_user = User(
+        id=3,
+        name="site-manager",
+        login_id="site_dash_manager",
+        password_hash="x",
+        site_id=actual_site.id,
+        role=Role.SITE,
+    )
+    db.add_all([hq_user, site_user])
+    db.commit()
+    req_id = req.id
+    actual_site_id = actual_site.id
+    db.close()
+
+    app = FastAPI()
+    app.include_router(document_submissions_router)
+    app.include_router(documents_router)
+
+    def override_get_db():
+        local_db = TestingSessionLocal()
+        try:
+            yield local_db
+        finally:
+            local_db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    current_user = {"value": SimpleNamespace(id=3, role=Role.SITE, site_id=actual_site_id)}
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: current_user["value"]
+    client = TestClient(app)
+
+    today = date(2026, 4, 12).isoformat()
+    upload = client.post(
+        "/document-submissions/upload",
+        data={
+            "site_id": str(actual_site_id),
+            "requirement_id": str(req_id),
+            "document_type_code": "DAILY_SAFETY_LOG",
+            "work_date": today,
+        },
+        files={"file": ("daily-log.txt", b"daily safety log", "text/plain")},
+    )
+    assert upload.status_code == 200
+
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=actual_site_id)
+
+    deduped_dashboard = client.get(
+        "/documents/hq-dashboard",
+        params={"period": "day", "date": today},
+    )
+    assert deduped_dashboard.status_code == 200
+    assert [row["site_id"] for row in deduped_dashboard.json()["site_summaries"]] == [actual_site_id]
+
+    dashboard = client.get(
+        "/documents/hq-dashboard",
+        params={"period": "day", "date": today, "site_id": actual_site_id, "site_code": "SITE002"},
+    )
+    assert dashboard.status_code == 200
+    assert [row["site_id"] for row in dashboard.json()["site_summaries"]] == [actual_site_id]
+    assert all(item["site_id"] == actual_site_id for item in dashboard.json()["items"])
+
+    pending = client.get(
+        "/documents/hq-pending",
+        params={"site_id": actual_site_id, "site_code": "SITE002"},
+    )
+    assert pending.status_code == 200
+    assert pending.json()["count"] == 1
+    assert all(item["site_id"] == actual_site_id for item in pending.json()["items"])

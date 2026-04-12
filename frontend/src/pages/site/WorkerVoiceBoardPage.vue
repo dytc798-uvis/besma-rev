@@ -5,9 +5,9 @@
       <button class="secondary" @click="load">새로고침</button>
     </div>
     <div class="upload-row">
-      <input v-model="ledgerTitle" type="text" placeholder="관리대장 제목" />
+      <input v-model="ledgerTitle" type="text" placeholder="관리대장 제목 (선택)" />
       <input type="file" accept=".xlsx,.xls,.csv" @change="onFileChange" />
-      <button class="primary" :disabled="!ledgerTitle.trim() || !ledgerFile || uploading" @click="uploadLedger">
+      <button class="primary" :disabled="!ledgerFile || uploading" @click="uploadLedger">
         {{ uploading ? "업로드 중..." : "대장 업로드" }}
       </button>
     </div>
@@ -97,11 +97,13 @@ function canPromote(item: any) { return ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMI
 
 async function load() { const res = await api.get("/safety-features/worker-voice/items"); items.value = res.data.items ?? []; }
 async function uploadLedger() {
-  if (!ledgerTitle.value.trim() || !ledgerFile.value) return;
+  if (!ledgerFile.value) return;
   uploading.value = true;
   try {
     const form = new FormData();
-    form.append("title", ledgerTitle.value.trim());
+    if (ledgerTitle.value.trim()) {
+      form.append("title", ledgerTitle.value.trim());
+    }
     form.append("file", ledgerFile.value);
     await api.post("/safety-features/worker-voice/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
     ledgerTitle.value = "";

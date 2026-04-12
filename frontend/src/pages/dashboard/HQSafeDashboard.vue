@@ -86,14 +86,6 @@
       <div class="main-grid">
         <BaseCard class="panel-sites mb-5" title="현장 모니터링">
           <template #actions>
-            <button
-              v-if="isDemoPilotSiteScopeEnabled"
-              type="button"
-              class="panel-link"
-              @click="toggleMonitoringSitesExpand"
-            >
-              {{ showAllMonitoringSites ? "기본 보기" : "전체 현장 보기" }}
-            </button>
             <RouterLink class="panel-link" :to="{ name: 'hq-safe-sites' }">전체 보기</RouterLink>
           </template>
           <div class="site-card-grid">
@@ -122,7 +114,6 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { api } from "@/services/api";
-import { DEMO_PILOT_SITE_CODE, isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
 import {
   BaseCard,
   FilterBar,
@@ -178,13 +169,6 @@ const filterKeyword = ref("");
 /** 팀·조직: 선택값은 적용 버튼 후 반영 */
 const filterTeamDraft = ref("");
 const filterTeamApplied = ref("");
-
-const showAllMonitoringSites = ref(false);
-
-function toggleMonitoringSitesExpand() {
-  showAllMonitoringSites.value = !showAllMonitoringSites.value;
-  void load();
-}
 
 const totalDocs = computed(() => data.value?.total_documents ?? 0);
 const pendingDocs = computed(() => data.value?.pending_documents ?? 0);
@@ -300,9 +284,7 @@ const filteredSites = computed(() => {
 });
 
 const monitoringSiteCards = computed(() => {
-  const base = filteredSites.value;
-  if (!isDemoPilotSiteScopeEnabled || showAllMonitoringSites.value) return base;
-  return base.filter((s) => s.site_code === DEMO_PILOT_SITE_CODE);
+  return filteredSites.value;
 });
 
 const topSitesByDocs = computed(() => {
@@ -351,13 +333,8 @@ async function load() {
   try {
     const today = new Date().toISOString().slice(0, 10);
     const dashParams: Record<string, string> = { period: "day", date: today };
-    if (isDemoPilotSiteScopeEnabled && !showAllMonitoringSites.value) {
-      dashParams.site_code = DEMO_PILOT_SITE_CODE;
-    }
     const [sumRes, sitesRes, dashRes, opRes] = await Promise.all([
-      api.get<DashboardSummary>("/dashboard/summary", {
-        params: { site_code: DEMO_PILOT_SITE_CODE },
-      }),
+      api.get<DashboardSummary>("/dashboard/summary"),
       api.get<SiteRow[]>("/sites"),
       api.get("/documents/hq-dashboard", { params: dashParams }),
       api.get<OpinionRow[]>("/opinions"),

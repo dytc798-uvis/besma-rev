@@ -14,6 +14,7 @@ BACKEND_DIR="${PROJECT_ROOT}/backend"
 VENV_PY="${BACKEND_DIR}/.venv/bin/python"
 HEALTH_URL="${BESMA_HEALTH_URL:-http://127.0.0.1:8001/health}"
 RESTART_SLEEP="${BESMA_RESTART_SLEEP:-4}"
+NGINX_UPLOAD_LIMIT="${BESMA_NGINX_CLIENT_MAX_BODY_SIZE:-20m}"
 
 cd "${PROJECT_ROOT}"
 
@@ -30,6 +31,21 @@ if [[ ! -x "${VENV_PY}" ]]; then
   exit 1
 fi
 
+ensure_nginx_upload_limit() {
+  if [[ ! -d /etc/nginx/conf.d ]]; then
+    echo "[deploy] skip nginx upload limit (conf.d not found)"
+    return
+  fi
+
+  local conf_path="/etc/nginx/conf.d/besma-client-max-body-size.conf"
+  local desired="client_max_body_size ${NGINX_UPLOAD_LIMIT};"
+
+  echo "[deploy] ensure nginx upload limit: ${desired}"
+  printf '%s\n' "${desired}" | sudo tee "${conf_path}" >/dev/null
+  sudo nginx -t
+  sudo systemctl reload nginx
+}
+
 cd "${BACKEND_DIR}"
 
 # DB 마이그레이션: 기본 비활성. 운영에서 필요할 때만 RUN_MIGRATIONS=1
@@ -39,6 +55,8 @@ if [[ "${RUN_MIGRATIONS:-0}" == "1" ]]; then
 else
   echo "[deploy] skip alembic (set RUN_MIGRATIONS=1 to run)"
 fi
+
+ensure_nginx_upload_limit
 
 echo "[deploy] systemctl restart besma-backend (sudo)"
 sudo systemctl restart besma-backend

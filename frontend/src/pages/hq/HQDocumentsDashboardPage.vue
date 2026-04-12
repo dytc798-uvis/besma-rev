@@ -218,7 +218,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
-import { DEMO_PILOT_SITE_CODE, isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
+import { isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
 
 interface SiteSummaryRow {
@@ -593,7 +593,6 @@ async function load() {
       period: period.value,
       date: dashboardQueryDate(),
       ...(routeSiteId != null ? { site_id: routeSiteId } : {}),
-      ...(isDemoPilotSiteScopeEnabled ? { site_code: DEMO_PILOT_SITE_CODE } : {}),
     };
     const useQuickFirst =
       !isDemoPilotSiteScopeEnabled &&

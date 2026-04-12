@@ -93,6 +93,48 @@ def _site_team_slot(site_name: str) -> str | None:
     return None
 
 
+def _dedupe_sites_by_uploaded_documents(db: Session, sites: list[Site]) -> list[Site]:
+    if len(sites) <= 1:
+        return sites
+
+    site_ids = [s.id for s in sites]
+    uploaded_ids = {
+        int(site_id)
+        for (site_id,) in (
+            db.query(Document.site_id)
+            .filter(Document.site_id.in_(site_ids), Document.file_path.isnot(None))
+            .group_by(Document.site_id)
+            .all()
+        )
+        if site_id is not None
+    }
+
+    grouped: dict[str, list[Site]] = {}
+    ordered_keys: list[str] = []
+    for site in sites:
+        key = (site.site_name or "").strip()
+        if key not in grouped:
+            grouped[key] = []
+            ordered_keys.append(key)
+        grouped[key].append(site)
+
+    chosen: list[Site] = []
+    for key in ordered_keys:
+        rows = grouped[key]
+        chosen.append(
+            sorted(
+                rows,
+                key=lambda s: (
+                    0 if s.id in uploaded_ids else 1,
+                    0 if (s.address or "").strip() else 1,
+                    0 if s.site_code == "SITE002" else 1,
+                    s.id,
+                ),
+            )[0]
+        )
+    return chosen
+
+
 def _compute_summary(items: list[dict]) -> dict[str, int]:
     summary = {
         "total_required": 0,
@@ -236,10 +278,13 @@ def get_hq_dashboard(
     sites = db.query(Site).order_by(site_list_priority_order(), Site.id.asc()).all()
     if team_slot:
         sites = [s for s in sites if _site_team_slot(s.site_name) == team_slot]
-    if site_code:
+    # site_id가 명시되면 실제 연결된 현장을 우선 본다.
+    if site_code and site_id is None:
         sites = [s for s in sites if s.site_code == site_code]
     if site_id is not None:
         sites = [s for s in sites if s.id == int(site_id)]
+    else:
+        sites = _dedupe_sites_by_uploaded_documents(db, sites)
     site_summaries: list[dict] = []
     all_items: list[dict] = []
     pending_review_count = 0
@@ -481,7 +526,7 @@ def get_hq_pending_documents(
     )
     if site_id is not None:
         query = query.filter(Document.site_id == site_id)
-    if site_code:
+    if site_code and site_id is None:
         sc_site = db.query(Site).filter(Site.site_code == site_code).first()
         if sc_site is None:
             return {"items": []}

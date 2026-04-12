@@ -314,12 +314,12 @@ function menuIcon(key: string) {
 }
 
 .menu-link-primary {
-  font-weight: 700;
-  background: #eef6ff;
+  font-weight: 600;
+  background: #f8fbff;
 }
 
 .menu-link-secondary {
-  opacity: 0.72;
+  opacity: 0.94;
 }
 
 .menu-link-active {
