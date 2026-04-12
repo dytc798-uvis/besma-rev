@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import re
 from datetime import date
@@ -43,6 +44,44 @@ _PILOT_SITE_CODE = "SITE002"  # MVP: 파일럿 = 청라 C18BL(대우건설) 시�
 _GROUP_KEY_SAMSUNG = "SAMSUNG"
 _GROUP_KEY_GENERAL = "GENERAL"
 _USER_GUIDE_SHOTS_ROOT = settings.storage_root / "user_guide_shots"
+_USER_GUIDE_SHOT_EDITOR_LOGIN_ID = "hq01"
+_USER_GUIDE_IMAGE_MAX_EDGE_PX = 1600
+_USER_GUIDE_JPEG_QUALITY = 82
+
+
+def _optimize_user_guide_shot_bytes(raw: bytes) -> tuple[bytes, str]:
+    """리사이즈 + JPEG로 통일해 용량·표시를 맞춘다. 실패 시 원본을 그대로 쓴다."""
+    try:
+        from PIL import Image
+    except Exception:
+        return raw, ""
+
+    try:
+        img = Image.open(io.BytesIO(raw))
+        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in getattr(img, "info", {})):
+            rgba = img.convert("RGBA")
+            bg = Image.new("RGB", rgba.size, (255, 255, 255))
+            bg.paste(rgba, mask=rgba.split()[-1])
+            img = bg
+        else:
+            img = img.convert("RGB")
+
+        max_edge = _USER_GUIDE_IMAGE_MAX_EDGE_PX
+        if img.width > max_edge or img.height > max_edge:
+            try:
+                resample = Image.Resampling.LANCZOS
+            except AttributeError:
+                resample = Image.LANCZOS  # type: ignore[attr-defined]
+            img.thumbnail((max_edge, max_edge), resample)
+
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=_USER_GUIDE_JPEG_QUALITY, optimize=True)
+        data = out.getvalue()
+        if data:
+            return data, ".jpg"
+    except Exception:
+        pass
+    return raw, ""
 
 
 def _normalize_slug(text: str) -> str:
@@ -613,6 +652,10 @@ async def upload_user_guide_shot(
     file: UploadFile = File(...),
     current_user=Depends(require_cycle_admin),
 ):
+    login_id = (getattr(current_user, "login_id", None) or "").strip().lower()
+    if login_id != _USER_GUIDE_SHOT_EDITOR_LOGIN_ID.lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User guide shots can only be uploaded by the designated editor account")
+
     section_text = (section or "").strip()
     if not section_text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="section is required")
@@ -628,6 +671,11 @@ async def upload_user_guide_shot(
     ext = (Path(source_name).suffix or ".png").lower()
     if ext not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미지 파일만 업로드할 수 있습니다.")
+
+    optimized, new_ext = _optimize_user_guide_shot_bytes(upload_bytes)
+    if new_ext:
+        upload_bytes = optimized
+        ext = new_ext
 
     section_dir_name = _sanitize_path_segment(section_text, fallback="section")
     section_dir = _USER_GUIDE_SHOTS_ROOT / section_dir_name

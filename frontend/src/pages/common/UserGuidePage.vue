@@ -15,7 +15,7 @@
     <section class="guide-content">
       <h1>{{ currentSection?.title || "사용설명서" }}</h1>
       <div class="content-box">{{ currentSection?.body || "불러오는 중..." }}</div>
-      <div v-if="isHqUi" class="upload-panel">
+      <div v-if="canManageGuideShots" class="upload-panel">
         <h3>화면 예시 업로드</h3>
         <div class="upload-row">
           <input v-model="uploadLabel" type="text" class="upload-input" placeholder="이미지 설명(선택)" />
@@ -24,6 +24,7 @@
             {{ uploadLoading ? "업로드 중..." : "이미지 업로드" }}
           </button>
         </div>
+        <p class="upload-hint">업로드 시 서버에서 크기를 줄이고 JPEG로 변환해 저장합니다.</p>
         <p v-if="uploadMessage" class="upload-message">{{ uploadMessage }}</p>
       </div>
       <div class="shot-wrap">
@@ -46,7 +47,7 @@
           </article>
         </div>
       </div>
-      <div class="capture-tip">
+      <div v-if="canManageGuideShots" class="capture-tip">
         <strong>촬영 팁</strong>
         <p>헤더/사이드바/핵심 버튼이 함께 보이도록 1장, 상세 동작(등록/저장/업로드) 1장을 권장합니다.</p>
       </div>
@@ -73,7 +74,10 @@ const uploadFile = ref<File | null>(null);
 const uploadLoading = ref(false);
 const uploadMessage = ref("");
 const auth = useAuthStore();
-const isHqUi = computed(() => auth.user?.ui_type === "HQ_SAFE");
+/** 사용설명서 스크린샷 업로드·촬영팁은 지정 편집 계정(hq01) 전용 */
+const canManageGuideShots = computed(
+  () => (auth.user?.login_id || "").trim().toLowerCase() === "hq01",
+);
 
 const currentSection = computed(() => sections.value.find((s) => s.title === selectedTitle.value) ?? sections.value[0]);
 const screenshotConfig: Record<string, Array<{ src: string; label: string; guide: string }>> = {
@@ -214,6 +218,7 @@ watch(selectedTitle, (title) => {
 .upload-panel h3 { margin:0 0 8px; font-size: 15px; }
 .upload-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 .upload-input { min-width: 220px; border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px; }
+.upload-hint { margin:8px 0 0; font-size:12px; color:#64748b; }
 .upload-message { margin:8px 0 0; font-size:12px; color:#b91c1c; }
 .shot-wrap { margin-top: 16px; }
 .shot-wrap h3 { margin: 0 0 8px; font-size: 16px; }
