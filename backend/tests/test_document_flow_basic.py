@@ -20,6 +20,7 @@ from app.modules.document_settings.models import DocumentRequirement, DocumentTy
 from app.modules.document_submissions.routes import router as document_submissions_router
 from app.modules.documents.models import Document, DocumentStatus
 from app.modules.documents.routes import router as documents_router
+from app.modules.documents.service import get_site_requirement_status
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 
@@ -430,6 +431,15 @@ def test_daily_upload_file_name_and_supervisor_daily_override(tmp_path: Path):
         assert supervisor_inst.period_start.isoformat() == today
         assert supervisor_inst.period_end.isoformat() == today
         assert supervisor_inst.cycle_code == "DAILY"
+
+        status_rows = get_site_requirement_status(
+            db_check,
+            site_id=site_id,
+            period="all",
+            target_date=date.fromisoformat(today),
+        )
+        sup_row = next(r for r in status_rows if r.get("document_type_code") == "SUPERVISOR_CHECKLIST")
+        assert sup_row["frequency"] == "DAILY"
     finally:
         db_check.close()
 

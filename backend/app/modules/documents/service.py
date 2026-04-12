@@ -45,6 +45,15 @@ _STATUS_IN_REVIEW = "IN_REVIEW"
 _STATUS_APPROVED = "APPROVED"
 _STATUS_REJECTED = "REJECTED"
 _PRIMARY_SITE_FREQUENCIES = {"DAILY", "WEEKLY", "MONTHLY", "ROLLING", "ADHOC", "EVENT", "ONE_TIME"}
+# 제출 API와 동일하게 특정 요구사항 코드는 저장된 주기와 무관하게 현장 대시보드에서 일별(당일)로 취급한다.
+_SITE_REQUIREMENT_ALWAYS_DAILY_CODES = frozenset({"SUPERVISOR_CHECKLIST"})
+
+
+def _effective_site_requirement_frequency(requirement_code: str | None, stored_frequency: str | None) -> str:
+    code = (requirement_code or "").strip().upper()
+    if code in _SITE_REQUIREMENT_ALWAYS_DAILY_CODES:
+        return "DAILY"
+    return (stored_frequency or "").upper()
 
 
 def list_document_comments(
@@ -409,7 +418,7 @@ def _pick_latest_for_requirement(
     to_date: date,
     apply_period_filter: bool = True,
 ) -> tuple[Document | None, DocumentInstance | None]:
-    freq = (requirement.frequency or "").upper()
+    freq = _effective_site_requirement_frequency(getattr(requirement, "code", None), getattr(requirement, "frequency", None))
 
     q = (
         db.query(Document, DocumentInstance)
@@ -499,7 +508,7 @@ def get_site_requirement_status(
         section = _section_from_requirement(req)
         if section == "COMPLETION" and not completion_upload_enabled:
             continue
-        freq = (req.frequency or "").upper()
+        freq = _effective_site_requirement_frequency(req.code, req.frequency)
         if freq not in target_freqs:
             continue
         cycle_start, cycle_end = _cycle_window_for_frequency(freq, target_date)
@@ -860,6 +869,8 @@ def get_requirement_document_history(
     if requirement is None:
         return []
 
+    history_freq = _effective_site_requirement_frequency(requirement.code, requirement.frequency)
+
     histories = (
         db.query(DocumentUploadHistory, Document, DocumentInstance)
         .join(Document, Document.id == DocumentUploadHistory.document_id)
@@ -907,7 +918,7 @@ def get_requirement_document_history(
                 "period_start": doc.period_start if doc is not None else (inst.period_start if inst else None),
                 "period_end": doc.period_end if doc is not None else (inst.period_end if inst else None),
                 "period_label": _period_label(
-                    freq=(requirement.frequency or ""),
+                    freq=history_freq,
                     start=(doc.period_start if doc is not None else (inst.period_start if inst else None)),
                     end=(doc.period_end if doc is not None else (inst.period_end if inst else None)),
                 ),
