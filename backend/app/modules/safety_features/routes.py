@@ -706,10 +706,10 @@ def render_nonconformity_ledger_pdf(ledger_id: int, db: DbDep, current_user: Cur
         .order_by(NonconformityItem.row_no.asc(), NonconformityItem.id.asc())
         .all()
     )
-    pdfmetrics.registerFont(UnicodeCIDFont("HYGoThic-Medium"))
+    pdfmetrics.registerFont(UnicodeCIDFont("HYGothic-Medium"))
     buff = io.BytesIO()
     p = canvas.Canvas(buff, pagesize=A4)
-    p.setFont("HYGoThic-Medium", 12)
+    p.setFont("HYGothic-Medium", 12)
     y = 800
     p.drawString(40, y, f"부적합사항관리대장: {ledger.title}")
     y -= 24
@@ -719,7 +719,7 @@ def render_nonconformity_ledger_pdf(ledger_id: int, db: DbDep, current_user: Cur
         y -= 18
         if y < 60:
             p.showPage()
-            p.setFont("HYGoThic-Medium", 12)
+            p.setFont("HYGothic-Medium", 12)
             y = 800
     p.save()
     return Response(

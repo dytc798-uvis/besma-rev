@@ -48,6 +48,9 @@ ensure_nginx_upload_limit() {
 
 cd "${BACKEND_DIR}"
 
+echo "[deploy] install backend dependencies"
+"${VENV_PY}" -m pip install -r requirements.txt
+
 # DB 마이그레이션: 기본 비활성. 운영에서 필요할 때만 RUN_MIGRATIONS=1
 if [[ "${RUN_MIGRATIONS:-0}" == "1" ]]; then
   echo "[deploy] alembic upgrade head"
