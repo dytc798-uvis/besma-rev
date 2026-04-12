@@ -85,6 +85,14 @@ def _normalize_ui_type(value: str) -> str:
     return v
 
 
+def _user_ui_type_str(current_user) -> str:
+    """SQLAlchemy Enum(UIType)은 str()이 'UIType.SITE' 형태가 되므로 API 비교에는 .value를 쓴다."""
+    raw = getattr(current_user, "ui_type", None)
+    if raw is None:
+        return ""
+    return str(raw.value) if hasattr(raw, "value") else str(raw)
+
+
 def _sanitize_path_segment(value: str, *, fallback: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9\-_]+", "_", (value or "").strip())
     cleaned = cleaned.strip("_")
@@ -647,7 +655,7 @@ user_guide_shots_router = APIRouter(prefix="/user-guide-shots", tags=["user-guid
 
 
 def _check_menu_access(current_user: CurrentUserDep, menu: DynamicMenuConfig) -> None:
-    user_ui = str(getattr(current_user, "ui_type", "") or "")
+    user_ui = _user_ui_type_str(current_user)
     if menu.target_ui_type not in {"BOTH", user_ui}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
 
@@ -657,7 +665,7 @@ def list_sidebar_dynamic_menus(ui_type: str, db: DbDep, current_user: CurrentUse
     req_ui = (ui_type or "").upper()
     if req_ui not in {"SITE", "HQ_SAFE"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ui_type must be SITE or HQ_SAFE")
-    if str(getattr(current_user, "ui_type", "") or "") != req_ui:
+    if _user_ui_type_str(current_user) != req_ui:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     rows = (
         db.query(DynamicMenuConfig)
@@ -674,7 +682,7 @@ def list_sidebar_dynamic_menus(ui_type: str, db: DbDep, current_user: CurrentUse
 @public_router.get("/menu-order/{ui_type}")
 def get_sidebar_menu_order(ui_type: str, db: DbDep, current_user: CurrentUserDep):
     req_ui = _normalize_ui_type(ui_type)
-    if str(getattr(current_user, "ui_type", "") or "") != req_ui:
+    if _user_ui_type_str(current_user) != req_ui:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     row = db.query(UIMenuOrderConfig).filter(UIMenuOrderConfig.ui_type == req_ui).first()
     return {"ui_type": req_ui, "ordered_keys": _parse_menu_order_keys(row.ordered_keys if row else "[]")}
