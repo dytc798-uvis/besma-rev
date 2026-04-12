@@ -44,9 +44,19 @@ _STATUS_SUBMITTED = "SUBMITTED"
 _STATUS_IN_REVIEW = "IN_REVIEW"
 _STATUS_APPROVED = "APPROVED"
 _STATUS_REJECTED = "REJECTED"
+_PRIMARY_SITE_FREQUENCIES = {"DAILY", "WEEKLY", "MONTHLY", "ROLLING", "ADHOC", "EVENT", "ONE_TIME"}
 
 
 def _latest_review_comment_map(db: Session, document_ids: list[int]) -> dict[int, str]:
+    snapshots = _latest_review_snapshot_map(db, document_ids)
+    return {
+        document_id: str(payload["comment"])
+        for document_id, payload in snapshots.items()
+        if payload.get("comment")
+    }
+
+
+def _latest_review_snapshot_map(db: Session, document_ids: list[int]) -> dict[int, dict[str, Any]]:
     if not document_ids:
         return {}
     rows = (
@@ -64,11 +74,14 @@ def _latest_review_comment_map(db: Session, document_ids: list[int]) -> dict[int
         )
         .all()
     )
-    latest: dict[int, str] = {}
+    latest: dict[int, dict[str, Any]] = {}
     for row in rows:
         if row.document_id in latest:
             continue
-        latest[row.document_id] = row.comment
+        latest[row.document_id] = {
+            "comment": row.comment,
+            "action_at": row.action_at,
+        }
     return latest
 
 
@@ -157,6 +170,82 @@ def _target_frequencies(period: str) -> set[str]:
     raise ValueError("period must be one of: all, day, week, month, quarter, half_year, year, event")
 
 
+def _cycle_window_for_frequency(freq: str, target_date: date) -> tuple[date, date]:
+    frequency = (freq or "").upper()
+    if frequency == "DAILY":
+        return target_date, target_date
+    if frequency == "WEEKLY":
+        start = target_date - timedelta(days=target_date.weekday())
+        return start, start + timedelta(days=6)
+    if frequency == "MONTHLY":
+        start = date(target_date.year, target_date.month, 1)
+        if target_date.month == 12:
+            next_month = date(target_date.year + 1, 1, 1)
+        else:
+            next_month = date(target_date.year, target_date.month + 1, 1)
+        return start, next_month - timedelta(days=1)
+    if frequency == "QUARTERLY":
+        quarter_start_month = ((target_date.month - 1) // 3) * 3 + 1
+        start = date(target_date.year, quarter_start_month, 1)
+        next_q_month = quarter_start_month + 3
+        if next_q_month > 12:
+            next_q = date(target_date.year + 1, next_q_month - 12, 1)
+        else:
+            next_q = date(target_date.year, next_q_month, 1)
+        return start, next_q - timedelta(days=1)
+    if frequency == "HALF_YEARLY":
+        if target_date.month <= 6:
+            return date(target_date.year, 1, 1), date(target_date.year, 6, 30)
+        return date(target_date.year, 7, 1), date(target_date.year, 12, 31)
+    if frequency == "YEARLY":
+        return date(target_date.year, 1, 1), date(target_date.year, 12, 31)
+    return target_date, target_date
+
+
+def _normalized_current_cycle_status(
+    doc: Document | None,
+    inst: DocumentInstance | None,
+    *,
+    is_required: bool,
+) -> tuple[str, bool, str | None]:
+    if not is_required:
+        return _STATUS_NOT_REQUIRED, False, None
+    if doc is None:
+        return _STATUS_NOT_SUBMITTED, False, None
+    source_status = _status_from_doc(doc, inst, is_required)
+    if source_status == _STATUS_REJECTED:
+        return _STATUS_NOT_SUBMITTED, True, source_status
+    return source_status, False, source_status
+
+
+def _period_label(*, freq: str, start: date | None, end: date | None) -> str:
+    frequency = (freq or "").upper()
+    if start is None and end is None:
+        return "현재 주기"
+    if frequency == "WEEKLY" and start is not None:
+        iso_year, iso_week, _ = start.isocalendar()
+        return f"{iso_year}년 {iso_week}주차"
+    if frequency == "MONTHLY" and start is not None:
+        return f"{start.year}년 {start.month}월"
+    if frequency == "QUARTERLY" and start is not None:
+        quarter = ((start.month - 1) // 3) + 1
+        return f"{start.year}년 {quarter}분기"
+    if frequency == "HALF_YEARLY" and start is not None:
+        half = "상반기" if start.month <= 6 else "하반기"
+        return f"{start.year}년 {half}"
+    if frequency == "YEARLY" and start is not None:
+        return f"{start.year}년"
+    if start is not None and end is not None and start != end:
+        return f"{start.isoformat()} ~ {end.isoformat()}"
+    if start is not None:
+        return start.isoformat()
+    return end.isoformat() if end is not None else "현재 주기"
+
+
+def _site_display_bucket(freq: str) -> str:
+    return "CURRENT_TASK" if (freq or "").upper() in _PRIMARY_SITE_FREQUENCIES else "PERIODIC_OTHER"
+
+
 def _status_from_doc(doc: Document, inst: DocumentInstance | None, is_required: bool) -> str:
     if doc.current_status == "APPROVED":
         return _STATUS_APPROVED
@@ -237,6 +326,8 @@ def get_site_requirement_status(
     target_date: date,
     completion_upload_enabled: bool = False,
 ) -> list[dict[str, Any]]:
+    # SITE 화면은 legacy requirement 행(items)은 유지하되, current cycle / 재조치 분리를 위한 확장 필드를 함께 제공한다.
+    # 이렇게 하면 기존 계약을 깨지 않고도 현장 실행형 3영역 UI를 구성할 수 있다.
     # MVP 기준: 파일럿(삼성 인정제) 현장 — 시드 기준 SITE002(청라 C18BL)에만 삼성 전용 그룹 오버라이드 적용
     pilot_site_code = "SITE002"
     from_date, to_date = _period_window(period, target_date)
@@ -291,6 +382,7 @@ def get_site_requirement_status(
         freq = (req.frequency or "").upper()
         if freq not in target_freqs:
             continue
+        cycle_start, cycle_end = _cycle_window_for_frequency(freq, target_date)
         if not req.is_enabled:
             items.append(
                 {
@@ -315,29 +407,87 @@ def get_site_requirement_status(
                     "category": _category_from_requirement(req),
                     "section": section,
                     "completion_upload_enabled": completion_upload_enabled,
+                    "current_cycle_status": _STATUS_NOT_REQUIRED,
+                    "current_cycle_document_id": None,
+                    "current_cycle_instance_id": None,
+                    "current_cycle_uploaded_at": None,
+                    "current_cycle_review_note": None,
+                    "current_cycle_file_name": None,
+                    "current_cycle_file_download_url": None,
+                    "current_cycle_start": cycle_start,
+                    "current_cycle_end": cycle_end,
+                    "current_cycle_target": False,
+                    "current_period_label": _period_label(freq=freq, start=cycle_start, end=cycle_end),
+                    "site_display_bucket": _site_display_bucket(freq),
+                    "current_cycle_needs_reupload": False,
+                    "current_cycle_last_submission_status": None,
+                    "unresolved_rejected_document_id": None,
+                    "unresolved_rejected_instance_id": None,
+                    "unresolved_rejected_uploaded_at": None,
+                    "unresolved_rejected_reviewed_at": None,
+                    "unresolved_rejected_review_note": None,
+                    "unresolved_rejected_file_name": None,
+                    "unresolved_rejected_file_download_url": None,
+                    "unresolved_rejected_cycle_start": None,
+                    "unresolved_rejected_cycle_end": None,
+                    "rejected_backlog_count": 0,
+                    "rejected_backlog_items": [],
                 }
             )
             continue
 
-        doc, inst = _pick_latest_for_requirement(
+        current_doc, current_inst = _pick_latest_for_requirement(
+            db,
+            site_id=site_id,
+            requirement=req,
+            from_date=cycle_start,
+            to_date=cycle_end,
+        )
+        latest_doc, latest_inst = _pick_latest_for_requirement(
             db,
             site_id=site_id,
             requirement=req,
             from_date=from_date,
             to_date=to_date,
+            apply_period_filter=False,
         )
-        # 기간 내 제출이 없더라도, 최신 반려 이력이 있으면 재업로드 TODO로 노출한다.
-        if doc is None:
-            latest_doc, latest_inst = _pick_latest_for_requirement(
-                db,
-                site_id=site_id,
-                requirement=req,
-                from_date=from_date,
-                to_date=to_date,
-                apply_period_filter=False,
+
+        # legacy items는 기존 동작을 유지한다: 현재 주기에 문서가 없더라도 최신 반려는 TODO로 보여준다.
+        doc = current_doc
+        inst = current_inst
+        if doc is None and latest_doc is not None and latest_doc.current_status == "REJECTED":
+            doc, inst = latest_doc, latest_inst
+
+        current_cycle_status, current_cycle_needs_reupload, current_cycle_last_submission_status = _normalized_current_cycle_status(
+            current_doc,
+            current_inst,
+            is_required=req.is_required,
+        )
+        unresolved_rejected_doc = latest_doc if latest_doc is not None and latest_doc.current_status == "REJECTED" else None
+        rejected_backlog_items = []
+        if unresolved_rejected_doc is not None:
+            rejected_backlog_items.append(
+                {
+                    "document_id": unresolved_rejected_doc.id,
+                    "instance_id": unresolved_rejected_doc.instance_id,
+                    "period_start": unresolved_rejected_doc.period_start,
+                    "period_end": unresolved_rejected_doc.period_end,
+                    "period_label": _period_label(
+                        freq=freq,
+                        start=unresolved_rejected_doc.period_start,
+                        end=unresolved_rejected_doc.period_end,
+                    ),
+                    "uploaded_at": unresolved_rejected_doc.uploaded_at,
+                    "reviewed_at": unresolved_rejected_doc.reviewed_at,
+                    "review_note": unresolved_rejected_doc.rejection_reason,
+                    "file_name": (
+                        unresolved_rejected_doc.file_name
+                        or (Path(unresolved_rejected_doc.file_path).name if unresolved_rejected_doc.file_path else None)
+                    ),
+                    "file_download_url": f"/documents/{unresolved_rejected_doc.id}/file",
+                }
             )
-            if latest_doc is not None and latest_doc.current_status == "REJECTED":
-                doc, inst = latest_doc, latest_inst
+
         if doc is None:
             status = _STATUS_NOT_SUBMITTED if req.is_required else _STATUS_NOT_REQUIRED
             items.append(
@@ -363,6 +513,56 @@ def get_site_requirement_status(
                     "category": _category_from_requirement(req),
                     "section": section,
                     "completion_upload_enabled": completion_upload_enabled,
+                    "current_cycle_status": current_cycle_status,
+                    "current_cycle_document_id": (current_doc.id if current_doc else None),
+                    "current_cycle_instance_id": (current_doc.instance_id if current_doc else None),
+                    "current_cycle_uploaded_at": (current_doc.uploaded_at if current_doc else None),
+                    "current_cycle_review_note": (current_doc.rejection_reason if current_doc else None),
+                    "current_cycle_file_name": (
+                        current_doc.file_name or (Path(current_doc.file_path).name if current_doc and current_doc.file_path else None)
+                        if current_doc
+                        else None
+                    ),
+                    "current_cycle_file_download_url": (f"/documents/{current_doc.id}/file" if current_doc else None),
+                    "current_cycle_start": cycle_start,
+                    "current_cycle_end": cycle_end,
+                    "current_cycle_target": True,
+                    "current_period_label": _period_label(freq=freq, start=cycle_start, end=cycle_end),
+                    "site_display_bucket": _site_display_bucket(freq),
+                    "current_cycle_needs_reupload": current_cycle_needs_reupload,
+                    "current_cycle_last_submission_status": current_cycle_last_submission_status,
+                    "unresolved_rejected_document_id": (
+                        unresolved_rejected_doc.id if unresolved_rejected_doc else None
+                    ),
+                    "unresolved_rejected_instance_id": (
+                        unresolved_rejected_doc.instance_id if unresolved_rejected_doc else None
+                    ),
+                    "unresolved_rejected_uploaded_at": (
+                        unresolved_rejected_doc.uploaded_at if unresolved_rejected_doc else None
+                    ),
+                    "unresolved_rejected_reviewed_at": (
+                        unresolved_rejected_doc.reviewed_at if unresolved_rejected_doc else None
+                    ),
+                    "unresolved_rejected_review_note": (
+                        unresolved_rejected_doc.rejection_reason if unresolved_rejected_doc else None
+                    ),
+                    "unresolved_rejected_file_name": (
+                        unresolved_rejected_doc.file_name
+                        or (Path(unresolved_rejected_doc.file_path).name if unresolved_rejected_doc and unresolved_rejected_doc.file_path else None)
+                        if unresolved_rejected_doc
+                        else None
+                    ),
+                    "unresolved_rejected_file_download_url": (
+                        f"/documents/{unresolved_rejected_doc.id}/file" if unresolved_rejected_doc else None
+                    ),
+                    "unresolved_rejected_cycle_start": (
+                        unresolved_rejected_doc.period_start if unresolved_rejected_doc else None
+                    ),
+                    "unresolved_rejected_cycle_end": (
+                        unresolved_rejected_doc.period_end if unresolved_rejected_doc else None
+                    ),
+                    "rejected_backlog_count": len(rejected_backlog_items),
+                    "rejected_backlog_items": rejected_backlog_items,
                 }
             )
             continue
@@ -390,17 +590,96 @@ def get_site_requirement_status(
                 "category": _category_from_requirement(req),
                 "section": section,
                 "completion_upload_enabled": completion_upload_enabled,
+                "current_cycle_status": current_cycle_status,
+                "current_cycle_document_id": (current_doc.id if current_doc else None),
+                "current_cycle_instance_id": (current_doc.instance_id if current_doc else None),
+                "current_cycle_uploaded_at": (current_doc.uploaded_at if current_doc else None),
+                "current_cycle_review_note": (current_doc.rejection_reason if current_doc else None),
+                "current_cycle_file_name": (
+                    current_doc.file_name or (Path(current_doc.file_path).name if current_doc and current_doc.file_path else None)
+                    if current_doc
+                    else None
+                ),
+                "current_cycle_file_download_url": (f"/documents/{current_doc.id}/file" if current_doc else None),
+                "current_cycle_start": cycle_start,
+                "current_cycle_end": cycle_end,
+                "current_cycle_target": True,
+                "current_period_label": _period_label(freq=freq, start=cycle_start, end=cycle_end),
+                "site_display_bucket": _site_display_bucket(freq),
+                "current_cycle_needs_reupload": current_cycle_needs_reupload,
+                "current_cycle_last_submission_status": current_cycle_last_submission_status,
+                "unresolved_rejected_document_id": (
+                    unresolved_rejected_doc.id if unresolved_rejected_doc else None
+                ),
+                "unresolved_rejected_instance_id": (
+                    unresolved_rejected_doc.instance_id if unresolved_rejected_doc else None
+                ),
+                "unresolved_rejected_uploaded_at": (
+                    unresolved_rejected_doc.uploaded_at if unresolved_rejected_doc else None
+                ),
+                "unresolved_rejected_reviewed_at": (
+                    unresolved_rejected_doc.reviewed_at if unresolved_rejected_doc else None
+                ),
+                "unresolved_rejected_review_note": (
+                    unresolved_rejected_doc.rejection_reason if unresolved_rejected_doc else None
+                ),
+                "unresolved_rejected_file_name": (
+                    unresolved_rejected_doc.file_name
+                    or (Path(unresolved_rejected_doc.file_path).name if unresolved_rejected_doc and unresolved_rejected_doc.file_path else None)
+                    if unresolved_rejected_doc
+                    else None
+                ),
+                "unresolved_rejected_file_download_url": (
+                    f"/documents/{unresolved_rejected_doc.id}/file" if unresolved_rejected_doc else None
+                ),
+                "unresolved_rejected_cycle_start": (
+                    unresolved_rejected_doc.period_start if unresolved_rejected_doc else None
+                ),
+                "unresolved_rejected_cycle_end": (
+                    unresolved_rejected_doc.period_end if unresolved_rejected_doc else None
+                ),
+                "rejected_backlog_count": len(rejected_backlog_items),
+                "rejected_backlog_items": rejected_backlog_items,
             }
         )
-    latest_doc_ids = [int(row["latest_document_id"]) for row in items if row.get("latest_document_id")]
-    comment_map = _latest_review_comment_map(db, latest_doc_ids)
+    review_doc_ids = {
+        int(doc_id)
+        for row in items
+        for doc_id in (
+            row.get("latest_document_id"),
+            row.get("current_cycle_document_id"),
+            row.get("unresolved_rejected_document_id"),
+        )
+        if doc_id
+    }
+    review_snapshot_map = _latest_review_snapshot_map(db, list(review_doc_ids))
     for row in items:
         doc_id = row.get("latest_document_id")
         if not doc_id:
-            continue
-        latest_comment = comment_map.get(int(doc_id))
-        if latest_comment:
-            row["review_note"] = latest_comment
+            pass
+        else:
+            latest_snapshot = review_snapshot_map.get(int(doc_id))
+            if latest_snapshot and latest_snapshot.get("comment"):
+                row["review_note"] = latest_snapshot["comment"]
+
+        current_cycle_doc_id = row.get("current_cycle_document_id")
+        if current_cycle_doc_id:
+            current_snapshot = review_snapshot_map.get(int(current_cycle_doc_id))
+            if current_snapshot and current_snapshot.get("comment"):
+                row["current_cycle_review_note"] = current_snapshot["comment"]
+
+        unresolved_doc_id = row.get("unresolved_rejected_document_id")
+        if unresolved_doc_id:
+            unresolved_snapshot = review_snapshot_map.get(int(unresolved_doc_id))
+            if unresolved_snapshot:
+                if unresolved_snapshot.get("comment"):
+                    row["unresolved_rejected_review_note"] = unresolved_snapshot["comment"]
+                    if row.get("rejected_backlog_items"):
+                        row["rejected_backlog_items"][0]["review_note"] = unresolved_snapshot["comment"]
+                if unresolved_snapshot.get("action_at"):
+                    row["unresolved_rejected_reviewed_at"] = unresolved_snapshot["action_at"]
+                    if row.get("rejected_backlog_items"):
+                        row["rejected_backlog_items"][0]["reviewed_at"] = unresolved_snapshot["action_at"]
 
     def sort_key(row: dict[str, Any]) -> tuple[int, int, str]:
         status = str(row.get("status") or "")
@@ -436,7 +715,7 @@ def get_requirement_document_history(
         return []
 
     histories = (
-        db.query(DocumentUploadHistory)
+        db.query(DocumentUploadHistory, Document, DocumentInstance)
         .join(Document, Document.id == DocumentUploadHistory.document_id)
         .outerjoin(DocumentInstance, DocumentUploadHistory.instance_id == DocumentInstance.id)
         .filter(
@@ -451,8 +730,13 @@ def get_requirement_document_history(
         .all()
     )
 
+    review_snapshot_map = _latest_review_snapshot_map(
+        db,
+        [int(history.document_id) for history, _, _ in histories if history.document_id],
+    )
     rows: list[dict[str, Any]] = []
-    for h in histories:
+    for h, doc, inst in histories:
+        review_snapshot = review_snapshot_map.get(int(h.document_id))
         rows.append(
             {
                 "history_id": h.id,
@@ -465,6 +749,20 @@ def get_requirement_document_history(
                 "review_note": h.review_note,
                 "uploader_user_id": h.uploaded_by_user_id,
                 "file_name": h.file_name,
+                "reviewed_at": (
+                    review_snapshot.get("action_at")
+                    if review_snapshot and h.document_status in {_STATUS_APPROVED, _STATUS_REJECTED}
+                    else None
+                ),
+                "period_start": doc.period_start if doc is not None else (inst.period_start if inst else None),
+                "period_end": doc.period_end if doc is not None else (inst.period_end if inst else None),
+                "period_label": _period_label(
+                    freq=(requirement.frequency or ""),
+                    start=(doc.period_start if doc is not None else (inst.period_start if inst else None)),
+                    end=(doc.period_end if doc is not None else (inst.period_end if inst else None)),
+                ),
+                "history_file_available": bool(h.file_path),
+                "file_download_url": f"/documents/history/{h.id}/file" if h.file_path else None,
             }
         )
     return rows

@@ -3,34 +3,55 @@
     <aside class="layout-sidebar">
       <h1>BESMA CSMS 안전보건플랫폼 · 현장</h1>
       <nav class="layout-menu">
-        <RouterLink to="/site/dashboard">대시보드</RouterLink>
-        <RouterLink :style="menuOrderStyle('notices')" to="/site/notices">공지사항</RouterLink>
-        <RouterLink v-if="!isMobileViewport" :style="menuOrderStyle('safety-policy-goals')" to="/site/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
+        <RouterLink :class="menuLinkClass('dashboard', '/site/dashboard')" to="/site/dashboard">대시보드</RouterLink>
+        <RouterLink :class="menuLinkClass('notices', '/site/notices')" :style="menuOrderStyle('notices')" to="/site/notices">공지사항</RouterLink>
+        <RouterLink
+          v-if="!isMobileViewport"
+          :class="menuLinkClass('safety-policy-goals', '/site/safety-policy-goals')"
+          :style="menuOrderStyle('safety-policy-goals')"
+          to="/site/safety-policy-goals"
+        >
+          안전보건 방침 및 목표
+        </RouterLink>
         <RouterLink
           v-for="m in dynamicMenus"
           :key="`site-dyn-${m.slug}`"
+          :class="menuLinkClass(`dynamic:${m.id}`, `/site/custom-menus/${m.slug}`)"
           :style="menuOrderStyle(`dynamic:${m.id}`)"
           :to="`/site/custom-menus/${m.slug}`"
         >
           {{ m.title }}
         </RouterLink>
-        <RouterLink :style="menuOrderStyle('safety-education')" to="/site/safety-education">안전 교육</RouterLink>
-        <RouterLink :style="menuOrderStyle('safety-inspections')" to="/site/safety-inspections">안전 점검</RouterLink>
-        <RouterLink :style="menuOrderStyle('nonconformities')" to="/site/nonconformities">부적합사항</RouterLink>
-        <RouterLink :style="menuOrderStyle('worker-voice')" to="/site/worker-voice">근로자의견청취</RouterLink>
-        <RouterLink :style="menuOrderStyle('mobile')" to="/site/mobile">모바일 운영</RouterLink>
-        <RouterLink :style="menuOrderStyle('mobile-site-search')" to="/site/mobile/site-search">현장 검색</RouterLink>
-        <RouterLink :style="menuOrderStyle('document-explorer')" to="/site/document-explorer">문서 탐색</RouterLink>
-        <RouterLink :style="menuOrderStyle('risk-library')" to="/site/risk-library">위험성평가 DB 조회</RouterLink>
-        <RouterLink :style="menuOrderStyle('documents')" to="/site/documents"
-          >내 현장 문서 <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span></RouterLink
-        >
-        <RouterLink :style="menuOrderStyle('communications')" to="/site/communications"
-          >소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span></RouterLink
-        >
-        <RouterLink :style="menuOrderStyle('opinions')" to="/site/opinions">운영 아이디어 제안</RouterLink>
-        <RouterLink :style="menuOrderStyle('info')" to="/site/info">설정</RouterLink>
-        <RouterLink :style="menuOrderStyle('user-guide')" to="/site/user-guide">사용설명서</RouterLink>
+        <RouterLink :class="menuLinkClass('safety-education', '/site/safety-education')" :style="menuOrderStyle('safety-education')" to="/site/safety-education">안전 교육</RouterLink>
+        <RouterLink :class="menuLinkClass('safety-inspections', '/site/safety-inspections')" :style="menuOrderStyle('safety-inspections')" to="/site/safety-inspections">안전 점검</RouterLink>
+        <RouterLink :class="menuLinkClass('nonconformities', '/site/nonconformities')" :style="menuOrderStyle('nonconformities')" to="/site/nonconformities">
+          <span class="menu-icon" v-if="menuIcon('nonconformities')">{{ menuIcon("nonconformities") }}</span>
+          부적합사항
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" :style="menuOrderStyle('worker-voice')" to="/site/worker-voice">
+          <span class="menu-icon" v-if="menuIcon('worker-voice')">{{ menuIcon("worker-voice") }}</span>
+          근로자의견청취
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('mobile', '/site/mobile')" :style="menuOrderStyle('mobile')" to="/site/mobile">모바일 운영</RouterLink>
+        <RouterLink :class="menuLinkClass('mobile-site-search', '/site/mobile/site-search')" :style="menuOrderStyle('mobile-site-search')" to="/site/mobile/site-search">현장 검색</RouterLink>
+        <RouterLink :class="menuLinkClass('document-explorer', '/site/document-explorer')" :style="menuOrderStyle('document-explorer')" to="/site/document-explorer">
+          <span class="menu-icon" v-if="menuIcon('document-explorer')">{{ menuIcon("document-explorer") }}</span>
+          문서 탐색
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('risk-library', '/site/risk-library')" :style="menuOrderStyle('risk-library')" to="/site/risk-library">
+          <span class="menu-icon" v-if="menuIcon('risk-library')">{{ menuIcon("risk-library") }}</span>
+          위험성평가 DB 조회
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('documents', '/site/documents')" :style="menuOrderStyle('documents')" to="/site/documents">
+          <span class="menu-icon" v-if="menuIcon('documents')">{{ menuIcon("documents") }}</span>
+          내 현장 문서 <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span>
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('communications', '/site/communications')" :style="menuOrderStyle('communications')" to="/site/communications">
+          소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span>
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('opinions', '/site/opinions')" :style="menuOrderStyle('opinions')" to="/site/opinions">운영 아이디어 제안</RouterLink>
+        <RouterLink :class="menuLinkClass('info', '/site/info')" :style="menuOrderStyle('info')" to="/site/info">설정</RouterLink>
+        <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" :style="menuOrderStyle('user-guide')" to="/site/user-guide">사용설명서</RouterLink>
       </nav>
     </aside>
     <section class="layout-content">
@@ -70,12 +91,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useRouter, RouterLink, RouterView } from "vue-router";
+import { useRoute, useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 const badge = ref({ incomplete_count: 0 });
 const communicationUnreadCount = ref(0);
 const siteName = ref<string>("");
@@ -103,6 +125,7 @@ const sidebarCollapsed = ref(false);
 const isMobileViewport = ref(false);
 let unreadTimer: number | null = null;
 const headerSiteLabel = computed(() => (siteName.value ? `현장: ${siteName.value}` : "현장: -"));
+const PRIMARY_MENUS = ["documents", "risk-library", "worker-voice", "document-explorer", "nonconformities"] as const;
 
 onMounted(() => {
   initializeLayout();
@@ -228,6 +251,34 @@ function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
 }
 
+function isPrimaryMenu(key: string) {
+  return PRIMARY_MENUS.includes(key as (typeof PRIMARY_MENUS)[number]);
+}
+
+function isMenuActive(path: string) {
+  return route.path === path;
+}
+
+function menuLinkClass(key: string, path: string) {
+  return {
+    "menu-link": true,
+    "menu-link-primary": isPrimaryMenu(key),
+    "menu-link-secondary": !isPrimaryMenu(key),
+    "menu-link-active": isMenuActive(path),
+  };
+}
+
+function menuIcon(key: string) {
+  const iconMap: Record<string, string> = {
+    documents: "📄",
+    "risk-library": "⚠️",
+    "worker-voice": "🗣",
+    "document-explorer": "🔍",
+    nonconformities: "🚨",
+  };
+  return iconMap[key] ?? "";
+}
+
 </script>
 
 <style scoped>
@@ -247,6 +298,42 @@ function toggleSidebar() {
 .layout-menu {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.menu-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border-left: 4px solid transparent;
+  text-decoration: none;
+  color: #1f2937;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+}
+
+.menu-link-primary {
+  font-weight: 700;
+  background: #eef6ff;
+}
+
+.menu-link-secondary {
+  opacity: 0.72;
+}
+
+.menu-link-active {
+  background: #2563eb;
+  color: #ffffff;
+  border-left-color: #93c5fd;
+  opacity: 1;
+  font-weight: 700;
+}
+
+.menu-icon {
+  width: 18px;
+  text-align: center;
+  flex: 0 0 18px;
 }
 
 .layout-header {

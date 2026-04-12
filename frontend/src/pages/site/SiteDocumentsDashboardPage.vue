@@ -1,94 +1,211 @@
 <template>
   <div class="card">
     <div class="header-row">
-      <div class="card-title">현장 문서취합 (Requirement 기반)</div>
+      <div>
+        <div class="card-title">현장 문서취합 (Requirement 기반)</div>
+        <p class="page-note">기준일 {{ targetDate }} 기준으로 지금 처리할 문서와 반려 재조치 문서를 분리해서 보여줍니다.</p>
+      </div>
       <div class="controls">
         <button class="secondary" @click="load">새로고침</button>
       </div>
     </div>
 
     <div class="summary-grid">
-      <div class="summary-card">제출 대상 {{ summary.total_required }}</div>
-      <div class="summary-card">미완료 {{ incompleteCount }}</div>
-      <div class="summary-card">반려 {{ summary.rejected_count }}</div>
-      <div class="summary-card">승인완료 {{ summary.approved_count }}</div>
+      <div class="summary-card">
+        <div class="summary-label">현재 작업 문서</div>
+        <div class="summary-value">{{ currentTaskItems.length }}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">제출대기</div>
+        <div class="summary-value">{{ pendingCurrentCount }}</div>
+      </div>
+      <div class="summary-card summary-card-alert">
+        <div class="summary-label">재조치 필요</div>
+        <div class="summary-value">{{ reworkItems.length }}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">승인</div>
+        <div class="summary-value">{{ approvedCount }}</div>
+      </div>
     </div>
 
     <section class="section-card">
       <div class="section-head">
-        <h3>전체 서류</h3>
+        <h3>현재 작업 문서</h3>
+        <p>오늘/이번주/이번달 기준으로 지금 제출해야 하는 문서만 모았습니다.</p>
       </div>
       <table class="basic-table">
-      <thead>
-        <tr>
-          <th>Req ID</th>
-          <th>문서명</th>
-          <th>구분</th>
-          <th>카테고리</th>
-          <th>주기</th>
-          <th>상태</th>
-          <th>최근 제출</th>
-          <th>액션</th>
-        </tr>
-      </thead>
-      <tbody>
-        <template v-for="item in sortedItems" :key="item.requirement_id">
-        <tr>
-          <td><code>{{ item.requirement_id }}</code></td>
-          <td>{{ item.title }}</td>
-          <td>{{ sectionLabel(item.section) }}</td>
-          <td>{{ categoryLabel(item.category) }}</td>
-          <td>{{ frequencyLabel(item.frequency) }}</td>
-          <td>
-            <span class="badge" :class="statusClass(item.status)">
-              {{ statusLabel(item.status) }}
-            </span>
-          </td>
-          <td>{{ formatDateTime(item.latest_uploaded_at) }}</td>
-          <td class="actions">
-            <button class="secondary" :disabled="item.section === 'COMPLETION' && !completionUploadEnabled" @click="openUpload(item)">
-              {{ item.status === "REJECTED" ? "수정 업로드" : "업로드" }}
-            </button>
-            <button
-              v-if="item.latest_document_id"
-              class="secondary"
-              :class="{ danger: item.status === 'REJECTED' }"
-              @click="toggleConversation(item)"
-            >
-              보기
-            </button>
-            <button class="secondary" @click="openHistory(item)">이력 보기</button>
-          </td>
-        </tr>
-        <tr v-if="isConversationOpen(item.requirement_id)" class="conversation-row">
-          <td colspan="8" class="conversation-cell">
-            <p class="conversation-text">
-              {{ item.review_note || "코멘트가 없습니다." }}
-            </p>
-          </td>
-        </tr>
-        </template>
-        <tr v-if="sortedItems.length === 0">
-          <td colspan="8" style="text-align: center; color: #6b7280">표시할 서류가 없습니다.</td>
-        </tr>
-      </tbody>
+        <thead>
+          <tr>
+            <th>문서명</th>
+            <th>대상 주기</th>
+            <th>상태</th>
+            <th>최근 제출</th>
+            <th>메모</th>
+            <th>액션</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in currentTaskItems" :key="`current-${item.requirement_id}`">
+            <td>
+              <div class="cell-title">{{ item.title }}</div>
+              <div class="cell-subtitle">{{ sectionLabel(item.section) }} · {{ frequencyLabel(item.frequency) }}</div>
+            </td>
+            <td>{{ item.current_period_label || frequencyLabel(item.frequency) }}</td>
+            <td>
+              <span class="badge status-badge" :class="[statusClass(item.current_cycle_status || 'NOT_SUBMITTED'), currentStatusClass(item.current_cycle_status)]">
+                <span class="status-dot" aria-hidden="true">{{ currentStatusIcon(item.current_cycle_status) }}</span>
+                {{ currentStatusLabel(item.current_cycle_status) }}
+              </span>
+            </td>
+            <td>{{ formatDateTime(item.current_cycle_uploaded_at) }}</td>
+            <td class="note-cell">
+              <span v-if="item.current_cycle_needs_reupload" class="inline-alert">
+                직전 제출본이 반려되어 다시 업로드해야 합니다.
+              </span>
+              <span v-else>{{ item.due_rule_text || "-" }}</span>
+            </td>
+            <td class="actions">
+              <button class="secondary" :disabled="item.section === 'COMPLETION' && !completionUploadEnabled" @click="openUpload(item)">
+                {{ item.current_cycle_needs_reupload ? "수정 업로드" : "업로드" }}
+              </button>
+              <button
+                v-if="item.current_cycle_document_id && item.current_cycle_file_name"
+                class="secondary"
+                @click="openDocumentFile(item.current_cycle_document_id, item.current_cycle_file_name)"
+              >
+                보기
+              </button>
+              <button class="secondary" @click="openHistory(item)">이력 보기</button>
+            </td>
+          </tr>
+          <tr v-if="currentTaskItems.length === 0">
+            <td colspan="6" class="empty-cell">현재 처리할 문서가 없습니다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section-card section-card-alert">
+      <div class="section-head">
+        <h3>재조치 필요 문서</h3>
+        <p>과거 제출본 중 반려 또는 보완 요청이 남아 있는 문서를 따로 모았습니다.</p>
+      </div>
+      <table class="basic-table">
+        <thead>
+          <tr>
+            <th>문서명</th>
+            <th>대상 주기</th>
+            <th>반려 사유</th>
+            <th>반려 시각</th>
+            <th>액션</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in reworkItems" :key="`rework-${item.requirement_id}-${item.unresolved_rejected_document_id}`">
+            <td>
+              <div class="cell-title">{{ item.title }}</div>
+              <div class="cell-subtitle">{{ sectionLabel(item.section) }} · {{ frequencyLabel(item.frequency) }}</div>
+              <div class="rework-meta">
+                <span class="badge status-badge status-rejected-strong">반려</span>
+                <span v-if="firstRejectedBacklog(item)?.review_note || item.unresolved_rejected_review_note" class="rework-note-inline">
+                  {{ firstRejectedBacklog(item)?.review_note || item.unresolved_rejected_review_note }}
+                </span>
+              </div>
+            </td>
+            <td>{{ firstRejectedBacklog(item)?.period_label || item.current_period_label || "-" }}</td>
+            <td class="note-cell note-cell-alert">{{ firstRejectedBacklog(item)?.review_note || item.unresolved_rejected_review_note || "사유 없음" }}</td>
+            <td>{{ formatDateTime(firstRejectedBacklog(item)?.reviewed_at || item.unresolved_rejected_reviewed_at || firstRejectedBacklog(item)?.uploaded_at || item.unresolved_rejected_uploaded_at) }}</td>
+            <td class="actions">
+              <button class="secondary danger" :disabled="item.section === 'COMPLETION' && !completionUploadEnabled" @click="openUpload(item)">
+                수정 업로드
+              </button>
+              <button
+                v-if="item.unresolved_rejected_document_id && item.unresolved_rejected_file_name"
+                class="secondary"
+                @click="openDocumentFile(item.unresolved_rejected_document_id, item.unresolved_rejected_file_name)"
+              >
+                보기
+              </button>
+              <button class="secondary" @click="openHistory(item)">이력 보기</button>
+            </td>
+          </tr>
+          <tr v-if="reworkItems.length === 0">
+            <td colspan="5" class="empty-cell">현재 재조치가 필요한 문서는 없습니다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section-card">
+      <div class="section-head">
+        <h3>주기/기타 문서</h3>
+        <p>반기·분기·연간 등 메인 작업보다 우선순위가 낮은 문서를 분리해서 보여줍니다.</p>
+      </div>
+      <table class="basic-table">
+        <thead>
+          <tr>
+            <th>문서명</th>
+            <th>대상 주기</th>
+            <th>주기</th>
+            <th>상태</th>
+            <th>최근 제출</th>
+            <th>액션</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in periodicItems" :key="`periodic-${item.requirement_id}`">
+            <td>
+              <div class="cell-title">{{ item.title }}</div>
+              <div class="cell-subtitle">{{ sectionLabel(item.section) }}</div>
+            </td>
+            <td>{{ item.current_period_label || frequencyLabel(item.frequency) }}</td>
+            <td>{{ frequencyLabel(item.frequency) }}</td>
+            <td>
+              <span class="badge status-badge" :class="[statusClass(item.current_cycle_status || 'NOT_SUBMITTED'), currentStatusClass(item.current_cycle_status)]">
+                <span class="status-dot" aria-hidden="true">{{ currentStatusIcon(item.current_cycle_status) }}</span>
+                {{ currentStatusLabel(item.current_cycle_status) }}
+              </span>
+            </td>
+            <td>{{ formatDateTime(item.current_cycle_uploaded_at) }}</td>
+            <td class="actions">
+              <button class="secondary" :disabled="item.section === 'COMPLETION' && !completionUploadEnabled" @click="openUpload(item)">
+                {{ item.current_cycle_needs_reupload ? "수정 업로드" : "업로드" }}
+              </button>
+              <button
+                v-if="item.current_cycle_document_id && item.current_cycle_file_name"
+                class="secondary"
+                @click="openDocumentFile(item.current_cycle_document_id, item.current_cycle_file_name)"
+              >
+                보기
+              </button>
+              <button class="secondary" @click="openHistory(item)">이력 보기</button>
+            </td>
+          </tr>
+          <tr v-if="periodicItems.length === 0">
+            <td colspan="6" class="empty-cell">표시할 주기 문서가 없습니다.</td>
+          </tr>
+        </tbody>
       </table>
     </section>
   </div>
 
   <div v-if="uploadTarget" class="modal-backdrop" @click.self="closeUpload">
     <div class="modal-card">
-      <div class="card-title">{{ uploadTarget?.status === "REJECTED" ? "문서 수정 업로드" : "문서 업로드" }}</div>
+      <div class="card-title">{{ uploadTarget.current_cycle_needs_reupload || uploadTarget.unresolved_rejected_document_id ? "문서 수정 업로드" : "문서 업로드" }}</div>
       <p class="upload-title">{{ uploadTarget.title }}</p>
-      <p class="upload-note">Req ID: {{ uploadTarget.requirement_id }} · {{ sectionLabel(uploadTarget.section) }}</p>
-      <p v-if="uploadTarget.review_note" class="upload-reject-note">
-        반려 사유: {{ uploadTarget.review_note }}
+      <p class="upload-note">
+        Req ID: {{ uploadTarget.requirement_id }} · {{ sectionLabel(uploadTarget.section) }} ·
+        {{ uploadTarget.current_period_label || frequencyLabel(uploadTarget.frequency) }}
+      </p>
+      <p v-if="uploadRejectReason(uploadTarget)" class="upload-reject-note">
+        반려 사유: {{ uploadRejectReason(uploadTarget) }}
       </p>
       <input type="file" @change="onFileChange" />
       <div class="modal-actions">
         <button class="secondary" @click="closeUpload">취소</button>
         <button class="primary" :disabled="!selectedFile || uploading" @click="submitUpload">
-          {{ uploading ? "업로드 중..." : uploadTarget?.status === "REJECTED" ? "수정 업로드" : "업로드" }}
+          {{ uploading ? "업로드 중..." : uploadTarget.current_cycle_needs_reupload || uploadTarget.unresolved_rejected_document_id ? "수정 업로드" : "업로드" }}
         </button>
       </div>
     </div>
@@ -97,21 +214,53 @@
   <div v-if="historyTarget" class="modal-backdrop" @click.self="closeHistory">
     <div class="modal-card history-card">
       <div class="card-title">문서 이력 - {{ historyTarget.title }}</div>
+      <p class="history-note">현재 주기: {{ historyTarget.current_period_label || frequencyLabel(historyTarget.frequency) }}</p>
       <table class="basic-table">
         <thead>
           <tr>
-            <th>버전</th>
+            <th>대상 주기</th>
             <th>상태</th>
-            <th>업로드시각</th>
-            <th>review_note</th>
+            <th>업로드</th>
+            <th>검토</th>
+            <th>파일</th>
+            <th>반려 사유</th>
+            <th>액션</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in historyItems" :key="row.history_id">
-            <td>v{{ row.version_no }}</td>
-            <td>{{ statusLabel(row.status) }}</td>
+          <tr
+            v-for="row in historyItems"
+            :key="row.history_id"
+            :class="{ 'history-current-row': isCurrentCycleHistory(row) }"
+          >
+            <td>
+              <div>{{ row.period_label || "-" }}</div>
+              <div v-if="isCurrentCycleHistory(row)" class="history-current-label">현재 대상</div>
+            </td>
+            <td>
+              <span class="badge" :class="statusClass(row.status)">
+                {{ historyStatusLabel(row.status) }}
+              </span>
+            </td>
             <td>{{ formatDateTime(row.uploaded_at) }}</td>
-            <td>{{ row.review_note || "-" }}</td>
+            <td>{{ row.reviewed_at ? formatDateTime(row.reviewed_at) : "-" }}</td>
+            <td>{{ row.file_name || "파일 없음" }}</td>
+            <td class="note-cell">
+              <span v-if="row.status === 'REJECTED'" class="inline-alert">{{ row.review_note || "사유 없음" }}</span>
+              <span v-else>{{ row.review_note || "-" }}</span>
+            </td>
+            <td class="actions">
+              <button
+                v-if="row.history_file_available && row.file_download_url && row.file_name"
+                class="secondary"
+                @click="openHistoryFile(row.file_download_url, row.file_name)"
+              >
+                보기
+              </button>
+            </td>
+          </tr>
+          <tr v-if="historyItems.length === 0">
+            <td colspan="7" class="empty-cell">이력이 없습니다.</td>
           </tr>
         </tbody>
       </table>
@@ -139,14 +288,62 @@ interface RequirementStatusItem {
   review_note: string | null;
   category: string | null;
   section: string | null;
+  due_rule_text: string | null;
   completion_upload_enabled: boolean;
+  current_cycle_status: string | null;
+  current_cycle_document_id: number | null;
+  current_cycle_instance_id: number | null;
+  current_cycle_uploaded_at: string | null;
+  current_cycle_review_note: string | null;
+  current_cycle_file_name: string | null;
+  current_cycle_file_download_url: string | null;
+  current_cycle_start: string | null;
+  current_cycle_end: string | null;
+  current_cycle_target: boolean;
+  current_period_label: string | null;
+  site_display_bucket: string | null;
+  current_cycle_needs_reupload: boolean;
+  current_cycle_last_submission_status: string | null;
+  unresolved_rejected_document_id: number | null;
+  unresolved_rejected_instance_id: number | null;
+  unresolved_rejected_uploaded_at: string | null;
+  unresolved_rejected_reviewed_at: string | null;
+  unresolved_rejected_review_note: string | null;
+  unresolved_rejected_file_name: string | null;
+  unresolved_rejected_file_download_url: string | null;
+  unresolved_rejected_cycle_start: string | null;
+  unresolved_rejected_cycle_end: string | null;
+  rejected_backlog_count: number;
+  rejected_backlog_items: Array<{
+    document_id: number;
+    instance_id: number | null;
+    period_start: string | null;
+    period_end: string | null;
+    period_label: string | null;
+    uploaded_at: string | null;
+    reviewed_at: string | null;
+    review_note: string | null;
+    file_name: string | null;
+    file_download_url: string | null;
+  }>;
 }
+
 interface HistoryItem {
   history_id: number;
+  document_id: number;
+  instance_id: number | null;
   version_no: number;
+  action_type: string;
   status: string;
   uploaded_at: string | null;
+  reviewed_at: string | null;
   review_note: string | null;
+  file_name: string | null;
+  file_download_url: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  period_label: string | null;
+  history_file_available: boolean;
 }
 
 const auth = useAuthStore();
@@ -154,50 +351,100 @@ const auth = useAuthStore();
 const targetDate = ref(new Date().toISOString().slice(0, 10));
 const items = ref<RequirementStatusItem[]>([]);
 const completionUploadEnabled = ref(false);
-const summary = ref({
-  total_required: 0,
-  submitted_count: 0,
-  approved_count: 0,
-  not_submitted_count: 0,
-  rejected_count: 0,
-  in_review_count: 0,
-});
 
 const uploadTarget = ref<RequirementStatusItem | null>(null);
 const selectedFile = ref<File | null>(null);
 const uploading = ref(false);
 const historyTarget = ref<RequirementStatusItem | null>(null);
 const historyItems = ref<HistoryItem[]>([]);
-const openedConversationRequirementId = ref<number | null>(null);
 
 const siteId = computed(() => auth.effectiveSiteId ?? auth.user?.site_id ?? null);
-const incompleteCount = computed(() => summary.value.not_submitted_count + summary.value.in_review_count + summary.value.rejected_count);
-const sortedItems = computed(() => {
-  const validItems = items.value.filter((item) => isDisplayableRequirementId(item.requirement_id));
-  const statusPriority: Record<string, number> = {
-    REJECTED: 0,
-    NOT_SUBMITTED: 1,
-    IN_REVIEW: 2,
-    SUBMITTED: 3,
-    NOT_REQUIRED: 4,
-    APPROVED: 99,
-  };
-  return [...validItems].sort((a, b) => {
-    const pa = statusPriority[a.status] ?? 50;
-    const pb = statusPriority[b.status] ?? 50;
-    if (pa !== pb) return pa - pb;
-    return a.requirement_id - b.requirement_id;
-  });
-});
 
-function statusLabel(status: string) {
+const visibleItems = computed(() =>
+  items.value.filter((item) => isDisplayableRequirementId(item.requirement_id) && item.is_required && item.current_cycle_status !== "NOT_REQUIRED"),
+);
+
+const currentTaskItems = computed(() =>
+  [...visibleItems.value]
+    .filter((item) => item.site_display_bucket === "CURRENT_TASK")
+    .sort(compareByCurrentPriority),
+);
+
+const reworkItems = computed(() =>
+  [...visibleItems.value]
+    .filter((item) => (item.rejected_backlog_count || 0) > 0)
+    .sort((a, b) => compareDateDesc(a.unresolved_rejected_uploaded_at, b.unresolved_rejected_uploaded_at) || a.requirement_id - b.requirement_id),
+);
+
+const periodicItems = computed(() =>
+  [...visibleItems.value]
+    .filter((item) => item.site_display_bucket === "PERIODIC_OTHER")
+    .sort(compareByCurrentPriority),
+);
+
+const pendingCurrentCount = computed(() => currentTaskItems.value.filter((item) => item.current_cycle_status === "NOT_SUBMITTED").length);
+const approvedCount = computed(() => visibleItems.value.filter((item) => item.current_cycle_status === "APPROVED").length);
+
+function compareDateDesc(a: string | null, b: string | null) {
+  const aTime = a ? new Date(a).getTime() : 0;
+  const bTime = b ? new Date(b).getTime() : 0;
+  return bTime - aTime;
+}
+
+function compareByCurrentPriority(a: RequirementStatusItem, b: RequirementStatusItem) {
+  const statusPriority: Record<string, number> = {
+    NOT_SUBMITTED: 0,
+    IN_REVIEW: 1,
+    SUBMITTED: 2,
+    APPROVED: 3,
+    NOT_REQUIRED: 9,
+  };
+  const pa = statusPriority[a.current_cycle_status || "NOT_SUBMITTED"] ?? 5;
+  const pb = statusPriority[b.current_cycle_status || "NOT_SUBMITTED"] ?? 5;
+  if (pa !== pb) return pa - pb;
+  const dateGap = compareDateDesc(a.current_cycle_uploaded_at, b.current_cycle_uploaded_at);
+  if (dateGap !== 0) return dateGap;
+  return a.requirement_id - b.requirement_id;
+}
+
+function currentStatusLabel(status: string | null | undefined) {
   const map: Record<string, string> = {
     NOT_REQUIRED: "비대상",
     NOT_SUBMITTED: "제출대기",
-    SUBMITTED: "검토대기",
+    SUBMITTED: "제출완료",
     IN_REVIEW: "검토중",
     APPROVED: "승인",
-    REJECTED: "반려 (재업로드 필요)",
+    REJECTED: "반려",
+  };
+  return map[status || ""] ?? status ?? "-";
+}
+
+function currentStatusClass(status: string | null | undefined) {
+  const map: Record<string, string> = {
+    NOT_SUBMITTED: "status-pending",
+    SUBMITTED: "status-submitted",
+    IN_REVIEW: "status-reviewing",
+    APPROVED: "status-approved",
+  };
+  return map[status || ""] ?? "";
+}
+
+function currentStatusIcon(status: string | null | undefined) {
+  const map: Record<string, string> = {
+    NOT_SUBMITTED: "🔴",
+    SUBMITTED: "🟡",
+    IN_REVIEW: "🔵",
+    APPROVED: "🟢",
+  };
+  return map[status || ""] ?? "";
+}
+
+function historyStatusLabel(status: string) {
+  const map: Record<string, string> = {
+    SUBMITTED: "제출완료",
+    IN_REVIEW: "검토중",
+    APPROVED: "승인",
+    REJECTED: "반려",
   };
   return map[status] ?? status;
 }
@@ -212,6 +459,10 @@ function categoryLabel(category: string | null | undefined) {
   };
   if (!category) return "-";
   return map[category] ?? category;
+}
+
+function firstRejectedBacklog(item: RequirementStatusItem) {
+  return item.rejected_backlog_items?.[0] ?? null;
 }
 
 function sectionLabel(section: string | null | undefined) {
@@ -230,13 +481,15 @@ function frequencyLabel(frequency: string | null | undefined) {
     QUARTERLY: "분기",
     ROLLING: "수시",
     ADHOC: "수시",
-    EVENT: "이벤트",
+    EVENT: "수시",
     ONE_TIME: "1회",
   };
   return map[key] ?? frequency ?? "-";
 }
 
 function statusClass(status: string) {
+  if (status === "NOT_SUBMITTED") return "badge-status-DRAFT";
+  if (status === "IN_REVIEW") return "badge-status-UNDER_REVIEW";
   return `badge-status-${status}`;
 }
 
@@ -261,6 +514,47 @@ function formatDateTime(value: string | null) {
   }).format(dt);
 }
 
+function uploadRejectReason(item: RequirementStatusItem) {
+  return firstRejectedBacklog(item)?.review_note || item.unresolved_rejected_review_note || item.current_cycle_review_note || item.review_note || null;
+}
+
+function canPreviewInBrowser(fileName: string | null) {
+  const ext = (fileName || "").split(".").pop()?.toLowerCase() || "";
+  return ["pdf", "png", "jpg", "jpeg", "gif", "webp", "txt"].includes(ext);
+}
+
+async function openBlobFile(path: string, fileName: string | null) {
+  const previewable = canPreviewInBrowser(fileName);
+  const res = await api.get(path, {
+    params: { disposition: previewable ? "inline" : "attachment" },
+    responseType: "blob",
+  });
+  const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
+  const blob = new Blob([res.data], { type: contentType });
+  if (!previewable) {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName || "document.bin";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    return;
+  }
+  const url = window.URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+  setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+}
+
+async function openDocumentFile(documentId: number, fileName: string | null) {
+  await openBlobFile(`/documents/${documentId}/file`, fileName);
+}
+
+async function openHistoryFile(path: string, fileName: string | null) {
+  await openBlobFile(path, fileName);
+}
+
 async function load() {
   if (!siteId.value) return;
   const res = await api.get("/documents/requirements/status", {
@@ -271,17 +565,7 @@ async function load() {
     },
   });
   items.value = res.data.items;
-  summary.value = res.data.summary;
   completionUploadEnabled.value = !!res.data.completion_upload_enabled;
-}
-
-function toggleConversation(item: RequirementStatusItem) {
-  const rid = item.requirement_id;
-  openedConversationRequirementId.value = openedConversationRequirementId.value === rid ? null : rid;
-}
-
-function isConversationOpen(requirementId: number) {
-  return openedConversationRequirementId.value === requirementId;
 }
 
 function openUpload(item: RequirementStatusItem) {
@@ -309,6 +593,11 @@ async function openHistory(item: RequirementStatusItem) {
 function closeHistory() {
   historyTarget.value = null;
   historyItems.value = [];
+}
+
+function isCurrentCycleHistory(row: HistoryItem) {
+  if (!historyTarget.value) return false;
+  return !!historyTarget.value.current_cycle_instance_id && !!row.instance_id && historyTarget.value.current_cycle_instance_id === row.instance_id;
 }
 
 function onFileChange(e: Event) {
@@ -346,27 +635,47 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.section-card { margin-top: 12px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fff; }
-.section-head h3 { margin: 0; font-size: 15px; }
-.section-head p { margin: 4px 0 10px; color: #475569; font-size: 12px; }
-.state-ok { color: #166534; margin-left: 8px; }
-.state-off { color: #991b1b; margin-left: 8px; }
-.completion-window-text { margin: 0 0 8px; font-size: 12px; color: #64748b; }
-.review-note-cell { max-width: 280px; color: #334155; white-space: pre-wrap; word-break: break-word; }
-.header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.page-note { margin: 6px 0 0; font-size: 12px; color: #64748b; }
 .controls { display: flex; gap: 8px; }
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
-.summary-card { background: #f3f4f6; border-radius: 8px; padding: 10px; font-weight: 600; }
-.actions { display: flex; gap: 6px; }
+.summary-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
+.summary-card-alert { background: #fff7ed; border-color: #fdba74; }
+.summary-label { font-size: 12px; color: #64748b; }
+.summary-value { margin-top: 6px; font-size: 24px; font-weight: 700; color: #0f172a; }
+.section-card { margin-top: 12px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fff; }
+.section-card-alert { border-color: #fecaca; background: #fffafa; }
+.section-head h3 { margin: 0; font-size: 15px; }
+.section-head p { margin: 4px 0 10px; color: #475569; font-size: 12px; }
+.cell-title { font-weight: 600; color: #0f172a; }
+.cell-subtitle { margin-top: 4px; font-size: 12px; color: #64748b; }
+.rework-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 8px; }
+.rework-note-inline { font-size: 12px; color: #9a3412; }
+.note-cell { max-width: 320px; white-space: pre-wrap; word-break: break-word; color: #334155; }
+.note-cell-alert { color: #991b1b; font-weight: 600; }
+.inline-alert { display: inline-block; color: #b91c1c; font-weight: 700; }
+.status-badge { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; }
+.status-dot { line-height: 1; }
+.status-pending { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
+.status-submitted { background: #fefce8; color: #a16207; border-color: #fcd34d; }
+.status-reviewing { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }
+.status-approved { background: #ecfdf5; color: #15803d; border-color: #86efac; }
+.status-rejected-strong { background: linear-gradient(135deg, #fff7ed, #fee2e2); color: #c2410c; border-color: #fb923c; }
+.empty-cell { text-align: center; color: #6b7280; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .secondary.danger { border-color: #ef4444; color: #b91c1c; background: #fef2f2; }
-.conversation-row td { background: #fff; }
-.conversation-cell { padding: 6px 10px 12px; }
-.conversation-text { margin: 0; color: #b91c1c; font-weight: 700; white-space: pre-wrap; word-break: break-word; }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.4); display: flex; align-items: center; justify-content: center; }
-.modal-card { width: 420px; background: #fff; border-radius: 8px; padding: 16px; }
-.history-card { width: 760px; max-height: 80vh; overflow: auto; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.4); display: flex; align-items: center; justify-content: center; z-index: 40; }
+.modal-card { width: 440px; background: #fff; border-radius: 8px; padding: 16px; }
+.history-card { width: min(1120px, calc(100vw - 32px)); max-height: 80vh; overflow: auto; }
 .upload-title { margin: 8px 0 12px; font-weight: 600; }
 .upload-note { margin: -8px 0 10px; font-size: 12px; color: #64748b; }
 .upload-reject-note { margin: 0 0 10px; font-size: 12px; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 8px; }
+.history-note { margin: 6px 0 12px; font-size: 12px; color: #64748b; }
+.history-current-row { background: #eff6ff; }
+.history-current-label { margin-top: 4px; font-size: 12px; color: #1d4ed8; font-weight: 700; }
 .modal-actions { margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 960px) {
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 </style>

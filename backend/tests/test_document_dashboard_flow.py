@@ -115,6 +115,9 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     before_items = before.json()["items"]
     assert len(before_items) == 1
     assert before_items[0]["status"] == "NOT_SUBMITTED"
+    assert before_items[0]["current_cycle_status"] == "NOT_SUBMITTED"
+    assert before_items[0]["current_cycle_start"] == today
+    assert before_items[0]["unresolved_rejected_document_id"] is None
     week_view = client.get(
         "/documents/requirements/status",
         params={"site_id": site_id, "period": "week", "date": today},
@@ -189,6 +192,10 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     rejected_item = after_reject.json()["items"][0]
     assert rejected_item["status"] == "REJECTED"
     assert rejected_item["review_note"] == "위험요인/대책 부적절"
+    assert rejected_item["current_cycle_status"] == "NOT_SUBMITTED"
+    assert rejected_item["current_cycle_needs_reupload"] is True
+    assert rejected_item["unresolved_rejected_document_id"] == document_id
+    assert rejected_item["unresolved_rejected_review_note"] == "위험요인/대책 부적절"
     # 다음날에도 최신 반려 이력은 재업로드 TODO로 보여야 한다.
     after_reject_next_day = client.get(
         "/documents/requirements/status",
@@ -196,6 +203,7 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     )
     assert after_reject_next_day.status_code == 200
     assert after_reject_next_day.json()["items"][0]["status"] == "REJECTED"
+    assert after_reject_next_day.json()["items"][0]["unresolved_rejected_document_id"] == document_id
 
     reupload = client.post(
         "/document-submissions/upload",
@@ -216,6 +224,26 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     assert after_reupload.status_code == 200
     submitted_item = after_reupload.json()["items"][0]
     assert submitted_item["status"] == "SUBMITTED"
+    assert submitted_item["current_cycle_status"] == "SUBMITTED"
+    assert submitted_item["rejected_backlog_count"] == 0
+
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id)
+    approve = client.post(
+        f"/documents/{document_id}/review",
+        json={"action": "approve", "comment": "승인 완료"},
+    )
+    assert approve.status_code == 200
+    assert approve.json()["current_status"] == DocumentStatus.APPROVED
+
+    current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id)
+    after_approve = client.get(
+        "/documents/requirements/status",
+        params={"site_id": site_id, "period": "day", "date": today},
+    )
+    assert after_approve.status_code == 200
+    approved_item = after_approve.json()["items"][0]
+    assert approved_item["current_cycle_status"] == "APPROVED"
+    assert approved_item["rejected_backlog_count"] == 0
 
     history = client.get(
         "/documents/history",
@@ -226,6 +254,13 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     assert len(history_items) >= 2
     assert any(item["status"] == "REJECTED" for item in history_items)
     assert any(item["version_no"] >= 2 for item in history_items)
+    assert history_items[0]["period_start"] == today
+    assert history_items[0]["period_label"] == today
+    assert history_items[0]["history_file_available"] is True
+    assert history_items[0]["file_download_url"].startswith("/documents/history/")
+
+    history_file = client.get(history_items[0]["file_download_url"])
+    assert history_file.status_code == 200
 
     current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id)
     hq_site_view = client.get(
@@ -234,7 +269,7 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     )
     assert hq_site_view.status_code == 200
     hq_items = hq_site_view.json()["items"]
-    assert any(item["site_id"] == site_id and item["status"] in {"SUBMITTED", "IN_REVIEW"} for item in hq_items)
+    assert any(item["site_id"] == site_id and item["status"] == "APPROVED" for item in hq_items)
 
     db_check = TestingSessionLocal()
     try:
@@ -242,7 +277,151 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
         inst = db_check.query(DocumentInstance).filter(DocumentInstance.id == doc.instance_id).first()
         assert doc is not None
         assert inst is not None
-        assert doc.current_status in {DocumentStatus.SUBMITTED, DocumentStatus.REJECTED}
-        assert inst.workflow_status in {WorkflowStatus.SUBMITTED, WorkflowStatus.REJECTED}
+        assert doc.current_status == DocumentStatus.APPROVED
+        assert inst.workflow_status == WorkflowStatus.APPROVED
     finally:
         db_check.close()
+
+
+def test_site_requirement_read_model_weekly_and_rolling_uploads(tmp_path: Path):
+    db_file = tmp_path / "test_document_dashboard_weekly_rolling.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.workers import models as worker_models  # noqa: F401
+    from app.modules.documents import models as document_models  # noqa: F401
+    from app.modules.approvals import models as approval_models  # noqa: F401
+    from app.modules.opinions import models as opinion_models  # noqa: F401
+    from app.modules.document_settings import models as document_settings_models  # noqa: F401
+    from app.modules.document_generation import models as document_generation_models  # noqa: F401
+    from app.modules.document_submissions import models as document_submissions_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    db = TestingSessionLocal()
+    site = Site(site_code="S-DASH-002", site_name="주기 테스트 현장")
+    db.add(site)
+    db.flush()
+    site_id = site.id
+
+    cycle = SubmissionCycle(code="GEN", name="일반", sort_order=1, is_auto_generatable=True)
+    db.add(cycle)
+    db.flush()
+
+    weekly_type = DocumentTypeMaster(
+        code="WEEKLY_DOC",
+        name="주간점검",
+        default_cycle_id=cycle.id,
+        generation_rule="WEEKLY",
+        generation_value=None,
+        due_offset_days=0,
+        is_required_default=True,
+    )
+    rolling_type = DocumentTypeMaster(
+        code="ADHOC_DOC",
+        name="수시문서",
+        default_cycle_id=cycle.id,
+        generation_rule="ADHOC",
+        generation_value=None,
+        due_offset_days=0,
+        is_required_default=True,
+    )
+    db.add_all([weekly_type, rolling_type])
+    db.flush()
+
+    weekly_req = DocumentRequirement(
+        site_id=site_id,
+        document_type_id=weekly_type.id,
+        code="WEEKLY_CHECK",
+        title="관리감독자 점검표",
+        frequency="WEEKLY",
+        is_required=True,
+        is_enabled=True,
+        display_order=1,
+        due_rule_text="매주 금요일 제출",
+    )
+    rolling_req = DocumentRequirement(
+        site_id=site_id,
+        document_type_id=rolling_type.id,
+        code="ADHOC_NOTICE",
+        title="수시 안전자료",
+        frequency="ROLLING",
+        is_required=True,
+        is_enabled=True,
+        display_order=2,
+        due_rule_text="요청 시 즉시 제출",
+    )
+    db.add_all([weekly_req, rolling_req])
+
+    site_user = User(
+        id=1,
+        name="site-manager",
+        login_id="site_dash_manager_two",
+        password_hash="x",
+        site_id=site_id,
+        role=Role.SITE,
+    )
+    db.add(site_user)
+    db.commit()
+    weekly_req_id = weekly_req.id
+    rolling_req_id = rolling_req.id
+    db.close()
+
+    app = FastAPI()
+    app.include_router(document_submissions_router)
+    app.include_router(documents_router)
+
+    def override_get_db():
+        local_db = TestingSessionLocal()
+        try:
+            yield local_db
+        finally:
+            local_db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    current_user = {"value": SimpleNamespace(id=1, role=Role.SITE, site_id=site_id)}
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: current_user["value"]
+    client = TestClient(app)
+
+    today = date(2026, 4, 10).isoformat()
+
+    weekly_upload = client.post(
+        "/document-submissions/upload",
+        data={
+            "site_id": str(site_id),
+            "requirement_id": str(weekly_req_id),
+            "document_type_code": "WEEKLY_CHECK",
+            "work_date": today,
+        },
+        files={"file": ("weekly.pdf", b"weekly doc", "application/pdf")},
+    )
+    assert weekly_upload.status_code == 200
+
+    rolling_upload = client.post(
+        "/document-submissions/upload",
+        data={
+            "site_id": str(site_id),
+            "requirement_id": str(rolling_req_id),
+            "document_type_code": "ADHOC_NOTICE",
+            "work_date": today,
+        },
+        files={"file": ("rolling.pdf", b"rolling doc", "application/pdf")},
+    )
+    assert rolling_upload.status_code == 200
+
+    status_res = client.get(
+        "/documents/requirements/status",
+        params={"site_id": site_id, "period": "all", "date": today},
+    )
+    assert status_res.status_code == 200
+    items = {item["document_type_code"]: item for item in status_res.json()["items"]}
+
+    weekly_item = items["WEEKLY_CHECK"]
+    assert weekly_item["current_cycle_status"] == "SUBMITTED"
+    assert weekly_item["site_display_bucket"] == "CURRENT_TASK"
+    assert "주차" in weekly_item["current_period_label"]
+
+    rolling_item = items["ADHOC_NOTICE"]
+    assert rolling_item["current_cycle_status"] == "SUBMITTED"
+    assert rolling_item["site_display_bucket"] == "CURRENT_TASK"
+    assert rolling_item["current_period_label"] == today

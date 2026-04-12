@@ -762,6 +762,21 @@
 
 ---
 
+### [DECISION-053]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-12 |
+| **Title** | SITE Requirement 기반 문서취합은 3영역 구조 + 현장 전용 read model 보강으로 개편 |
+| **Context** | 사용자는 현장 문서취합에서 “현재 cycle 기준 지금 해야 할 문서”와 “과거 반려·보완 요청 문서”가 한 목록에 섞여 보이는 문제를 지적했다. 또한 이력 모달이 version 중심으로 실무 가치가 낮으므로, 제출/검토 이력 중심 구조로 바꾸길 원했다. |
+| **Options** | A. 프론트 재배치만 수행(기존 API 계약 유지) / B. 기존 라우트는 유지하되 SITE 문서취합 기본 화면을 `현재 작업 / 재조치 필요 / 주기·기타` 3영역으로 바꾸고, 이를 위해 현장 화면용 read model 또는 필드 추가 응답을 허용 / C. 현행 단일 전체 목록 유지 + 이력 모달만 보정 |
+| **Decision** | **B** |
+| **Reason** | 현장 사용자가 “지금 해야 할 문서”를 즉시 식별하고, 과거 반려건은 별도 이슈 영역에서 재조치할 수 있어야 운영 흐름과 맞다. 기존 라우트와 Requirement 기반 구조는 유지하되, current cycle / rejected history / history modal 정보를 분리해 내려주는 최소 보강이 가장 적합하다. |
+| **Impact Scope** | `frontend/src/pages/site/SiteDocumentsDashboardPage.vue`, 관련 SITE 문서취합 하위 컴포넌트(필요 시 신규), `backend/app/modules/documents/routes.py`, `backend/app/modules/documents/service.py`, `backend/app/schemas/document_dashboard.py`, 관련 테스트 |
+| **Supersedes** | [DECISION-039]의 “SITE 문서취합 단일 전체 목록 + 승인 하단 정렬” 기본 뷰 정책을 본 결정으로 대체한다. 기존 라우트(`/site/documents`)와 상태 문자열 불변 원칙([DECISION-005], [DECISION-010])은 유지한다. |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -797,3 +812,4 @@
 | 2026-04-12 | Decision 050 추가 — 운영 아이디어 제안 삭제 권한(작성자+관리자) |
 | 2026-04-12 | Decision 051 추가 — 운영 아이디어 상태 한글 표시 및 점수 UI 제거 |
 | 2026-04-12 | Decision 052 추가 — 사용설명서 스크린샷 hq01 전용 및 서버 이미지 최적화 |
+| 2026-04-12 | Decision 053 추가 — SITE 문서취합 3영역 구조 + 현장 전용 read model 보강 |

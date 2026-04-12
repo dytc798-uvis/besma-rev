@@ -22,7 +22,7 @@ from app.modules.document_submissions.service import (
     map_action_to_history_type,
     transition_instance_workflow_status,
 )
-from app.modules.documents.models import Document, DocumentStatus
+from app.modules.documents.models import Document, DocumentStatus, DocumentUploadHistory
 from app.modules.document_settings.models import DocumentRequirement
 from app.modules.documents.service import (
     DocumentContentInvalidStateError,
@@ -531,6 +531,50 @@ def get_document_history_by_requirement(
         requirement_id=requirement_id,
     )
     return {"site_id": site_id, "requirement_id": requirement_id, "items": rows}
+
+
+@router.get("/history/{history_id}/file")
+def download_document_history_file(
+    history_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    disposition: str = Query("attachment"),
+):
+    history = (
+        db.query(DocumentUploadHistory, Document)
+        .join(Document, Document.id == DocumentUploadHistory.document_id)
+        .filter(DocumentUploadHistory.id == history_id)
+        .first()
+    )
+    if history is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="History file not found")
+
+    upload_history, doc = history
+    if not upload_history.file_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="History file not found")
+    if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    file_path = settings.storage_root / upload_history.file_path
+    if not file_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="History file not found")
+
+    resolved_disposition = (disposition or "attachment").strip().lower()
+    if resolved_disposition not in {"attachment", "inline"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="disposition must be attachment or inline")
+
+    fallback_name = upload_history.file_name or file_path.name
+    media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+    response = FileResponse(
+        path=file_path,
+        media_type=media_type,
+        filename=fallback_name,
+    )
+    response.headers["Content-Disposition"] = (
+        f"{resolved_disposition}; filename*=UTF-8''{quote(fallback_name)}"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @router.get("/badges/site")
