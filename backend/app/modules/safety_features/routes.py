@@ -260,7 +260,7 @@ def _extract_worker_voice_rows_from_rows(rows: list[tuple | list]) -> list[dict]
     for i, row in enumerate(rows[:30]):
         cells = [norm(c) for c in row]
         non_empty_count = sum(1 for c in cells if c)
-        opinion_indices = [idx for idx, c in enumerate(cells) if ("의견" in c or "건의" in c or "제안" in c)]
+        opinion_indices = [idx for idx, c in enumerate(cells) if ("의견" in c or "건의" in c or "제안" in c or c == "내용")]
         name_indices = [idx for idx, c in enumerate(cells) if ("근로자" in c or "성명" in c or "이름" in c)]
         has_split_columns = any(oi != ni for oi in opinion_indices for ni in name_indices)
         if non_empty_count >= 2 and opinion_indices and name_indices and has_split_columns:
@@ -268,7 +268,43 @@ def _extract_worker_voice_rows_from_rows(rows: list[tuple | list]) -> list[dict]
             break
     if header_idx is None:
         header_idx = 0
+
+    def is_secondary_header(row: tuple | list) -> bool:
+        cells = [norm(c) for c in row]
+        markers = ["성명", "이름", "내용", "조치", "전화", "공종", "직무", "담당", "생년월일", "휴대전화"]
+        return sum(1 for c in cells if any(marker in c for marker in markers)) >= 2
+
+    def is_primary_header(row: tuple | list) -> bool:
+        cells = [norm(c) for c in row]
+        markers = ["NO", "일자", "현장명", "의견", "회신", "비고", "조치"]
+        return sum(1 for c in cells if any(marker in c for marker in markers)) >= 2
+
     headers = [norm(c) for c in rows[header_idx]]
+    data_start_idx = header_idx + 1
+    if header_idx > 0 and is_secondary_header(rows[header_idx]) and is_primary_header(rows[header_idx - 1]):
+        primary = [norm(c) for c in rows[header_idx - 1]]
+        secondary = headers
+        merged_headers: list[str] = []
+        for idx in range(max(len(primary), len(secondary))):
+            top = primary[idx] if idx < len(primary) else ""
+            bottom = secondary[idx] if idx < len(secondary) else ""
+            if top and bottom and bottom not in top:
+                merged_headers.append(f"{top}{bottom}")
+            else:
+                merged_headers.append(top or bottom)
+        headers = merged_headers
+    elif header_idx + 1 < len(rows) and is_secondary_header(rows[header_idx + 1]):
+        secondary = [norm(c) for c in rows[header_idx + 1]]
+        merged_headers: list[str] = []
+        for idx in range(max(len(headers), len(secondary))):
+            top = headers[idx] if idx < len(headers) else ""
+            bottom = secondary[idx] if idx < len(secondary) else ""
+            if top and bottom and bottom not in top:
+                merged_headers.append(f"{top}{bottom}")
+            else:
+                merged_headers.append(top or bottom)
+        headers = merged_headers
+        data_start_idx = header_idx + 2
 
     def find_col(candidates: list[str]) -> int | None:
         for i, h in enumerate(headers):
@@ -279,8 +315,8 @@ def _extract_worker_voice_rows_from_rows(rows: list[tuple | list]) -> list[dict]
     name_col = find_col(["근로자", "성명", "이름", "name"])
     birth_col = find_col(["생년월일", "출생", "dob", "birth"])
     phone_col = find_col(["휴대전화", "전화번호", "핸드폰", "연락처", "phone", "mobile"])
-    kind_col = find_col(["의견종류", "의견유형", "제안유형", "type"])
-    opinion_col = find_col(["근로자의견", "의견내용", "건의내용", "제안내용", "의견", "건의", "제안"])
+    kind_col = find_col(["의견종류", "의견유형", "제안유형", "의견수렴경로", "type"])
+    opinion_col = find_col(["근로자의견", "의견내용", "건의내용", "제안내용", "의견", "건의", "제안", "내용"])
     if opinion_col is not None and kind_col is not None and opinion_col == kind_col:
         for i, h in enumerate(headers):
             if any(k in h for k in ["의견내용", "근로자의견", "건의내용", "제안내용"]):
@@ -303,7 +339,7 @@ def _extract_worker_voice_rows_from_rows(rows: list[tuple | list]) -> list[dict]
         return text
 
     out: list[dict] = []
-    for idx, row in enumerate(rows[header_idx + 1 :], start=1):
+    for idx, row in enumerate(rows[data_start_idx:], start=1):
         opinion = str(row[opinion_col]).strip() if opinion_col < len(row) and row[opinion_col] is not None else ""
         if not opinion:
             continue

@@ -62,3 +62,23 @@ def test_extract_worker_voice_rows_from_google_forms_csv():
     assert rows[0]["worker_phone_number"] == "010-3333-4444"
     assert rows[0]["opinion_kind"] == "유해위험요인발굴"
     assert rows[0]["opinion_text"] == "작업구역 미끄럼 위험"
+
+
+def test_extract_worker_voice_rows_with_split_headers():
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["", "", "", "", "", "", "", "", "", "", "", "", ""])
+    ws.append(["", "근로자 의견청취 관리대장", "", "", "", "", "", "", "", "", "", "", ""])
+    ws.append(["", "", "", "", "", "", "", "", "", "", "", "", ""])
+    ws.append(["", "NO", "일자", "현장명", "", "", "", "", "조치 정보", "", "의견수렴 경로", "회신일자", "비고"])
+    ws.append(["", "", "", "", "성명", "공종", "직무", "내용", "조치일", "내용", "", "", ""])
+    ws.append(["", "1", "2023-01-02", "청라C18BL", "이홍식", "전기", "기술인", "안전모 턱끈 개선 요청", "즉시", "제품 변경", "대면청취", "", ""])
+
+    buff = BytesIO()
+    wb.save(buff)
+    rows = _extract_worker_voice_rows(buff.getvalue())
+
+    assert len(rows) == 1
+    assert rows[0]["worker_name"] == "이홍식"
+    assert rows[0]["opinion_kind"] == "대면청취"
+    assert rows[0]["opinion_text"] == "안전모 턱끈 개선 요청"
