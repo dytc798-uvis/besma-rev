@@ -8,8 +8,18 @@
     <BaseCard class="panel !p-[16px]">
       <template #head>
         <div class="panel-head">
-          <span class="count-badge">총 {{ rows.length }}건</span>
-          <button type="button" class="stitch-btn-secondary" @click="load">새로고침</button>
+          <div class="panel-head-left">
+            <span class="count-badge">총 {{ filteredRows.length }}건</span>
+            <div class="summary-inline">
+              <span class="summary-pill">금일 {{ pendingSummary.day }}</span>
+              <span class="summary-pill">7일 {{ pendingSummary.week }}</span>
+              <span class="summary-pill">30일 {{ pendingSummary.month }}</span>
+            </div>
+          </div>
+          <div class="panel-head-right">
+            <input v-model="siteFilter" type="text" class="site-filter-input" placeholder="현장명 검색" />
+            <button type="button" class="stitch-btn-secondary" @click="load">새로고침</button>
+          </div>
         </div>
       </template>
 
@@ -28,7 +38,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in rows" :key="`pending-${row.document_id}`">
+            <tr v-for="row in filteredRows" :key="`pending-${row.document_id}`">
               <td>{{ row.site_name }}</td>
               <td>{{ row.requirement_name }}</td>
               <td>{{ row.file_name || "-" }}</td>
@@ -56,7 +66,7 @@
                 </button>
               </td>
             </tr>
-            <tr v-if="rows.length === 0">
+            <tr v-if="filteredRows.length === 0">
               <td colspan="8" class="empty-cell">미결재 문서가 없습니다.</td>
             </tr>
           </tbody>
@@ -67,11 +77,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { BaseCard } from "@/components/product";
 import { api } from "@/services/api";
 import { canPreviewInBrowser } from "@/utils/filePreview";
+import { formatDateTimeKst, toKstDateKey, todayKst } from "@/utils/datetime";
 
 interface PendingRow {
   site_name: string;
@@ -88,7 +99,34 @@ interface PendingRow {
 
 const router = useRouter();
 const rows = ref<PendingRow[]>([]);
+const siteFilter = ref("");
 const HQ_DOCUMENT_REFRESH_EVENT = "besma-hq-documents-refresh";
+
+const filteredRows = computed(() => {
+  const query = siteFilter.value.trim().toLowerCase();
+  if (!query) return rows.value;
+  return rows.value.filter((row) => row.site_name.toLowerCase().includes(query));
+});
+
+const pendingSummary = computed(() => {
+  const today = todayKst();
+  const todayDate = new Date(`${today}T00:00:00+09:00`);
+  let day = 0;
+  let week = 0;
+  let month = 0;
+  for (const row of rows.value) {
+    const raw = row.submitted_at || row.uploaded_at;
+    if (!raw) continue;
+    const key = toKstDateKey(raw);
+    if (!key) continue;
+    const targetDate = new Date(`${key}T00:00:00+09:00`);
+    const diffDays = Math.floor((todayDate.getTime() - targetDate.getTime()) / 86400000);
+    if (key === today) day += 1;
+    if (diffDays >= 0 && diffDays <= 6) week += 1;
+    if (diffDays >= 0 && diffDays <= 29) month += 1;
+  }
+  return { day, week, month };
+});
 
 function statusLabel(status: string) {
   if (status === "SUBMITTED") return "검토대기";
@@ -97,8 +135,7 @@ function statusLabel(status: string) {
 }
 
 function formatDateTime(value: string | null) {
-  if (!value) return "-";
-  return value.slice(0, 16).replace("T", " ");
+  return formatDateTimeKst(value, "-");
 }
 
 async function load() {
@@ -182,8 +219,12 @@ onUnmounted(() => {
 .page-head { margin-bottom: 12px; }
 .page-title { margin: 0; font-size: 22px; font-weight: 700; color: #0f172a; }
 .page-sub { margin: 4px 0 0; font-size: 13px; color: #64748b; }
-.panel-head { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 10px; flex-wrap: wrap; }
+.panel-head-left, .panel-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .count-badge { font-size: 12px; color: #334155; font-weight: 700; }
+.summary-inline { display: flex; gap: 6px; flex-wrap: wrap; }
+.summary-pill { background: #eff6ff; color: #1d4ed8; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 700; }
+.site-filter-input { border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; font-size: 12px; }
 .table-wrap { overflow: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
 .pending-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .pending-table th, .pending-table td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; }

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -87,6 +89,13 @@ def _build_client(db, *, user_id: int, site_id: int):
     return TestClient(app)
 
 
+def _make_image_bytes(color: tuple[int, int, int]) -> bytes:
+    image = Image.new("RGB", (1600, 900), color)
+    out = io.BytesIO()
+    image.save(out, format="JPEG")
+    return out.getvalue()
+
+
 def test_create_list_and_mark_read():
     db = _setup_db()
     sender, receiver, _ = _seed_users(db)
@@ -99,7 +108,10 @@ def test_create_list_and_mark_read():
             "description": "장비 점검 전 사진",
             "receiver_user_ids": [str(receiver.id)],
         },
-        files=[("files", ("p1.png", b"dummy", "image/png"))],
+        files=[
+            ("files", ("p1.jpg", _make_image_bytes((200, 120, 80)), "image/jpeg")),
+            ("files", ("p2.jpg", _make_image_bytes((80, 120, 200)), "image/jpeg")),
+        ],
     )
     assert create_res.status_code == 200
     comm_id = create_res.json()["id"]
@@ -115,7 +127,12 @@ def test_create_list_and_mark_read():
     assert len(body) == 1
     assert body[0]["id"] == comm_id
     assert body[0]["is_read"] is False
-    assert len(body[0]["attachments"]) == 1
+    assert len(body[0]["attachments"]) == 2
+    assert body[0]["bundle_pdf_download_url"] == f"/communications/{comm_id}/bundle-pdf/download"
+
+    pdf_res = receiver_client.get(body[0]["bundle_pdf_download_url"])
+    assert pdf_res.status_code == 200
+    assert pdf_res.headers["content-type"].startswith("application/pdf")
 
     mark_res = receiver_client.post(f"/communications/{comm_id}/read")
     assert mark_res.status_code == 200
@@ -132,7 +149,7 @@ def test_create_rejects_other_site_receiver():
     create_res = sender_client.post(
         "/communications",
         data={"receiver_user_ids": [str(other_site_user.id)]},
-        files=[("files", ("p1.png", b"dummy", "image/png"))],
+        files=[("files", ("p1.jpg", _make_image_bytes((120, 120, 120)), "image/jpeg"))],
     )
     assert create_res.status_code == 400
     assert "same site" in create_res.json()["detail"]

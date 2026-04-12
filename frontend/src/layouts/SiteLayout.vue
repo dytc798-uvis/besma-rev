@@ -94,6 +94,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
+import { todayKst } from "@/utils/datetime";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -161,7 +162,7 @@ async function initializeLayout() {
 async function loadBadge() {
   try {
     const res = await api.get("/documents/badges/site", {
-      params: { date: new Date().toISOString().slice(0, 10) },
+      params: { date: todayKst() },
     });
     badge.value = res.data;
   } catch {
@@ -309,14 +310,14 @@ function menuIcon(key: string) {
   border-radius: 10px;
   border-left: 4px solid transparent;
   text-decoration: none;
-  color: #334155;
+  color: #eff6ff;
   transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
 }
 
 .menu-link-primary {
   font-weight: 600;
-  background: #f8fbff;
-  border-left-color: #bfdbfe;
+  background: rgba(255, 255, 255, 0.08);
+  border-left-color: rgba(191, 219, 254, 0.9);
 }
 
 .menu-link-secondary {
@@ -324,8 +325,8 @@ function menuIcon(key: string) {
 }
 
 .menu-link:hover {
-  background: #f8fafc;
-  color: #0f172a;
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
 }
 
 .menu-link-active {

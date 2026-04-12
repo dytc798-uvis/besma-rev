@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import io
 import csv
 import mimetypes
+from datetime import date
 from pathlib import Path
 from urllib.parse import quote
 
@@ -15,6 +15,7 @@ from app.core.auth import DbDep
 from app.core.datetime_utils import utc_now
 from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
+from app.core.upload_processing import process_uploaded_image
 from app.modules.documents.models import Document
 from app.modules.safety_features.models import (
     NonconformityItem,
@@ -45,6 +46,178 @@ def _assert_site_access(current_user, site_id: int | None) -> None:
 def _role_value(current_user) -> str:
     role = getattr(current_user, "role", None)
     return role.value if hasattr(role, "value") else str(role)
+
+
+def _parse_optional_date(value: str | None) -> date | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid date format") from exc
+
+
+def _safe_relpath(path: str | None) -> Path | None:
+    if not path:
+        return None
+    resolved = settings.storage_root / path
+    if not resolved.exists():
+        return None
+    return resolved
+
+
+def _store_resized_image(prefix: str, entity_id: int, content: bytes) -> str:
+    try:
+        asset = process_uploaded_image(
+            content,
+            source_name=f"{prefix}_{entity_id}.jpg",
+            content_type="image/jpeg",
+            generate_pdf=False,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    photo_name = f"{prefix}_{entity_id}_{int(utc_now().timestamp())}{asset.optimized_ext}"
+    photo_path = _ensure_documents_dir() / photo_name
+    photo_path.write_bytes(asset.optimized_bytes)
+    return str(photo_path.relative_to(settings.storage_root))
+
+
+def _next_worker_voice_row_no(db, ledger_id: int) -> int:
+    latest = (
+        db.query(WorkerVoiceItem)
+        .filter(WorkerVoiceItem.ledger_id == ledger_id)
+        .order_by(WorkerVoiceItem.row_no.desc(), WorkerVoiceItem.id.desc())
+        .first()
+    )
+    return (latest.row_no if latest else 0) + 1
+
+
+def _next_nonconformity_row_no(db, ledger_id: int) -> int:
+    latest = (
+        db.query(NonconformityItem)
+        .filter(NonconformityItem.ledger_id == ledger_id)
+        .order_by(NonconformityItem.row_no.desc(), NonconformityItem.id.desc())
+        .first()
+    )
+    return (latest.row_no if latest else 0) + 1
+
+
+def _get_current_worker_voice_ledger(db, site_id: int | None):
+    q = db.query(WorkerVoiceLedger)
+    if site_id is None:
+        return None
+    return (
+        q.filter(WorkerVoiceLedger.site_id == site_id)
+        .order_by(
+            (WorkerVoiceLedger.source_type == "MANUAL").desc(),
+            WorkerVoiceLedger.uploaded_at.desc(),
+            WorkerVoiceLedger.id.desc(),
+        )
+        .first()
+    )
+
+
+def _get_or_create_worker_voice_ledger(db, current_user, site_id: int | None):
+    ledger = _get_current_worker_voice_ledger(db, site_id)
+    if ledger is not None:
+        return ledger
+    ledger = WorkerVoiceLedger(
+        site_id=site_id,
+        title="근로자 의견청취 관리대장",
+        file_path="",
+        file_name="",
+        file_size=0,
+        uploaded_by_user_id=current_user.id,
+        source_type="MANUAL",
+        uploaded_at=utc_now(),
+    )
+    db.add(ledger)
+    db.flush()
+    return ledger
+
+
+def _get_current_nonconformity_ledger(db, site_id: int | None):
+    q = db.query(NonconformityLedger)
+    if site_id is None:
+        return None
+    return (
+        q.filter(NonconformityLedger.site_id == site_id)
+        .order_by(
+            (NonconformityLedger.source_type == "MANUAL").desc(),
+            NonconformityLedger.uploaded_at.desc(),
+            NonconformityLedger.id.desc(),
+        )
+        .first()
+    )
+
+
+def _get_or_create_nonconformity_ledger(db, current_user, site_id: int | None):
+    ledger = _get_current_nonconformity_ledger(db, site_id)
+    if ledger is not None:
+        return ledger
+    ledger = NonconformityLedger(
+        site_id=site_id,
+        title="부적합사항 관리대장",
+        file_path="",
+        file_name="",
+        file_size=0,
+        uploaded_by_user_id=current_user.id,
+        source_type="MANUAL",
+        uploaded_at=utc_now(),
+    )
+    db.add(ledger)
+    db.flush()
+    return ledger
+
+
+def _serialize_worker_voice_item(item: WorkerVoiceItem, ledger: WorkerVoiceLedger, comment_map: dict[int, list[dict]] | None = None):
+    return {
+        "id": item.id,
+        "ledger_id": ledger.id,
+        "ledger_title": ledger.title,
+        "ledger_source_type": getattr(ledger, "source_type", "IMPORT"),
+        "row_no": item.row_no,
+        "worker_name": item.worker_name,
+        "worker_birth_date": item.worker_birth_date,
+        "worker_phone_number": item.worker_phone_number,
+        "opinion_kind": item.opinion_kind,
+        "opinion_text": item.opinion_text,
+        "action_before": item.action_before,
+        "action_after": item.action_after,
+        "action_status": item.action_status,
+        "action_owner": item.action_owner,
+        "before_photo_url": (f"/safety-features/worker-voice/items/{item.id}/before-photo" if item.before_photo_path else None),
+        "after_photo_url": (f"/safety-features/worker-voice/items/{item.id}/after-photo" if item.after_photo_path else None),
+        "site_approved": item.site_approved,
+        "hq_checked": item.hq_checked,
+        "reward_candidate": item.reward_candidate,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "comments": (comment_map or {}).get(item.id, []),
+    }
+
+
+def _serialize_nonconformity_item(item: NonconformityItem):
+    after_photo_url = f"/safety-features/nonconformities/items/{item.id}/after-photo" if (item.after_photo_path or item.improvement_photo_path) else None
+    return {
+        "id": item.id,
+        "row_no": item.row_no,
+        "issue_text": item.issue_text,
+        "action_before": item.action_before,
+        "action_after": item.improvement_action,
+        "action_status": item.action_status,
+        "action_due_date": item.action_due_date,
+        "completed_at": item.improvement_date,
+        "action_owner": item.improvement_owner,
+        "before_photo_url": (f"/safety-features/nonconformities/items/{item.id}/before-photo" if item.before_photo_path else None),
+        "after_photo_url": after_photo_url,
+        "improvement_action": item.improvement_action,
+        "improvement_date": item.improvement_date,
+        "improvement_owner": item.improvement_owner,
+        "improvement_photo_url": after_photo_url,
+        "updated_at": item.updated_at,
+    }
 
 
 @router.get("/education")
@@ -400,6 +573,7 @@ async def upload_worker_voice_ledger(
         file_name=file.filename or filename,
         file_size=len(content),
         uploaded_by_user_id=current_user.id,
+        source_type="IMPORT",
         uploaded_at=utc_now(),
     )
     db.add(ledger)
@@ -451,22 +625,217 @@ def list_worker_voice_items(db: DbDep, current_user: CurrentUserDep):
         )
     return {
         "items": [
-            {
-                "id": item.id,
-                "ledger_title": ledger.title,
-                "worker_name": item.worker_name,
-                "worker_birth_date": item.worker_birth_date,
-                "worker_phone_number": item.worker_phone_number,
-                "opinion_kind": item.opinion_kind,
-                "opinion_text": item.opinion_text,
-                "site_approved": item.site_approved,
-                "hq_checked": item.hq_checked,
-                "reward_candidate": item.reward_candidate,
-                "comments": comment_map.get(item.id, []),
-            }
+            _serialize_worker_voice_item(item, ledger, comment_map)
             for item, ledger in rows
         ]
     }
+
+
+@router.get("/worker-voice/ledger")
+def get_current_worker_voice_ledger_detail(db: DbDep, current_user: CurrentUserDep):
+    site_id = current_user.site_id if current_user.role == Role.SITE else None
+    ledger = _get_current_worker_voice_ledger(db, site_id)
+    if ledger is None:
+        return {"ledger": None, "items": [], "imports": []}
+    _assert_site_access(current_user, ledger.site_id)
+    items = (
+        db.query(WorkerVoiceItem)
+        .filter(WorkerVoiceItem.ledger_id == ledger.id)
+        .order_by(WorkerVoiceItem.row_no.asc(), WorkerVoiceItem.id.asc())
+        .all()
+    )
+    item_ids = [item.id for item in items]
+    comments = (
+        db.query(WorkerVoiceComment)
+        .filter(WorkerVoiceComment.item_id.in_(item_ids))
+        .order_by(WorkerVoiceComment.created_at.asc(), WorkerVoiceComment.id.asc())
+        .all()
+        if item_ids
+        else []
+    )
+    user_ids = {c.created_by_user_id for c in comments}
+    users = db.query(User).filter(User.id.in_(list(user_ids))).all() if user_ids else []
+    name_map = {u.id: u.name for u in users}
+    comment_map: dict[int, list[dict]] = {}
+    for c in comments:
+        comment_map.setdefault(c.item_id, []).append(
+            {"id": c.id, "body": c.body, "created_at": c.created_at, "created_by_name": name_map.get(c.created_by_user_id)}
+        )
+    imports_q = db.query(WorkerVoiceLedger)
+    if current_user.role == Role.SITE:
+        imports_q = imports_q.filter(WorkerVoiceLedger.site_id == current_user.site_id)
+    imports = (
+        imports_q.filter(WorkerVoiceLedger.source_type == "IMPORT")
+        .order_by(WorkerVoiceLedger.uploaded_at.desc(), WorkerVoiceLedger.id.desc())
+        .limit(10)
+        .all()
+    )
+    return {
+        "ledger": {
+            "id": ledger.id,
+            "title": ledger.title,
+            "source_type": getattr(ledger, "source_type", "IMPORT"),
+            "uploaded_at": ledger.uploaded_at,
+            "file_name": ledger.file_name,
+        },
+        "items": [_serialize_worker_voice_item(item, ledger, comment_map) for item in items],
+        "imports": [
+            {
+                "id": row.id,
+                "title": row.title,
+                "uploaded_at": row.uploaded_at,
+                "file_name": row.file_name,
+            }
+            for row in imports
+        ],
+    }
+
+
+@router.post("/worker-voice/items")
+def create_worker_voice_item(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    worker_name: str | None = Form(None),
+    worker_birth_date: str | None = Form(None),
+    worker_phone_number: str | None = Form(None),
+    opinion_kind: str | None = Form(None),
+    opinion_text: str = Form(...),
+    action_before: str | None = Form(None),
+    action_after: str | None = Form(None),
+    action_status: str | None = Form(None),
+    action_owner: str | None = Form(None),
+):
+    if current_user.role != Role.SITE or not current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can add rows")
+    clean_opinion = (opinion_text or "").strip()
+    if not clean_opinion:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="opinion_text is required")
+    ledger = _get_or_create_worker_voice_ledger(db, current_user, current_user.site_id)
+    item = WorkerVoiceItem(
+        ledger_id=ledger.id,
+        row_no=_next_worker_voice_row_no(db, ledger.id),
+        worker_name=(worker_name or "").strip() or None,
+        worker_birth_date=(worker_birth_date or "").strip() or None,
+        worker_phone_number=(worker_phone_number or "").strip() or None,
+        opinion_kind=(opinion_kind or "").strip() or None,
+        opinion_text=clean_opinion,
+        action_before=(action_before or "").strip() or None,
+        action_after=(action_after or "").strip() or None,
+        action_status=(action_status or "").strip() or None,
+        action_owner=(action_owner or "").strip() or None,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return {"id": item.id}
+
+
+@router.post("/worker-voice/items/{item_id}")
+def update_worker_voice_item(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    worker_name: str | None = Form(None),
+    worker_birth_date: str | None = Form(None),
+    worker_phone_number: str | None = Form(None),
+    opinion_kind: str | None = Form(None),
+    opinion_text: str | None = Form(None),
+    action_before: str | None = Form(None),
+    action_after: str | None = Form(None),
+    action_status: str | None = Form(None),
+    action_owner: str | None = Form(None),
+):
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    if current_user.role != Role.SITE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can edit rows")
+    if opinion_text is not None:
+        clean_opinion = opinion_text.strip()
+        if not clean_opinion:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="opinion_text is required")
+        item.opinion_text = clean_opinion
+    item.worker_name = (worker_name or "").strip() or None
+    item.worker_birth_date = (worker_birth_date or "").strip() or None
+    item.worker_phone_number = (worker_phone_number or "").strip() or None
+    item.opinion_kind = (opinion_kind or "").strip() or None
+    item.action_before = (action_before or "").strip() or None
+    item.action_after = (action_after or "").strip() or None
+    item.action_status = (action_status or "").strip() or None
+    item.action_owner = (action_owner or "").strip() or None
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/worker-voice/items/{item_id}/before-photo")
+async def upload_worker_voice_item_before_photo(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    file: UploadFile = File(...),
+):
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    if current_user.role != Role.SITE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can upload photos")
+    content = await file.read()
+    item.before_photo_path = _store_resized_image("worker_voice_before", item.id, content)
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/worker-voice/items/{item_id}/after-photo")
+async def upload_worker_voice_item_after_photo(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    file: UploadFile = File(...),
+):
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    if current_user.role != Role.SITE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can upload photos")
+    content = await file.read()
+    item.after_photo_path = _store_resized_image("worker_voice_after", item.id, content)
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/worker-voice/items/{item_id}/before-photo")
+def view_worker_voice_item_before_photo(item_id: int, db: DbDep, current_user: CurrentUserDep):
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    path = _safe_relpath(item.before_photo_path)
+    if path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+    return FileResponse(path=path, media_type="image/jpeg", filename=path.name)
+
+
+@router.get("/worker-voice/items/{item_id}/after-photo")
+def view_worker_voice_item_after_photo(item_id: int, db: DbDep, current_user: CurrentUserDep):
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    path = _safe_relpath(item.after_photo_path)
+    if path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+    return FileResponse(path=path, media_type="image/jpeg", filename=path.name)
 
 
 @router.post("/worker-voice/items/{item_id}/site-approve")
@@ -577,6 +946,7 @@ async def upload_nonconformity_ledger(
         file_name=file.filename or filename,
         file_size=len(content),
         uploaded_by_user_id=current_user.id,
+        source_type="IMPORT",
         uploaded_at=utc_now(),
     )
     db.add(ledger)
@@ -609,9 +979,10 @@ def list_nonconformity_ledgers(db: DbDep, current_user: CurrentUserDep):
             {
                 "id": l.id,
                 "title": l.title,
+                "source_type": getattr(l, "source_type", "IMPORT"),
                 "uploaded_at": l.uploaded_at,
                 "file_name": l.file_name,
-                "download_url": f"/safety-features/file/nonconformity/{l.id}",
+                "download_url": (f"/safety-features/file/nonconformity/{l.id}" if l.file_path else None),
                 "pdf_view_url": f"/safety-features/nonconformities/{l.id}/pdf",
             }
             for l in ledgers
@@ -635,22 +1006,92 @@ def get_nonconformity_ledger_detail(ledger_id: int, db: DbDep, current_user: Cur
         "ledger": {
             "id": ledger.id,
             "title": ledger.title,
+            "source_type": getattr(ledger, "source_type", "IMPORT"),
             "uploaded_at": ledger.uploaded_at,
             "file_name": ledger.file_name,
         },
-        "items": [
+        "items": [_serialize_nonconformity_item(i) for i in items],
+    }
+
+
+@router.get("/nonconformities/overview/current")
+def get_current_nonconformity_ledger_detail(db: DbDep, current_user: CurrentUserDep):
+    site_id = current_user.site_id if current_user.role == Role.SITE else None
+    ledger = _get_current_nonconformity_ledger(db, site_id)
+    if ledger is None:
+        return {"ledger": None, "items": [], "imports": []}
+    _assert_site_access(current_user, ledger.site_id)
+    items = (
+        db.query(NonconformityItem)
+        .filter(NonconformityItem.ledger_id == ledger.id)
+        .order_by(NonconformityItem.row_no.asc(), NonconformityItem.id.asc())
+        .all()
+    )
+    imports_q = db.query(NonconformityLedger)
+    if current_user.role == Role.SITE:
+        imports_q = imports_q.filter(NonconformityLedger.site_id == current_user.site_id)
+    imports = (
+        imports_q.filter(NonconformityLedger.source_type == "IMPORT")
+        .order_by(NonconformityLedger.uploaded_at.desc(), NonconformityLedger.id.desc())
+        .limit(10)
+        .all()
+    )
+    return {
+        "ledger": {
+            "id": ledger.id,
+            "title": ledger.title,
+            "source_type": getattr(ledger, "source_type", "IMPORT"),
+            "uploaded_at": ledger.uploaded_at,
+            "file_name": ledger.file_name,
+        },
+        "items": [_serialize_nonconformity_item(i) for i in items],
+        "imports": [
             {
-                "id": i.id,
-                "row_no": i.row_no,
-                "issue_text": i.issue_text,
-                "improvement_action": i.improvement_action,
-                "improvement_date": i.improvement_date,
-                "improvement_owner": i.improvement_owner,
-                "improvement_photo_url": (f"/safety-features/nonconformities/items/{i.id}/photo" if i.improvement_photo_path else None),
+                "id": row.id,
+                "title": row.title,
+                "uploaded_at": row.uploaded_at,
+                "file_name": row.file_name,
+                "pdf_view_url": f"/safety-features/nonconformities/{row.id}/pdf",
+                "download_url": f"/safety-features/file/nonconformity/{row.id}",
             }
-            for i in items
+            for row in imports
         ],
     }
+
+
+@router.post("/nonconformities/items")
+def create_nonconformity_item(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    issue_text: str = Form(...),
+    action_before: str | None = Form(None),
+    action_after: str | None = Form(None),
+    action_status: str | None = Form(None),
+    action_due_date: str | None = Form(None),
+    completed_at: str | None = Form(None),
+    action_owner: str | None = Form(None),
+):
+    if current_user.role != Role.SITE or not current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can add rows")
+    clean_issue = (issue_text or "").strip()
+    if not clean_issue:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="issue_text is required")
+    ledger = _get_or_create_nonconformity_ledger(db, current_user, current_user.site_id)
+    item = NonconformityItem(
+        ledger_id=ledger.id,
+        row_no=_next_nonconformity_row_no(db, ledger.id),
+        issue_text=clean_issue,
+        action_before=(action_before or "").strip() or None,
+        improvement_action=(action_after or "").strip() or None,
+        action_status=(action_status or "").strip() or None,
+        action_due_date=_parse_optional_date(action_due_date),
+        improvement_date=_parse_optional_date(completed_at),
+        improvement_owner=(action_owner or "").strip() or None,
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return {"id": item.id}
 
 
 @router.post("/nonconformities/items/{item_id}")
@@ -658,23 +1099,76 @@ def update_nonconformity_item(
     item_id: int,
     db: DbDep,
     current_user: CurrentUserDep,
-    improvement_action: str | None = Form(None),
-    improvement_date: str | None = Form(None),
-    improvement_owner: str | None = Form(None),
+    issue_text: str | None = Form(None),
+    action_before: str | None = Form(None),
+    action_after: str | None = Form(None),
+    action_status: str | None = Form(None),
+    action_due_date: str | None = Form(None),
+    completed_at: str | None = Form(None),
+    action_owner: str | None = Form(None),
 ):
     item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
     ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
     _assert_site_access(current_user, ledger.site_id if ledger else None)
-    item.improvement_action = (improvement_action or "").strip() or None
-    item.improvement_owner = (improvement_owner or "").strip() or None
-    if improvement_date:
-        from datetime import date
+    if current_user.role != Role.SITE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can edit rows")
+    if issue_text is not None:
+        clean_issue = issue_text.strip()
+        if not clean_issue:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="issue_text is required")
+        item.issue_text = clean_issue
+    item.action_before = (action_before or "").strip() or None
+    item.improvement_action = (action_after or "").strip() or None
+    item.action_status = (action_status or "").strip() or None
+    item.action_due_date = _parse_optional_date(action_due_date)
+    item.improvement_date = _parse_optional_date(completed_at)
+    item.improvement_owner = (action_owner or "").strip() or None
+    db.add(item)
+    db.commit()
+    return {"ok": True}
 
-        item.improvement_date = date.fromisoformat(improvement_date)
-    elif improvement_date == "":
-        item.improvement_date = None
+
+@router.post("/nonconformities/items/{item_id}/before-photo")
+async def upload_nonconformity_item_before_photo(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    file: UploadFile = File(...),
+):
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    if current_user.role != Role.SITE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can upload photos")
+    content = await file.read()
+    item.before_photo_path = _store_resized_image("nonconf_before", item.id, content)
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/after-photo")
+async def upload_nonconformity_item_after_photo(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    file: UploadFile = File(...),
+):
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    if current_user.role != Role.SITE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can upload photos")
+    content = await file.read()
+    stored = _store_resized_image("nonconf_after", item.id, content)
+    item.after_photo_path = stored
+    item.improvement_photo_path = stored
     db.add(item)
     db.commit()
     return {"ok": True}
@@ -687,42 +1181,38 @@ async def upload_nonconformity_item_photo(
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ):
+    return await upload_nonconformity_item_after_photo(item_id, db, current_user, file)
+
+
+@router.get("/nonconformities/items/{item_id}/before-photo")
+def view_nonconformity_item_before_photo(item_id: int, db: DbDep, current_user: CurrentUserDep):
     item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
     if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
     ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
     _assert_site_access(current_user, ledger.site_id if ledger else None)
-    from PIL import Image
+    path = _safe_relpath(item.before_photo_path)
+    if path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+    return FileResponse(path=path, media_type="image/jpeg", filename=path.name)
 
-    content = await file.read()
-    img = Image.open(io.BytesIO(content))
-    max_px = 1280
-    if img.width > max_px or img.height > max_px:
-        img.thumbnail((max_px, max_px))
-    if img.mode not in {"RGB", "L"}:
-        img = img.convert("RGB")
-    out = io.BytesIO()
-    img.save(out, format="JPEG", quality=75, optimize=True)
-    photo_name = f"nonconf_item_{item.id}_{int(utc_now().timestamp())}.jpg"
-    photo_path = _ensure_documents_dir() / photo_name
-    photo_path.write_bytes(out.getvalue())
-    item.improvement_photo_path = str(photo_path.relative_to(settings.storage_root))
-    db.add(item)
-    db.commit()
-    return {"ok": True}
+
+@router.get("/nonconformities/items/{item_id}/after-photo")
+def view_nonconformity_item_after_photo(item_id: int, db: DbDep, current_user: CurrentUserDep):
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    path = _safe_relpath(item.after_photo_path or item.improvement_photo_path)
+    if path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+    return FileResponse(path=path, media_type="image/jpeg", filename=path.name)
 
 
 @router.get("/nonconformities/items/{item_id}/photo")
 def view_nonconformity_item_photo(item_id: int, db: DbDep, current_user: CurrentUserDep):
-    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
-    if item is None or not item.improvement_photo_path:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
-    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
-    _assert_site_access(current_user, ledger.site_id if ledger else None)
-    path = settings.storage_root / item.improvement_photo_path
-    if not path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
-    return FileResponse(path=path, media_type="image/jpeg", filename=path.name)
+    return view_nonconformity_item_after_photo(item_id, db, current_user)
 
 
 @router.get("/nonconformities/{ledger_id}/pdf")
@@ -750,7 +1240,10 @@ def render_nonconformity_ledger_pdf(ledger_id: int, db: DbDep, current_user: Cur
     p.drawString(40, y, f"부적합사항관리대장: {ledger.title}")
     y -= 24
     for idx, i in enumerate(items, start=1):
-        line = f"{idx}. {i.issue_text} / 조치:{i.improvement_action or '-'} / 일자:{i.improvement_date or '-'} / 담당:{i.improvement_owner or '-'}"
+        line = (
+            f"{idx}. {i.issue_text} / 전:{i.action_before or '-'} / 후:{i.improvement_action or '-'} "
+            f"/ 상태:{i.action_status or '-'} / 담당:{i.improvement_owner or '-'} / 완료:{i.improvement_date or '-'}"
+        )
         p.drawString(40, y, line[:110])
         y -= 18
         if y < 60:

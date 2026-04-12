@@ -29,6 +29,7 @@ class CommunicationListItemResponse(BaseModel):
     description: str | None
     created_at: datetime
     is_read: bool
+    bundle_pdf_download_url: str | None = None
     sender: CommunicationSenderResponse
     attachments: list[CommunicationAttachmentResponse]
 

@@ -55,8 +55,8 @@
           <div class="span-2"><dt>반려 사유</dt><dd>{{ currentRow.review_note || "—" }}</dd></div>
         </dl>
         <div v-if="currentRow.document_id" class="review-form">
-          <label class="review-label">검토 의견 (반려 시 필수)</label>
-          <textarea v-model="reviewComment" class="review-textarea" rows="3" placeholder="의견을 입력하세요" />
+          <label class="review-label">검토 의견 (승인 시 선택, 반려 시 필수)</label>
+          <textarea v-model="reviewComment" class="review-textarea" rows="3" placeholder="승인 코멘트는 선택 입력, 반려는 사유 필수" />
           <p v-if="reviewError" class="detail-error-banner">{{ reviewError }}</p>
           <div class="inst-actions-row">
             <button
@@ -135,6 +135,7 @@ import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { BaseCard } from "@/components/product";
 import { canPreviewInBrowser, isImageFile, isPdfFile } from "@/utils/filePreview";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 interface HistoryRow {
   instance_id: number;
@@ -216,8 +217,7 @@ function displaySiteName(siteName: string) {
 }
 
 function formatDateTime(value: string | null) {
-  if (!value) return "—";
-  return value.slice(0, 16).replace("T", " ");
+  return formatDateTimeKst(value, "—");
 }
 
 function workflowUiLabel(workflow: string, isMissing: boolean) {

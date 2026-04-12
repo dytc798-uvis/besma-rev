@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import logging
 import re
 import zipfile
@@ -12,9 +11,10 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
 from app.config.settings import settings
-from app.core.datetime_utils import utc_now
 from app.core.auth import DbDep
+from app.core.datetime_utils import utc_now
 from app.core.permissions import CurrentUserDep, Role
+from app.core.upload_processing import is_image_upload, process_uploaded_image
 from app.modules.document_generation.models import (
     DocumentInstance,
     DocumentInstanceStatus,
@@ -42,7 +42,6 @@ DAILY_UPLOAD_NAME_BY_CODE = {
     "DAILY_TBM": "TBM",
     "SUPERVISOR_CHECKLIST": "SUPERVISOR_CHECKLIST",
 }
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 
 
 def _ensure_documents_dir() -> Path:
@@ -96,27 +95,6 @@ def _build_saved_filename(
 
 def _optimize_uploaded_content(content: bytes, source_name: str, content_type: str | None) -> tuple[bytes, str]:
     ext = Path(source_name or "upload.bin").suffix.lower()
-    content_type_value = (content_type or "").lower()
-
-    if ext in IMAGE_EXTENSIONS or content_type_value.startswith("image/"):
-        try:
-            from PIL import Image
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Image upload optimization requires Pillow dependency",
-            ) from exc
-
-        img = Image.open(io.BytesIO(content))
-        # 과도한 해상도는 축소하여 PDF 용량을 줄인다.
-        max_px = 1800
-        if img.width > max_px or img.height > max_px:
-            img.thumbnail((max_px, max_px))
-        if img.mode not in {"RGB", "L"}:
-            img = img.convert("RGB")
-        out = io.BytesIO()
-        img.save(out, format="PDF", resolution=150.0, optimize=True, quality=70)
-        return out.getvalue(), ".pdf"
 
     if ext == ".pdf" and len(content) > settings.document_upload_max_bytes:
         try:
@@ -141,6 +119,12 @@ def _optimize_uploaded_content(content: bytes, source_name: str, content_type: s
             return content, ext
 
     return content, ext
+
+
+def _write_bytes(storage_dir: Path, filename: str, content: bytes) -> str:
+    target = storage_dir / filename
+    target.write_bytes(content)
+    return str(target.relative_to(settings.storage_root))
 
 
 def _get_or_create_instance_for_upload(
@@ -348,8 +332,36 @@ async def upload_document_for_instance(
     storage_dir = _ensure_documents_dir()
     source_name = file.filename or "upload.bin"
     content = await file.read()
-    optimized_content, ext = _optimize_uploaded_content(content, source_name, file.content_type)
-    if len(optimized_content) > settings.document_upload_max_bytes:
+    timestamp = int(utc_now().timestamp())
+    primary_content, primary_ext = _optimize_uploaded_content(content, source_name, file.content_type)
+    original_file_path: str | None = None
+    optimized_file_path: str | None = None
+
+    if is_image_upload(source_name, file.content_type):
+        try:
+            image_asset = process_uploaded_image(
+                content,
+                source_name=source_name,
+                content_type=file.content_type,
+                generate_pdf=True,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        primary_content = image_asset.pdf_bytes or primary_content
+        primary_ext = ".pdf"
+        stem = f"instance_{inst.id}_{timestamp}_{Path(source_name).stem}"
+        original_file_path = _write_bytes(
+            storage_dir,
+            f"{stem}__original{image_asset.original_ext}",
+            image_asset.original_bytes,
+        )
+        optimized_file_path = _write_bytes(
+            storage_dir,
+            f"{stem}__optimized{image_asset.optimized_ext}",
+            image_asset.optimized_bytes,
+        )
+
+    if len(primary_content) > settings.document_upload_max_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"파일 크기는 최적화 후 기준 {settings.document_upload_max_bytes // (1024 * 1024)}MB 이하만 업로드할 수 있습니다.",
@@ -370,15 +382,17 @@ async def upload_document_for_instance(
         site_code=site_code,
         site_name=site_name,
         period_start=inst.period_start,
-        extension=ext,
+        extension=primary_ext,
     )
-    filename = f"instance_{inst.id}_{int(utc_now().timestamp())}_{safe_name}"
+    filename = f"instance_{inst.id}_{timestamp}_{safe_name}"
     stored_path = storage_dir / filename
-    stored_path.write_bytes(optimized_content)
+    stored_path.write_bytes(primary_content)
 
     doc.file_path = str(stored_path.relative_to(settings.storage_root))
+    doc.original_file_path = original_file_path
+    doc.optimized_file_path = optimized_file_path
     doc.file_name = safe_name
-    doc.file_size = len(optimized_content)
+    doc.file_size = len(primary_content)
     doc.uploaded_by_user_id = current_user.id
     doc.uploaded_at = utc_now()
     doc.current_status = DocumentStatus.SUBMITTED
@@ -425,6 +439,8 @@ async def upload_document_for_instance(
         "workflow_status": inst.workflow_status,
         "document_id": doc.id,
         "file_path": doc.file_path,
+        "original_file_path": doc.original_file_path,
+        "optimized_file_path": doc.optimized_file_path,
     }
 
 

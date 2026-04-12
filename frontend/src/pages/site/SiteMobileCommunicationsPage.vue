@@ -2,7 +2,7 @@
   <div class="mobile-wrap">
     <div class="card">
       <div class="card-title">소통자료 업로드</div>
-      <p class="helper">사진 1장 이상을 선택하고 수신자를 고른 뒤 전송하세요.</p>
+      <p class="helper">사진 1장 이상을 선택하고 수신자를 고른 뒤 전송하세요. 업로드된 이미지는 서버에서 자동 최적화되며, 여러 장이면 PDF도 함께 생성됩니다.</p>
 
       <div class="field">
         <label>사진</label>

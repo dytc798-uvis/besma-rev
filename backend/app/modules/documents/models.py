@@ -47,6 +47,8 @@ class Document(Base):
         String(20), nullable=False, default=DocumentStatus.DRAFT
     )
     file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    original_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    optimized_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     uploaded_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)

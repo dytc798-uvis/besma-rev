@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     document_explorer_base_dir: Path = BASE_DIR / "docs" / "base"
     upload_max_part_size_bytes: int = Field(default=30 * 1024 * 1024, validation_alias="BESMA_UPLOAD_MAX_PART_SIZE_BYTES")
     document_upload_max_bytes: int = Field(default=10 * 1024 * 1024, validation_alias="BESMA_DOCUMENT_UPLOAD_MAX_BYTES")
+    weather_cache_ttl_minutes: int = Field(default=20, validation_alias="BESMA_WEATHER_CACHE_TTL_MINUTES")
+    weather_http_timeout_seconds: float = Field(default=5.0, validation_alias="BESMA_WEATHER_HTTP_TIMEOUT_SECONDS")
+    weather_hq_name: str | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_NAME")
+    weather_hq_lat: float | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_LAT")
+    weather_hq_lon: float | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_LON")
+    weather_hq_site_limit: int = Field(default=5, validation_alias="BESMA_HQ_WEATHER_SITE_LIMIT")
 
     cors_origins: list[str] = [
         "http://localhost:5173",

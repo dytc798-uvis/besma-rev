@@ -13,43 +13,91 @@
         </div>
       </header>
 
-      <section class="stitch-kpi-grid">
-        <KpiCard
-          label="전체 문서"
-          :value="data?.total_documents ?? '—'"
-          accent="blue"
-          :progress-pct="docHealthPct"
-          :footer-note="`처리 여유 ${docHealthPct}%`"
-          :badge-text="docHealthPct >= 85 ? '양호' : docHealthPct >= 60 ? '주의' : '점검'"
-          :badge-tone="docHealthPct >= 85 ? 'success' : docHealthPct >= 60 ? 'warn' : 'danger'"
-        />
-        <KpiCard
-          label="검토 대기"
-          :value="data?.pending_documents ?? '—'"
-          accent="orange"
-          :progress-pct="pendingRatioPct"
-          :footer-note="`전체 대비 ${pendingRatioPct}%`"
-          :badge-text="pendingRatioPct > 20 ? '집중' : '정상'"
-          :badge-tone="pendingRatioPct > 20 ? 'warn' : 'neutral'"
-        />
-        <KpiCard
-          label="반려 문서"
-          :value="data?.rejected_documents ?? '—'"
-          accent="red"
-          :progress-pct="rejectedRatioPct"
-          :footer-note="`전체 대비 ${rejectedRatioPct}%`"
-          :badge-text="rejectedDocs > 0 ? '재검토' : '없음'"
-          :badge-tone="rejectedDocs > 0 ? 'danger' : 'success'"
-        />
-        <KpiCard
-          label="의견 미조치"
-          :value="data?.pending_opinions ?? '—'"
-          accent="slate"
-          :progress-pct="opinionPendingPct"
-          :footer-note="`의견 대비 ${opinionPendingPct}%`"
-          :badge-text="pendingOpinions > 0 ? '조치 필요' : '없음'"
-          :badge-tone="pendingOpinions > 0 ? 'warn' : 'success'"
-        />
+      <section class="summary-groups">
+        <BaseCard class="summary-group-card">
+          <div class="summary-group-head">
+            <div>
+              <h2 class="summary-group-title">문서 현황</h2>
+              <p class="summary-group-sub">문서 전체 흐름과 결재 대기 상태를 한 번에 봅니다.</p>
+            </div>
+            <div class="summary-group-actions">
+              <button type="button" class="panel-link-btn" @click="goDocuments">문서취합</button>
+              <button type="button" class="panel-link-btn" @click="goApprovals">미결재</button>
+            </div>
+          </div>
+          <div class="doc-metric-grid">
+            <article class="doc-metric-card tone-blue">
+              <span>전체 문서</span>
+              <strong>{{ data?.total_documents ?? "—" }}</strong>
+              <small>처리 여유 {{ docHealthPct }}%</small>
+            </article>
+            <article class="doc-metric-card tone-orange">
+              <span>검토 대기</span>
+              <strong>{{ data?.pending_documents ?? "—" }}</strong>
+              <small>전체 대비 {{ pendingRatioPct }}%</small>
+            </article>
+            <article class="doc-metric-card tone-red">
+              <span>반려 문서</span>
+              <strong>{{ data?.rejected_documents ?? "—" }}</strong>
+              <small>전체 대비 {{ rejectedRatioPct }}%</small>
+            </article>
+          </div>
+        </BaseCard>
+
+        <BaseCard class="summary-group-card">
+          <div class="summary-group-head">
+            <div>
+              <h2 class="summary-group-title">관리대장 / 제안</h2>
+              <p class="summary-group-sub">주요 운영 메뉴로 바로 이동할 수 있습니다.</p>
+            </div>
+          </div>
+          <div class="ledger-card-grid">
+            <button type="button" class="ledger-nav-card" @click="goWorkerVoice">
+              <span>근로자의견청취</span>
+              <strong>{{ data?.worker_voice_items ?? "—" }}</strong>
+              <small>누적 row 건수</small>
+            </button>
+            <button type="button" class="ledger-nav-card" @click="goNonconformities">
+              <span>부적합사항</span>
+              <strong>{{ data?.nonconformity_items ?? "—" }}</strong>
+              <small>누적 row 건수</small>
+            </button>
+            <button type="button" class="ledger-nav-card" @click="goOpinions">
+              <span>운영 아이디어 제안</span>
+              <strong>{{ data?.total_opinions ?? "—" }}</strong>
+              <small>미조치 {{ data?.pending_opinions ?? "—" }}건</small>
+            </button>
+          </div>
+        </BaseCard>
+
+        <BaseCard class="summary-group-card">
+          <div class="summary-group-head">
+            <div>
+              <h2 class="summary-group-title">기상 현황</h2>
+              <p class="summary-group-sub">본사 기준 날씨와 주요 현장의 기상/미세먼지 주의 상태를 함께 봅니다.</p>
+            </div>
+          </div>
+          <div class="weather-overview">
+            <div class="weather-office-card">
+              <span class="weather-overview-label">본사</span>
+              <strong>{{ officeTitle }}</strong>
+              <p class="weather-overview-sub">{{ officeSummary }}</p>
+              <p class="weather-overview-updated">{{ formatDateTimeKst(weatherOverview?.updated_at, "업데이트 정보 없음") }}</p>
+            </div>
+            <ul class="weather-site-list">
+              <li v-for="site in weatherOverview?.sites || []" :key="site.site_id || site.location_name">
+                <div class="weather-site-head">
+                  <strong>{{ site.location_name }}</strong>
+                  <span class="weather-chip" :class="chipTone(site)">{{ headlineStatus(site) }}</span>
+                </div>
+                <p>{{ site.summary_text }}</p>
+              </li>
+              <li v-if="(weatherOverview?.sites || []).length === 0" class="weather-empty-item">
+                표시할 현장 기상 요약이 없습니다.
+              </li>
+            </ul>
+          </div>
+        </BaseCard>
       </section>
 
       <FilterBar class="filter-bar">
@@ -117,10 +165,10 @@ import { api } from "@/services/api";
 import {
   BaseCard,
   FilterBar,
-  KpiCard,
   SiteCard,
   SummaryPanel,
 } from "@/components/product";
+import { formatDateTimeKst, todayKst } from "@/utils/datetime";
 
 interface DashboardSummary {
   total_documents: number;
@@ -128,7 +176,32 @@ interface DashboardSummary {
   rejected_documents: number;
   total_opinions: number;
   pending_opinions: number;
+  worker_voice_items: number;
+  nonconformity_items: number;
   documents_by_site: { site_id: number | null; count: number }[];
+}
+
+interface WeatherOverviewSite {
+  available: boolean;
+  location_name: string;
+  site_id?: number | null;
+  summary_text: string;
+  pm10_status: string;
+  pm25_status: string;
+  advisory_flags: string[];
+  warning_score: number;
+}
+
+interface WeatherOverview {
+  office: {
+    available: boolean;
+    location_name: string;
+    weather_label?: string;
+    temperature?: number | null;
+    status_text?: string;
+  };
+  sites: WeatherOverviewSite[];
+  updated_at: string | null;
 }
 
 interface SiteRow {
@@ -162,6 +235,7 @@ const data = ref<DashboardSummary | null>(null);
 const sites = ref<SiteRow[]>([]);
 const siteSummaryMap = ref<Record<number, DashboardSiteSummary>>({});
 const recentOpinions = ref<OpinionRow[]>([]);
+const weatherOverview = ref<WeatherOverview | null>(null);
 
 const filterSiteId = ref("");
 const filterSiteStatus = ref<"ALL" | "IN_PROGRESS" | "STOPPED" | "COMPLETED" | "UNKNOWN">("ALL");
@@ -174,7 +248,6 @@ const totalDocs = computed(() => data.value?.total_documents ?? 0);
 const pendingDocs = computed(() => data.value?.pending_documents ?? 0);
 const rejectedDocs = computed(() => data.value?.rejected_documents ?? 0);
 const totalOpinions = computed(() => data.value?.total_opinions ?? 0);
-const pendingOpinions = computed(() => data.value?.pending_opinions ?? 0);
 
 const docHealthPct = computed(() => {
   const t = totalDocs.value;
@@ -193,12 +266,6 @@ const rejectedRatioPct = computed(() => {
   const t = totalDocs.value;
   if (t <= 0) return 0;
   return Math.min(100, Math.round((rejectedDocs.value / t) * 100));
-});
-
-const opinionPendingPct = computed(() => {
-  const t = totalOpinions.value;
-  if (t <= 0) return 0;
-  return Math.min(100, Math.round((pendingOpinions.value / t) * 100));
 });
 
 const siteNameById = computed(() => {
@@ -328,16 +395,60 @@ function goApprovals() {
   router.push({ name: "hq-safe-approval-inbox" });
 }
 
+function goWorkerVoice() {
+  router.push({ name: "hq-safe-worker-voice" });
+}
+
+function goNonconformities() {
+  router.push({ name: "hq-safe-nonconformities" });
+}
+
+function goOpinions() {
+  router.push({ name: "hq-safe-opinions" });
+}
+
+const officeTitle = computed(() => {
+  const office = weatherOverview.value?.office;
+  if (!office) return "정보 없음";
+  if (!office.available) return office.location_name || "본사";
+  const temp = office.temperature == null ? "—" : `${Math.round(office.temperature)}℃`;
+  return `${office.location_name} ${temp}`;
+});
+
+const officeSummary = computed(() => {
+  const office = weatherOverview.value?.office;
+  if (!office) return "기상 정보 없음";
+  if (!office.available) return office.status_text || "본사 위치 미설정";
+  return office.weather_label || "기상 정보";
+});
+
+function headlineStatus(site: WeatherOverviewSite) {
+  if (!site.available) return "정보 없음";
+  if (site.pm25_status === "매우나쁨" || site.pm10_status === "매우나쁨") return "매우나쁨";
+  if (site.pm25_status === "나쁨" || site.pm10_status === "나쁨") return "미세먼지 주의";
+  if (site.advisory_flags.includes("WIND")) return "강풍 주의";
+  if (site.advisory_flags.includes("RAIN")) return "우천 주의";
+  return "정상";
+}
+
+function chipTone(site: WeatherOverviewSite) {
+  const status = headlineStatus(site);
+  if (status === "매우나쁨") return "chip-bad";
+  if (status === "미세먼지 주의" || status === "강풍 주의" || status === "우천 주의") return "chip-warn";
+  return "chip-good";
+}
+
 async function load() {
   loading.value = true;
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayKst();
     const dashParams: Record<string, string> = { period: "day", date: today };
-    const [sumRes, sitesRes, dashRes, opRes] = await Promise.all([
+    const [sumRes, sitesRes, dashRes, opRes, weatherRes] = await Promise.all([
       api.get<DashboardSummary>("/dashboard/summary"),
       api.get<SiteRow[]>("/sites"),
       api.get("/documents/hq-dashboard", { params: dashParams }),
       api.get<OpinionRow[]>("/opinions"),
+      api.get<WeatherOverview>("/dashboard/weather/hq-overview"),
     ]);
     data.value = sumRes.data;
     sites.value = sitesRes.data || [];
@@ -348,11 +459,13 @@ async function load() {
       ]),
     );
     recentOpinions.value = (opRes.data || []).slice(0, 8);
+    weatherOverview.value = weatherRes.data;
   } catch {
     data.value = null;
     sites.value = [];
     siteSummaryMap.value = {};
     recentOpinions.value = [];
+    weatherOverview.value = null;
   } finally {
     loading.value = false;
   }
@@ -395,6 +508,193 @@ onMounted(load);
 .dash-sub {
   margin: 6px 0 0;
   font-size: 14px;
+  color: #64748b;
+}
+
+.summary-groups {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.summary-group-card {
+  border-radius: 18px;
+}
+
+.summary-group-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.summary-group-title {
+  margin: 0;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.summary-group-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.summary-group-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.panel-link-btn {
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.doc-metric-grid,
+.ledger-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.doc-metric-card,
+.ledger-nav-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.doc-metric-card span,
+.ledger-nav-card span {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.doc-metric-card strong,
+.ledger-nav-card strong {
+  font-size: 28px;
+  color: #0f172a;
+}
+
+.doc-metric-card small,
+.ledger-nav-card small {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.tone-blue { background: #f8fbff; }
+.tone-orange { background: #fff7ed; }
+.tone-red { background: #fef2f2; }
+
+.ledger-nav-card {
+  cursor: pointer;
+  text-align: left;
+}
+
+.ledger-nav-card:hover,
+.panel-link-btn:hover {
+  filter: brightness(0.98);
+}
+
+.weather-overview {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.1fr);
+  gap: 12px;
+}
+
+.weather-office-card {
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.weather-overview-label,
+.weather-overview-updated {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.weather-office-card strong {
+  font-size: 24px;
+  color: #0f172a;
+}
+
+.weather-overview-sub {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+}
+
+.weather-site-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.weather-site-list li {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.weather-site-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.weather-site-list p {
+  margin: 0;
+  font-size: 13px;
+  color: #475569;
+}
+
+.weather-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chip-good {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.chip-warn {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.chip-bad {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.weather-empty-item {
   color: #64748b;
 }
 
@@ -542,6 +842,10 @@ button.panel-link {
 }
 
 @media (max-width: 1200px) {
+  .weather-overview {
+    grid-template-columns: 1fr;
+  }
+
   .main-grid {
     grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
   }

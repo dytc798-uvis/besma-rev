@@ -202,6 +202,7 @@
         반려 사유: {{ uploadRejectReason(uploadTarget) }}
       </p>
       <input type="file" @change="onFileChange" />
+      <p class="upload-help">이미지 업로드 시 서버에서 자동 최적화되며, 제출용 PDF로 변환될 수 있습니다.</p>
       <div class="modal-actions">
         <button class="secondary" @click="closeUpload">취소</button>
         <button class="primary" :disabled="!selectedFile || uploading" @click="submitUpload">
@@ -670,6 +671,7 @@ onMounted(async () => {
 .upload-title { margin: 8px 0 12px; font-weight: 600; }
 .upload-note { margin: -8px 0 10px; font-size: 12px; color: #64748b; }
 .upload-reject-note { margin: 0 0 10px; font-size: 12px; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 8px; }
+.upload-help { margin: 8px 0 0; font-size: 12px; color: #475569; }
 .history-note { margin: 6px 0 12px; font-size: 12px; color: #64748b; }
 .history-current-row { background: #eff6ff; }
 .history-current-label { margin-top: 4px; font-size: 12px; color: #1d4ed8; font-weight: 700; }

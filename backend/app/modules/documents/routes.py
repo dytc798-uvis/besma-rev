@@ -44,6 +44,7 @@ from app.schemas.periodic_monitoring import TbmDailyMonitoringResponse, TbmMonth
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
+KST_OFFSET = timedelta(hours=9)
 
 
 class ReviewActionBody(BaseModel):
@@ -59,6 +60,32 @@ def _parse_period(period: str) -> str:
             detail="period must be one of: all, day, week, month, quarter, half_year, year, event",
         )
     return value
+
+
+def _to_kst_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value + KST_OFFSET
+
+
+def _build_pending_documents_summary(rows: list[Document], reference_date: date) -> dict[str, int]:
+    ref_dt = datetime.combine(reference_date, datetime.min.time())
+    week_start = ref_dt - timedelta(days=6)
+    month_start = ref_dt - timedelta(days=29)
+    day_count = 0
+    week_count = 0
+    month_count = 0
+    for doc in rows:
+        base_dt = _to_kst_datetime(doc.submitted_at or doc.uploaded_at)
+        if base_dt is None:
+            continue
+        if base_dt.date() == reference_date:
+            day_count += 1
+        if base_dt >= week_start:
+            week_count += 1
+        if base_dt >= month_start:
+            month_count += 1
+    return {"day": day_count, "week": week_count, "month": month_count}
 
 
 def _parse_year_month(year_month: str) -> tuple[int, int, date, date, str]:
@@ -351,6 +378,7 @@ def get_hq_dashboard(
         )
         .order_by(Document.uploaded_at.desc().nullslast(), Document.id.desc())
     )
+    pending_docs_all = [row[0] for row in pending_docs_query.all()]
     pending_documents = [
         {
             "document_id": d.id,
@@ -368,6 +396,7 @@ def get_hq_dashboard(
         }
         for d, s in pending_docs_query.limit(20).all()
     ]
+    pending_documents_summary = _build_pending_documents_summary(pending_docs_all, date_value)
 
     logger.info(
         "hq-dashboard aggregated: period=%s date=%s site_filter=%s pending_action_count=%s pending_docs=%s pending_instance_ids=%s rejected=%s not_submitted=%s approved=%s",
@@ -423,6 +452,7 @@ def get_hq_dashboard(
             pending_review_count=pending_review_count,
         ),
         "pending_documents": pending_documents,
+        "pending_documents_summary": pending_documents_summary,
         "approval_history": approval_history,
     }
 
@@ -751,6 +781,72 @@ def download_document_file(
     response.headers["Content-Disposition"] = content_disposition
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+def _download_document_derivative(
+    *,
+    document_id: int,
+    relative_path: str | None,
+    db,
+    current_user,
+    fallback_name: str,
+    disposition: str,
+):
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc or not relative_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    file_path = settings.storage_root / relative_path
+    if not file_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    resolved_disposition = (disposition or "attachment").strip().lower()
+    if resolved_disposition not in {"attachment", "inline"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="disposition must be attachment or inline")
+    media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+    response = FileResponse(path=file_path, media_type=media_type, filename=fallback_name)
+    response.headers["Content-Disposition"] = f"{resolved_disposition}; filename*=UTF-8''{quote(fallback_name)}"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@router.get("/{document_id}/file/original")
+def download_document_original_file(
+    document_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    disposition: str = Query("attachment"),
+):
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    fallback_name = doc.file_name if doc and doc.file_name else f"document_{document_id}_original"
+    return _download_document_derivative(
+        document_id=document_id,
+        relative_path=(doc.original_file_path if doc else None),
+        db=db,
+        current_user=current_user,
+        fallback_name=fallback_name,
+        disposition=disposition,
+    )
+
+
+@router.get("/{document_id}/file/optimized")
+def download_document_optimized_file(
+    document_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    disposition: str = Query("inline"),
+):
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    fallback_name = doc.file_name if doc and doc.file_name else f"document_{document_id}_optimized"
+    return _download_document_derivative(
+        document_id=document_id,
+        relative_path=(doc.optimized_file_path if doc else None),
+        db=db,
+        current_user=current_user,
+        fallback_name=fallback_name,
+        disposition=disposition,
+    )
 
 
 @router.post("")

@@ -83,4 +83,5 @@ class HQDashboardResponse(BaseModel):
     items: list[dict]
     signal_status: str
     pending_documents: list[dict]
+    pending_documents_summary: dict[str, int] = Field(default_factory=dict)
     approval_history: list[dict]

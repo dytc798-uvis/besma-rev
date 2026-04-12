@@ -24,17 +24,24 @@
               compact
             />
             <KpiCard
-              label="제출 미비현장 수"
-              :value="hqKpiAggregate.deficientSites"
+              label="금일 미결재"
+              :value="pendingSummary.day"
               accent="orange"
-              footer-note="필수 건수가 있으면서 미제출·검토중·반려 등이 남은 현장"
+              footer-note="KST 오늘 기준 검토 대기/검토중 문서"
               compact
             />
             <KpiCard
-              label="우수현장 수 (90% 이상)"
-              :value="hqKpiAggregate.excellentSites"
+              label="최근 7일 미결재"
+              :value="pendingSummary.week"
               accent="slate"
-              footer-note="현장별 제출율 90% 이상 (필수 건수 있는 현장만)"
+              footer-note="KST 최근 7일 제출 문서"
+              compact
+            />
+            <KpiCard
+              label="최근 30일 미결재"
+              :value="pendingSummary.month"
+              accent="red"
+              footer-note="KST 최근 30일 제출 문서"
               compact
             />
           </div>
@@ -165,7 +172,13 @@
               <p class="sub">버튼을 눌러 새 탭에서 표 형태로 확인하세요.</p>
             </BaseCard>
             <BaseCard class="extra-card" title="승인/반려 이력">
-              <ul class="extra-list">
+              <div class="history-head">
+                <span class="sub">최근 {{ approvalHistory.length }}건</span>
+                <button type="button" class="stitch-btn-secondary pending-open-btn" @click="historyCollapsed = !historyCollapsed">
+                  {{ historyCollapsed ? "펼치기" : "접기" }}
+                </button>
+              </div>
+              <ul v-if="!historyCollapsed" class="extra-list">
                 <li v-for="row in approvalHistory" :key="`hist-${row.document_id}-${row.reviewed_at}`">
                   <button type="button" class="link-btn" @click="goDetail(row.document_id)">
                     {{ displaySiteName(row.site_name) }} · {{ row.title }}
@@ -175,6 +188,7 @@
                 </li>
                 <li v-if="approvalHistory.length === 0" class="sub">이력 없음</li>
               </ul>
+              <p v-else class="sub">공간 절약을 위해 접어 두었습니다.</p>
             </BaseCard>
           </div>
         </section>
@@ -220,6 +234,7 @@ import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
+import { formatDateTimeKst, todayKst } from "@/utils/datetime";
 
 interface SiteSummaryRow {
   site_id: number;
@@ -274,6 +289,12 @@ interface ApprovalHistoryRow {
   review_note: string | null;
 }
 
+interface PendingSummary {
+  day: number;
+  week: number;
+  month: number;
+}
+
 interface DocumentDetailModalData {
   id: number;
   document_no: string;
@@ -321,7 +342,7 @@ const teamSlotFilters = reactive<Record<TeamSlotKey, string>>({
 const activeTeamSlot = ref<TeamSlotKey | "ALL">(isDemoPilotSiteScopeEnabled ? "ALL" : "1");
 
 function dashboardQueryDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayKst();
 }
 
 /** hq-dashboard가 중첩 호출될 때(라우트 동기화 등) 로딩이 먼저 꺼지지 않도록 */
@@ -333,23 +354,21 @@ const items = ref<DashboardItem[]>([]);
 const signalStatus = ref<"GREEN" | "YELLOW" | "RED">("GREEN");
 const pendingDocuments = ref<PendingDocumentRow[]>([]);
 const approvalHistory = ref<ApprovalHistoryRow[]>([]);
+const pendingSummary = ref<PendingSummary>({ day: 0, week: 0, month: 0 });
+const historyCollapsed = ref(true);
 const dashboardLoading = ref(true);
 const dashboardBackgroundPreparing = ref(false);
 const hqKpiAggregate = computed(() => {
   let totalRequiredSum = 0;
   let submittedSum = 0;
-  let deficientSites = 0;
-  let excellentSites = 0;
   for (const s of matrixRows.value) {
     if (s.total_required <= 0) continue;
     totalRequiredSum += s.total_required;
     submittedSum += s.submitted_count;
-    if (s.incomplete_count > 0) deficientSites += 1;
-    if (s.submission_rate >= 90) excellentSites += 1;
   }
   const uploadPct =
     totalRequiredSum > 0 ? Math.round((submittedSum / totalRequiredSum) * 1000) / 10 : 0;
-  return { uploadPct, deficientSites, excellentSites };
+  return { uploadPct };
 });
 
 const matrixItems = computed(() =>
@@ -528,8 +547,7 @@ function goInstanceDetail(siteId: number, requirementKey: string) {
 }
 
 function formatDateTime(value: string | null) {
-  if (!value) return "—";
-  return value.slice(0, 16).replace("T", " ");
+  return formatDateTimeKst(value, "—");
 }
 
 function querySiteId(): number | null {
@@ -560,6 +578,7 @@ function applyDashboardPayload(
     items?: DashboardItem[];
     signal_status?: "GREEN" | "YELLOW" | "RED";
     pending_documents?: PendingDocumentRow[];
+    pending_documents_summary?: PendingSummary;
     approval_history?: ApprovalHistoryRow[];
   },
   routeSiteId: number | null,
@@ -568,6 +587,7 @@ function applyDashboardPayload(
   items.value = payload.items ?? [];
   signalStatus.value = payload.signal_status ?? "GREEN";
   pendingDocuments.value = payload.pending_documents ?? [];
+  pendingSummary.value = payload.pending_documents_summary ?? { day: 0, week: 0, month: 0 };
   approvalHistory.value = payload.approval_history ?? [];
   if (routeSiteId != null && siteSummaries.value.some((s) => s.site_id === routeSiteId)) {
     selectedSiteId.value = routeSiteId;
@@ -998,6 +1018,14 @@ watch(
 
 .pending-open-btn {
   margin-bottom: 6px;
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
 }
 
 .extra-list {

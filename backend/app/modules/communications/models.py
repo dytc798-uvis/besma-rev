@@ -17,6 +17,7 @@ class Communication(Base):
     sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bundle_pdf_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
 
@@ -39,6 +40,7 @@ class CommunicationAttachment(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     communication_id: Mapped[int] = mapped_column(ForeignKey("communications.id"), nullable=False, index=True)
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    original_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     original_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(50), nullable=False, default="image")
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)

@@ -35,12 +35,23 @@
         <template v-else>
           <div class="detail-head">
             <h3>{{ selected.title || "(제목 없음)" }}</h3>
-            <button type="button" class="primary" @click="markRead" :disabled="selected.is_read">
-              {{ selected.is_read ? "확인 완료" : "확인" }}
-            </button>
+            <div class="detail-actions">
+              <button
+                v-if="selected.bundle_pdf_download_url"
+                type="button"
+                class="secondary"
+                @click="downloadBundlePdf"
+              >
+                PDF 다운로드
+              </button>
+              <button type="button" class="primary" @click="markRead" :disabled="selected.is_read">
+                {{ selected.is_read ? "확인 완료" : "확인" }}
+              </button>
+            </div>
           </div>
           <p class="meta">{{ selected.sender.name }} · {{ selected.sender.login_id }} · {{ formatDate(selected.created_at) }}</p>
           <p v-if="selected.description" class="desc">{{ selected.description }}</p>
+          <p v-if="selected.bundle_pdf_download_url" class="bundle-note">여러 장 업로드본은 제출/보관용 PDF로도 내려받을 수 있습니다.</p>
           <div class="image-grid">
             <div v-for="att in selected.attachments" :key="att.id" class="image-card">
               <img :src="previewUrls[att.id] || ''" :alt="att.original_name" />
@@ -71,6 +82,7 @@ interface CommunicationItem {
   description: string | null;
   created_at: string;
   is_read: boolean;
+  bundle_pdf_download_url: string | null;
   sender: { id: number; name: string; login_id: string };
   attachments: CommunicationAttachment[];
 }
@@ -136,6 +148,17 @@ async function downloadAttachment(att: CommunicationAttachment) {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = att.original_name;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadBundlePdf() {
+  if (!selected.value?.bundle_pdf_download_url) return;
+  const res = await api.get(selected.value.bundle_pdf_download_url, { responseType: "blob" });
+  const url = URL.createObjectURL(res.data);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `communication_${selected.value.id}.pdf`;
   anchor.click();
   URL.revokeObjectURL(url);
 }
@@ -209,9 +232,18 @@ onMounted(loadList);
   align-items: center;
   gap: 8px;
 }
+.detail-actions {
+  display: flex;
+  gap: 8px;
+}
 .desc {
   margin: 10px 0;
   white-space: pre-wrap;
+}
+.bundle-note {
+  margin: 6px 0 10px;
+  color: #475569;
+  font-size: 13px;
 }
 .image-grid {
   display: grid;
