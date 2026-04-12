@@ -30,58 +30,8 @@
       <section class="panel">
         <div class="panel-head">
           <div>
-            <h2 class="panel-title">새 부적합 row 추가</h2>
-            <p class="panel-sub">부적합 내용, 조치 전/후, 상태, 기한, 완료일을 같은 row에서 관리합니다.</p>
-          </div>
-        </div>
-        <div class="form-grid">
-          <label class="span-2">
-            <span>부적합 내용</span>
-            <textarea v-model="createDraft.issue_text" rows="3" />
-          </label>
-          <label class="span-2">
-            <span>조치 전</span>
-            <textarea v-model="createDraft.action_before" rows="2" />
-          </label>
-          <label class="span-2">
-            <span>조치 후</span>
-            <textarea v-model="createDraft.action_after" rows="2" />
-          </label>
-          <label>
-            <span>상태</span>
-            <select v-model="createDraft.action_status">
-              <option value="">선택</option>
-              <option value="OPEN">접수</option>
-              <option value="IN_PROGRESS">조치중</option>
-              <option value="DONE">완료</option>
-              <option value="HOLD">보류</option>
-            </select>
-          </label>
-          <label>
-            <span>담당자</span>
-            <input v-model="createDraft.action_owner" type="text" />
-          </label>
-          <label>
-            <span>조치 기한</span>
-            <input v-model="createDraft.action_due_date" type="date" />
-          </label>
-          <label>
-            <span>완료일</span>
-            <input v-model="createDraft.completed_at" type="date" />
-          </label>
-        </div>
-        <div class="panel-actions">
-          <button class="stitch-btn-primary" type="button" :disabled="savingCreate" @click="createItem">
-            {{ savingCreate ? "추가 중..." : "row 추가" }}
-          </button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <div>
             <h2 class="panel-title">초기 가져오기 / 이력</h2>
-            <p class="panel-sub">엑셀 업로드는 기존 대장 초기 적재용으로만 사용합니다.</p>
+            <p class="panel-sub">기본 운영은 기존 대장 업로드입니다. 수동 row 입력은 아래 보조 기능에서만 사용합니다.</p>
           </div>
         </div>
         <div class="import-row">
@@ -102,6 +52,59 @@
           <li v-if="(currentLedger?.imports || []).length === 0" class="empty-inline">가져온 이력이 없습니다.</li>
         </ul>
       </section>
+
+      <details class="manual-panel">
+        <summary>수동 row 추가 (보조)</summary>
+        <section class="panel nested-manual">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-title">새 부적합 row 추가</h2>
+              <p class="panel-sub">업로드 파일에 없는 예외 건만 필요할 때 펼쳐서 직접 입력합니다.</p>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label class="span-2">
+              <span>부적합 내용</span>
+              <textarea v-model="createDraft.issue_text" rows="3" />
+            </label>
+            <label class="span-2">
+              <span>조치 전</span>
+              <textarea v-model="createDraft.action_before" rows="2" />
+            </label>
+            <label class="span-2">
+              <span>조치 후</span>
+              <textarea v-model="createDraft.action_after" rows="2" />
+            </label>
+            <label>
+              <span>상태</span>
+              <select v-model="createDraft.action_status">
+                <option value="">선택</option>
+                <option value="OPEN">접수</option>
+                <option value="IN_PROGRESS">조치중</option>
+                <option value="DONE">완료</option>
+                <option value="HOLD">보류</option>
+              </select>
+            </label>
+            <label>
+              <span>담당자</span>
+              <input v-model="createDraft.action_owner" type="text" />
+            </label>
+            <label>
+              <span>조치 기한</span>
+              <input v-model="createDraft.action_due_date" type="date" />
+            </label>
+            <label>
+              <span>완료일</span>
+              <input v-model="createDraft.completed_at" type="date" />
+            </label>
+          </div>
+          <div class="panel-actions">
+            <button class="stitch-btn-primary" type="button" :disabled="savingCreate" @click="createItem">
+              {{ savingCreate ? "추가 중..." : "row 추가" }}
+            </button>
+          </div>
+        </section>
+      </details>
 
       <section class="panel">
         <div class="panel-head">
@@ -509,6 +512,29 @@ void load();
 .summary-meta {
   color: #475569;
   font-size: 12px;
+}
+
+.manual-panel {
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.manual-panel summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.manual-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.nested-manual {
+  margin: 0 12px 12px;
 }
 
 .panel-head {

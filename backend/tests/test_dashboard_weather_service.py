@@ -1,6 +1,7 @@
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from app.modules.dashboard.weather_service import _build_advisory, resolve_site_location, weather_summary_text
+from app.modules.dashboard.weather_service import _build_advisory, kst_weather_snapshot_anchor, resolve_site_location, weather_summary_text
 
 
 def test_build_advisory_for_dust_and_rain():
@@ -55,3 +56,27 @@ def test_weather_summary_text_prefers_warning_state():
     )
 
     assert "초미세먼지 매우나쁨" in summary
+
+
+def test_kst_anchor_before_5am_uses_previous_noon():
+    kst = timezone(timedelta(hours=9), name="KST")
+    # 2026-04-12 04:59 KST == 2026-04-11 19:59 UTC
+    t = datetime(2026, 4, 11, 19, 59, 0, tzinfo=timezone.utc)
+    anchor = kst_weather_snapshot_anchor(t)
+    assert anchor == datetime(2026, 4, 11, 12, 0, 0, tzinfo=kst)
+
+
+def test_kst_anchor_morning_window_uses_today_5am():
+    kst = timezone(timedelta(hours=9), name="KST")
+    # 2026-04-12 06:00 KST == 2026-04-11 21:00 UTC
+    t = datetime(2026, 4, 11, 21, 0, 0, tzinfo=timezone.utc)
+    anchor = kst_weather_snapshot_anchor(t)
+    assert anchor == datetime(2026, 4, 12, 5, 0, 0, tzinfo=kst)
+
+
+def test_kst_anchor_afternoon_uses_today_noon():
+    kst = timezone(timedelta(hours=9), name="KST")
+    # 2026-04-12 15:00 KST == 2026-04-12 06:00 UTC
+    t = datetime(2026, 4, 12, 6, 0, 0, tzinfo=timezone.utc)
+    anchor = kst_weather_snapshot_anchor(t)
+    assert anchor == datetime(2026, 4, 12, 12, 0, 0, tzinfo=kst)

@@ -12,6 +12,8 @@ from app.modules.dashboard.weather_service import (
     build_hq_location,
     build_site_weather_summary as build_site_weather_payload,
     build_weather_snapshot,
+    kst_weather_snapshot_anchor,
+    max_snapshot_fetched_at_iso,
     resolve_site_location,
     weather_summary_text,
 )
@@ -95,10 +97,20 @@ def dashboard_summary(
 @router.get("/weather/site-summary")
 def get_site_weather_summary_route(db: DbDep, current_user: CurrentUserDep):
     if current_user.role != Role.SITE or not current_user.site_id:
-        return {"available": False, "status_text": "현장 계정만 조회할 수 있습니다."}
+        return {
+            "available": False,
+            "status_text": "현장 계정만 조회할 수 있습니다.",
+            "snapshot_anchor_kst": kst_weather_snapshot_anchor().isoformat(),
+            "snapshot_fetched_at": None,
+        }
     site = db.query(Site).filter(Site.id == current_user.site_id).first()
     if site is None:
-        return {"available": False, "status_text": "현장 정보를 찾을 수 없습니다."}
+        return {
+            "available": False,
+            "status_text": "현장 정보를 찾을 수 없습니다.",
+            "snapshot_anchor_kst": kst_weather_snapshot_anchor().isoformat(),
+            "snapshot_fetched_at": None,
+        }
     return build_site_weather_payload(site)
 
 
@@ -109,7 +121,18 @@ def get_hq_weather_overview(
     limit: int = Query(default=settings.weather_hq_site_limit, ge=3, le=5),
 ):
     if current_user.role not in {Role.HQ_SAFE, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN}:
-        return {"office": {"available": False, "status_text": "조회 권한이 없습니다."}, "sites": []}
+        return {
+            "office": {
+                "available": False,
+                "status_text": "조회 권한이 없습니다.",
+                "snapshot_anchor_kst": kst_weather_snapshot_anchor().isoformat(),
+                "snapshot_fetched_at": None,
+            },
+            "sites": [],
+            "updated_at": None,
+            "snapshot_anchor_kst": kst_weather_snapshot_anchor().isoformat(),
+            "snapshot_fetched_at": None,
+        }
 
     office_location = build_hq_location()
     if office_location is None:
@@ -118,6 +141,8 @@ def get_hq_weather_overview(
             "location_name": settings.weather_hq_name or "본사",
             "status_text": "본사 위치 미설정",
             "updated_at": None,
+            "snapshot_anchor_kst": kst_weather_snapshot_anchor().isoformat(),
+            "snapshot_fetched_at": None,
         }
     else:
         office_payload = build_weather_snapshot(office_location)
@@ -162,9 +187,12 @@ def get_hq_weather_overview(
     )
 
     trimmed = site_payloads[:limit]
+    rollup = max_snapshot_fetched_at_iso(office_payload, *trimmed)
     return {
         "office": office_payload,
         "sites": trimmed,
-        "updated_at": office_payload.get("updated_at") or (trimmed[0].get("updated_at") if trimmed else None),
+        "updated_at": rollup,
+        "snapshot_anchor_kst": kst_weather_snapshot_anchor().isoformat(),
+        "snapshot_fetched_at": rollup,
     }
 

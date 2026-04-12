@@ -25,6 +25,7 @@ from app.modules.document_submissions.service import (
 from app.modules.documents.models import Document, DocumentStatus, DocumentUploadHistory
 from app.modules.document_settings.models import DocumentRequirement
 from app.modules.documents.service import (
+    create_document_comment,
     DocumentContentInvalidStateError,
     DocumentContentNotFoundError,
     get_requirement_document_history,
@@ -33,6 +34,7 @@ from app.modules.documents.service import (
     get_tbm_summary,
     get_tbm_periodic_monthly_monitoring,
     get_tbm_periodic_daily_monitoring,
+    list_document_comments,
 )
 from app.schemas.document_dashboard import HQDashboardResponse, RequirementStatusResponse
 from app.modules.sites.models import Site
@@ -50,6 +52,21 @@ KST_OFFSET = timedelta(hours=9)
 class ReviewActionBody(BaseModel):
     action: str
     comment: str | None = None
+
+
+class DocumentCommentCreateBody(BaseModel):
+    comment_text: str
+
+
+class DocumentCommentResponse(BaseModel):
+    id: int
+    document_id: int
+    instance_id: int | None = None
+    user_id: int
+    user_name: str
+    user_role: str
+    comment_text: str
+    created_at: datetime
 
 
 def _parse_period(period: str) -> str:
@@ -214,6 +231,22 @@ def _ensure_storage_dir() -> Path:
     documents_dir = settings.storage_root / settings.documents_dir_name
     documents_dir.mkdir(parents=True, exist_ok=True)
     return documents_dir
+
+
+def _get_document_or_404(db: Session, *, document_id: int) -> Document:
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return doc
+
+
+def _assert_document_access(doc: Document, current_user) -> None:
+    if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+
+def _public_user_role(current_user) -> str:
+    return "SITE" if current_user.role == Role.SITE else "HQ"
 
 
 @router.get("")
@@ -704,23 +737,47 @@ def get_hq_badge_counts(
 
 @router.get("/{document_id}")
 def get_document(document_id: int, db: DbDep, current_user: CurrentUserDep):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-
-    if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
-
+    doc = _get_document_or_404(db, document_id=document_id)
+    _assert_document_access(doc, current_user)
     return doc
+
+
+@router.get("/{document_id}/comments", response_model=list[DocumentCommentResponse])
+def get_document_comments(document_id: int, db: DbDep, current_user: CurrentUserDep):
+    doc = _get_document_or_404(db, document_id=document_id)
+    _assert_document_access(doc, current_user)
+    rows = list_document_comments(db, document_id=document_id)
+    return [DocumentCommentResponse(**row) for row in rows]
+
+
+@router.post("/{document_id}/comments", response_model=DocumentCommentResponse, status_code=status.HTTP_201_CREATED)
+def add_document_comment(
+    document_id: int,
+    body: DocumentCommentCreateBody,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    doc = _get_document_or_404(db, document_id=document_id)
+    _assert_document_access(doc, current_user)
+    try:
+        row = create_document_comment(
+            db,
+            document=doc,
+            user_id=current_user.id,
+            user_role=_public_user_role(current_user),
+            comment_text=body.comment_text,
+        )
+    except ValueError as exc:
+        if str(exc) == "comment_text_required":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="comment_text is required")
+        raise
+    return DocumentCommentResponse(**row)
 
 
 @router.get("/{document_id}/content", response_model=DocumentContentResponse)
 def get_document_content_view(document_id: int, db: DbDep, current_user: CurrentUserDep):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-    if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    doc = _get_document_or_404(db, document_id=document_id)
+    _assert_document_access(doc, current_user)
 
     try:
         payload = get_document_content(db, document_id=document_id)
@@ -733,11 +790,8 @@ def get_document_content_view(document_id: int, db: DbDep, current_user: Current
 
 @router.get("/{document_id}/tbm-summary", response_model=TbmSummaryResponse)
 def get_document_tbm_summary_view(document_id: int, db: DbDep, current_user: CurrentUserDep):
-    doc = db.query(Document).filter(Document.id == document_id).first()
-    if not doc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-    if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    doc = _get_document_or_404(db, document_id=document_id)
+    _assert_document_access(doc, current_user)
 
     try:
         payload = get_tbm_summary(db, document_id=document_id)

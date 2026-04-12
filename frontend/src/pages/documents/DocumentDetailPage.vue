@@ -85,6 +85,7 @@
         </button>
       </div>
     </div>
+    <DocumentCommentsPanel :document-id="doc.id" />
   </div>
 </template>
 
@@ -92,6 +93,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { api } from "@/services/api";
+import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.vue";
 import { useAuthStore } from "@/stores/auth";
 
 interface DocumentDetail {

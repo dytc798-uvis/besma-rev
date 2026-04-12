@@ -17,8 +17,13 @@
 
       <BaseCard title="현장 기상 및 환경" class="weather-card">
         <template #actions>
-          <span class="weather-updated">{{ formatDateTimeKst(weather?.updated_at, "업데이트 정보 없음") }}</span>
+          <span class="weather-updated">{{ formatDateTimeKst(weather?.snapshot_fetched_at || weather?.updated_at, "갱신 시각 없음") }}</span>
         </template>
+        <p v-if="weather" class="weather-snapshot-meta">
+          스냅샷 기준(KST·1일 2회): {{ formatDateTimeKst(weather.snapshot_anchor_kst, "—") }}
+          <span class="weather-snapshot-sep">·</span>
+          외부 조회 갱신: {{ formatDateTimeKst(weather.snapshot_fetched_at || weather.updated_at, "—") }}
+        </p>
         <div v-if="weather?.available" class="weather-body">
           <div class="weather-main-row">
             <div>
@@ -82,10 +87,16 @@ interface WeatherSummary {
   risk_assessment_required: boolean;
   updated_at: string | null;
   status_text?: string;
+  /** KST 앵커(05:00 또는 12:00) ISO 문자열 */
+  snapshot_anchor_kst?: string | null;
+  /** Open-Meteo 조회 완료 시각(UTC 권장) ISO 문자열 */
+  snapshot_fetched_at?: string | null;
 }
 
 const data = ref<DashboardSummary | null>(null);
 const weather = ref<WeatherSummary | null>(null);
+const summaryError = ref(false);
+const weatherError = ref(false);
 
 function tempText(value: number | null) {
   return value == null ? "—" : `${Math.round(value)}℃`;
@@ -119,17 +130,46 @@ function behaviorMessages(messages: string[]) {
 }
 
 async function load() {
-  try {
-    const [summaryRes, weatherRes] = await Promise.all([
-      api.get("/dashboard/summary"),
-      api.get("/dashboard/weather/site-summary"),
-    ]);
-    data.value = summaryRes.data;
-    weather.value = weatherRes.data;
-  } catch {
-    data.value = null;
-    weather.value = null;
-  }
+  summaryError.value = false;
+  weatherError.value = false;
+  const summaryPromise = api.get<DashboardSummary>("/dashboard/summary").then(
+    (res) => {
+      data.value = res.data;
+    },
+    () => {
+      summaryError.value = true;
+      data.value = null;
+    },
+  );
+  const weatherPromise = api.get<WeatherSummary>("/dashboard/weather/site-summary").then(
+    (res) => {
+      weather.value = res.data;
+    },
+    () => {
+      weatherError.value = true;
+      weather.value = {
+        available: false,
+        location_name: "",
+        weather_label: "",
+        temperature: null,
+        feels_like: null,
+        wind_speed: null,
+        precipitation: null,
+        precipitation_probability: null,
+        pm10: null,
+        pm10_status: "",
+        pm25: null,
+        pm25_status: "",
+        safety_messages: [],
+        risk_assessment_required: false,
+        updated_at: null,
+        status_text: "일시적 조회 실패",
+        snapshot_anchor_kst: null,
+        snapshot_fetched_at: null,
+      };
+    },
+  );
+  await Promise.all([summaryPromise, weatherPromise]);
 }
 
 onMounted(load);
@@ -155,6 +195,18 @@ onMounted(load);
 
 .weather-card {
   min-height: 100%;
+}
+
+.weather-snapshot-meta {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.weather-snapshot-sep {
+  margin: 0 6px;
+  color: #94a3b8;
 }
 
 .weather-body {

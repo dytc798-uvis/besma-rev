@@ -610,9 +610,29 @@ def list_risk_refs_for_plan_item(
             "risk_factor": rev.risk_factor if rev else None,
             "countermeasure": rev.countermeasure if rev else None,
             "risk_r": rev.risk_r if rev else None,
+            "site_approved": bool(getattr(ref, "site_approved", False)),
+            "site_approved_by_user_id": ref.site_approved_by_user_id,
+            "site_approved_at": ref.site_approved_at,
+            "hq_final_approved": bool(getattr(ref, "hq_final_approved", False)),
+            "hq_final_approved_by_user_id": ref.hq_final_approved_by_user_id,
+            "hq_final_approved_at": ref.hq_final_approved_at,
+            "is_reflected_to_final_db": bool(getattr(ref, "hq_final_approved", False)),
         }
         result.append(d)
     return result
+
+
+def _reset_risk_ref_approvals(ref: DailyWorkPlanItemRiskRef) -> None:
+    ref.site_approved = False
+    ref.site_approved_by_user_id = None
+    ref.site_approved_at = None
+    ref.hq_final_approved = False
+    ref.hq_final_approved_by_user_id = None
+    ref.hq_final_approved_at = None
+
+
+def _is_risk_ref_reflected(ref: DailyWorkPlanItemRiskRef) -> bool:
+    return bool(ref.is_selected and ref.link_type == "ADOPTED" and getattr(ref, "hq_final_approved", False))
 
 
 def adopt_risks_for_plan_item_by_revision_ids(
@@ -632,6 +652,7 @@ def adopt_risks_for_plan_item_by_revision_ids(
         .all()
     )
     refs_by_revision_id = {ref.risk_revision_id: ref for ref in refs}
+    kept_selected_revision_ids: set[int] = set()
 
     adopted_count = 0
     for revision_id in normalized_ids:
@@ -647,6 +668,28 @@ def adopt_risks_for_plan_item_by_revision_ids(
             )
             if revision is None:
                 continue
+            hazard = (revision.risk_factor or "").strip()
+            countermeasure = (revision.countermeasure or "").strip()
+            if hazard and countermeasure:
+                existing_selected = (
+                    db.query(DailyWorkPlanItemRiskRef, RiskLibraryItemRevision)
+                    .join(RiskLibraryItemRevision, RiskLibraryItemRevision.id == DailyWorkPlanItemRiskRef.risk_revision_id)
+                    .filter(
+                        DailyWorkPlanItemRiskRef.plan_item_id == plan_item_id,
+                        DailyWorkPlanItemRiskRef.is_selected.is_(True),
+                        RiskLibraryItemRevision.is_current.is_(True),
+                        RiskLibraryItemRevision.risk_factor == hazard,
+                        RiskLibraryItemRevision.countermeasure == countermeasure,
+                    )
+                    .first()
+                )
+                if existing_selected is not None:
+                    existing_ref, existing_rev = existing_selected
+                    if existing_rev.id != revision.id:
+                        # 동일 위험요인+대책이 이미 채택되어 있으면 신규 revision은 추가하지 않고 기존 참조를 유지한다.
+                        kept_selected_revision_ids.add(int(existing_ref.risk_revision_id))
+                        continue
+
             max_order = max((r.display_order for r in refs_by_revision_id.values()), default=0)
             ref = DailyWorkPlanItemRiskRef(
                 plan_item_id=plan_item_id,
@@ -657,29 +700,82 @@ def adopt_risks_for_plan_item_by_revision_ids(
                 source_rule="MANUAL_ADOPT",
                 score=0.0,
                 display_order=max_order + 1,
+                site_approved=False,
+                hq_final_approved=False,
             )
             db.add(ref)
             refs_by_revision_id[revision_id] = ref
+            kept_selected_revision_ids.add(int(ref.risk_revision_id))
             adopted_count += 1
             continue
 
+        should_reset_approvals = (not ref.is_selected) or ref.link_type != "ADOPTED"
         ref.is_selected = True
         ref.link_type = "ADOPTED"
         if ref.source_rule != "MANUAL_ADOPT":
             ref.source_rule = "MANUAL_ADOPT"
+        if should_reset_approvals:
+            _reset_risk_ref_approvals(ref)
+        kept_selected_revision_ids.add(int(ref.risk_revision_id))
         adopted_count += 1
 
     for revision_id, ref in refs_by_revision_id.items():
-        if revision_id not in normalized_ids and ref.is_selected:
+        if int(ref.risk_revision_id) not in kept_selected_revision_ids and ref.is_selected:
             ref.is_selected = False
             if ref.link_type == "ADOPTED":
                 ref.link_type = "RECOMMENDED"
+            _reset_risk_ref_approvals(ref)
 
     db.commit()
     return {
         "adopted_count": adopted_count,
         "requested_count": len(normalized_ids),
     }
+
+
+def site_approve_risk_ref(
+    db: Session,
+    *,
+    ref_id: int,
+    approved_by_user_id: int,
+) -> dict[str, Any]:
+    ref = db.query(DailyWorkPlanItemRiskRef).filter(DailyWorkPlanItemRiskRef.id == ref_id).first()
+    if ref is None:
+        raise ValueError("risk_ref_not_found")
+    if not ref.is_selected or ref.link_type != "ADOPTED":
+        raise ValueError("risk_ref_not_selected")
+    if getattr(ref, "site_approved", False):
+        return next(row for row in list_risk_refs_for_plan_item(db, plan_item_id=ref.plan_item_id) if row["id"] == ref_id)
+    ref.site_approved = True
+    ref.site_approved_by_user_id = approved_by_user_id
+    ref.site_approved_at = utc_now()
+    ref.hq_final_approved = False
+    ref.hq_final_approved_by_user_id = None
+    ref.hq_final_approved_at = None
+    db.add(ref)
+    db.commit()
+    return next(row for row in list_risk_refs_for_plan_item(db, plan_item_id=ref.plan_item_id) if row["id"] == ref_id)
+
+
+def hq_finalize_risk_ref(
+    db: Session,
+    *,
+    ref_id: int,
+    approved_by_user_id: int,
+) -> dict[str, Any]:
+    ref = db.query(DailyWorkPlanItemRiskRef).filter(DailyWorkPlanItemRiskRef.id == ref_id).first()
+    if ref is None:
+        raise ValueError("risk_ref_not_found")
+    if not ref.is_selected or ref.link_type != "ADOPTED":
+        raise ValueError("risk_ref_not_selected")
+    if not getattr(ref, "site_approved", False):
+        raise ValueError("site_approval_required")
+    ref.hq_final_approved = True
+    ref.hq_final_approved_by_user_id = approved_by_user_id
+    ref.hq_final_approved_at = utc_now()
+    db.add(ref)
+    db.commit()
+    return next(row for row in list_risk_refs_for_plan_item(db, plan_item_id=ref.plan_item_id) if row["id"] == ref_id)
 
 
 def confirm_daily_work_plan(
@@ -1112,7 +1208,7 @@ def get_worker_distribution_detail(
     for item in plan.items:
         risks = []
         for ref in item.risk_refs:
-            if not ref.is_selected:
+            if not _is_risk_ref_reflected(ref):
                 continue
             rev = (
                 db.query(RiskLibraryItemRevision)
@@ -1302,6 +1398,7 @@ def promote_feedback_candidate(
             .filter(
                 DailyWorkPlanItemRiskRef.plan_item_id == feedback.plan_item_id,
                 DailyWorkPlanItemRiskRef.is_selected.is_(True),
+                DailyWorkPlanItemRiskRef.hq_final_approved.is_(True),
             )
             .order_by(
                 DailyWorkPlanItemRiskRef.display_order.asc(),
@@ -1529,7 +1626,7 @@ def get_worker_safety_record(
         for item in plan.items:
             risks: list[dict[str, Any]] = []
             for ref in item.risk_refs:
-                if not ref.is_selected:
+                if not _is_risk_ref_reflected(ref):
                     continue
                 revision = (
                     db.query(RiskLibraryItemRevision)
@@ -1978,6 +2075,7 @@ def assemble_daily_work_plan_document(
                 DailyWorkPlanItemRiskRef.plan_item_id.in_(item_ids),
                 DailyWorkPlanItemRiskRef.is_selected.is_(True),
                 DailyWorkPlanItemRiskRef.link_type == "ADOPTED",
+                    DailyWorkPlanItemRiskRef.hq_final_approved.is_(True),
             )
             .count()
         )
@@ -2074,6 +2172,7 @@ def get_assembled_document_for_day(
                     DailyWorkPlanItemRiskRef.plan_item_id.in_(item_ids),
                     DailyWorkPlanItemRiskRef.is_selected.is_(True),
                     DailyWorkPlanItemRiskRef.link_type == "ADOPTED",
+                    DailyWorkPlanItemRiskRef.hq_final_approved.is_(True),
                 )
                 .count()
             )

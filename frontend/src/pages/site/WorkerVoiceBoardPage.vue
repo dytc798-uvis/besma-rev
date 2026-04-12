@@ -30,66 +30,8 @@
       <section class="panel">
         <div class="panel-head">
           <div>
-            <h2 class="panel-title">새 의견 row 추가</h2>
-            <p class="panel-sub">현장에서 직접 입력하고 조치 전/후와 담당자를 같은 row에서 관리합니다.</p>
-          </div>
-        </div>
-        <div class="form-grid">
-          <label>
-            <span>근로자명</span>
-            <input v-model="createDraft.worker_name" type="text" />
-          </label>
-          <label>
-            <span>생년월일</span>
-            <input v-model="createDraft.worker_birth_date" type="text" placeholder="예: 1980-01-01" />
-          </label>
-          <label>
-            <span>연락처</span>
-            <input v-model="createDraft.worker_phone_number" type="text" />
-          </label>
-          <label>
-            <span>의견 종류</span>
-            <input v-model="createDraft.opinion_kind" type="text" placeholder="예: 대면청취" />
-          </label>
-          <label class="span-2">
-            <span>의견 내용</span>
-            <textarea v-model="createDraft.opinion_text" rows="3" />
-          </label>
-          <label class="span-2">
-            <span>조치 전</span>
-            <textarea v-model="createDraft.action_before" rows="2" placeholder="현장 상태나 문제 상황" />
-          </label>
-          <label class="span-2">
-            <span>조치 후</span>
-            <textarea v-model="createDraft.action_after" rows="2" placeholder="실행한 조치 또는 결과" />
-          </label>
-          <label>
-            <span>조치 상태</span>
-            <select v-model="createDraft.action_status">
-              <option value="">선택</option>
-              <option value="OPEN">접수</option>
-              <option value="IN_PROGRESS">조치중</option>
-              <option value="DONE">완료</option>
-              <option value="SHARED">공유완료</option>
-            </select>
-          </label>
-          <label>
-            <span>담당자</span>
-            <input v-model="createDraft.action_owner" type="text" />
-          </label>
-        </div>
-        <div class="panel-actions">
-          <button class="stitch-btn-primary" type="button" :disabled="savingCreate" @click="createItem">
-            {{ savingCreate ? "추가 중..." : "row 추가" }}
-          </button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <div>
             <h2 class="panel-title">초기 가져오기</h2>
-            <p class="panel-sub">기존 엑셀 대장은 최초 적재용으로만 사용합니다. 이후에는 아래 row를 직접 수정합니다.</p>
+            <p class="panel-sub">기본 운영은 엑셀/CSV 업로드로 대장을 반영합니다. 수동 row 입력은 보조 기능입니다.</p>
           </div>
         </div>
         <div class="import-row">
@@ -107,6 +49,67 @@
           <li v-if="(currentLedger?.imports || []).length === 0" class="empty-inline">가져온 이력이 없습니다.</li>
         </ul>
       </section>
+
+      <details class="manual-panel">
+        <summary>수동 row 추가 (보조)</summary>
+        <section class="panel nested-manual">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-title">새 의견 row 추가</h2>
+              <p class="panel-sub">업로드로 반영되지 않는 예외 건만 필요할 때 펼쳐서 입력합니다.</p>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label>
+              <span>근로자명</span>
+              <input v-model="createDraft.worker_name" type="text" />
+            </label>
+            <label>
+              <span>생년월일</span>
+              <input v-model="createDraft.worker_birth_date" type="text" placeholder="예: 1980-01-01" />
+            </label>
+            <label>
+              <span>연락처</span>
+              <input v-model="createDraft.worker_phone_number" type="text" />
+            </label>
+            <label>
+              <span>의견 종류</span>
+              <input v-model="createDraft.opinion_kind" type="text" placeholder="예: 대면청취" />
+            </label>
+            <label class="span-2">
+              <span>의견 내용</span>
+              <textarea v-model="createDraft.opinion_text" rows="3" />
+            </label>
+            <label class="span-2">
+              <span>조치 전</span>
+              <textarea v-model="createDraft.action_before" rows="2" placeholder="현장 상태나 문제 상황" />
+            </label>
+            <label class="span-2">
+              <span>조치 후</span>
+              <textarea v-model="createDraft.action_after" rows="2" placeholder="실행한 조치 또는 결과" />
+            </label>
+            <label>
+              <span>조치 상태</span>
+              <select v-model="createDraft.action_status">
+                <option value="">선택</option>
+                <option value="OPEN">접수</option>
+                <option value="IN_PROGRESS">조치중</option>
+                <option value="DONE">완료</option>
+                <option value="SHARED">공유완료</option>
+              </select>
+            </label>
+            <label>
+              <span>담당자</span>
+              <input v-model="createDraft.action_owner" type="text" />
+            </label>
+          </div>
+          <div class="panel-actions">
+            <button class="stitch-btn-primary" type="button" :disabled="savingCreate" @click="createItem">
+              {{ savingCreate ? "추가 중..." : "row 추가" }}
+            </button>
+          </div>
+        </section>
+      </details>
 
       <section class="panel">
         <div class="panel-head">

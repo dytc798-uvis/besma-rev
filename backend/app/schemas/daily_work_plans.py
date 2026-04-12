@@ -49,6 +49,13 @@ class DailyWorkPlanItemRiskRefResponse(BaseModel):
     risk_factor: str | None = None
     countermeasure: str | None = None
     risk_r: int | None = None
+    site_approved: bool = False
+    site_approved_by_user_id: int | None = None
+    site_approved_at: datetime | None = None
+    hq_final_approved: bool = False
+    hq_final_approved_by_user_id: int | None = None
+    hq_final_approved_at: datetime | None = None
+    is_reflected_to_final_db: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -211,6 +211,7 @@
             <div class="detail-span-2"><strong>설명</strong> {{ detailDocument.description || "-" }}</div>
             <div class="detail-span-2"><strong>반려 사유</strong> {{ detailDocument.rejection_reason || "-" }}</div>
           </div>
+          <DocumentCommentsPanel :document-id="detailDocument.id" />
           <div class="modal-actions">
             <button type="button" class="stitch-btn-secondary" @click="closeDetailModal">닫기</button>
             <button
@@ -232,6 +233,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
+import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.vue";
 import { isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
 import { formatDateTimeKst, todayKst } from "@/utils/datetime";

@@ -5,7 +5,7 @@
       <header class="dash-top">
         <div>
           <h1 class="dash-title">안전 운영 현황</h1>
-          <p class="dash-sub">문서·의견·현장 요약 (실시간 API 기준)</p>
+          <p class="dash-sub">문서·의견·현장 요약 (기상은 1일 2회 스냅샷: 05:00·12:00 KST)</p>
         </div>
         <div class="dash-top-actions">
           <button type="button" class="btn-ghost btn-ghost-warn" @click="goApprovals">미결재 알림</button>
@@ -74,7 +74,7 @@
           <div class="summary-group-head">
             <div>
               <h2 class="summary-group-title">기상 현황</h2>
-              <p class="summary-group-sub">본사 기준 날씨와 주요 현장의 기상/미세먼지 주의 상태를 함께 봅니다.</p>
+              <p class="summary-group-sub">본사·현장 기상은 Open-Meteo 스냅샷(05:00·12:00 KST 앵커)으로 갱신되며, 동일 앵커 구간에서는 디스크에 저장된 마지막 조회 결과를 보여줍니다.</p>
             </div>
           </div>
           <div class="weather-overview">
@@ -82,7 +82,14 @@
               <span class="weather-overview-label">본사</span>
               <strong>{{ officeTitle }}</strong>
               <p class="weather-overview-sub">{{ officeSummary }}</p>
-              <p class="weather-overview-updated">{{ formatDateTimeKst(weatherOverview?.updated_at, "업데이트 정보 없음") }}</p>
+              <p class="weather-overview-updated">
+                패널 기준 최종 갱신: {{ formatDateTimeKst(weatherOverview?.snapshot_fetched_at || weatherOverview?.updated_at, "업데이트 정보 없음") }}
+              </p>
+              <p class="weather-overview-snapshot">
+                스냅샷 기준(KST): {{ formatDateTimeKst(weatherOverview?.office?.snapshot_anchor_kst || weatherOverview?.snapshot_anchor_kst, "—") }}
+                <span class="weather-overview-sep">·</span>
+                본사 조회 갱신: {{ formatDateTimeKst(weatherOverview?.office?.snapshot_fetched_at || weatherOverview?.office?.updated_at, "—") }}
+              </p>
             </div>
             <ul class="weather-site-list">
               <li v-for="site in weatherOverview?.sites || []" :key="site.site_id || site.location_name">
@@ -190,6 +197,9 @@ interface WeatherOverviewSite {
   pm25_status: string;
   advisory_flags: string[];
   warning_score: number;
+  snapshot_anchor_kst?: string | null;
+  snapshot_fetched_at?: string | null;
+  updated_at?: string | null;
 }
 
 interface WeatherOverview {
@@ -199,9 +209,14 @@ interface WeatherOverview {
     weather_label?: string;
     temperature?: number | null;
     status_text?: string;
+    updated_at?: string | null;
+    snapshot_anchor_kst?: string | null;
+    snapshot_fetched_at?: string | null;
   };
   sites: WeatherOverviewSite[];
   updated_at: string | null;
+  snapshot_anchor_kst?: string | null;
+  snapshot_fetched_at?: string | null;
 }
 
 interface SiteRow {
@@ -424,10 +439,11 @@ const officeSummary = computed(() => {
 
 function headlineStatus(site: WeatherOverviewSite) {
   if (!site.available) return "정보 없음";
+  const flags = site.advisory_flags || [];
   if (site.pm25_status === "매우나쁨" || site.pm10_status === "매우나쁨") return "매우나쁨";
   if (site.pm25_status === "나쁨" || site.pm10_status === "나쁨") return "미세먼지 주의";
-  if (site.advisory_flags.includes("WIND")) return "강풍 주의";
-  if (site.advisory_flags.includes("RAIN")) return "우천 주의";
+  if (flags.includes("WIND")) return "강풍 주의";
+  if (flags.includes("RAIN")) return "우천 주의";
   return "정상";
 }
 
@@ -443,29 +459,62 @@ async function load() {
   try {
     const today = todayKst();
     const dashParams: Record<string, string> = { period: "day", date: today };
-    const [sumRes, sitesRes, dashRes, opRes, weatherRes] = await Promise.all([
+    const settled = await Promise.allSettled([
       api.get<DashboardSummary>("/dashboard/summary"),
       api.get<SiteRow[]>("/sites"),
       api.get("/documents/hq-dashboard", { params: dashParams }),
       api.get<OpinionRow[]>("/opinions"),
       api.get<WeatherOverview>("/dashboard/weather/hq-overview"),
     ]);
-    data.value = sumRes.data;
-    sites.value = sitesRes.data || [];
-    siteSummaryMap.value = Object.fromEntries(
-      ((dashRes.data as { site_summaries?: DashboardSiteSummary[] }).site_summaries || []).map((x) => [
-        x.site_id,
-        x,
-      ]),
-    );
-    recentOpinions.value = (opRes.data || []).slice(0, 8);
-    weatherOverview.value = weatherRes.data;
-  } catch {
-    data.value = null;
-    sites.value = [];
-    siteSummaryMap.value = {};
-    recentOpinions.value = [];
-    weatherOverview.value = null;
+
+    const [sumRes, sitesRes, dashRes, opRes, weatherRes] = settled;
+
+    if (sumRes.status === "fulfilled") {
+      data.value = sumRes.value.data;
+    } else {
+      data.value = null;
+    }
+
+    if (sitesRes.status === "fulfilled") {
+      sites.value = sitesRes.value.data || [];
+    } else {
+      sites.value = [];
+    }
+
+    if (dashRes.status === "fulfilled") {
+      siteSummaryMap.value = Object.fromEntries(
+        ((dashRes.value.data as { site_summaries?: DashboardSiteSummary[] }).site_summaries || []).map((x) => [
+          x.site_id,
+          x,
+        ]),
+      );
+    } else {
+      siteSummaryMap.value = {};
+    }
+
+    if (opRes.status === "fulfilled") {
+      recentOpinions.value = (opRes.value.data || []).slice(0, 8);
+    } else {
+      recentOpinions.value = [];
+    }
+
+    if (weatherRes.status === "fulfilled") {
+      weatherOverview.value = weatherRes.value.data;
+    } else {
+      weatherOverview.value = {
+        office: {
+          available: false,
+          location_name: "본사",
+          status_text: "일시적 조회 실패",
+          snapshot_anchor_kst: null,
+          snapshot_fetched_at: null,
+        },
+        sites: [],
+        updated_at: null,
+        snapshot_anchor_kst: null,
+        snapshot_fetched_at: null,
+      };
+    }
   } finally {
     loading.value = false;
   }
@@ -639,6 +688,18 @@ onMounted(load);
   margin: 0;
   color: #334155;
   font-size: 13px;
+}
+
+.weather-overview-snapshot {
+  margin: 0;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.weather-overview-sep {
+  margin: 0 6px;
+  color: #94a3b8;
 }
 
 .weather-site-list {

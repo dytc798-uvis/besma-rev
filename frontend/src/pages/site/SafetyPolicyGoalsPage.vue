@@ -15,7 +15,10 @@
           <h3>방침</h3>
           <p class="title">{{ payload.policy?.title || "등록된 방침이 없습니다." }}</p>
           <p class="meta">{{ formatDateTime(payload.policy?.uploaded_at) }}</p>
-          <a v-if="payload.policy?.file_url" :href="resolveFileUrl(payload.policy.file_url)" target="_blank" rel="noopener">파일 보기</a>
+          <div v-if="payload.policy?.file_url" class="file-actions">
+            <button type="button" class="secondary" @click="openPolicyFile(payload.policy)">파일 보기</button>
+            <button type="button" class="secondary" @click="downloadPolicyFile(payload.policy)">다운로드</button>
+          </div>
           <div v-if="isHqUi" class="upload-box">
             <input v-model="hqPolicyTitle" type="text" placeholder="본사 방침 제목" />
             <input type="file" accept="image/*,.pdf" @change="onFileChange($event, 'policy')" />
@@ -29,7 +32,10 @@
           <h3>목표</h3>
           <p class="title">{{ payload.target?.title || "등록된 목표가 없습니다." }}</p>
           <p class="meta">{{ formatDateTime(payload.target?.uploaded_at) }}</p>
-          <a v-if="payload.target?.file_url" :href="resolveFileUrl(payload.target.file_url)" target="_blank" rel="noopener">파일 보기</a>
+          <div v-if="payload.target?.file_url" class="file-actions">
+            <button type="button" class="secondary" @click="openPolicyFile(payload.target)">파일 보기</button>
+            <button type="button" class="secondary" @click="downloadPolicyFile(payload.target)">다운로드</button>
+          </div>
           <div v-if="isHqUi" class="upload-box">
             <input v-model="hqTargetTitle" type="text" placeholder="본사 목표 제목" />
             <input type="file" accept="image/*,.pdf" @change="onFileChange($event, 'target')" />
@@ -41,19 +47,33 @@
       </div>
       <p v-if="uploadMessage" class="upload-message">{{ uploadMessage }}</p>
     </BaseCard>
+
+    <div v-if="preview.open" class="preview-backdrop" @click.self="closePreview">
+      <div class="preview-card">
+        <div class="preview-head">
+          <strong>{{ preview.title }}</strong>
+          <button type="button" class="secondary" @click="closePreview">닫기</button>
+        </div>
+        <iframe v-if="preview.kind === 'pdf'" class="preview-frame" :src="preview.url || ''" title="policy-goal-preview" />
+        <img v-else-if="preview.kind === 'image'" class="preview-image" :src="preview.url || ''" alt="policy-goal-preview" />
+        <p v-else class="preview-fallback">이 형식은 미리보기를 지원하지 않습니다. 다운로드로 확인해 주세요.</p>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { BaseCard } from "@/components/product";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
+import { canPreviewInBrowser, isImageFile, isPdfFile } from "@/utils/filePreview";
 
 interface UploadedDoc {
   title: string;
   uploaded_at: string;
   file_url: string;
+  file_name?: string | null;
 }
 
 const auth = useAuthStore();
@@ -65,6 +85,12 @@ const hqPolicyFile = ref<File | null>(null);
 const hqTargetFile = ref<File | null>(null);
 const uploading = ref(false);
 const uploadMessage = ref("");
+const preview = ref<{ open: boolean; title: string; url: string | null; kind: "pdf" | "image" | "other" }>({
+  open: false,
+  title: "",
+  url: null,
+  kind: "other",
+});
 
 const isSiteUi = computed(() => auth.user?.ui_type === "SITE");
 const isHqUi = computed(() => auth.user?.ui_type === "HQ_SAFE");
@@ -86,6 +112,75 @@ function formatDateTime(value: string | null | undefined) {
 
 function resolveFileUrl(path: string) {
   return `${api.defaults.baseURL}${path}`;
+}
+
+function revokePreviewUrl() {
+  if (preview.value.url) {
+    window.URL.revokeObjectURL(preview.value.url);
+  }
+  preview.value.url = null;
+}
+
+function closePreview() {
+  revokePreviewUrl();
+  preview.value.open = false;
+  preview.value.title = "";
+  preview.value.kind = "other";
+}
+
+async function fetchPolicyBlob(doc: UploadedDoc) {
+  const path = doc.file_url;
+  const previewable = canPreviewInBrowser(doc.file_name);
+  const res = await api.get(path, {
+    params: { disposition: previewable ? "inline" : "attachment" },
+    responseType: "blob",
+  });
+  const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
+  return new Blob([res.data], { type: contentType });
+}
+
+async function openPolicyFile(doc: UploadedDoc) {
+  uploadMessage.value = "";
+  try {
+    const blob = await fetchPolicyBlob(doc);
+    revokePreviewUrl();
+    const url = window.URL.createObjectURL(blob);
+    const fileName = doc.file_name || doc.title || "file";
+    if (isPdfFile(fileName)) {
+      preview.value = { open: true, title: doc.title || "방침/목표", url, kind: "pdf" };
+      return;
+    }
+    if (isImageFile(fileName)) {
+      preview.value = { open: true, title: doc.title || "방침/목표", url, kind: "image" };
+      return;
+    }
+    if (canPreviewInBrowser(fileName)) {
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+      return;
+    }
+    window.URL.revokeObjectURL(url);
+    preview.value = { open: true, title: doc.title || "방침/목표", url: null, kind: "other" };
+  } catch {
+    uploadMessage.value = "파일을 열 수 없습니다. 권한/네트워크를 확인해주세요.";
+  }
+}
+
+async function downloadPolicyFile(doc: UploadedDoc) {
+  uploadMessage.value = "";
+  try {
+    const blob = await fetchPolicyBlob(doc);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = doc.file_name || `${doc.title || "download"}.bin`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch {
+    uploadMessage.value = "다운로드에 실패했습니다. 잠시 후 다시 시도해주세요.";
+  }
 }
 
 function onFileChange(event: Event, key: "policy" | "target") {
@@ -155,6 +250,10 @@ onMounted(() => {
   viewScope.value = isSiteUi.value ? "SITE" : "HQ";
   void load();
 });
+
+onBeforeUnmount(() => {
+  closePreview();
+});
 </script>
 
 <style scoped>
@@ -164,7 +263,14 @@ onMounted(() => {
 .panel-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .title { font-weight: 700; margin: 0; }
 .meta { margin: 0; color: #64748b; font-size: 12px; }
+.file-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .upload-box { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
 .upload-message { margin-top: 12px; color: #b91c1c; font-weight: 600; }
+.preview-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px; }
+.preview-card { width: min(960px, calc(100vw - 32px)); height: min(720px, calc(100vh - 64px)); background: #fff; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25); }
+.preview-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.preview-frame { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; width: 100%; min-height: 0; }
+.preview-image { flex: 1; border: 1px solid #e2e8f0; border-radius: 8px; width: 100%; object-fit: contain; min-height: 0; background: #f8fafc; }
+.preview-fallback { margin: 0; color: #64748b; font-size: 13px; }
 @media (max-width: 920px) { .panel-grid { grid-template-columns: 1fr; } }
 </style>

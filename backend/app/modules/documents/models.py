@@ -102,3 +102,18 @@ class DocumentUploadHistory(Base):
     document: Mapped["Document"] = relationship("Document", foreign_keys=[document_id])
     uploaded_by: Mapped["User"] = relationship("User", foreign_keys=[uploaded_by_user_id])
 
+
+class DocumentComment(Base):
+    __tablename__ = "document_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), nullable=False, index=True)
+    instance_id: Mapped[int | None] = mapped_column(ForeignKey("document_instances.id"), nullable=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_role: Mapped[str] = mapped_column(String(10), nullable=False)
+    comment_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+    document: Mapped["Document"] = relationship("Document", foreign_keys=[document_id])
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+

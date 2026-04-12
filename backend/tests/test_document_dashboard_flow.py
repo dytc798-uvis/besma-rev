@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,7 +11,9 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.auth import get_current_user_with_bypass, get_db
 from app.core.database import Base
+from app.core.datetime_utils import utc_now
 from app.core.enums import Role
+from app.modules.approvals.models import ApprovalAction, ApprovalHistory
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
 from app.modules.document_settings.models import DocumentRequirement, DocumentTypeMaster, SubmissionCycle
 from app.modules.document_submissions.routes import router as document_submissions_router
@@ -183,6 +185,23 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     assert reject.status_code == 200
     assert reject.json()["current_status"] == DocumentStatus.REJECTED
 
+    # 과거 데이터/자동화 잔재로 APPROVE 코멘트가 REJECT보다 최신이면 반려 사유가 덮어써질 수 있다.
+    # UI에는 REJECT 코멘트(또는 documents.rejection_reason)만 노출되어야 한다.
+    noise_db = TestingSessionLocal()
+    try:
+        noise_db.add(
+            ApprovalHistory(
+                document_id=document_id,
+                action_by_user_id=2,
+                action_type=ApprovalAction.APPROVE,
+                comment="deploy validation reject",
+                action_at=utc_now() + timedelta(seconds=5),
+            )
+        )
+        noise_db.commit()
+    finally:
+        noise_db.close()
+
     current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id)
     after_reject = client.get(
         "/documents/requirements/status",
@@ -253,6 +272,8 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     history_items = history.json()["items"]
     assert len(history_items) >= 2
     assert any(item["status"] == "REJECTED" for item in history_items)
+    rejected_history = next(item for item in history_items if item["status"] == "REJECTED")
+    assert rejected_history["review_note"] == "위험요인/대책 부적절"
     assert any(item["version_no"] >= 2 for item in history_items)
     assert history_items[0]["period_start"] == today
     assert history_items[0]["period_label"] == today

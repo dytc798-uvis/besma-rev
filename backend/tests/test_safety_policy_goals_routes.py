@@ -76,7 +76,13 @@ def test_hq_upload_and_site_view_policy_goal(tmp_path: Path):
     site_view = client.get("/safety-policy-goals/view", params={"scope": "SITE"})
     assert site_view.status_code == 200
     assert site_view.json()["target"]["title"] == "현장 목표"
+    assert site_view.json()["target"]["file_name"] == "site_target.txt"
 
     hq_view = client.get("/safety-policy-goals/view", params={"scope": "HQ"})
     assert hq_view.status_code == 200
     assert hq_view.json()["policy"]["title"] == "본사 방침"
+    assert hq_view.json()["policy"]["file_name"] == "hq_policy.txt"
+
+    file_view = client.get(hq_view.json()["policy"]["file_url"])
+    assert file_view.status_code == 200
+    assert file_view.headers["content-disposition"].startswith("inline;")

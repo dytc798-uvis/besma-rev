@@ -23,6 +23,9 @@ function resolveApiBaseUrl() {
 
 export const api = axios.create({
   baseURL: resolveApiBaseUrl(),
+  // 운영 환경에서 외부 연동(기상 등) 지연이 길어질 수 있어 상한을 둔다.
+  // 개별 요청에서 timeout을 덮어쓸 수 있다.
+  timeout: 30_000,
 });
 
 api.interceptors.request.use((config) => {

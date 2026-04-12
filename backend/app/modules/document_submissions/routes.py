@@ -395,6 +395,20 @@ async def upload_document_for_instance(
     doc.file_size = len(primary_content)
     doc.uploaded_by_user_id = current_user.id
     doc.uploaded_at = utc_now()
+
+    previous_doc_status = doc.current_status
+    # 운영 데이터에서 문서는 REJECTED인데 인스턴스 workflow가 UNDER_REVIEW로 남는 경우가 있어
+    # 수정 업로드가 409로 막히는 문제가 발생한다. 이 경우 workflow를 REJECTED로 정렬한 뒤 업로드 전이를 허용한다.
+    if previous_doc_status == DocumentStatus.REJECTED and inst.workflow_status == WorkflowStatus.UNDER_REVIEW:
+        logger.warning(
+            "workflow mismatch repair before upload: instance_id=%s document_id=%s workflow=%s doc_status=%s",
+            inst.id,
+            doc.id,
+            inst.workflow_status,
+            previous_doc_status,
+        )
+        inst.workflow_status = WorkflowStatus.REJECTED
+
     doc.current_status = DocumentStatus.SUBMITTED
     doc.rejection_reason = None
 

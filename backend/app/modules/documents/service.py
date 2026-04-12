@@ -9,10 +9,10 @@ from types import SimpleNamespace
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
-from app.modules.approvals.models import ApprovalHistory
+from app.modules.approvals.models import ApprovalAction, ApprovalHistory
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
 from app.modules.document_settings.models import ContractorDocumentBundleItem, DocumentRequirement
-from app.modules.documents.models import Document, DocumentUploadHistory
+from app.modules.documents.models import Document, DocumentComment, DocumentUploadHistory
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.modules.workers.models import Person
@@ -47,13 +47,100 @@ _STATUS_REJECTED = "REJECTED"
 _PRIMARY_SITE_FREQUENCIES = {"DAILY", "WEEKLY", "MONTHLY", "ROLLING", "ADHOC", "EVENT", "ONE_TIME"}
 
 
+def list_document_comments(
+    db: Session,
+    *,
+    document_id: int,
+) -> list[dict[str, Any]]:
+    rows = (
+        db.query(DocumentComment, User)
+        .join(User, User.id == DocumentComment.user_id)
+        .filter(DocumentComment.document_id == document_id)
+        .order_by(DocumentComment.created_at.asc(), DocumentComment.id.asc())
+        .all()
+    )
+    return [
+        {
+            "id": comment.id,
+            "document_id": comment.document_id,
+            "instance_id": comment.instance_id,
+            "user_id": comment.user_id,
+            "user_name": user.name,
+            "user_role": comment.user_role,
+            "comment_text": comment.comment_text,
+            "created_at": comment.created_at,
+        }
+        for comment, user in rows
+    ]
+
+
+def create_document_comment(
+    db: Session,
+    *,
+    document: Document,
+    user_id: int,
+    user_role: str,
+    comment_text: str,
+) -> dict[str, Any]:
+    text = (comment_text or "").strip()
+    if not text:
+        raise ValueError("comment_text_required")
+    row = DocumentComment(
+        document_id=document.id,
+        instance_id=document.instance_id,
+        user_id=user_id,
+        user_role=user_role,
+        comment_text=text,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    user = db.query(User).filter(User.id == user_id).first()
+    return {
+        "id": row.id,
+        "document_id": row.document_id,
+        "instance_id": row.instance_id,
+        "user_id": row.user_id,
+        "user_name": user.name if user else f"user#{user_id}",
+        "user_role": row.user_role,
+        "comment_text": row.comment_text,
+        "created_at": row.created_at,
+    }
+
+
 def _latest_review_comment_map(db: Session, document_ids: list[int]) -> dict[int, str]:
-    snapshots = _latest_review_snapshot_map(db, document_ids)
+    snapshots = _latest_reject_snapshot_map(db, document_ids)
     return {
         document_id: str(payload["comment"])
         for document_id, payload in snapshots.items()
         if payload.get("comment")
     }
+
+
+_INTERNAL_REVIEW_COMMENT_MARKERS = (
+    "deploy validation reject",
+    "deploy_validation_reject",
+)
+
+
+def _is_internal_review_comment(comment: str | None) -> bool:
+    if not comment:
+        return True
+    normalized = comment.strip().casefold()
+    if not normalized:
+        return True
+    return any(marker in normalized for marker in _INTERNAL_REVIEW_COMMENT_MARKERS)
+
+
+def _sanitize_public_review_note(note: str | None) -> str | None:
+    if note is None:
+        return None
+    text = str(note).strip()
+    if not text:
+        return None
+    if _is_internal_review_comment(text):
+        return None
+    return text
 
 
 def _latest_review_snapshot_map(db: Session, document_ids: list[int]) -> dict[int, dict[str, Any]]:
@@ -64,6 +151,39 @@ def _latest_review_snapshot_map(db: Session, document_ids: list[int]) -> dict[in
         .filter(
             ApprovalHistory.document_id.in_(document_ids),
             ApprovalHistory.action_type.in_(["APPROVE", "REJECT"]),
+            ApprovalHistory.comment.isnot(None),
+            ApprovalHistory.comment != "",
+        )
+        .order_by(
+            ApprovalHistory.document_id.asc(),
+            ApprovalHistory.action_at.desc(),
+            ApprovalHistory.id.desc(),
+        )
+        .all()
+    )
+    latest: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        if row.document_id in latest:
+            continue
+        latest[row.document_id] = {
+            "comment": row.comment,
+            "action_at": row.action_at,
+        }
+    return latest
+
+
+def _latest_reject_snapshot_map(db: Session, document_ids: list[int]) -> dict[int, dict[str, Any]]:
+    """
+    UI/현장 대시보드에 노출되는 '반려 사유'는 REJECT 액션 코멘트만 사용한다.
+    (APPROVE 코멘트가 최신이면 반려 사유가 덮어써지는 문제 방지)
+    """
+    if not document_ids:
+        return {}
+    rows = (
+        db.query(ApprovalHistory)
+        .filter(
+            ApprovalHistory.document_id.in_(document_ids),
+            ApprovalHistory.action_type == ApprovalAction.REJECT,
             ApprovalHistory.comment.isnot(None),
             ApprovalHistory.comment != "",
         )
@@ -479,7 +599,7 @@ def get_site_requirement_status(
                     ),
                     "uploaded_at": unresolved_rejected_doc.uploaded_at,
                     "reviewed_at": unresolved_rejected_doc.reviewed_at,
-                    "review_note": unresolved_rejected_doc.rejection_reason,
+                    "review_note": _sanitize_public_review_note(unresolved_rejected_doc.rejection_reason),
                     "file_name": (
                         unresolved_rejected_doc.file_name
                         or (Path(unresolved_rejected_doc.file_path).name if unresolved_rejected_doc.file_path else None)
@@ -517,7 +637,7 @@ def get_site_requirement_status(
                     "current_cycle_document_id": (current_doc.id if current_doc else None),
                     "current_cycle_instance_id": (current_doc.instance_id if current_doc else None),
                     "current_cycle_uploaded_at": (current_doc.uploaded_at if current_doc else None),
-                    "current_cycle_review_note": (current_doc.rejection_reason if current_doc else None),
+                    "current_cycle_review_note": (_sanitize_public_review_note(current_doc.rejection_reason) if current_doc else None),
                     "current_cycle_file_name": (
                         current_doc.file_name or (Path(current_doc.file_path).name if current_doc and current_doc.file_path else None)
                         if current_doc
@@ -544,7 +664,9 @@ def get_site_requirement_status(
                         unresolved_rejected_doc.reviewed_at if unresolved_rejected_doc else None
                     ),
                     "unresolved_rejected_review_note": (
-                        unresolved_rejected_doc.rejection_reason if unresolved_rejected_doc else None
+                        _sanitize_public_review_note(unresolved_rejected_doc.rejection_reason)
+                        if unresolved_rejected_doc
+                        else None
                     ),
                     "unresolved_rejected_file_name": (
                         unresolved_rejected_doc.file_name
@@ -585,7 +707,7 @@ def get_site_requirement_status(
                 "uploaded_at": doc.uploaded_at,
                 "uploaded_by_user_id": doc.uploaded_by_user_id,
                 "workflow_status": (inst.workflow_status if inst else None),
-                "review_note": doc.rejection_reason,
+                "review_note": _sanitize_public_review_note(doc.rejection_reason),
                 "due_rule_text": req.due_rule_text,
                 "category": _category_from_requirement(req),
                 "section": section,
@@ -594,7 +716,7 @@ def get_site_requirement_status(
                 "current_cycle_document_id": (current_doc.id if current_doc else None),
                 "current_cycle_instance_id": (current_doc.instance_id if current_doc else None),
                 "current_cycle_uploaded_at": (current_doc.uploaded_at if current_doc else None),
-                "current_cycle_review_note": (current_doc.rejection_reason if current_doc else None),
+                "current_cycle_review_note": (_sanitize_public_review_note(current_doc.rejection_reason) if current_doc else None),
                 "current_cycle_file_name": (
                     current_doc.file_name or (Path(current_doc.file_path).name if current_doc and current_doc.file_path else None)
                     if current_doc
@@ -621,7 +743,9 @@ def get_site_requirement_status(
                     unresolved_rejected_doc.reviewed_at if unresolved_rejected_doc else None
                 ),
                 "unresolved_rejected_review_note": (
-                    unresolved_rejected_doc.rejection_reason if unresolved_rejected_doc else None
+                    _sanitize_public_review_note(unresolved_rejected_doc.rejection_reason)
+                    if unresolved_rejected_doc
+                    else None
                 ),
                 "unresolved_rejected_file_name": (
                     unresolved_rejected_doc.file_name
@@ -653,33 +777,55 @@ def get_site_requirement_status(
         if doc_id
     }
     review_snapshot_map = _latest_review_snapshot_map(db, list(review_doc_ids))
+    reject_snapshot_map = _latest_reject_snapshot_map(db, list(review_doc_ids))
     for row in items:
         doc_id = row.get("latest_document_id")
         if not doc_id:
             pass
         else:
-            latest_snapshot = review_snapshot_map.get(int(doc_id))
-            if latest_snapshot and latest_snapshot.get("comment"):
-                row["review_note"] = latest_snapshot["comment"]
+            if str(row.get("status") or "") == _STATUS_REJECTED:
+                reject_snapshot = reject_snapshot_map.get(int(doc_id))
+                if reject_snapshot and reject_snapshot.get("comment") and not _is_internal_review_comment(
+                    str(reject_snapshot.get("comment") or "")
+                ):
+                    row["review_note"] = str(reject_snapshot["comment"])
+            else:
+                latest_snapshot = review_snapshot_map.get(int(doc_id))
+                if latest_snapshot and latest_snapshot.get("comment"):
+                    row["review_note"] = latest_snapshot["comment"]
 
         current_cycle_doc_id = row.get("current_cycle_document_id")
         if current_cycle_doc_id:
-            current_snapshot = review_snapshot_map.get(int(current_cycle_doc_id))
-            if current_snapshot and current_snapshot.get("comment"):
-                row["current_cycle_review_note"] = current_snapshot["comment"]
+            if str(row.get("current_cycle_last_submission_status") or "") == _STATUS_REJECTED:
+                reject_snapshot = reject_snapshot_map.get(int(current_cycle_doc_id))
+                if reject_snapshot and reject_snapshot.get("comment") and not _is_internal_review_comment(
+                    str(reject_snapshot.get("comment") or "")
+                ):
+                    row["current_cycle_review_note"] = str(reject_snapshot["comment"])
+            else:
+                current_snapshot = review_snapshot_map.get(int(current_cycle_doc_id))
+                if current_snapshot and current_snapshot.get("comment"):
+                    row["current_cycle_review_note"] = current_snapshot["comment"]
 
         unresolved_doc_id = row.get("unresolved_rejected_document_id")
         if unresolved_doc_id:
-            unresolved_snapshot = review_snapshot_map.get(int(unresolved_doc_id))
-            if unresolved_snapshot:
-                if unresolved_snapshot.get("comment"):
-                    row["unresolved_rejected_review_note"] = unresolved_snapshot["comment"]
-                    if row.get("rejected_backlog_items"):
-                        row["rejected_backlog_items"][0]["review_note"] = unresolved_snapshot["comment"]
-                if unresolved_snapshot.get("action_at"):
-                    row["unresolved_rejected_reviewed_at"] = unresolved_snapshot["action_at"]
-                    if row.get("rejected_backlog_items"):
-                        row["rejected_backlog_items"][0]["reviewed_at"] = unresolved_snapshot["action_at"]
+            base_note = _sanitize_public_review_note(row.get("unresolved_rejected_review_note"))
+            reject_snapshot = reject_snapshot_map.get(int(unresolved_doc_id))
+            reject_comment = (
+                str(reject_snapshot["comment"])
+                if reject_snapshot and reject_snapshot.get("comment") and not _is_internal_review_comment(str(reject_snapshot.get("comment") or ""))
+                else None
+            )
+            merged_note = reject_comment or base_note
+            row["unresolved_rejected_review_note"] = merged_note
+            if row.get("rejected_backlog_items"):
+                row["rejected_backlog_items"][0]["review_note"] = merged_note
+            reviewed_at = row.get("unresolved_rejected_reviewed_at")
+            if reject_snapshot and reject_snapshot.get("action_at"):
+                row["unresolved_rejected_reviewed_at"] = reject_snapshot["action_at"]
+                reviewed_at = reject_snapshot["action_at"]
+            if row.get("rejected_backlog_items"):
+                row["rejected_backlog_items"][0]["reviewed_at"] = reviewed_at
 
     def sort_key(row: dict[str, Any]) -> tuple[int, int, str]:
         status = str(row.get("status") or "")
@@ -730,13 +876,21 @@ def get_requirement_document_history(
         .all()
     )
 
-    review_snapshot_map = _latest_review_snapshot_map(
-        db,
-        [int(history.document_id) for history, _, _ in histories if history.document_id],
-    )
+    history_doc_ids = [int(history.document_id) for history, _, _ in histories if history.document_id]
+    review_snapshot_map = _latest_review_snapshot_map(db, history_doc_ids)
+    reject_snapshot_map = _latest_reject_snapshot_map(db, history_doc_ids)
     rows: list[dict[str, Any]] = []
     for h, doc, inst in histories:
         review_snapshot = review_snapshot_map.get(int(h.document_id))
+        reject_snapshot = reject_snapshot_map.get(int(h.document_id))
+        reviewed_at = None
+        if h.document_status == _STATUS_REJECTED:
+            reviewed_at = doc.reviewed_at if doc is not None else None
+            if reviewed_at is None and reject_snapshot and reject_snapshot.get("action_at"):
+                reviewed_at = reject_snapshot["action_at"]
+        elif h.document_status == _STATUS_APPROVED:
+            if review_snapshot and review_snapshot.get("action_at"):
+                reviewed_at = review_snapshot["action_at"]
         rows.append(
             {
                 "history_id": h.id,
@@ -746,14 +900,10 @@ def get_requirement_document_history(
                 "action_type": h.action_type,
                 "status": h.document_status,
                 "uploaded_at": h.uploaded_at,
-                "review_note": h.review_note,
+                "review_note": _sanitize_public_review_note(h.review_note) if h.document_status == _STATUS_REJECTED else h.review_note,
                 "uploader_user_id": h.uploaded_by_user_id,
                 "file_name": h.file_name,
-                "reviewed_at": (
-                    review_snapshot.get("action_at")
-                    if review_snapshot and h.document_status in {_STATUS_APPROVED, _STATUS_REJECTED}
-                    else None
-                ),
+                "reviewed_at": reviewed_at,
                 "period_start": doc.period_start if doc is not None else (inst.period_start if inst else None),
                 "period_end": doc.period_end if doc is not None else (inst.period_end if inst else None),
                 "period_label": _period_label(

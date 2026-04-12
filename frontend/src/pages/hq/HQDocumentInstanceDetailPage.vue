@@ -111,6 +111,10 @@
           </table>
         </div>
       </BaseCard>
+
+      <BaseCard v-if="currentRow?.document_id" class="main-panel !p-[22px] mt-4">
+        <DocumentCommentsPanel :document-id="currentRow.document_id" />
+      </BaseCard>
     </template>
 
     <div v-if="previewOpen" class="modal-backdrop" @click.self="closePreview">
@@ -133,6 +137,7 @@ import axios from "axios";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
+import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.vue";
 import { BaseCard } from "@/components/product";
 import { canPreviewInBrowser, isImageFile, isPdfFile } from "@/utils/filePreview";
 import { formatDateTimeKst } from "@/utils/datetime";

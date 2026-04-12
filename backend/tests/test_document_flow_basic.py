@@ -143,7 +143,27 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert listed
     assert any(int(row["id"]) == first_document_id for row in listed)
 
+    site_comment_res = client.post(
+        f"/documents/{first_document_id}/comments",
+        json={"comment_text": "현장 확인 요청 사항 메모"},
+    )
+    assert site_comment_res.status_code == 201
+    assert site_comment_res.json()["user_role"] == "SITE"
+    assert int(site_comment_res.json()["instance_id"]) == first_instance_id
+
     current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id)
+    hq_comment_list_res = client.get(f"/documents/{first_document_id}/comments")
+    assert hq_comment_list_res.status_code == 200
+    assert [row["comment_text"] for row in hq_comment_list_res.json()] == ["현장 확인 요청 사항 메모"]
+    assert hq_comment_list_res.json()[0]["user_name"] == "site-manager"
+
+    hq_comment_res = client.post(
+        f"/documents/{first_document_id}/comments",
+        json={"comment_text": "본사 검토 예정, 추가 자료는 승인 흐름과 별개로 남깁니다."},
+    )
+    assert hq_comment_res.status_code == 201
+    assert hq_comment_res.json()["user_role"] == "HQ"
+
     start_review_res = client.post(
         f"/documents/{first_document_id}/review",
         json={"action": "start_review", "comment": "검토 시작"},
@@ -157,6 +177,14 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert approve_res.json()["current_status"] == DocumentStatus.APPROVED
 
     current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id)
+    site_comment_list_res = client.get(f"/documents/{first_document_id}/comments")
+    assert site_comment_list_res.status_code == 200
+    assert [row["user_role"] for row in site_comment_list_res.json()] == ["SITE", "HQ"]
+    assert [row["comment_text"] for row in site_comment_list_res.json()] == [
+        "현장 확인 요청 사항 메모",
+        "본사 검토 예정, 추가 자료는 승인 흐름과 별개로 남깁니다.",
+    ]
+
     second_upload_res = client.post(
         "/document-submissions/upload",
         data={
@@ -182,6 +210,105 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert reject_res.status_code == 200
     assert reject_res.json()["current_status"] == DocumentStatus.REJECTED
     assert reject_res.json()["rejection_reason"] == "보완 필요"
+
+
+def test_reupload_repairs_rejected_under_review_workflow_mismatch(tmp_path: Path):
+    db_file = tmp_path / "test_document_reupload_mismatch.db"
+    engine = create_engine(
+        f"sqlite:///{db_file}",
+        connect_args={"check_same_thread": False},
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.workers import models as worker_models  # noqa: F401
+    from app.modules.documents import models as document_models  # noqa: F401
+    from app.modules.approvals import models as approval_models  # noqa: F401
+    from app.modules.opinions import models as opinion_models  # noqa: F401
+    from app.modules.document_settings import models as document_settings_models  # noqa: F401
+    from app.modules.document_generation import models as document_generation_models  # noqa: F401
+    from app.modules.document_submissions import models as document_submissions_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    site = Site(site_code="S-DOC-002", site_name="재업로드 테스트 현장")
+    setup_db.add(site)
+    setup_db.flush()
+    site_id = site.id
+    setup_db.add(
+        User(
+            id=1,
+            name="site-manager",
+            login_id="site_reupload_manager",
+            password_hash="x",
+            site_id=site_id,
+            role=Role.SITE,
+        )
+    )
+    setup_db.commit()
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(document_submissions_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(id=1, role=Role.SITE, site_id=site_id)
+    client = TestClient(app)
+
+    today = date(2026, 3, 20).isoformat()
+    upload_res = client.post(
+        "/document-submissions/upload",
+        data={
+            "site_id": str(site_id),
+            "document_type_code": "DAILY_DOC",
+            "work_date": today,
+        },
+        files={"file": ("daily.txt", b"daily upload content", "text/plain")},
+    )
+    assert upload_res.status_code == 200
+    payload = upload_res.json()
+    instance_id = int(payload["instance_id"])
+    document_id = int(payload["document_id"])
+
+    corrupt_db = TestingSessionLocal()
+    try:
+        doc = corrupt_db.query(Document).filter(Document.id == document_id).first()
+        inst = corrupt_db.query(DocumentInstance).filter(DocumentInstance.id == instance_id).first()
+        assert doc is not None
+        assert inst is not None
+        doc.current_status = DocumentStatus.REJECTED
+        doc.rejection_reason = "보완 필요"
+        inst.workflow_status = WorkflowStatus.UNDER_REVIEW
+        corrupt_db.add_all([doc, inst])
+        corrupt_db.commit()
+    finally:
+        corrupt_db.close()
+
+    reupload_res = client.post(
+        "/document-submissions/upload",
+        data={"instance_id": str(instance_id)},
+        files={"file": ("daily_v2.txt", b"daily upload second content", "text/plain")},
+    )
+    assert reupload_res.status_code == 200
+
+    verify_db = TestingSessionLocal()
+    try:
+        doc = verify_db.query(Document).filter(Document.id == document_id).first()
+        inst = verify_db.query(DocumentInstance).filter(DocumentInstance.id == instance_id).first()
+        assert doc is not None
+        assert inst is not None
+        assert doc.current_status == DocumentStatus.SUBMITTED
+        assert doc.rejection_reason is None
+        assert inst.workflow_status == WorkflowStatus.SUBMITTED
+    finally:
+        verify_db.close()
 
 
 def test_daily_upload_file_name_and_supervisor_daily_override(tmp_path: Path):

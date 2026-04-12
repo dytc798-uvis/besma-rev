@@ -193,6 +193,12 @@ class DailyWorkPlanItemRiskRef(Base):
     source_rule: Mapped[str] = mapped_column(String(20), nullable=False, default="KEYWORD_MATCH")
     score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    site_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    site_approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    site_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    hq_final_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    hq_final_approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    hq_final_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, nullable=False
     )

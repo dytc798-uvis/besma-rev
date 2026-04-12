@@ -207,6 +207,8 @@ Recommendation:
 - `OPEN-009` : A ([DECISION-046], SITE 기본 연결/노출을 C18 중심으로 고정)
 - `OPEN-041` : A ([DECISION-050], 운영 아이디어 제안 삭제는 작성자 또는 관리자)
 - `OPEN-042` : B ([DECISION-053], SITE 문서취합 3영역 구조 + 현장 전용 read model 보강)
+- `OPEN-043` : A ([DECISION-054], HQ 본사 날씨 기준 위치를 환경설정으로 명시 관리)
+- `OPEN-044` : B ([DECISION-055], 위험성평가 승인 체계는 기존 ref에 SITE/HQ 승인 상태 추가)
 
 ---
 

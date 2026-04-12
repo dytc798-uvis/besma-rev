@@ -777,6 +777,34 @@
 
 ---
 
+### [DECISION-054]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-12 |
+| **Title** | HQ 대시보드 본사 날씨 기준 위치는 환경설정으로 명시 관리 |
+| **Context** | SITE는 `Site.address/latitude/longitude`를 활용할 수 있으나, HQ 대시보드의 “본사 날씨 1건”은 기준 위치가 코드·DB에 명시돼 있지 않았다. |
+| **Options** | A. 환경설정(`BESMA_HQ_WEATHER_NAME/LAT/LON`)으로 본사 위치를 명시 관리하고, 값이 없으면 HQ 카드에 미설정 상태를 표시 / B. 서울 중심 좌표 임시 하드코딩 / C. 별도 설정 테이블 추가 |
+| **Decision** | **A** |
+| **Reason** | 현재 구조에서 가장 최소 침습이며, 운영 배포 시 실제 본사 위치를 명시적으로 관리할 수 있다. |
+| **Impact Scope** | `backend/app/config/settings.py`, 날씨/미세먼지 백엔드 수집 로직, `frontend/src/pages/dashboard/HQSafeDashboard.vue`의 본사 날씨 카드 |
+
+---
+
+### [DECISION-055]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-12 |
+| **Title** | 위험성평가 승인 체계는 기존 `DailyWorkPlanItemRiskRef`에 SITE/HQ 승인 상태를 추가하는 최소 침습안으로 구현 |
+| **Context** | 오늘 범위에서 `현장 승인 -> 본사 최종승인 후 DB 반영`이 필요했지만, 별도 candidate 테이블을 추가하면 마이그레이션/API/UI 범위가 커진다. 기존 채택 ref 레코드에 승인 상태를 붙이면 오늘 P1 범위에서 흐름을 고정할 수 있다. |
+| **Options** | A. 별도 candidate 테이블 추가 / B. 기존 `DailyWorkPlanItemRiskRef`에 `site_approved`, `hq_final_approved` 등 상태 필드 추가 / C. 승인 UI/상태만 먼저 구현하고 실제 반영은 다음 주로 미룸 |
+| **Decision** | **B** |
+| **Reason** | 기존 채택 흐름을 깨지 않으면서도 승인 상태를 코드/테스트로 고정할 수 있고, HQ 최종승인 전에는 문서 조립·근로자 배포 등 “최종 DB 반영” 경로에서 제외하는 최소 침습 구현이 가능하다. |
+| **Impact Scope** | `backend/app/modules/risk_library/models.py`, `backend/app/modules/risk_library/service.py`, `backend/app/modules/risk_library/routes.py`, `backend/app/schemas/daily_work_plans.py`, `backend/alembic/versions/20260412_0028_risk_ref_approval_states.py`, 관련 테스트 |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -813,3 +841,4 @@
 | 2026-04-12 | Decision 051 추가 — 운영 아이디어 상태 한글 표시 및 점수 UI 제거 |
 | 2026-04-12 | Decision 052 추가 — 사용설명서 스크린샷 hq01 전용 및 서버 이미지 최적화 |
 | 2026-04-12 | Decision 053 추가 — SITE 문서취합 3영역 구조 + 현장 전용 read model 보강 |
+| 2026-04-12 | Decision 054 추가 — HQ 본사 날씨 기준 위치를 환경설정으로 명시 관리 |

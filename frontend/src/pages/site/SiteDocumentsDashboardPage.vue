@@ -203,6 +203,7 @@
       </p>
       <input type="file" @change="onFileChange" />
       <p class="upload-help">이미지 업로드 시 서버에서 자동 최적화되며, 제출용 PDF로 변환될 수 있습니다.</p>
+      <p v-if="uploadError" class="upload-error">{{ uploadError }}</p>
       <div class="modal-actions">
         <button class="secondary" @click="closeUpload">취소</button>
         <button class="primary" :disabled="!selectedFile || uploading" @click="submitUpload">
@@ -265,6 +266,11 @@
           </tr>
         </tbody>
       </table>
+      <DocumentCommentsPanel
+        v-if="historyCommentDocumentId"
+        :document-id="historyCommentDocumentId"
+        title="현재 문서 코멘트"
+      />
       <div class="modal-actions">
         <button class="secondary" @click="closeHistory">닫기</button>
       </div>
@@ -275,6 +281,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api } from "@/services/api";
+import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.vue";
 import { useAuthStore } from "@/stores/auth";
 
 interface RequirementStatusItem {
@@ -356,10 +363,14 @@ const completionUploadEnabled = ref(false);
 const uploadTarget = ref<RequirementStatusItem | null>(null);
 const selectedFile = ref<File | null>(null);
 const uploading = ref(false);
+const uploadError = ref("");
 const historyTarget = ref<RequirementStatusItem | null>(null);
 const historyItems = ref<HistoryItem[]>([]);
 
 const siteId = computed(() => auth.effectiveSiteId ?? auth.user?.site_id ?? null);
+const historyCommentDocumentId = computed(
+  () => historyTarget.value?.current_cycle_document_id ?? historyTarget.value?.unresolved_rejected_document_id ?? null,
+);
 
 const visibleItems = computed(() =>
   items.value.filter((item) => isDisplayableRequirementId(item.requirement_id) && item.is_required && item.current_cycle_status !== "NOT_REQUIRED"),
@@ -572,11 +583,13 @@ async function load() {
 function openUpload(item: RequirementStatusItem) {
   uploadTarget.value = item;
   selectedFile.value = null;
+  uploadError.value = "";
 }
 
 function closeUpload() {
   uploadTarget.value = null;
   selectedFile.value = null;
+  uploadError.value = "";
 }
 
 async function openHistory(item: RequirementStatusItem) {
@@ -606,12 +619,22 @@ function onFileChange(e: Event) {
   selectedFile.value = target.files?.[0] ?? null;
 }
 
+function reuploadInstanceId(item: RequirementStatusItem | null) {
+  if (!item) return null;
+  return item.unresolved_rejected_instance_id || item.current_cycle_instance_id || null;
+}
+
 async function submitUpload() {
   if (!uploadTarget.value || !selectedFile.value || !siteId.value) return;
   if (uploadTarget.value.section === "COMPLETION" && !completionUploadEnabled.value) return;
   uploading.value = true;
+  uploadError.value = "";
   try {
     const form = new FormData();
+    const targetInstanceId = reuploadInstanceId(uploadTarget.value);
+    if (targetInstanceId) {
+      form.append("instance_id", String(targetInstanceId));
+    }
     form.append("site_id", String(siteId.value));
     form.append("requirement_id", String(uploadTarget.value.requirement_id));
     form.append("document_type_code", uploadTarget.value.document_type_code);
@@ -622,6 +645,9 @@ async function submitUpload() {
     });
     closeUpload();
     await load();
+  } catch (error: unknown) {
+    const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    uploadError.value = detail || "업로드에 실패했습니다. 잠시 후 다시 시도해주세요.";
   } finally {
     uploading.value = false;
   }
@@ -672,6 +698,7 @@ onMounted(async () => {
 .upload-note { margin: -8px 0 10px; font-size: 12px; color: #64748b; }
 .upload-reject-note { margin: 0 0 10px; font-size: 12px; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 8px; }
 .upload-help { margin: 8px 0 0; font-size: 12px; color: #475569; }
+.upload-error { margin: 8px 0 0; font-size: 12px; color: #b91c1c; font-weight: 600; }
 .history-note { margin: 6px 0 12px; font-size: 12px; color: #64748b; }
 .history-current-row { background: #eff6ff; }
 .history-current-label { margin-top: 4px; font-size: 12px; color: #1d4ed8; font-weight: 700; }

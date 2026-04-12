@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
-from datetime import timedelta
-from threading import Lock
+from datetime import datetime, time, timedelta, timezone
+from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import urlopen
-
 from app.config.settings import settings
 from app.core.datetime_utils import utc_now
 
@@ -15,8 +15,56 @@ WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
 AIR_QUALITY_API_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 GEOCODING_API_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
-_CACHE_LOCK = Lock()
-_CACHE: dict[str, tuple[object, object]] = {}
+# 한국은 일광절약시간이 없어 Asia/Seoul == UTC+9 고정으로 처리한다(tzdata 미설치 Windows 호환).
+_KST = timezone(timedelta(hours=9), name="KST")
+_UTC = timezone.utc
+
+
+def kst_weather_snapshot_anchor(now_utc: datetime | None = None) -> datetime:
+    """
+    대시보드에 표시할 '마지막 스냅샷'의 KST 기준 시각(앵커).
+
+    - 당일 00:00~04:59 KST: 전일 12:00 KST 앵커
+    - 당일 05:00~11:59 KST: 당일 05:00 KST 앵커
+    - 당일 12:00~23:59 KST: 당일 12:00 KST 앵커
+    """
+    now = now_utc or utc_now()
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=_UTC)
+    now_kst = now.astimezone(_KST)
+    d = now_kst.date()
+    t = now_kst.time()
+    if t < time(5, 0):
+        prev = d - timedelta(days=1)
+        return datetime.combine(prev, time(12, 0), tzinfo=_KST)
+    if t < time(12, 0):
+        return datetime.combine(d, time(5, 0), tzinfo=_KST)
+    return datetime.combine(d, time(12, 0), tzinfo=_KST)
+
+
+def max_snapshot_fetched_at_iso(*payloads: dict) -> str | None:
+    """여러 날씨 payload 중 snapshot_fetched_at(또는 updated_at)의 최댓값(UTC 기준)."""
+    best: datetime | None = None
+    for p in payloads:
+        if not p:
+            continue
+        raw = p.get("snapshot_fetched_at") or p.get("updated_at")
+        if raw is None:
+            continue
+        if isinstance(raw, datetime):
+            dt = raw if raw.tzinfo else raw.replace(tzinfo=_UTC)
+        else:
+            try:
+                s = str(raw).replace("Z", "+00:00")
+                dt = datetime.fromisoformat(s)
+            except ValueError:
+                continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_UTC)
+        dt = dt.astimezone(_UTC)
+        if best is None or dt > best:
+            best = dt
+    return best.isoformat() if best else None
 
 
 @dataclass(slots=True)
@@ -29,25 +77,47 @@ class WeatherLocation:
     site_code: str | None = None
 
 
-def _cache_get(key: str):
-    now = utc_now()
-    with _CACHE_LOCK:
-        entry = _CACHE.get(key)
-        if not entry:
-            return None
-        expires_at, value = entry
-        if expires_at <= now:
-            _CACHE.pop(key, None)
-            return None
-        return value
+def _snapshots_root() -> Path:
+    d = settings.storage_root / "weather_snapshots"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
-def _cache_set(key: str, value, ttl_minutes: int | None = None):
-    ttl = ttl_minutes if ttl_minutes is not None else settings.weather_cache_ttl_minutes
-    expires_at = utc_now() + timedelta(minutes=ttl)
-    with _CACHE_LOCK:
-        _CACHE[key] = (expires_at, value)
-    return value
+def _geocode_dir() -> Path:
+    d = _snapshots_root() / "geocode"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _snapshot_slug(anchor_kst: datetime, location: WeatherLocation) -> str:
+    anchor_utc = anchor_kst.astimezone(_UTC)
+    basis = (
+        f"anchor={anchor_utc.isoformat()}|"
+        f"lat={_round_coord(location.latitude)}|lon={_round_coord(location.longitude)}|"
+        f"sid={location.site_id}|code={location.site_code or ''}"
+    )
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:40]
+
+
+def _snapshot_path(slug: str) -> Path:
+    return _snapshots_root() / f"{slug}.json"
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, default=str), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _read_snapshot_disk(slug: str) -> dict | None:
+    path = _snapshot_path(slug)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
 
 
 def _fetch_json(base_url: str, params: dict[str, object]):
@@ -128,7 +198,17 @@ def _is_precipitation_risk(weather_code: int | None, precipitation: float | None
     )
 
 
-def _build_advisory(weather_label: str, temperature: float | None, feels_like: float | None, wind_speed: float | None, precipitation: float | None, precipitation_probability: float | None, pm10: float | None, pm25: float | None, weather_code: int | None):
+def _build_advisory(
+    weather_label: str,
+    temperature: float | None,
+    feels_like: float | None,
+    wind_speed: float | None,
+    precipitation: float | None,
+    precipitation_probability: float | None,
+    pm10: float | None,
+    pm25: float | None,
+    weather_code: int | None,
+):
     flags: list[str] = []
     messages: list[str] = []
     risk_assessment_required = False
@@ -227,7 +307,13 @@ def _build_advisory(weather_label: str, temperature: float | None, feels_like: f
     }
 
 
-def _build_unavailable_payload(name: str, *, address: str | None = None, site_id: int | None = None, site_code: str | None = None, reason: str = "일시적 조회 실패"):
+def _build_unavailable_payload(
+    name: str, *, address: str | None = None, site_id: int | None = None, site_code: str | None = None, reason: str = "일시적 조회 실패"
+):
+    fetched = utc_now()
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=_UTC)
+    anchor = kst_weather_snapshot_anchor(fetched)
     return {
         "available": False,
         "location_name": name,
@@ -248,8 +334,10 @@ def _build_unavailable_payload(name: str, *, address: str | None = None, site_id
         "safety_messages": [],
         "risk_assessment_required": False,
         "warning_score": -1,
-        "updated_at": utc_now(),
+        "updated_at": fetched,
         "status_text": reason,
+        "snapshot_anchor_kst": anchor.isoformat(),
+        "snapshot_fetched_at": fetched.astimezone(_UTC).isoformat(),
     }
 
 
@@ -257,10 +345,14 @@ def _geocode_address(name: str, address: str | None):
     query = (address or name or "").strip()
     if not query:
         return None
-    cache_key = f"weather:geocode:{query}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        return cached
+    h = hashlib.sha256(query.encode("utf-8")).hexdigest()[:24]
+    path = _geocode_dir() / f"{h}.json"
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return (_round_coord(float(data["latitude"])), _round_coord(float(data["longitude"])))
+        except Exception:
+            pass
     try:
         payload = _fetch_json(
             GEOCODING_API_URL,
@@ -273,10 +365,11 @@ def _geocode_address(name: str, address: str | None):
         )
         results = payload.get("results") or []
         if not results:
-            return _cache_set(cache_key, None, ttl_minutes=120)
+            return None
         top = results[0]
         resolved = (_round_coord(top["latitude"]), _round_coord(top["longitude"]))
-        return _cache_set(cache_key, resolved, ttl_minutes=120)
+        _atomic_write_json(path, {"query": query, "latitude": resolved[0], "longitude": resolved[1]})
+        return resolved
     except Exception:
         return None
 
@@ -316,95 +409,116 @@ def build_hq_location() -> WeatherLocation | None:
     )
 
 
+def _live_fetch_open_meteo_payload(location: WeatherLocation) -> dict:
+    weather_payload = _fetch_json(
+        WEATHER_API_URL,
+        {
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "timezone": "Asia/Seoul",
+            "current": "temperature_2m,apparent_temperature,precipitation,wind_speed_10m,weather_code",
+            "hourly": "precipitation_probability",
+            "forecast_hours": 1,
+        },
+    )
+    air_payload = _fetch_json(
+        AIR_QUALITY_API_URL,
+        {
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "timezone": "Asia/Seoul",
+            "current": "pm10,pm2_5",
+        },
+    )
+    current_weather = weather_payload.get("current") or {}
+    current_air = air_payload.get("current") or {}
+    hourly = weather_payload.get("hourly") or {}
+    precipitation_probability = None
+    hourly_prob = hourly.get("precipitation_probability")
+    if isinstance(hourly_prob, list) and hourly_prob:
+        precipitation_probability = hourly_prob[0]
+    weather_code = current_weather.get("weather_code")
+    advisory = _build_advisory(
+        weather_label=_weather_label(weather_code),
+        temperature=current_weather.get("temperature_2m"),
+        feels_like=current_weather.get("apparent_temperature"),
+        wind_speed=current_weather.get("wind_speed_10m"),
+        precipitation=current_weather.get("precipitation"),
+        precipitation_probability=precipitation_probability,
+        pm10=current_air.get("pm10"),
+        pm25=current_air.get("pm2_5"),
+        weather_code=weather_code,
+    )
+    fetched = utc_now()
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=_UTC)
+    anchor = kst_weather_snapshot_anchor(fetched)
+    return {
+        "available": True,
+        "location_name": location.name,
+        "address": location.address,
+        "site_id": location.site_id,
+        "site_code": location.site_code,
+        "weather_label": advisory["weather_label"],
+        "temperature": current_weather.get("temperature_2m"),
+        "feels_like": current_weather.get("apparent_temperature"),
+        "wind_speed": current_weather.get("wind_speed_10m"),
+        "precipitation": current_weather.get("precipitation"),
+        "precipitation_probability": precipitation_probability,
+        "pm10": current_air.get("pm10"),
+        "pm10_status": advisory["pm10_status"],
+        "pm25": current_air.get("pm2_5"),
+        "pm25_status": advisory["pm25_status"],
+        "advisory_flags": advisory["advisory_flags"],
+        "safety_messages": advisory["safety_messages"],
+        "risk_assessment_required": advisory["risk_assessment_required"],
+        "warning_score": advisory["warning_score"],
+        "updated_at": fetched,
+        "status_text": "정상",
+        "snapshot_anchor_kst": anchor.isoformat(),
+        "snapshot_fetched_at": fetched.astimezone(_UTC).isoformat(),
+    }
+
+
 def build_weather_snapshot(location: WeatherLocation):
-    cache_key = f"weather:snapshot:{location.latitude}:{location.longitude}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        return cached
+    anchor = kst_weather_snapshot_anchor()
+    slug = _snapshot_slug(anchor, location)
+    cached = _read_snapshot_disk(slug)
+    if isinstance(cached, dict) and isinstance(cached.get("payload"), dict):
+        return dict(cached["payload"])
+
     try:
-        weather_payload = _fetch_json(
-            WEATHER_API_URL,
-            {
-                "latitude": location.latitude,
-                "longitude": location.longitude,
-                "timezone": "Asia/Seoul",
-                "current": "temperature_2m,apparent_temperature,precipitation,wind_speed_10m,weather_code",
-                "hourly": "precipitation_probability",
-                "forecast_hours": 1,
-            },
-        )
-        air_payload = _fetch_json(
-            AIR_QUALITY_API_URL,
-            {
-                "latitude": location.latitude,
-                "longitude": location.longitude,
-                "timezone": "Asia/Seoul",
-                "current": "pm10,pm2_5",
-            },
-        )
-        current_weather = weather_payload.get("current") or {}
-        current_air = air_payload.get("current") or {}
-        hourly = weather_payload.get("hourly") or {}
-        precipitation_probability = None
-        hourly_prob = hourly.get("precipitation_probability")
-        if isinstance(hourly_prob, list) and hourly_prob:
-            precipitation_probability = hourly_prob[0]
-        weather_code = current_weather.get("weather_code")
-        advisory = _build_advisory(
-            weather_label=_weather_label(weather_code),
-            temperature=current_weather.get("temperature_2m"),
-            feels_like=current_weather.get("apparent_temperature"),
-            wind_speed=current_weather.get("wind_speed_10m"),
-            precipitation=current_weather.get("precipitation"),
-            precipitation_probability=precipitation_probability,
-            pm10=current_air.get("pm10"),
-            pm25=current_air.get("pm2_5"),
-            weather_code=weather_code,
-        )
-        payload = {
-            "available": True,
-            "location_name": location.name,
-            "address": location.address,
-            "site_id": location.site_id,
-            "site_code": location.site_code,
-            "weather_label": advisory["weather_label"],
-            "temperature": current_weather.get("temperature_2m"),
-            "feels_like": current_weather.get("apparent_temperature"),
-            "wind_speed": current_weather.get("wind_speed_10m"),
-            "precipitation": current_weather.get("precipitation"),
-            "precipitation_probability": precipitation_probability,
-            "pm10": current_air.get("pm10"),
-            "pm10_status": advisory["pm10_status"],
-            "pm25": current_air.get("pm2_5"),
-            "pm25_status": advisory["pm25_status"],
-            "advisory_flags": advisory["advisory_flags"],
-            "safety_messages": advisory["safety_messages"],
-            "risk_assessment_required": advisory["risk_assessment_required"],
-            "warning_score": advisory["warning_score"],
-            "updated_at": utc_now(),
-            "status_text": "정상",
-        }
-        return _cache_set(cache_key, payload)
+        payload = _live_fetch_open_meteo_payload(location)
     except Exception:
-        unavailable = _build_unavailable_payload(
+        payload = _build_unavailable_payload(
             location.name,
             address=location.address,
             site_id=location.site_id,
             site_code=location.site_code,
         )
-        return _cache_set(cache_key, unavailable, ttl_minutes=5)
+
+    envelope = {"payload": payload, "snapshot_slug": slug, "anchor_kst": payload.get("snapshot_anchor_kst")}
+    _atomic_write_json(_snapshot_path(slug), envelope)
+    return payload
 
 
 def build_site_weather_summary(site):
     location = resolve_site_location(site)
     if location is None:
-        return _build_unavailable_payload(
+        fetched = utc_now()
+        if fetched.tzinfo is None:
+            fetched = fetched.replace(tzinfo=_UTC)
+        anchor = kst_weather_snapshot_anchor(fetched)
+        p = _build_unavailable_payload(
             getattr(site, "site_name", "현장"),
             address=getattr(site, "address", None),
             site_id=getattr(site, "id", None),
             site_code=getattr(site, "site_code", None),
             reason="위치 정보 없음",
         )
+        p["snapshot_anchor_kst"] = anchor.isoformat()
+        p["snapshot_fetched_at"] = fetched.astimezone(_UTC).isoformat()
+        return p
     return build_weather_snapshot(location)
 
 

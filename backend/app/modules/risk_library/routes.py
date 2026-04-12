@@ -28,14 +28,17 @@ from app.modules.risk_library.service import (
     list_risk_library_entries,
     list_risk_refs_for_plan_item,
     list_worker_visible_distributions,
+    hq_finalize_risk_ref,
     ping_site_admin_presence,
     promote_feedback_candidate,
     review_worker_feedback,
     run_recommendation_for_plan_item,
+    site_approve_risk_ref,
     start_distribution_tbm,
     sign_worker_daily_work_plan,
     sign_worker_daily_work_plan_end,
 )
+from app.modules.risk_library.models import DailyWorkPlanItemRiskRef
 from app.modules.sites.models import Site
 from app.schemas.daily_work_plans import (
     AdoptRisksRequest,
@@ -115,6 +118,20 @@ def _assert_risk_library_access(current_user) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Risk library access is allowed for HQ/SITE users only",
         )
+
+
+def _resolve_role_value(current_user) -> str | None:
+    role_value = getattr(current_user, "role", None)
+    if hasattr(role_value, "value"):
+        role_value = role_value.value
+    return role_value
+
+
+def _get_risk_ref_or_404(db, ref_id: int) -> DailyWorkPlanItemRiskRef:
+    ref = db.query(DailyWorkPlanItemRiskRef).filter(DailyWorkPlanItemRiskRef.id == ref_id).first()
+    if ref is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Risk ref not found")
+    return ref
 
 
 @router.get("/risk-library", response_model=RiskLibraryReadResponse)
@@ -264,6 +281,62 @@ def adopt_risks(
         requested_count=result["requested_count"],
         adopted_count=result["adopted_count"],
     )
+
+
+@router.post(
+    "/daily-work-plan-item-risk-refs/{ref_id:int}/site-approve",
+    response_model=DailyWorkPlanItemRiskRefResponse,
+)
+def approve_risk_ref_by_site(
+    ref_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    ref = _get_risk_ref_or_404(db, ref_id)
+    role_value = _resolve_role_value(current_user)
+    if role_value != Role.SITE.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SITE approval is allowed for site users only")
+    item = db.query(DailyWorkPlanItem).filter(DailyWorkPlanItem.id == ref.plan_item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DailyWorkPlanItem not found")
+    plan = get_daily_work_plan(db, item.plan_id)
+    if plan is None or plan.site_id != current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    try:
+        result = site_approve_risk_ref(db, ref_id=ref_id, approved_by_user_id=current_user.id)
+    except ValueError as exc:
+        if str(exc) == "risk_ref_not_found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Risk ref not found")
+        if str(exc) == "risk_ref_not_selected":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected adopted risk only can be approved")
+        raise
+    return DailyWorkPlanItemRiskRefResponse(**result)
+
+
+@router.post(
+    "/daily-work-plan-item-risk-refs/{ref_id:int}/hq-final-approve",
+    response_model=DailyWorkPlanItemRiskRefResponse,
+)
+def finalize_risk_ref_by_hq(
+    ref_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    role_value = _resolve_role_value(current_user)
+    if role_value not in {Role.HQ_SAFE.value, Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ final approval is allowed for HQ users only")
+    _get_risk_ref_or_404(db, ref_id)
+    try:
+        result = hq_finalize_risk_ref(db, ref_id=ref_id, approved_by_user_id=current_user.id)
+    except ValueError as exc:
+        if str(exc) == "risk_ref_not_found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Risk ref not found")
+        if str(exc) == "risk_ref_not_selected":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected adopted risk only can be approved")
+        if str(exc) == "site_approval_required":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE approval is required before HQ final approval")
+        raise
+    return DailyWorkPlanItemRiskRefResponse(**result)
 
 
 @router.post("/daily-work-plans/{plan_id:int}/confirm", response_model=DailyWorkPlanConfirmResponse)
