@@ -68,6 +68,7 @@ import { BaseCard } from "@/components/product";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { canPreviewInBrowser, isImageFile, isPdfFile } from "@/utils/filePreview";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 interface UploadedDoc {
   title: string;
@@ -96,18 +97,7 @@ const isSiteUi = computed(() => auth.user?.ui_type === "SITE");
 const isHqUi = computed(() => auth.user?.ui_type === "HQ_SAFE");
 
 function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(dt);
+  return formatDateTimeKst(value, "-");
 }
 
 function resolveFileUrl(path: string) {

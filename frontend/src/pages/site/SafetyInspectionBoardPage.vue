@@ -37,15 +37,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api } from "@/services/api";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 const items = ref<any[]>([]);
 const drafts = ref<Record<number, string>>({});
 function resolveUrl(path: string) { return `${api.defaults.baseURL}${path}`; }
 function formatDateTime(v?: string) {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return v;
-  return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  return formatDateTimeKst(v, "-");
 }
 async function load() { const res = await api.get("/safety-features/inspections"); items.value = res.data.items ?? []; }
 async function addComment(documentId: number) {

@@ -130,6 +130,7 @@
 import { onMounted, ref } from "vue";
 import { api } from "@/services/api";
 import { BaseCard, BaseTable, FilterBar, StatusBadge } from "@/components/product";
+import { yearMonthKst } from "@/utils/datetime";
 
 interface TbmMonthlySiteSummary {
   site_id: number;
@@ -168,7 +169,7 @@ interface TbmDailyMonitoringResponse {
   days: TbmDailyWorkRow[];
 }
 
-const yearMonth = ref<string>(new Date().toISOString().slice(0, 7));
+const yearMonth = ref<string>(yearMonthKst());
 
 const monthlyLoading = ref(false);
 const dailyLoading = ref(false);

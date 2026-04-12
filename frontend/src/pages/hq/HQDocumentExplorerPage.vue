@@ -226,6 +226,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import type { AxiosError } from "axios";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
 import { api } from "@/services/api";
+import { formatDateKst, toDate } from "@/utils/datetime";
 
 type DocumentCategory = "field" | "template" | "reference";
 type ExplorerTab = "all" | DocumentCategory;
@@ -484,9 +485,7 @@ function categoryIcon(category: DocumentCategory) {
 }
 
 function formatDate(value: string) {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toISOString().slice(0, 10);
+  return formatDateKst(value, value);
 }
 
 function formatSize(value: number) {
@@ -496,8 +495,8 @@ function formatSize(value: number) {
 }
 
 function isWithinDateRange(value: string, rangeKey: string) {
-  const targetDate = new Date(value);
-  if (Number.isNaN(targetDate.getTime())) return false;
+  const targetDate = toDate(value);
+  if (!targetDate) return false;
 
   const rangeDaysMap: Record<string, number> = {
     "1d": 1,

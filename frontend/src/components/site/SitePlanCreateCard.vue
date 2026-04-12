@@ -49,6 +49,7 @@
 import { ref } from "vue";
 import { api } from "@/services/api";
 import SitePastePlanImportCard from "./SitePastePlanImportCard.vue";
+import { todayKst } from "@/utils/datetime";
 
 const props = defineProps<{
   siteId: number;
@@ -60,7 +61,7 @@ const emit = defineEmits<{
 }>();
 
 const tab = ref<"paste" | "manual">("paste");
-const today = new Date().toISOString().slice(0, 10);
+const today = todayKst();
 const workDate = ref(today);
 const loading = ref(false);
 const error = ref("");

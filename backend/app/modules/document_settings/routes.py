@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 
 from app.config.settings import settings
 from app.core.auth import DbDep
+from app.core.datetime_utils import kst_today
 from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
 from app.modules.document_settings.models import (
@@ -682,11 +683,11 @@ async def upload_user_guide_shot(
     section_dir.mkdir(parents=True, exist_ok=True)
     label_text = (label or Path(source_name).stem or "image").strip()
     safe_label = _sanitize_path_segment(label_text, fallback="image")
-    stored_name = f"{safe_label}_{current_user.id}_{int(date.today().strftime('%Y%m%d'))}{ext}"
+    stored_name = f"{safe_label}_{current_user.id}_{int(kst_today().strftime('%Y%m%d'))}{ext}"
     stored_path = section_dir / stored_name
     suffix = 1
     while stored_path.exists():
-        stored_name = f"{safe_label}_{current_user.id}_{int(date.today().strftime('%Y%m%d'))}_{suffix}{ext}"
+        stored_name = f"{safe_label}_{current_user.id}_{int(kst_today().strftime('%Y%m%d'))}_{suffix}{ext}"
         stored_path = section_dir / stored_name
         suffix += 1
     stored_path.write_bytes(upload_bytes)

@@ -2,6 +2,7 @@
 import { RouterLink } from "vue-router";
 import BaseCard from "../BaseCard.vue";
 import StatusBadge from "../StatusBadge.vue";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 export interface OpinionRow {
   id: number;
@@ -35,8 +36,7 @@ function truncate(s: string, n: number) {
 }
 
 function formatTime(iso: string | undefined) {
-  if (!iso) return "—";
-  return iso.slice(0, 16).replace("T", " ");
+  return formatDateTimeKst(iso, "—");
 }
 
 function opinionTone(status: string): "success" | "warn" | "danger" {

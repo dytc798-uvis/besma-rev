@@ -283,6 +283,7 @@ import { computed, onMounted, ref } from "vue";
 import { api } from "@/services/api";
 import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.vue";
 import { useAuthStore } from "@/stores/auth";
+import { formatDateTimeKst, todayKst, toDate } from "@/utils/datetime";
 
 interface RequirementStatusItem {
   requirement_id: number;
@@ -356,7 +357,7 @@ interface HistoryItem {
 
 const auth = useAuthStore();
 
-const targetDate = ref(new Date().toISOString().slice(0, 10));
+const targetDate = ref(todayKst());
 const items = ref<RequirementStatusItem[]>([]);
 const completionUploadEnabled = ref(false);
 
@@ -398,8 +399,8 @@ const pendingCurrentCount = computed(() => currentTaskItems.value.filter((item) 
 const approvedCount = computed(() => visibleItems.value.filter((item) => item.current_cycle_status === "APPROVED").length);
 
 function compareDateDesc(a: string | null, b: string | null) {
-  const aTime = a ? new Date(a).getTime() : 0;
-  const bTime = b ? new Date(b).getTime() : 0;
+  const aTime = toDate(a)?.getTime() ?? 0;
+  const bTime = toDate(b)?.getTime() ?? 0;
   return bTime - aTime;
 }
 
@@ -512,18 +513,7 @@ function isDisplayableRequirementId(requirementId: unknown) {
 }
 
 function formatDateTime(value: string | null) {
-  if (!value) return "-";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(dt);
+  return formatDateTimeKst(value, "-");
 }
 
 function uploadRejectReason(item: RequirementStatusItem) {

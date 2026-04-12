@@ -66,6 +66,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
+import { todayKst } from "@/utils/datetime";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -111,7 +112,7 @@ onUnmounted(() => {
 async function loadBadge() {
   try {
     const res = await api.get("/documents/badges/hq", {
-      params: { date: new Date().toISOString().slice(0, 10) },
+      params: { date: todayKst() },
     });
     badge.value = res.data;
   } catch {

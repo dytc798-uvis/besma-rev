@@ -49,6 +49,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { api } from "@/services/api";
+import { todayKst } from "@/utils/datetime";
 
 interface SiteWorker {
   person_id: number;
@@ -67,7 +68,7 @@ const emit = defineEmits<{
   (e: "distribution-created", dist: any): void;
 }>();
 
-const today = new Date().toISOString().slice(0, 10);
+const today = todayKst();
 const targetDate = ref(today);
 const workers = ref<SiteWorker[]>([]);
 const selectedPersonIds = ref<number[]>([]);

@@ -131,6 +131,7 @@ const savedPageIntentAt = computed(() => {
     return new Date(at).toLocaleString("ko-KR", {
       dateStyle: "short",
       timeStyle: "short",
+      timeZone: "Asia/Seoul",
     });
   } catch {
     return at;

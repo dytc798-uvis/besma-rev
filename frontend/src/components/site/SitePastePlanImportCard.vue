@@ -84,6 +84,7 @@
 import { ref, reactive } from "vue";
 import { api } from "@/services/api";
 import { parsePastedText, type ParsedPlanItem, type ParsedPlanResult } from "@/utils/sitePlanPasteParser";
+import { todayKst } from "@/utils/datetime";
 
 const props = defineProps<{
   siteId: number;
@@ -96,7 +97,7 @@ const step = ref<"paste" | "preview" | "done">("paste");
 const rawText = ref("");
 const parsed = ref<ParsedPlanResult | null>(null);
 const editableItems = reactive<ParsedPlanItem[]>([]);
-const selectedDate = ref(new Date().toISOString().slice(0, 10));
+const selectedDate = ref(todayKst());
 const newItemName = ref("");
 const creating = ref(false);
 const error = ref("");

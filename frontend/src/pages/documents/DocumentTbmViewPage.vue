@@ -95,6 +95,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { api } from "@/services/api";
+import { toDate } from "@/utils/datetime";
 
 interface TbmTableRow {
   work_description: string | null;
@@ -141,8 +142,8 @@ const summary = ref<TbmSummary | null>(null);
 const sortedParticipants = computed(() => {
   if (!summary.value) return [];
   return [...summary.value.participants].sort((a, b) => {
-    const aTs = a.start_signed_at ? new Date(a.start_signed_at).getTime() : Number.MAX_SAFE_INTEGER;
-    const bTs = b.start_signed_at ? new Date(b.start_signed_at).getTime() : Number.MAX_SAFE_INTEGER;
+    const aTs = a.start_signed_at ? toDate(a.start_signed_at)?.getTime() ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+    const bTs = b.start_signed_at ? toDate(b.start_signed_at)?.getTime() ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
     return aTs - bTs;
   });
 });

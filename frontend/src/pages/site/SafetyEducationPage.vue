@@ -39,6 +39,7 @@
 import { computed, onMounted, ref } from "vue";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 const auth = useAuthStore();
 const items = ref<any[]>([]);
@@ -48,10 +49,7 @@ const uploading = ref(false);
 const canUpload = computed(() => ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN"].includes(auth.user?.role ?? ""));
 
 function formatDateTime(v?: string) {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return v;
-  return new Intl.DateTimeFormat("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  return formatDateTimeKst(v, "-");
 }
 function resolveUrl(path: string) { return `${api.defaults.baseURL}${path}`; }
 function onFileChange(e: Event) { file.value = (e.target as HTMLInputElement).files?.[0] ?? null; }

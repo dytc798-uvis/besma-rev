@@ -137,6 +137,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/services/api";
+import { formatDateTimeKst, todayKst } from "@/utils/datetime";
 
 interface SiteRow {
   id: number;
@@ -202,7 +203,7 @@ interface FeedbackRow {
   created_at: string;
 }
 
-const today = new Date().toISOString().slice(0, 10);
+const today = todayKst();
 const router = useRouter();
 const sites = ref<SiteRow[]>([]);
 const loadingList = ref(false);
@@ -300,8 +301,7 @@ function normalizeStatusCategory(status: string | null) {
 }
 
 function formatDateTime(value: string | null) {
-  if (!value) return "-";
-  return value.slice(0, 16).replace("T", " ");
+  return formatDateTimeKst(value, "-");
 }
 
 function managerLabel(manager: SiteManagerResolved) {

@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.datetime_utils import kst_today
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
 from app.modules.document_settings.models import DocumentRequirement, DocumentTypeMaster
 from app.modules.documents.models import Document, DocumentUploadHistory
@@ -150,7 +151,7 @@ def list_instance_history_rows(
     offset: int = 0,
     today: date | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
-    as_of = today if today is not None else date.today()
+    as_of = today if today is not None else kst_today()
     base = build_instance_history_query(
         db,
         site_id=site_id,
@@ -189,7 +190,7 @@ def get_instance_history_row_by_id(
     *,
     today: date | None = None,
 ) -> dict[str, Any] | None:
-    as_of = today if today is not None else date.today()
+    as_of = today if today is not None else kst_today()
     row = (
         db.query(DocumentInstance, Document, Site, DocumentRequirement, DocumentTypeMaster, User)
         .join(Site, Site.id == DocumentInstance.site_id)
@@ -228,7 +229,7 @@ def summarize_instance_history(
     document_type_code: str | None = None,
     today: date | None = None,
 ) -> dict[str, Any]:
-    as_of = today if today is not None else date.today()
+    as_of = today if today is not None else kst_today()
     base = build_instance_history_query(
         db,
         site_id=site_id,

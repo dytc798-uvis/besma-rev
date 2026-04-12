@@ -101,6 +101,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
+import { todayKst } from "@/utils/datetime";
 
 import SitePlanCreateCard from "@/components/site/SitePlanCreateCard.vue";
 import SitePlanItemsEditor from "@/components/site/SitePlanItemsEditor.vue";
@@ -291,7 +292,7 @@ async function loadSiteWorkers() {
   const siteId = effectiveSiteId.value;
   if (!siteId) return;
   try {
-    const targetDate = currentPlan.value?.work_date || new Date().toISOString().slice(0, 10);
+    const targetDate = currentPlan.value?.work_date || todayKst();
     const res = await api.get(`/sites/${siteId}/workers`, {
       params: { target_date: targetDate },
     });

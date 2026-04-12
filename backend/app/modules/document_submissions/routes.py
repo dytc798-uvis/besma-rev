@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 
 from app.config.settings import settings
 from app.core.auth import DbDep
-from app.core.datetime_utils import utc_now
+from app.core.datetime_utils import kst_today, utc_now
 from app.core.permissions import CurrentUserDep, Role
 from app.core.upload_processing import is_image_upload, process_uploaded_image
 from app.modules.document_generation.models import (
@@ -270,7 +270,7 @@ async def upload_document_for_instance(
             if not document_type_code:
                 document_type_code = requirement.code
             if work_date is None:
-                work_date = date.today()
+                work_date = kst_today()
         if site_id is None or not document_type_code or work_date is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
