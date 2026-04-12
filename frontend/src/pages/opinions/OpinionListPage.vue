@@ -5,7 +5,7 @@
       <div class="toolbar-filters">
         <select v-model="statusFilter">
           <option value="">전체 상태</option>
-          <option value="RECEIVED">접수</option>
+          <option value="RECEIVED">검토전</option>
           <option value="REVIEWING">검토중</option>
           <option value="ACTIONED">조치완료</option>
           <option value="HOLD">보류</option>
@@ -37,7 +37,7 @@
           <td>{{ op.id }}</td>
           <td>{{ op.reporter_type || "-" }}</td>
           <td>{{ op.content }}</td>
-          <td>{{ op.status }}</td>
+          <td>{{ opinionStatusLabel(op.status) }}</td>
           <td @click.stop>
             <button
               v-if="canDeleteOpinion(op)"
@@ -82,6 +82,7 @@ import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
+import { opinionStatusLabel } from "@/utils/opinionStatus";
 
 interface OpinionItem {
   id: number;

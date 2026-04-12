@@ -16,13 +16,11 @@
       <div><strong>ID</strong> {{ opinion.id }}</div>
       <div><strong>제안자</strong> {{ opinion.reporter_type }}</div>
       <div><strong>유형</strong> {{ opinion.category }}</div>
-      <div><strong>상태</strong> {{ opinion.status }}</div>
+      <div><strong>상태</strong> {{ opinionStatusLabel(opinion.status) }}</div>
       <div style="grid-column: span 2">
         <strong>아이디어</strong>
         <div>{{ opinion.content }}</div>
       </div>
-      <div><strong>적절성 점수</strong> {{ opinion.score_appropriateness ?? "-" }}</div>
-      <div><strong>실행가능성 점수</strong> {{ opinion.score_actionability ?? "-" }}</div>
       <div style="grid-column: span 2">
         <strong>조치내용</strong>
         <div>{{ opinion.action_result ?? "-" }}</div>
@@ -35,19 +33,11 @@
         <div class="form-field">
           <label>상태</label>
           <select v-model="status">
-            <option value="RECEIVED">접수</option>
+            <option value="RECEIVED">검토전</option>
             <option value="REVIEWING">검토중</option>
             <option value="ACTIONED">조치완료</option>
             <option value="HOLD">보류</option>
           </select>
-        </div>
-        <div class="form-field">
-          <label>적절성 점수</label>
-          <input v-model.number="scoreAppropriateness" type="number" min="1" max="5" />
-        </div>
-        <div class="form-field">
-          <label>실행가능성 점수</label>
-          <input v-model.number="scoreActionability" type="number" min="1" max="5" />
         </div>
         <div class="form-field" style="grid-column: span 2">
           <label>조치내용</label>
@@ -66,6 +56,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
+import { opinionStatusLabel } from "@/utils/opinionStatus";
 
 interface OpinionDetail {
   id: number;
@@ -74,8 +65,6 @@ interface OpinionDetail {
   content: string;
   reporter_type: string;
   status: string;
-  score_appropriateness: number | null;
-  score_actionability: number | null;
   action_result: string | null;
   created_by_user_id?: number | null;
 }
@@ -87,8 +76,6 @@ const auth = useAuthStore();
 const opinion = ref<OpinionDetail | null>(null);
 const deleting = ref(false);
 const status = ref("RECEIVED");
-const scoreAppropriateness = ref<number | null>(null);
-const scoreActionability = ref<number | null>(null);
 const actionResult = ref("");
 
 const canDelete = computed(() => {
@@ -129,8 +116,6 @@ async function load() {
   const res = await api.get(`/opinions/${route.params.id}`);
   opinion.value = res.data;
   status.value = opinion.value.status;
-  scoreAppropriateness.value = opinion.value.score_appropriateness;
-  scoreActionability.value = opinion.value.score_actionability;
   actionResult.value = opinion.value.action_result ?? "";
 }
 
@@ -138,8 +123,6 @@ async function update() {
   if (!opinion.value) return;
   await api.put(`/opinions/${opinion.value.id}`, {
     status: status.value,
-    score_appropriateness: scoreAppropriateness.value,
-    score_actionability: scoreActionability.value,
     action_result: actionResult.value,
   });
   await load();
