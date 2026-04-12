@@ -52,7 +52,7 @@
           <div><dt>현재 상태</dt><dd>{{ workflowUiLabel(currentRow.workflow_status, currentRow.is_missing) }}</dd></div>
           <div><dt>검토자</dt><dd>—</dd></div>
           <div><dt>검토 시각</dt><dd>{{ formatDateTime(currentRow.reviewed_at) }}</dd></div>
-          <div class="span-2"><dt>반려 사유</dt><dd>{{ currentRow.review_note || "—" }}</dd></div>
+          <div class="span-2"><dt>코멘트</dt><dd>{{ currentRow.review_note || "—" }}</dd></div>
         </dl>
         <div v-if="currentRow.document_id" class="review-form">
           <label class="review-label">검토 의견 (승인 시 선택, 반려 시 필수)</label>
@@ -92,7 +92,7 @@
                 <th>검토일</th>
                 <th>상태</th>
                 <th>재업로드</th>
-                <th>반려사유</th>
+                <th>코멘트</th>
               </tr>
             </thead>
             <tbody>

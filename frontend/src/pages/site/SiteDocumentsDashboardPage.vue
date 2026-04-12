@@ -96,7 +96,7 @@
           <tr>
             <th>문서명</th>
             <th>대상 주기</th>
-            <th>반려 사유</th>
+            <th>코멘트</th>
             <th>반려 시각</th>
             <th>액션</th>
           </tr>
@@ -114,7 +114,7 @@
               </div>
             </td>
             <td>{{ firstRejectedBacklog(item)?.period_label || item.current_period_label || "-" }}</td>
-            <td class="note-cell note-cell-alert">{{ firstRejectedBacklog(item)?.review_note || item.unresolved_rejected_review_note || "사유 없음" }}</td>
+            <td class="note-cell note-cell-alert">{{ firstRejectedBacklog(item)?.review_note || item.unresolved_rejected_review_note || "코멘트 없음" }}</td>
             <td>{{ formatDateTime(firstRejectedBacklog(item)?.reviewed_at || item.unresolved_rejected_reviewed_at || firstRejectedBacklog(item)?.uploaded_at || item.unresolved_rejected_uploaded_at) }}</td>
             <td class="actions">
               <button class="secondary danger" :disabled="item.section === 'COMPLETION' && !completionUploadEnabled" @click="openUpload(item)">
@@ -199,7 +199,7 @@
         {{ uploadTarget.current_period_label || frequencyLabel(uploadTarget.frequency) }}
       </p>
       <p v-if="uploadRejectReason(uploadTarget)" class="upload-reject-note">
-        반려 사유: {{ uploadRejectReason(uploadTarget) }}
+        코멘트: {{ uploadRejectReason(uploadTarget) }}
       </p>
       <input type="file" @change="onFileChange" />
       <p class="upload-help">이미지 업로드 시 서버에서 자동 최적화되며, 제출용 PDF로 변환될 수 있습니다.</p>
@@ -225,7 +225,7 @@
             <th>업로드</th>
             <th>검토</th>
             <th>파일</th>
-            <th>반려 사유</th>
+            <th>코멘트</th>
             <th>액션</th>
           </tr>
         </thead>
@@ -248,7 +248,7 @@
             <td>{{ row.reviewed_at ? formatDateTime(row.reviewed_at) : "-" }}</td>
             <td>{{ row.file_name || "파일 없음" }}</td>
             <td class="note-cell">
-              <span v-if="row.status === 'REJECTED'" class="inline-alert">{{ row.review_note || "사유 없음" }}</span>
+              <span v-if="row.status === 'REJECTED'" class="inline-alert">{{ row.review_note || "코멘트 없음" }}</span>
               <span v-else>{{ row.review_note || "-" }}</span>
             </td>
             <td class="actions">

@@ -185,7 +185,7 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     assert reject.status_code == 200
     assert reject.json()["current_status"] == DocumentStatus.REJECTED
 
-    # 과거 데이터/자동화 잔재로 APPROVE 코멘트가 REJECT보다 최신이면 반려 사유가 덮어써질 수 있다.
+    # 과거 데이터/자동화 잔재로 APPROVE 코멘트가 REJECT보다 최신이면 반려 코멘트가 덮어써질 수 있다.
     # UI에는 REJECT 코멘트(또는 documents.rejection_reason)만 노출되어야 한다.
     noise_db = TestingSessionLocal()
     try:

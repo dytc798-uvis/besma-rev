@@ -40,7 +40,7 @@ const emit = defineEmits<{
         <th>주기</th>
         <th>상태</th>
         <th>최근 제출일</th>
-        <th>반려 사유</th>
+        <th>코멘트</th>
         <th>액션</th>
       </tr>
     </thead>

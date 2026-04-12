@@ -183,8 +183,8 @@ def _latest_review_snapshot_map(db: Session, document_ids: list[int]) -> dict[in
 
 def _latest_reject_snapshot_map(db: Session, document_ids: list[int]) -> dict[int, dict[str, Any]]:
     """
-    UI/현장 대시보드에 노출되는 '반려 사유'는 REJECT 액션 코멘트만 사용한다.
-    (APPROVE 코멘트가 최신이면 반려 사유가 덮어써지는 문제 방지)
+    UI/현장 대시보드에 노출되는 반려 관련 코멘트는 REJECT 액션 코멘트만 사용한다.
+    (APPROVE 코멘트가 최신이면 반려 코멘트가 덮어써지는 문제 방지)
     """
     if not document_ids:
         return {}

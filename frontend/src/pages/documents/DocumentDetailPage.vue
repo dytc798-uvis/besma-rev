@@ -14,7 +14,7 @@
       <div><strong>제출자</strong> {{ doc.submitter_user_id }}</div>
       <div><strong>버전</strong> v{{ doc.version_no }}</div>
       <div><strong>설명</strong> {{ doc.description || "-" }}</div>
-      <div><strong>반려 사유</strong> {{ doc.rejection_reason || "-" }}</div>
+      <div><strong>코멘트</strong> {{ doc.rejection_reason || "-" }}</div>
       <div>
         <strong>파일</strong>
         <button
@@ -76,7 +76,7 @@
     </div>
     <div v-if="showReject" style="margin-top: 12px">
       <label class="form-field">
-        <span style="font-size: 12px">반려 사유</span>
+        <span style="font-size: 12px">코멘트</span>
         <textarea v-model="rejectReason" rows="3"></textarea>
       </label>
       <div style="margin-top: 8px">

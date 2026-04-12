@@ -209,7 +209,7 @@
             <div><strong>제출자</strong> {{ detailDocument.submitter_user_id }}</div>
             <div><strong>버전</strong> v{{ detailDocument.version_no }}</div>
             <div class="detail-span-2"><strong>설명</strong> {{ detailDocument.description || "-" }}</div>
-            <div class="detail-span-2"><strong>반려 사유</strong> {{ detailDocument.rejection_reason || "-" }}</div>
+            <div class="detail-span-2"><strong>코멘트</strong> {{ detailDocument.rejection_reason || "-" }}</div>
           </div>
           <DocumentCommentsPanel :document-id="detailDocument.id" />
           <div class="modal-actions">
