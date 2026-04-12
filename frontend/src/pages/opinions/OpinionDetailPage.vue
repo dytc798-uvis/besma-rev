@@ -1,6 +1,17 @@
 <template>
   <div class="card" v-if="opinion">
-    <div class="card-title">운영 아이디어 상세 / 조치</div>
+    <div class="card-title" style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+      <span>운영 아이디어 상세 / 조치</span>
+      <button
+        v-if="canDelete"
+        type="button"
+        class="secondary danger-btn"
+        :disabled="deleting"
+        @click="deleteOpinion"
+      >
+        {{ deleting ? "삭제 중…" : "삭제" }}
+      </button>
+    </div>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 13px">
       <div><strong>ID</strong> {{ opinion.id }}</div>
       <div><strong>제안자</strong> {{ opinion.reporter_type }}</div>
@@ -51,9 +62,10 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import { useRoute } from "vue-router";
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
+import { useAuthStore } from "@/stores/auth";
 
 interface OpinionDetail {
   id: number;
@@ -65,15 +77,53 @@ interface OpinionDetail {
   score_appropriateness: number | null;
   score_actionability: number | null;
   action_result: string | null;
+  created_by_user_id?: number | null;
 }
 
 const route = useRoute();
+const router = useRouter();
+const auth = useAuthStore();
 
 const opinion = ref<OpinionDetail | null>(null);
+const deleting = ref(false);
 const status = ref("RECEIVED");
 const scoreAppropriateness = ref<number | null>(null);
 const scoreActionability = ref<number | null>(null);
 const actionResult = ref("");
+
+const canDelete = computed(() => {
+  const o = opinion.value;
+  if (!o) return false;
+  const role = auth.user?.role ?? "";
+  const isAdmin = role === "HQ_SAFE_ADMIN" || role === "SUPER_ADMIN";
+  if (isAdmin) return true;
+  const aid = o.created_by_user_id;
+  if (aid == null) return false;
+  return Number(auth.user?.id ?? 0) === Number(aid);
+});
+
+function opinionsListRouteName() {
+  const n = route.name?.toString() ?? "";
+  if (n.startsWith("hq-safe")) return "hq-safe-opinions";
+  if (n.startsWith("site-")) return "site-opinions";
+  if (n.startsWith("hq-other")) return "hq-other-opinions";
+  return "hq-safe-opinions";
+}
+
+async function deleteOpinion() {
+  if (!opinion.value || !canDelete.value) return;
+  if (!window.confirm("이 운영 아이디어 제안을 삭제할까요?")) return;
+  deleting.value = true;
+  try {
+    const id = opinion.value.id;
+    await api.delete(`/opinions/${id}`);
+    await router.push({ name: opinionsListRouteName() });
+  } catch {
+    window.alert("삭제에 실패했습니다.");
+  } finally {
+    deleting.value = false;
+  }
+}
 
 async function load() {
   const res = await api.get(`/opinions/${route.params.id}`);
@@ -98,3 +148,12 @@ async function update() {
 onMounted(load);
 </script>
 
+<style scoped>
+.danger-btn {
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+.danger-btn:hover:not(:disabled) {
+  background: #fef2f2;
+}
+</style>

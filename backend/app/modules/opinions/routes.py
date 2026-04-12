@@ -1,13 +1,21 @@
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.auth import DbDep
-from app.core.permissions import CurrentUserDep, Role
+from app.core.enums import Role
+from app.core.permissions import CurrentUserDep
 from app.modules.opinions.models import Opinion, OpinionStatus
 from app.modules.sites.models import Site
 from app.schemas.opinions import OpinionCreate, OpinionUpdate
 
 
 router = APIRouter(prefix="/opinions", tags=["opinions"])
+
+
+def _is_opinion_admin(role: Role | str | None) -> bool:
+    if role is None:
+        return False
+    value = role.value if isinstance(role, Role) else str(role)
+    return value in {Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}
 
 
 @router.get("")
@@ -72,6 +80,7 @@ def create_opinion(
         content=body.content,
         reporter_type=body.reporter_type,
         status=OpinionStatus.RECEIVED,
+        created_by_user_id=int(current_user.id),
     )
     db.add(opinion)
     db.commit()
@@ -107,4 +116,28 @@ def update_opinion(
     db.commit()
     db.refresh(opinion)
     return opinion
+
+
+@router.delete("/{opinion_id}")
+def delete_opinion(
+    opinion_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    opinion = db.query(Opinion).filter(Opinion.id == opinion_id).first()
+    if opinion is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opinion not found")
+
+    if current_user.role == Role.SITE and current_user.site_id != opinion.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    is_admin = _is_opinion_admin(current_user.role)
+    author_id = opinion.created_by_user_id
+    is_author = author_id is not None and int(author_id) == int(current_user.id)
+    if not is_admin and not is_author:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    db.delete(opinion)
+    db.commit()
+    return {"ok": True}
 

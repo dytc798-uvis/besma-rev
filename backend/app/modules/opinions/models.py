@@ -26,6 +26,7 @@ class Opinion(Base):
     score_appropriateness: Mapped[int | None] = mapped_column(Integer, nullable=True)
     score_actionability: Mapped[int | None] = mapped_column(Integer, nullable=True)
     assigned_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     action_result: Mapped[str | None] = mapped_column(Text, nullable=True)
     action_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -36,5 +37,6 @@ class Opinion(Base):
     )
 
     site: Mapped["Site"] = relationship("Site")
-    assigned_user: Mapped["User"] = relationship("User")
+    assigned_user: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_user_id])
+    created_by_user: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_user_id])
 

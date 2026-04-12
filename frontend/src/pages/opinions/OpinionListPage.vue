@@ -24,6 +24,7 @@
           <th>이름</th>
           <th>아이디어</th>
           <th>상태</th>
+          <th style="width: 88px">삭제</th>
         </tr>
       </thead>
       <tbody>
@@ -37,9 +38,20 @@
           <td>{{ op.reporter_type || "-" }}</td>
           <td>{{ op.content }}</td>
           <td>{{ op.status }}</td>
+          <td @click.stop>
+            <button
+              v-if="canDeleteOpinion(op)"
+              type="button"
+              class="secondary danger-btn"
+              :disabled="deletingId === op.id"
+              @click="deleteOpinionRow(op)"
+            >
+              {{ deletingId === op.id ? "…" : "삭제" }}
+            </button>
+          </td>
         </tr>
         <tr v-if="opinions.length === 0">
-          <td colspan="4" style="text-align: center; color: #6b7280">데이터가 없습니다.</td>
+          <td colspan="5" style="text-align: center; color: #6b7280">데이터가 없습니다.</td>
         </tr>
       </tbody>
     </table>
@@ -69,12 +81,14 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/services/api";
+import { useAuthStore } from "@/stores/auth";
 
 interface OpinionItem {
   id: number;
   reporter_type: string;
   content: string;
   status: string;
+  created_by_user_id?: number | null;
 }
 
 const opinions = ref<OpinionItem[]>([]);
@@ -85,8 +99,35 @@ const newCategory = ref("운영 아이디어");
 const newReporterType = ref("현장");
 const newContent = ref("");
 const errorMessage = ref("");
+const deletingId = ref<number | null>(null);
 
 const router = useRouter();
+const auth = useAuthStore();
+
+function canDeleteOpinion(op: OpinionItem) {
+  const role = auth.user?.role ?? "";
+  const isAdmin = role === "HQ_SAFE_ADMIN" || role === "SUPER_ADMIN";
+  if (isAdmin) return true;
+  const aid = op.created_by_user_id;
+  if (aid == null) return false;
+  return Number(auth.user?.id ?? 0) === Number(aid);
+}
+
+async function deleteOpinionRow(op: OpinionItem) {
+  if (!canDeleteOpinion(op)) return;
+  if (!window.confirm(`아이디어 #${op.id} 를 삭제할까요?`)) return;
+  deletingId.value = op.id;
+  errorMessage.value = "";
+  try {
+    await api.delete(`/opinions/${op.id}`);
+    await load();
+  } catch (error: unknown) {
+    const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    errorMessage.value = detail || "삭제에 실패했습니다.";
+  } finally {
+    deletingId.value = null;
+  }
+}
 
 async function load() {
   errorMessage.value = "";
@@ -141,3 +182,12 @@ async function createOpinion() {
 onMounted(load);
 </script>
 
+<style scoped>
+.danger-btn {
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+.danger-btn:hover:not(:disabled) {
+  background: #fef2f2;
+}
+</style>

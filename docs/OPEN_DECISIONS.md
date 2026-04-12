@@ -205,6 +205,7 @@ Recommendation:
 - `OPEN-040` : A ([DECISION-047], 공지사항 메뉴를 HQ_SAFE에도 노출하고 SITE와 동일 게시판 공유)
 - `OPEN-008` : A ([DECISION-046], 중복 현장 숨김/샘플 최소 노출)
 - `OPEN-009` : A ([DECISION-046], SITE 기본 연결/노출을 C18 중심으로 고정)
+- `OPEN-041` : A ([DECISION-050], 운영 아이디어 제안 삭제는 작성자 또는 관리자)
 
 ---
 

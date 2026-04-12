@@ -720,6 +720,20 @@
 
 ---
 
+### [DECISION-050]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-12 |
+| **Title** | `운영 아이디어 제안(opinions)` 삭제는 작성자 또는 관리자만 허용 |
+| **Context** | 사용자가 제안 글을 삭제할 수 있어야 한다고 요청했고, 공지사항과 동일하게 권한 범위를 맞추길 원했다. |
+| **Options** | A. 작성자 + `HQ_SAFE_ADMIN`/`SUPER_ADMIN` / B. 관리자만 / C. 소프트삭제 |
+| **Decision** | **A** |
+| **Reason** | 공지사항 삭제 정책과 일관되고, 작성자가 오등록 시 즉시 정정할 수 있다. |
+| **Impact Scope** | `backend/app/modules/opinions/models.py`, `backend/app/modules/opinions/routes.py`, `backend/alembic/versions/20260412_0026_opinions_created_by_user_id.py`, `frontend/src/pages/opinions/OpinionListPage.vue`, `frontend/src/pages/opinions/OpinionDetailPage.vue` |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -752,3 +766,4 @@
 | 2026-04-10 | Decision 047 추가 — 공지사항을 HQ_SAFE에도 노출하고 SITE와 동일 게시판을 공유 |
 | 2026-04-10 | Decision 048 추가 — 대시보드 제외 전체 메뉴(고정+동적) 순서 조정/저장 지원 |
 | 2026-04-10 | Decision 049 추가 — 사용설명서 이미지 HQ 업로드 및 방침/목표 404 배포 안내 표시 |
+| 2026-04-12 | Decision 050 추가 — 운영 아이디어 제안 삭제 권한(작성자+관리자) |
