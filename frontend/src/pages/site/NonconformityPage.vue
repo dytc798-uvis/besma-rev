@@ -5,9 +5,8 @@
       <button class="secondary" @click="loadLedgers">새로고침</button>
     </div>
     <div class="upload-row">
-      <input v-model="ledgerTitle" type="text" placeholder="대장 제목" />
-      <input type="file" @change="onLedgerFileChange" />
-      <button class="primary" :disabled="!ledgerFile || !ledgerTitle.trim() || uploadingLedger" @click="uploadLedger">
+      <input ref="ledgerFileInput" type="file" @change="onLedgerFileChange" />
+      <button class="primary" :disabled="!ledgerFile || uploadingLedger" @click="uploadLedger">
         {{ uploadingLedger ? "업로드 중..." : "대장 업로드" }}
       </button>
     </div>
@@ -51,8 +50,8 @@ import { api } from "@/services/api";
 
 const ledgers = ref<any[]>([]);
 const selectedLedger = ref<any | null>(null);
-const ledgerTitle = ref("");
 const ledgerFile = ref<File | null>(null);
+const ledgerFileInput = ref<HTMLInputElement | null>(null);
 const uploadingLedger = ref(false);
 const draftItems = ref<Record<number, { improvement_action: string; improvement_date: string; improvement_owner: string }>>({});
 const itemPhotos = ref<Record<number, File | null>>({});
@@ -128,16 +127,20 @@ async function selectLedger(id: number) {
   draftItems.value = next;
 }
 async function uploadLedger() {
-  if (!ledgerFile.value || !ledgerTitle.value.trim()) return;
+  if (!ledgerFile.value) return;
   uploadingLedger.value = true;
   try {
     const form = new FormData();
-    form.append("title", ledgerTitle.value.trim());
     form.append("file", ledgerFile.value);
-    await api.post("/safety-features/nonconformities/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
-    ledgerTitle.value = "";
+    const res = await api.post("/safety-features/nonconformities/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
     ledgerFile.value = null;
+    if (ledgerFileInput.value) {
+      ledgerFileInput.value.value = "";
+    }
     await loadLedgers();
+    if (res.data?.id) {
+      await selectLedger(res.data.id);
+    }
   } finally { uploadingLedger.value = false; }
 }
 async function saveItem(itemId: number) {
@@ -152,7 +155,10 @@ async function saveItem(itemId: number) {
     p.append("file", itemPhotos.value[itemId] as File);
     await api.post(`/safety-features/nonconformities/items/${itemId}/photo`, p, { headers: { "Content-Type": "multipart/form-data" } });
   }
-  if (selectedLedger.value?.ledger?.id) await selectLedger(selectedLedger.value.ledger.id);
+  itemPhotos.value[itemId] = null;
+  if (selectedLedger.value?.ledger?.id) {
+    await Promise.all([loadLedgers(), selectLedger(selectedLedger.value.ledger.id)]);
+  }
 }
 
 void loadLedgers();

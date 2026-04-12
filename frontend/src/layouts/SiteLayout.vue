@@ -309,17 +309,23 @@ function menuIcon(key: string) {
   border-radius: 10px;
   border-left: 4px solid transparent;
   text-decoration: none;
-  color: #1f2937;
+  color: #334155;
   transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
 }
 
 .menu-link-primary {
   font-weight: 600;
   background: #f8fbff;
+  border-left-color: #bfdbfe;
 }
 
 .menu-link-secondary {
-  opacity: 0.94;
+  opacity: 1;
+}
+
+.menu-link:hover {
+  background: #f8fafc;
+  color: #0f172a;
 }
 
 .menu-link-active {

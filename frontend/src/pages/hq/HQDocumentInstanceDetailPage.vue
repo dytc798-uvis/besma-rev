@@ -185,6 +185,7 @@ const reviewSubmitting = ref(false);
 const previewOpen = ref(false);
 const previewUrl = ref<string | null>(null);
 const previewKind = ref<"pdf" | "image" | null>(null);
+const HQ_DOCUMENT_REFRESH_EVENT = "besma-hq-documents-refresh";
 
 const instanceIdNum = computed(() => Number(route.params.instanceId));
 const querySiteId = computed(() => {
@@ -247,6 +248,15 @@ function goBack() {
     router.push({ name: "hq-safe-documents", query: { site_id: String(sid) } });
   } else {
     router.push({ name: "hq-safe-documents" });
+  }
+}
+
+function notifyHqDocumentRefresh() {
+  window.dispatchEvent(new CustomEvent(HQ_DOCUMENT_REFRESH_EVENT));
+  try {
+    localStorage.setItem(HQ_DOCUMENT_REFRESH_EVENT, String(Date.now()));
+  } catch {
+    // localStorage unavailable environments can ignore cross-tab sync.
   }
 }
 
@@ -324,6 +334,7 @@ async function submitReview(action: "approve" | "reject") {
     await api.post(`/documents/${docId}/review`, { action, comment });
     reviewComment.value = "";
     await loadAll();
+    notifyHqDocumentRefresh();
   } catch {
     try {
       await api.post(`/documents/${docId}/review`, {
@@ -333,6 +344,7 @@ async function submitReview(action: "approve" | "reject") {
       await api.post(`/documents/${docId}/review`, { action, comment });
       reviewComment.value = "";
       await loadAll();
+      notifyHqDocumentRefresh();
     } catch {
       reviewError.value = "승인/반려 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.";
     }

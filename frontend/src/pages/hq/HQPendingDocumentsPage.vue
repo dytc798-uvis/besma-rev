@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { BaseCard } from "@/components/product";
 import { api } from "@/services/api";
@@ -88,6 +88,7 @@ interface PendingRow {
 
 const router = useRouter();
 const rows = ref<PendingRow[]>([]);
+const HQ_DOCUMENT_REFRESH_EVENT = "besma-hq-documents-refresh";
 
 function statusLabel(status: string) {
   if (status === "SUBMITTED") return "검토대기";
@@ -103,6 +104,22 @@ function formatDateTime(value: string | null) {
 async function load() {
   const res = await api.get("/documents/hq-pending");
   rows.value = res.data.items ?? [];
+}
+
+function handleHqDocumentRefresh() {
+  void load();
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "visible") {
+    void load();
+  }
+}
+
+function handleStorage(event: StorageEvent) {
+  if (event.key === HQ_DOCUMENT_REFRESH_EVENT) {
+    void load();
+  }
 }
 
 function downloadBlob(blob: Blob, fallbackName: string) {
@@ -145,7 +162,20 @@ function goReview(siteId: number, requirementId: number | null) {
   });
 }
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  window.addEventListener("focus", handleHqDocumentRefresh);
+  window.addEventListener(HQ_DOCUMENT_REFRESH_EVENT, handleHqDocumentRefresh as EventListener);
+  window.addEventListener("storage", handleStorage);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("focus", handleHqDocumentRefresh);
+  window.removeEventListener(HQ_DOCUMENT_REFRESH_EVENT, handleHqDocumentRefresh as EventListener);
+  window.removeEventListener("storage", handleStorage);
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+});
 </script>
 
 <style scoped>

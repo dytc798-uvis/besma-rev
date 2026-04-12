@@ -341,7 +341,7 @@ def _extract_worker_voice_rows_from_csv(content: bytes) -> list[dict]:
 async def upload_worker_voice_ledger(
     db: DbDep,
     current_user: CurrentUserDep,
-    title: str = Form(...),
+    title: str | None = Form(None),
     site_id: int | None = Form(None),
     file: UploadFile = File(...),
 ):
@@ -517,7 +517,7 @@ def add_worker_voice_comment(
 async def upload_nonconformity_ledger(
     db: DbDep,
     current_user: CurrentUserDep,
-    title: str = Form(...),
+    title: str | None = Form(None),
     site_id: int | None = Form(None),
     file: UploadFile = File(...),
 ):

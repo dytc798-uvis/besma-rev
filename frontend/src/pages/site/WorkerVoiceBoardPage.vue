@@ -5,8 +5,7 @@
       <button class="secondary" @click="load">새로고침</button>
     </div>
     <div class="upload-row">
-      <input v-model="ledgerTitle" type="text" placeholder="관리대장 제목 (선택)" />
-      <input type="file" accept=".xlsx,.xls,.csv" @change="onFileChange" />
+      <input ref="ledgerFileInput" type="file" accept=".xlsx,.xls,.csv" @change="onFileChange" />
       <button class="primary" :disabled="!ledgerFile || uploading" @click="uploadLedger">
         {{ uploading ? "업로드 중..." : "대장 업로드" }}
       </button>
@@ -75,8 +74,8 @@ import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
 const items = ref<any[]>([]);
-const ledgerTitle = ref("");
 const ledgerFile = ref<File | null>(null);
+const ledgerFileInput = ref<HTMLInputElement | null>(null);
 const uploading = ref(false);
 const openedCommentsItemId = ref<number | null>(null);
 const commentDrafts = ref<Record<number, string>>({});
@@ -101,13 +100,12 @@ async function uploadLedger() {
   uploading.value = true;
   try {
     const form = new FormData();
-    if (ledgerTitle.value.trim()) {
-      form.append("title", ledgerTitle.value.trim());
-    }
     form.append("file", ledgerFile.value);
     await api.post("/safety-features/worker-voice/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
-    ledgerTitle.value = "";
     ledgerFile.value = null;
+    if (ledgerFileInput.value) {
+      ledgerFileInput.value.value = "";
+    }
     await load();
   } finally { uploading.value = false; }
 }

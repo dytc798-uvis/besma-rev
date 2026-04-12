@@ -215,7 +215,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
@@ -294,6 +294,7 @@ const period = ref<"all" | "day" | "week" | "month" | "quarter" | "half_year" | 
 const selectedSiteId = ref<number | null>(null);
 const siteSearch = ref("");
 const EXCLUDED_REQUIREMENT_KEYWORDS = ["중대재해", "사고보고"];
+const HQ_DOCUMENT_REFRESH_EVENT = "besma-hq-documents-refresh";
 
 const TEAM_SLOT_KEYS = ["1", "2", "3", "4", "5", "6", "gwal"] as const;
 type TeamSlotKey = (typeof TEAM_SLOT_KEYS)[number];
@@ -651,6 +652,22 @@ async function load() {
   }
 }
 
+function handleHqDocumentRefresh() {
+  void load();
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "visible") {
+    void load();
+  }
+}
+
+function handleStorage(event: StorageEvent) {
+  if (event.key === HQ_DOCUMENT_REFRESH_EVENT) {
+    void load();
+  }
+}
+
 async function selectSite(siteId: number) {
   if (selectedSiteId.value === siteId) return;
   selectedSiteId.value = siteId;
@@ -736,7 +753,20 @@ async function downloadDetailFile() {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  window.addEventListener("focus", handleHqDocumentRefresh);
+  window.addEventListener(HQ_DOCUMENT_REFRESH_EVENT, handleHqDocumentRefresh as EventListener);
+  window.addEventListener("storage", handleStorage);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("focus", handleHqDocumentRefresh);
+  window.removeEventListener(HQ_DOCUMENT_REFRESH_EVENT, handleHqDocumentRefresh as EventListener);
+  window.removeEventListener("storage", handleStorage);
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+});
 
 watch(
   () => route.query.site_id,
