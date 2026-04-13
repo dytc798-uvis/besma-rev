@@ -1,5 +1,10 @@
 <template>
-  <section class="doc-comments">
+  <section v-if="ledgerBlocked" class="doc-comments doc-comments-ledger-blocked">
+    <h3 class="doc-comments-title">{{ title }}</h3>
+    <p class="doc-comments-sub">{{ ledgerBlockedMessage }}</p>
+    <p class="doc-comments-muted">문서 단위 코멘트는 사용할 수 없습니다.</p>
+  </section>
+  <section v-else class="doc-comments">
     <div class="doc-comments-head">
       <div>
         <h3 class="doc-comments-title">{{ title }}</h3>
@@ -12,11 +17,23 @@
     <p v-else-if="loading" class="doc-comments-muted">코멘트를 불러오는 중...</p>
 
     <div v-else class="doc-comments-list">
+      <p v-if="deleteError" class="doc-comments-error doc-comments-delete-err">{{ deleteError }}</p>
       <article v-for="item in comments" :key="item.id" class="doc-comment-item">
         <div class="doc-comment-meta">
-          <strong>{{ item.user_name }}</strong>
-          <span class="doc-comment-role" :class="item.user_role === 'SITE' ? 'role-site' : 'role-hq'">{{ item.user_role }}</span>
-          <span>{{ formatDateTime(item.created_at) }}</span>
+          <div class="doc-comment-meta-main">
+            <strong>{{ item.user_name }}</strong>
+            <span class="doc-comment-role" :class="item.user_role === 'SITE' ? 'role-site' : 'role-hq'">{{ item.user_role }}</span>
+            <span>{{ formatDateTime(item.created_at) }}</span>
+          </div>
+          <button
+            v-if="canDeleteComment(item)"
+            type="button"
+            class="secondary doc-comment-delete"
+            :disabled="deletingId === item.id"
+            @click="confirmDelete(item)"
+          >
+            {{ deletingId === item.id ? "삭제 중..." : "삭제" }}
+          </button>
         </div>
         <p class="doc-comment-text">{{ item.comment_text }}</p>
       </article>
@@ -45,7 +62,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { api } from "@/services/api";
+import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst } from "@/utils/datetime";
+import { isLedgerManagedDocumentType, LEDGER_MANAGED_UX_MESSAGE } from "@/utils/ledgerManagedDocument";
 
 interface DocumentCommentItem {
   id: number;
@@ -62,11 +81,16 @@ const props = withDefaults(
   defineProps<{
     documentId: number | null;
     title?: string;
+    /** 백엔드 `Document.document_type`과 동일. 있으면 관리대장 전용 문서에서 코멘트 UI를 열지 않는다. */
+    documentTypeCode?: string | null;
   }>(),
   {
     title: "문서 코멘트",
   },
 );
+
+const ledgerBlocked = computed(() => isLedgerManagedDocumentType(props.documentTypeCode));
+const ledgerBlockedMessage = LEDGER_MANAGED_UX_MESSAGE;
 
 const comments = ref<DocumentCommentItem[]>([]);
 const loading = ref(false);
@@ -74,14 +98,31 @@ const loadError = ref("");
 const draft = ref("");
 const submitting = ref(false);
 const submitError = ref("");
+const deletingId = ref<number | null>(null);
+const deleteError = ref("");
+
+const auth = useAuthStore();
 
 const canSubmit = computed(() => Boolean(props.documentId && draft.value.trim()));
+
+function canDeleteComment(item: DocumentCommentItem): boolean {
+  const user = auth.user;
+  if (!user) return false;
+  if ((user.login_id || "").trim().toLowerCase() === "hq01") return true;
+  return item.user_id === user.id;
+}
 
 function formatDateTime(value: string | null) {
   return formatDateTimeKst(value, "—");
 }
 
 async function loadComments() {
+  if (ledgerBlocked.value) {
+    comments.value = [];
+    loadError.value = "";
+    loading.value = false;
+    return;
+  }
   if (!props.documentId) {
     comments.value = [];
     loadError.value = "";
@@ -93,6 +134,7 @@ async function loadComments() {
   try {
     const res = await api.get<DocumentCommentItem[]>(`/documents/${props.documentId}/comments`);
     comments.value = res.data ?? [];
+    deleteError.value = "";
   } catch {
     comments.value = [];
     loadError.value = "코멘트를 불러오지 못했습니다.";
@@ -118,11 +160,27 @@ async function submitComment() {
   }
 }
 
+async function confirmDelete(item: DocumentCommentItem) {
+  if (!props.documentId) return;
+  if (!window.confirm("정말 삭제할까요?")) return;
+  deletingId.value = item.id;
+  deleteError.value = "";
+  try {
+    await api.delete(`/documents/${props.documentId}/comments/${item.id}`);
+    await loadComments();
+  } catch {
+    deleteError.value = "코멘트를 삭제하지 못했습니다.";
+  } finally {
+    deletingId.value = null;
+  }
+}
+
 watch(
-  () => props.documentId,
+  () => [props.documentId, props.documentTypeCode] as const,
   () => {
     draft.value = "";
     submitError.value = "";
+    deleteError.value = "";
     void loadComments();
   },
   { immediate: true },
@@ -134,6 +192,14 @@ watch(
   border-top: 1px solid #e2e8f0;
   margin-top: 18px;
   padding-top: 18px;
+}
+
+.doc-comments-ledger-blocked {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 18px;
+  background: #f8fafc;
 }
 
 .doc-comments-head {
@@ -174,6 +240,10 @@ watch(
   gap: 10px;
 }
 
+.doc-comments-delete-err {
+  margin: 0 0 4px;
+}
+
 .doc-comment-item {
   padding: 12px 14px;
   border: 1px solid #e2e8f0;
@@ -186,8 +256,23 @@ watch(
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  justify-content: space-between;
   font-size: 12px;
   color: #475569;
+}
+
+.doc-comment-meta-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.doc-comment-delete {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .doc-comment-role {

@@ -28,6 +28,7 @@ from app.modules.document_submissions.service import (
     transition_instance_workflow_status,
 )
 from app.modules.document_settings.models import DocumentRequirement
+from app.modules.documents.ledger_managed import assert_not_ledger_managed_document_type
 from app.modules.documents.models import Document, DocumentUploadHistory
 from app.modules.documents.models import DocumentStatus
 from app.modules.sites.models import Site
@@ -301,6 +302,8 @@ async def upload_document_for_instance(
     # SITE 사용자는 자기 site만
     if current_user.role == Role.SITE and inst.site_id != current_user.site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    ledger_code = (getattr(inst, "document_type_code", None) or document_type_code or "").strip()
+    assert_not_ledger_managed_document_type(ledger_code)
     if requirement_id is not None and inst.selected_requirement_id is None:
         inst.selected_requirement_id = requirement_id
 

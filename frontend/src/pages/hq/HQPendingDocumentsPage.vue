@@ -58,6 +58,15 @@
               </td>
               <td>
                 <button
+                  v-if="isLedgerManagedDocumentType(row.document_type_code)"
+                  type="button"
+                  class="stitch-btn-secondary review-btn"
+                  @click="goLedgerFromPending(row)"
+                >
+                  관리대장에서 보기
+                </button>
+                <button
+                  v-else
                   type="button"
                   class="stitch-btn-secondary review-btn"
                   @click="goReview(row.site_id, row.requirement_id)"
@@ -83,6 +92,7 @@ import { BaseCard } from "@/components/product";
 import { api } from "@/services/api";
 import { canPreviewInBrowser } from "@/utils/filePreview";
 import { formatDateTimeKst, toKstDateKey, todayKst } from "@/utils/datetime";
+import { hqLedgerRouteForDocumentType, isLedgerManagedDocumentType } from "@/utils/ledgerManagedDocument";
 
 interface PendingRow {
   site_name: string;
@@ -90,6 +100,7 @@ interface PendingRow {
   requirement_name: string;
   requirement_id: number | null;
   document_id: number;
+  document_type_code?: string | null;
   file_name: string | null;
   status: string;
   submitted_at: string | null;
@@ -197,6 +208,12 @@ function goReview(siteId: number, requirementId: number | null) {
       review_requirement_id: String(requirementId),
     },
   });
+}
+
+function goLedgerFromPending(row: PendingRow) {
+  const name = hqLedgerRouteForDocumentType(row.document_type_code);
+  if (!name) return;
+  void router.push({ name, query: { site_id: String(row.site_id) } });
 }
 
 onMounted(() => {

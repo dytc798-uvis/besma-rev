@@ -48,36 +48,45 @@
       </BaseCard>
 
       <BaseCard class="main-panel !p-[22px] mt-4" title="검토 / 결재">
-        <dl class="inst-meta-grid">
-          <div><dt>현재 상태</dt><dd>{{ workflowUiLabel(currentRow.workflow_status, currentRow.is_missing) }}</dd></div>
-          <div><dt>검토자</dt><dd>—</dd></div>
-          <div><dt>검토 시각</dt><dd>{{ formatDateTime(currentRow.reviewed_at) }}</dd></div>
-          <div class="span-2"><dt>코멘트</dt><dd>{{ currentRow.review_note || "—" }}</dd></div>
-        </dl>
-        <div v-if="currentRow.document_id" class="review-form">
-          <label class="review-label">검토 의견 (승인 시 선택, 반려 시 필수)</label>
-          <textarea v-model="reviewComment" class="review-textarea" rows="3" placeholder="승인 코멘트는 선택 입력, 반려는 사유 필수" />
-          <p v-if="reviewError" class="detail-error-banner">{{ reviewError }}</p>
-          <div class="inst-actions-row">
-            <button
-              type="button"
-              class="stitch-btn-primary"
-              :disabled="!canApplyReview || reviewSubmitting"
-              @click="submitReview('approve')"
-            >
-              승인
-            </button>
-            <button
-              type="button"
-              class="stitch-btn-secondary"
-              :disabled="!canApplyReview || reviewSubmitting || !reviewComment.trim()"
-              @click="submitReview('reject')"
-            >
-              반려
-            </button>
+        <template v-if="isLedgerManagedInstance">
+          <p class="ledger-instance-banner">{{ ledgerManagedUxMessage }}</p>
+          <p class="sub m-0">문서취합에서의 승인·반려는 사용하지 않습니다. 아래 버튼으로 관리대장 화면에서 처리하세요.</p>
+          <div class="inst-actions-row mt-3">
+            <button type="button" class="stitch-btn-primary" @click="goLedgerFromInstancePage">관리대장에서 보기</button>
           </div>
-        </div>
-        <p v-else class="sub m-0">제출된 문서가 없어 검토할 수 없습니다.</p>
+        </template>
+        <template v-else>
+          <dl class="inst-meta-grid">
+            <div><dt>현재 상태</dt><dd>{{ workflowUiLabel(currentRow.workflow_status, currentRow.is_missing) }}</dd></div>
+            <div><dt>검토자</dt><dd>—</dd></div>
+            <div><dt>검토 시각</dt><dd>{{ formatDateTime(currentRow.reviewed_at) }}</dd></div>
+            <div class="span-2"><dt>코멘트</dt><dd>{{ currentRow.review_note || "—" }}</dd></div>
+          </dl>
+          <div v-if="currentRow.document_id" class="review-form">
+            <label class="review-label">검토 의견 (승인 시 선택, 반려 시 필수)</label>
+            <textarea v-model="reviewComment" class="review-textarea" rows="3" placeholder="승인 코멘트는 선택 입력, 반려는 사유 필수" />
+            <p v-if="reviewError" class="detail-error-banner">{{ reviewError }}</p>
+            <div class="inst-actions-row">
+              <button
+                type="button"
+                class="stitch-btn-primary"
+                :disabled="!canApplyReview || reviewSubmitting"
+                @click="submitReview('approve')"
+              >
+                승인
+              </button>
+              <button
+                type="button"
+                class="stitch-btn-secondary"
+                :disabled="!canApplyReview || reviewSubmitting || !reviewComment.trim()"
+                @click="submitReview('reject')"
+              >
+                반려
+              </button>
+            </div>
+          </div>
+          <p v-else class="sub m-0">제출된 문서가 없어 검토할 수 없습니다.</p>
+        </template>
       </BaseCard>
 
       <BaseCard class="main-panel !p-[22px] mt-4" title="회차 히스토리">
@@ -112,8 +121,11 @@
         </div>
       </BaseCard>
 
-      <BaseCard v-if="currentRow?.document_id" class="main-panel !p-[22px] mt-4">
-        <DocumentCommentsPanel :document-id="currentRow.document_id" />
+      <BaseCard v-if="currentRow?.document_id && !isLedgerManagedInstance" class="main-panel !p-[22px] mt-4">
+        <DocumentCommentsPanel
+          :document-id="currentRow.document_id"
+          :document-type-code="currentRow.document_type_code"
+        />
       </BaseCard>
     </template>
 
@@ -141,6 +153,11 @@ import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.
 import { BaseCard } from "@/components/product";
 import { canPreviewInBrowser, isImageFile, isPdfFile } from "@/utils/filePreview";
 import { formatDateTimeKst } from "@/utils/datetime";
+import {
+  hqLedgerRouteForDocumentType,
+  isLedgerManagedDocumentType,
+  LEDGER_MANAGED_UX_MESSAGE,
+} from "@/utils/ledgerManagedDocument";
 
 interface HistoryRow {
   instance_id: number;
@@ -211,8 +228,16 @@ const canPreviewFile = computed(() =>
 
 const canApplyReview = computed(() => {
   const st = documentRecord.value?.current_status;
-  return Boolean(currentRow.value?.document_id && st && (st === "SUBMITTED" || st === "IN_REVIEW"));
+  return Boolean(
+    currentRow.value?.document_id &&
+      st &&
+      (st === "SUBMITTED" || st === "IN_REVIEW") &&
+      !isLedgerManagedDocumentType(currentRow.value?.document_type_code),
+  );
 });
+
+const isLedgerManagedInstance = computed(() => isLedgerManagedDocumentType(currentRow.value?.document_type_code));
+const ledgerManagedUxMessage = LEDGER_MANAGED_UX_MESSAGE;
 
 function displaySiteName(siteName: string) {
   if (siteName.includes("청라C18") || siteName.includes("C18BL")) {
@@ -254,6 +279,14 @@ function goBack() {
   } else {
     router.push({ name: "hq-safe-documents" });
   }
+}
+
+function goLedgerFromInstancePage() {
+  const code = currentRow.value?.document_type_code;
+  const name = hqLedgerRouteForDocumentType(code || null);
+  const sid = currentRow.value?.site_id ?? querySiteId.value;
+  if (!name) return;
+  void router.push({ name, query: sid != null ? { site_id: String(sid) } : {} });
 }
 
 function notifyHqDocumentRefresh() {
@@ -329,6 +362,7 @@ async function loadAll() {
 }
 
 async function submitReview(action: "approve" | "reject") {
+  if (isLedgerManagedInstance.value) return;
   const docId = currentRow.value?.document_id;
   if (!docId || !canApplyReview.value) return;
   reviewError.value = "";
@@ -431,6 +465,21 @@ watch(
 
 .inst-detail-toolbar {
   margin-bottom: 16px;
+}
+
+.ledger-instance-banner {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mt-3 {
+  margin-top: 12px;
 }
 
 .inst-detail-header {

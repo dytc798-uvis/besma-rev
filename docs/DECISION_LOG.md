@@ -805,6 +805,90 @@
 
 ---
 
+### [DECISION-056]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-13 |
+| **Title** | 문서 코멘트 삭제 및 확인 문구 |
+| **Context** | DB/시드 등으로 남은 불필요 코멘트를 화면에서 제거할 수 있어야 하며, 오삭제를 막기 위해 확인이 필요하다. |
+| **Options** | A. 삭제 미지원(운영 DB만) / B. 문서 접근 권한이 있는 사용자가 해당 문서의 임의 코멘트 삭제 + `window.confirm("정말 삭제할까요?")` / C. 작성자 본인만 삭제 |
+| **Decision** | **B** |
+| **Reason** | 오너 요청(확인 문구 명시) 및 잘못 생성된 코멘트를 현장·본사가 함께 정리할 수 있어야 한다. |
+| **Impact Scope** | `DELETE /documents/{id}/comments/{comment_id}`, `DocumentCommentsPanel.vue`, `documents/service.delete_document_comment`, 관련 테스트 |
+
+---
+
+### [DECISION-057]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-13 |
+| **Title** | 문서 코멘트 삭제 권한: 본인 또는 `hq01` |
+| **Context** | DECISION-056 B(문서 접근자 임의 삭제)는 오남용·감사 리스크가 있어, 타인 코멘트 삭제는 운영 계정 `hq01`만 허용하고 나머지는 본인 글만 삭제한다. 데모 시드에서 `hq01` 비밀번호는 오너 지정값으로 둔다. |
+| **Options** | A. 056 유지(누구나 타인 삭제) / B. 본인만 + `login_id == hq01` 예외 / C. 본인만, 타인 삭제는 DB 전용 |
+| **Decision** | **B** |
+| **Reason** | 오너 요청. `hq01`은 기존 제품·시드에서 이미 특수(사용설명서 스크린샷 편집 등)로 쓰이는 계정이라 정책 일관성이 있다. |
+| **Impact Scope** | `documents/service.delete_document_comment`, `DocumentCommentsPanel.vue` 삭제 버튼 노출, `demo_login_users`의 `hq01` 비밀번호 분기, 관련 테스트 |
+
+---
+
+### [DECISION-058]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-13 |
+| **Title** | 데모 로그인 시드 시 `hq01`~`hq03` 구버전 행 및 login_id 대소문자 충돌 정리 |
+| **Context** | DB에 남은 구버전 `hq01`~`hq03`과 `HQ01` 등 변형이 신규 `hq01`~`hq05`·현장 데모 계정과 섞여 토큰·표시가 어긋날 수 있다. |
+| **Options** | A. 수동 DB 정리만 안내 / B. `ensure_demo_login_users` 실행 시 대소문자 충돌 행 삭제 + `hq01`~`hq03` 행을 savepoint로 best-effort 삭제 후 upsert로 재생성 / C. 마이그레이션 스크립트만 별도 제공 |
+| **Decision** | **B** (단, `hq01`~`hq03`은 **이름이 정본과 다를 때만** 삭제 시도—이미 맞는 행은 유지해 PK가 매 시드마다 바뀌지 않게 함) |
+| **Reason** | 오너 요청(구 `hq01`~`03` 제거, 이름·아이디 매칭만 유지). FK로 삭제가 막히면 savepoint만 롤백되고 upsert가 이름·권한을 교정한다. |
+| **Impact Scope** | `backend/app/seed/demo_login_users.py`, `tests/test_demo_login_users.py` |
+
+---
+
+### [DECISION-059]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-13 |
+| **Title** | 근로자의견청취·부적합사항 관리대장: 현장 승인/반려 + 본사 최종승인/포상후보, 내 현장 문서 업로드 제외 |
+| **Context** | 전용 관리대장과 `내 현장 문서`에서 동일 문서 업로드가 중복되고, 조치 상태 드롭다운과 승인 버튼 역할이 겹쳤다. 위험성평가 DB 반영은 이중 승인 이후만 허용해야 한다. |
+| **Options** | A. 요구사항·승인 모델 전면 재설계 / B. 기존 ledger+items·엔드포인트를 유지하고 승인 단계·UI·게이트만 정리 |
+| **Decision** | **B** |
+| **Reason** | 최소 침습·회귀 최소화. `site_approved`+`hq_checked`(최종승인)·`reward_candidate`·현장 `site_reject_*`로 단계를 명확히 하고, `AUTO_WORKER_OPINION_LOG`·`NONCONFORMITY_ACTION_REPORT`는 내 현장 문서에서 업로드 UI만 숨긴다. |
+| **Impact Scope** | `safety_features` 라우트·모델·Alembic, `WorkerVoiceBoardPage.vue`, `NonconformityPage.vue`, `SiteDocumentsDashboardPage.vue`, `risk_gates.py`, 관련 테스트 |
+
+---
+
+### [DECISION-060]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-14 |
+| **Title** | 관리대장 row: 운영(접수·조치) 축과 위험성평가 DB 승격 축 분리 |
+| **Context** | 단일 “현장 승인→본사 최종승인”으로는 운영 조치 판단과 DB 반영 판단이 섞였다. |
+| **Options** | A. 단일 상태만 유지 / B. `receipt_decision`·`action_status`·`risk_db_request_status`·`risk_db_hq_status` 등으로 이축 분리 |
+| **Decision** | **B** |
+| **Reason** | 오너 스펙. DB 승격은 현장 `request-risk-db-registration` + 본사 `approve-risk-db-registration` 조합으로만 `ready_for_risk_db`가 된다. 레거시 `hq_checked`는 DB 본사 승인과 동기화한다. |
+| **Impact Scope** | `20260414_0031` 마이그레이션, `safety_features` 모델·라우트·`risk_gates.py`, 근로자의견/부적합 Vue, 테스트 |
+
+---
+
+### [DECISION-061]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-13 |
+| **Title** | 관리대장 문서(`AUTO_WORKER_OPINION_LOG`, `NONCONFORMITY_ACTION_REPORT`)는 문서취합·문서 단위 UI에서 참조 전용 |
+| **Context** | 동일 문서가 문서취합(코멘트·이력·승인/반려)과 전용 관리대장(row 단위 소통)에 중복 노출되면 처리 축이 혼선된다. |
+| **Options** | A. 문서취합에서 해당 행 완전 제거 / B. 문서취합에는 남기되 업로드·문서 코멘트·문서 이력·승인/반려는 막고 전용 관리대장으로만 유도 / C. 백엔드만 제한 |
+| **Decision** | **B** |
+| **Reason** | 오너 확정 정책. 목록·파일 참조는 문서취합에 유지하고, 실제 소통·이력·승인반려는 전용 관리대장 화면에서만 수행한다. API 우회를 막기 위해 백엔드에서도 동일 제한(409)을 둔다. |
+| **Impact Scope** | `ledger_managed.py`, `documents/routes.py`, `document_submissions/routes.py`, `SiteDocumentsDashboardPage.vue`, `HQDocumentsDashboardPage.vue`, `HQDocumentInstanceDetailPage.vue`, `HQPendingDocumentsPage.vue`, `DocumentDetailPage.vue`, `DocumentCommentsPanel.vue`, `frontend/src/utils/ledgerManagedDocument.ts`, `tests/test_ledger_managed_document_guards.py` |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -842,3 +926,9 @@
 | 2026-04-12 | Decision 052 추가 — 사용설명서 스크린샷 hq01 전용 및 서버 이미지 최적화 |
 | 2026-04-12 | Decision 053 추가 — SITE 문서취합 3영역 구조 + 현장 전용 read model 보강 |
 | 2026-04-12 | Decision 054 추가 — HQ 본사 날씨 기준 위치를 환경설정으로 명시 관리 |
+| 2026-04-13 | Decision 056 추가 — 문서 코멘트 삭제 및 확인 문구 |
+| 2026-04-13 | Decision 057 추가 — 코멘트 삭제 본인·hq01 예외, hq01 시드 비밀번호 `1234` |
+| 2026-04-13 | Decision 058 추가 — 데모 시드 시 hq01~3 구행·login 대소문자 충돌 정리 |
+| 2026-04-13 | Decision 059 추가 — 근로자의견·부적합 관리대장 승인 단계 및 내 현장 문서 업로드 제외 |
+| 2026-04-14 | Decision 060 추가 — 운영 처리 축 vs 위험성평가 DB 승격 축 분리 |
+| 2026-04-13 | Decision 061 추가 — 관리대장 문서는 문서취합·문서 단위 UI 참조 전용 |

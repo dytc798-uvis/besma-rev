@@ -22,10 +22,12 @@ from app.modules.document_submissions.service import (
     map_action_to_history_type,
     transition_instance_workflow_status,
 )
+from app.modules.documents.ledger_managed import assert_not_ledger_managed_document, assert_not_ledger_managed_document_type
 from app.modules.documents.models import Document, DocumentStatus, DocumentUploadHistory
 from app.modules.document_settings.models import DocumentRequirement
 from app.modules.documents.service import (
     create_document_comment,
+    delete_document_comment,
     DocumentContentInvalidStateError,
     DocumentContentNotFoundError,
     get_requirement_document_history,
@@ -603,6 +605,7 @@ def get_hq_pending_documents(
             {
                 "site_name": site.site_name,
                 "site_id": site.id,
+                "document_type_code": doc.document_type,
                 "requirement_name": requirement_name,
                 "requirement_id": (req.id if req else None),
                 "document_id": doc.id,
@@ -633,6 +636,13 @@ def get_document_history_by_requirement(
 ):
     if current_user.role == Role.SITE and current_user.site_id != site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    req = (
+        db.query(DocumentRequirement)
+        .filter(DocumentRequirement.id == requirement_id, DocumentRequirement.site_id == site_id)
+        .first()
+    )
+    if req is not None:
+        assert_not_ledger_managed_document_type(req.code)
     rows = get_requirement_document_history(
         db,
         site_id=site_id,
@@ -662,6 +672,7 @@ def download_document_history_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="History file not found")
     if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_not_ledger_managed_document(doc)
 
     file_path = settings.storage_root / upload_history.file_path
     if not file_path.exists():
@@ -746,6 +757,7 @@ def get_document(document_id: int, db: DbDep, current_user: CurrentUserDep):
 def get_document_comments(document_id: int, db: DbDep, current_user: CurrentUserDep):
     doc = _get_document_or_404(db, document_id=document_id)
     _assert_document_access(doc, current_user)
+    assert_not_ledger_managed_document(doc)
     rows = list_document_comments(db, document_id=document_id)
     return [DocumentCommentResponse(**row) for row in rows]
 
@@ -759,6 +771,7 @@ def add_document_comment(
 ):
     doc = _get_document_or_404(db, document_id=document_id)
     _assert_document_access(doc, current_user)
+    assert_not_ledger_managed_document(doc)
     try:
         row = create_document_comment(
             db,
@@ -772,6 +785,26 @@ def add_document_comment(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="comment_text is required")
         raise
     return DocumentCommentResponse(**row)
+
+
+@router.delete("/{document_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_document_comment(document_id: int, comment_id: int, db: DbDep, current_user: CurrentUserDep):
+    doc = _get_document_or_404(db, document_id=document_id)
+    _assert_document_access(doc, current_user)
+    assert_not_ledger_managed_document(doc)
+    try:
+        delete_document_comment(
+            db,
+            document_id=document_id,
+            comment_id=comment_id,
+            acting_user=current_user,
+        )
+    except ValueError as exc:
+        if str(exc) == "comment_not_found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+        if str(exc) == "comment_delete_forbidden":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to delete this comment")
+        raise
 
 
 @router.get("/{document_id}/content", response_model=DocumentContentResponse)
@@ -921,6 +954,7 @@ async def create_document(
     site = db.query(Site).filter(Site.id == site_id).first()
     if not site:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid site_id")
+    assert_not_ledger_managed_document_type(document_type)
 
     doc = Document(
         document_no=f"DOC-{int(utc_now().timestamp())}",
@@ -982,6 +1016,7 @@ def review_document(
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    assert_not_ledger_managed_document(doc)
     if doc.instance_id is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Document has no instance_id")
 

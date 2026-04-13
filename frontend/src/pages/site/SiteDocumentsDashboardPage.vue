@@ -50,6 +50,7 @@
             <td>
               <div class="cell-title">{{ item.title }}</div>
               <div class="cell-subtitle">{{ sectionLabel(item.section) }} · {{ frequencyLabel(item.frequency) }}</div>
+              <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">관리대장 전용 · 문서취합은 참조</div>
             </td>
             <td>{{ item.current_period_label || frequencyLabel(item.frequency) }}</td>
             <td>
@@ -66,7 +67,12 @@
               <span v-else>{{ item.due_rule_text || "-" }}</span>
             </td>
             <td class="actions">
-              <button class="secondary" :disabled="item.section === 'COMPLETION' && !completionUploadEnabled" @click="openUpload(item)">
+              <button
+                v-if="!isLedgerManagedRequirement(item)"
+                class="secondary"
+                :disabled="item.section === 'COMPLETION' && !completionUploadEnabled"
+                @click="openUpload(item)"
+              >
                 {{ item.current_cycle_needs_reupload ? "수정 업로드" : "업로드" }}
               </button>
               <button
@@ -76,7 +82,8 @@
               >
                 보기
               </button>
-              <button class="secondary" @click="openHistory(item)">이력 보기</button>
+              <button v-if="!isLedgerManagedRequirement(item)" class="secondary" @click="openHistory(item)">이력 보기</button>
+              <button v-else type="button" class="secondary ledger-nav-btn" @click="goLedgerPage(item)">관리대장에서 보기</button>
             </td>
           </tr>
           <tr v-if="currentTaskItems.length === 0">
@@ -106,6 +113,7 @@
             <td>
               <div class="cell-title">{{ item.title }}</div>
               <div class="cell-subtitle">{{ sectionLabel(item.section) }} · {{ frequencyLabel(item.frequency) }}</div>
+              <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">관리대장 전용 · 문서취합은 참조</div>
               <div class="rework-meta">
                 <span class="badge status-badge status-rejected-strong">반려</span>
                 <span v-if="firstRejectedBacklog(item)?.review_note || item.unresolved_rejected_review_note" class="rework-note-inline">
@@ -117,7 +125,12 @@
             <td class="note-cell note-cell-alert">{{ firstRejectedBacklog(item)?.review_note || item.unresolved_rejected_review_note || "코멘트 없음" }}</td>
             <td>{{ formatDateTime(firstRejectedBacklog(item)?.reviewed_at || item.unresolved_rejected_reviewed_at || firstRejectedBacklog(item)?.uploaded_at || item.unresolved_rejected_uploaded_at) }}</td>
             <td class="actions">
-              <button class="secondary danger" :disabled="item.section === 'COMPLETION' && !completionUploadEnabled" @click="openUpload(item)">
+              <button
+                v-if="!isLedgerManagedRequirement(item)"
+                class="secondary danger"
+                :disabled="item.section === 'COMPLETION' && !completionUploadEnabled"
+                @click="openUpload(item)"
+              >
                 수정 업로드
               </button>
               <button
@@ -127,7 +140,8 @@
               >
                 보기
               </button>
-              <button class="secondary" @click="openHistory(item)">이력 보기</button>
+              <button v-if="!isLedgerManagedRequirement(item)" class="secondary" @click="openHistory(item)">이력 보기</button>
+              <button v-else type="button" class="secondary ledger-nav-btn" @click="goLedgerPage(item)">관리대장에서 보기</button>
             </td>
           </tr>
           <tr v-if="reworkItems.length === 0">
@@ -158,6 +172,7 @@
             <td>
               <div class="cell-title">{{ item.title }}</div>
               <div class="cell-subtitle">{{ sectionLabel(item.section) }}</div>
+              <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">관리대장 전용 · 문서취합은 참조</div>
             </td>
             <td>{{ item.current_period_label || frequencyLabel(item.frequency) }}</td>
             <td>{{ frequencyLabel(item.frequency) }}</td>
@@ -169,7 +184,12 @@
             </td>
             <td>{{ formatDateTime(item.current_cycle_uploaded_at) }}</td>
             <td class="actions">
-              <button class="secondary" :disabled="item.section === 'COMPLETION' && !completionUploadEnabled" @click="openUpload(item)">
+              <button
+                v-if="!isLedgerManagedRequirement(item)"
+                class="secondary"
+                :disabled="item.section === 'COMPLETION' && !completionUploadEnabled"
+                @click="openUpload(item)"
+              >
                 {{ item.current_cycle_needs_reupload ? "수정 업로드" : "업로드" }}
               </button>
               <button
@@ -179,7 +199,8 @@
               >
                 보기
               </button>
-              <button class="secondary" @click="openHistory(item)">이력 보기</button>
+              <button v-if="!isLedgerManagedRequirement(item)" class="secondary" @click="openHistory(item)">이력 보기</button>
+              <button v-else type="button" class="secondary ledger-nav-btn" @click="goLedgerPage(item)">관리대장에서 보기</button>
             </td>
           </tr>
           <tr v-if="periodicItems.length === 0">
@@ -267,8 +288,9 @@
         </tbody>
       </table>
       <DocumentCommentsPanel
-        v-if="historyCommentDocumentId"
+        v-if="historyCommentDocumentId && historyTarget && !isLedgerManagedRequirement(historyTarget)"
         :document-id="historyCommentDocumentId"
+        :document-type-code="historyTarget.document_type_code"
         title="현재 문서 코멘트"
       />
       <div class="modal-actions">
@@ -280,10 +302,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { api } from "@/services/api";
 import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.vue";
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst, todayKst, toDate } from "@/utils/datetime";
+import { isLedgerManagedDocumentType, siteLedgerRouteForDocumentType } from "@/utils/ledgerManagedDocument";
 
 interface RequirementStatusItem {
   requirement_id: number;
@@ -356,6 +380,16 @@ interface HistoryItem {
 }
 
 const auth = useAuthStore();
+const router = useRouter();
+
+function isLedgerManagedRequirement(item: RequirementStatusItem) {
+  return isLedgerManagedDocumentType(item.document_type_code);
+}
+
+function goLedgerPage(item: RequirementStatusItem) {
+  const name = siteLedgerRouteForDocumentType(item.document_type_code);
+  if (name) void router.push({ name });
+}
 
 const targetDate = ref(todayKst());
 const items = ref<RequirementStatusItem[]>([]);
@@ -571,6 +605,7 @@ async function load() {
 }
 
 function openUpload(item: RequirementStatusItem) {
+  if (isLedgerManagedRequirement(item)) return;
   uploadTarget.value = item;
   selectedFile.value = null;
   uploadError.value = "";
@@ -583,6 +618,7 @@ function closeUpload() {
 }
 
 async function openHistory(item: RequirementStatusItem) {
+  if (isLedgerManagedRequirement(item)) return;
   if (!siteId.value) return;
   historyTarget.value = item;
   const res = await api.get("/documents/history", {
@@ -693,6 +729,19 @@ onMounted(async () => {
 .history-current-row { background: #eff6ff; }
 .history-current-label { margin-top: 4px; font-size: 12px; color: #1d4ed8; font-weight: 700; }
 .modal-actions { margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px; }
+
+.ledger-ref-badge {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e40af;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 4px 8px;
+  display: inline-block;
+}
+.ledger-nav-btn { border-color: #3b82f6; color: #1d4ed8; }
 
 @media (max-width: 960px) {
   .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -116,7 +116,19 @@
                   </td>
                   <td v-for="col in requirementColumns" :key="`cell-${row.site_id}-${col.requirement_key}`" class="status-cell">
                     <div class="matrix-cell-inner">
-                      <template v-if="matrixDisplayCell(row.site_id, col.requirement_key).latest_instance_id != null">
+                      <template v-if="isLedgerManagedDocumentType(col.requirement_key)">
+                        <button
+                          type="button"
+                          class="status-pill status-pill-ledger-ref"
+                          @click="goLedgerFromMatrix(row.site_id, col.requirement_key)"
+                        >
+                          관리대장
+                        </button>
+                        <button type="button" class="inst-detail-link" @click="goLedgerFromMatrix(row.site_id, col.requirement_key)">
+                          전용 화면
+                        </button>
+                      </template>
+                      <template v-else-if="matrixDisplayCell(row.site_id, col.requirement_key).latest_instance_id != null">
                         <button
                           type="button"
                           class="status-pill"
@@ -201,6 +213,7 @@
         <p v-if="detailLoading" class="sub">불러오는 중...</p>
         <p v-else-if="detailError" class="sub detail-error">{{ detailError }}</p>
         <template v-else-if="detailDocument">
+          <p v-if="detailLedgerBlocked" class="ledger-detail-banner">{{ ledgerManagedUxMessage }}</p>
           <div class="detail-grid">
             <div><strong>문서번호</strong> {{ detailDocument.document_no }}</div>
             <div><strong>제목</strong> {{ detailDocument.title }}</div>
@@ -209,15 +222,22 @@
             <div><strong>제출자</strong> {{ detailDocument.submitter_user_id }}</div>
             <div><strong>버전</strong> v{{ detailDocument.version_no }}</div>
             <div class="detail-span-2"><strong>설명</strong> {{ detailDocument.description || "-" }}</div>
-            <div class="detail-span-2"><strong>코멘트</strong> {{ detailDocument.rejection_reason || "-" }}</div>
+            <div v-if="!detailLedgerBlocked" class="detail-span-2"><strong>코멘트</strong> {{ detailDocument.rejection_reason || "-" }}</div>
           </div>
-          <DocumentCommentsPanel :document-id="detailDocument.id" />
+          <DocumentCommentsPanel
+            v-if="!detailLedgerBlocked"
+            :document-id="detailDocument.id"
+            :document-type-code="detailDocument.document_type"
+          />
+          <div v-else class="ledger-detail-actions">
+            <button type="button" class="stitch-btn-primary" @click="goLedgerFromDetailModal">관리대장에서 보기</button>
+          </div>
           <div class="modal-actions">
             <button type="button" class="stitch-btn-secondary" @click="closeDetailModal">닫기</button>
             <button
               type="button"
               class="stitch-btn-primary"
-              :disabled="!detailDocument.file_path || detailDownloadLoading"
+              :disabled="!detailDocument.file_path || detailDownloadLoading || detailLedgerBlocked"
               @click="downloadDetailFile"
             >
               {{ detailDownloadLoading ? "다운로드 중..." : "파일 다운로드" }}
@@ -237,6 +257,11 @@ import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.
 import { isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
 import { formatDateTimeKst, todayKst } from "@/utils/datetime";
+import {
+  hqLedgerRouteForDocumentType,
+  isLedgerManagedDocumentType,
+  LEDGER_MANAGED_UX_MESSAGE,
+} from "@/utils/ledgerManagedDocument";
 
 interface SiteSummaryRow {
   site_id: number;
@@ -308,6 +333,7 @@ interface DocumentDetailModalData {
   description: string | null;
   rejection_reason: string | null;
   version_no: number;
+  document_type?: string | null;
 }
 
 const router = useRouter();
@@ -421,6 +447,9 @@ const detailDocument = ref<DocumentDetailModalData | null>(null);
 const detailLoading = ref(false);
 const detailDownloadLoading = ref(false);
 const detailError = ref<string>("");
+const ledgerManagedUxMessage = LEDGER_MANAGED_UX_MESSAGE;
+
+const detailLedgerBlocked = computed(() => isLedgerManagedDocumentType(detailDocument.value?.document_type));
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     NOT_REQUIRED: "비대상",
@@ -539,7 +568,17 @@ function matrixDisplayCell(siteId: number, requirementKeyOrId: string | number):
   };
 }
 
+function goLedgerFromMatrix(siteId: number, requirementKey: string) {
+  const name = hqLedgerRouteForDocumentType(requirementKey);
+  if (!name) return;
+  void router.push({ name, query: { site_id: String(siteId) } });
+}
+
 function goInstanceDetail(siteId: number, requirementKey: string) {
+  if (isLedgerManagedDocumentType(requirementKey)) {
+    goLedgerFromMatrix(siteId, requirementKey);
+    return;
+  }
   const cell = matrixDisplayCell(siteId, requirementKey);
   if (cell.latest_instance_id == null) return;
   void router.push({
@@ -727,6 +766,15 @@ async function goDetail(id: number) {
   }
 }
 
+function goLedgerFromDetailModal() {
+  const code = detailDocument.value?.document_type;
+  const name = hqLedgerRouteForDocumentType(code || null);
+  const sid = detailDocument.value?.site_id;
+  closeDetailModal();
+  if (name && sid != null) void router.push({ name, query: { site_id: String(sid) } });
+  else if (name) void router.push({ name });
+}
+
 function closeDetailModal() {
   detailDocumentId.value = null;
   detailDocument.value = null;
@@ -750,7 +798,7 @@ function resolveFilenameFromHeader(headerValue: string | undefined, fallback: st
 }
 
 async function downloadDetailFile() {
-  if (!detailDocument.value) return;
+  if (!detailDocument.value || detailLedgerBlocked.value) return;
   detailDownloadLoading.value = true;
   try {
     const res = await api.get(`/documents/${detailDocument.value.id}/file`, {
@@ -1183,6 +1231,11 @@ watch(
   opacity: 0.92;
 }
 
+.status-pill-ledger-ref {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
 .no-instance-badge {
   font-size: 10px;
   font-weight: 700;
@@ -1359,6 +1412,21 @@ watch(
 
 .detail-span-2 {
   grid-column: 1 / -1;
+}
+
+.ledger-detail-banner {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ledger-detail-actions {
+  margin-top: 14px;
 }
 
 .detail-error {

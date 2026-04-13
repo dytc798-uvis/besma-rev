@@ -1,6 +1,7 @@
 <template>
   <div class="card" v-if="doc">
     <div class="card-title">문서 상세</div>
+    <p v-if="isLedgerManagedDoc" class="ledger-doc-banner">{{ ledgerManagedUxMessage }}</p>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 13px">
       <div><strong>문서번호</strong> {{ doc.document_no }}</div>
       <div><strong>제목</strong> {{ doc.title }}</div>
@@ -32,8 +33,9 @@
     <div style="margin-top: 16px" class="toolbar">
       <div></div>
       <div class="toolbar-actions">
+        <button v-if="isLedgerManagedDoc" type="button" class="primary" @click="goLedgerFromDocumentDetail">관리대장에서 보기</button>
         <router-link
-          v-if="doc"
+          v-if="doc && !isLedgerManagedDoc"
           class="secondary"
           :to="`/documents/${doc.id}/tbm-view`"
           style="display: inline-flex; align-items: center; text-decoration: none; padding: 6px 12px; border-radius: 4px; background-color: #e5e7eb; color: #111827;"
@@ -74,7 +76,7 @@
         </button>
       </div>
     </div>
-    <div v-if="showReject" style="margin-top: 12px">
+    <div v-if="showReject && !isLedgerManagedDoc" style="margin-top: 12px">
       <label class="form-field">
         <span style="font-size: 12px">코멘트</span>
         <textarea v-model="rejectReason" rows="3"></textarea>
@@ -85,16 +87,26 @@
         </button>
       </div>
     </div>
-    <DocumentCommentsPanel :document-id="doc.id" />
+    <DocumentCommentsPanel
+      v-if="!isLedgerManagedDoc"
+      :document-id="doc.id"
+      :document-type-code="doc.document_type"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.vue";
 import { useAuthStore } from "@/stores/auth";
+import {
+  hqLedgerRouteForDocumentType,
+  isLedgerManagedDocumentType,
+  LEDGER_MANAGED_UX_MESSAGE,
+  siteLedgerRouteForDocumentType,
+} from "@/utils/ledgerManagedDocument";
 
 interface DocumentDetail {
   id: number;
@@ -107,9 +119,11 @@ interface DocumentDetail {
   description: string | null;
   rejection_reason: string | null;
   version_no: number;
+  document_type?: string | null;
 }
 
 const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
 
 const doc = ref<DocumentDetail | null>(null);
@@ -118,11 +132,28 @@ const showReject = ref(false);
 const rejectReason = ref("");
 const downloading = ref(false);
 
-const canApprove = computed(() => auth.user?.ui_type === "HQ_SAFE");
-const canSubmit = computed(() => auth.user?.ui_type === "SITE" && doc.value?.current_status === "DRAFT");
-const canResubmit = computed(
-  () => auth.user?.ui_type === "SITE" && doc.value?.current_status === "REJECTED",
+const isLedgerManagedDoc = computed(() => isLedgerManagedDocumentType(doc.value?.document_type));
+const ledgerManagedUxMessage = LEDGER_MANAGED_UX_MESSAGE;
+
+const canApprove = computed(
+  () => auth.user?.ui_type === "HQ_SAFE" && !isLedgerManagedDoc.value,
 );
+const canSubmit = computed(
+  () => auth.user?.ui_type === "SITE" && doc.value?.current_status === "DRAFT" && !isLedgerManagedDoc.value,
+);
+const canResubmit = computed(
+  () => auth.user?.ui_type === "SITE" && doc.value?.current_status === "REJECTED" && !isLedgerManagedDoc.value,
+);
+
+function goLedgerFromDocumentDetail() {
+  const code = doc.value?.document_type;
+  const isHq = auth.user?.ui_type === "HQ_SAFE";
+  const name = isHq ? hqLedgerRouteForDocumentType(code || null) : siteLedgerRouteForDocumentType(code || null);
+  const sid = doc.value?.site_id;
+  if (!name) return;
+  if (isHq && sid != null) void router.push({ name, query: { site_id: String(sid) } });
+  else void router.push({ name });
+}
 
 async function load() {
   const res = await api.get(`/documents/${route.params.id}`);
@@ -130,7 +161,7 @@ async function load() {
 }
 
 async function submit(comment: string) {
-  if (!doc.value) return;
+  if (!doc.value || isLedgerManagedDoc.value) return;
   loadingAction.value = true;
   try {
     await api.post(`/documents/${doc.value.id}/submit`, { comment });
@@ -141,7 +172,7 @@ async function submit(comment: string) {
 }
 
 async function approve() {
-  if (!doc.value) return;
+  if (!doc.value || isLedgerManagedDoc.value) return;
   loadingAction.value = true;
   try {
     await api.post(`/documents/${doc.value.id}/approve`, { comment: "" });
@@ -156,7 +187,7 @@ function toggleReject() {
 }
 
 async function reject() {
-  if (!doc.value) return;
+  if (!doc.value || isLedgerManagedDoc.value) return;
   loadingAction.value = true;
   try {
     await api.post(`/documents/${doc.value.id}/reject`, { comment: rejectReason.value });
@@ -168,7 +199,7 @@ async function reject() {
 }
 
 async function resubmit() {
-  if (!doc.value) return;
+  if (!doc.value || isLedgerManagedDoc.value) return;
   loadingAction.value = true;
   try {
     await api.post(`/documents/${doc.value.id}/resubmit`, { comment: "재제출" });
@@ -219,3 +250,15 @@ async function downloadFile() {
 onMounted(load);
 </script>
 
+<style scoped>
+.ledger-doc-banner {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+</style>
