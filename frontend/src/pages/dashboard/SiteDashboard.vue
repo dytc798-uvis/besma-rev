@@ -128,6 +128,7 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/services/api";
+import { fetchRiskDbOverviewOptional, type RiskDbOverviewPayload } from "@/services/riskDbOverview";
 import { BaseCard, KpiCard } from "@/components/product";
 import { formatDateTimeKst } from "@/utils/datetime";
 import type { LedgerDashboardFilter } from "@/utils/ledgerDashboardFilter";
@@ -138,35 +139,6 @@ interface DashboardSummary {
   rejected_documents: number;
   total_opinions: number;
   pending_opinions: number;
-}
-
-interface RiskDbHqKpis {
-  pending_requests: number;
-  pending_approval: number;
-  rejected: number;
-  approved: number;
-  reward_candidates: number;
-}
-
-interface RiskDbSiteKpis {
-  unreceived: number;
-  in_progress: number;
-  action_completed: number;
-  db_request_needed: number;
-  db_requested: number;
-}
-
-interface RiskDbOverviewPayload {
-  hq: {
-    combined: RiskDbHqKpis;
-    worker_voice: RiskDbHqKpis;
-    nonconformity: RiskDbHqKpis;
-  };
-  site: {
-    combined: RiskDbSiteKpis;
-    worker_voice: RiskDbSiteKpis;
-    nonconformity: RiskDbSiteKpis;
-  };
 }
 
 interface WeatherSummary {
@@ -247,14 +219,9 @@ async function load() {
       data.value = null;
     },
   );
-  const riskPromise = api.get<RiskDbOverviewPayload>("/dashboard/risk-db-overview").then(
-    (res) => {
-      riskDbOverview.value = res.data;
-    },
-    () => {
-      riskDbOverview.value = null;
-    },
-  );
+  const riskPromise = fetchRiskDbOverviewOptional().then((data) => {
+    riskDbOverview.value = data;
+  });
   const weatherPromise = api.get<WeatherSummary>("/dashboard/weather/site-summary").then(
     (res) => {
       weather.value = res.data;

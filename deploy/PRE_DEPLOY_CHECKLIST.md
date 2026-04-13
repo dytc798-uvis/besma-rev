@@ -15,3 +15,4 @@
 ## 성공 판정
 
 - `[deploy] OK: besma-backend is up` 및 `/health` 응답.
+- (선택) 대시보드 집계 API까지 확인: 서버에서 `BESMA_VERIFY_OPENAPI_RISK_OVERVIEW=1 bash ./deploy/deploy_backend.sh` 또는 로컬에서 `powershell -File scripts/check_api_risk_db_overview.ps1` — `openapi.json`에 `"/dashboard/risk-db-overview"` 포함 여부.

@@ -301,6 +301,7 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { api } from "@/services/api";
+import { fetchRiskDbOverviewOptional, type RiskDbOverviewPayload } from "@/services/riskDbOverview";
 import type { LedgerDashboardFilter } from "@/utils/ledgerDashboardFilter";
 import {
   BaseCard,
@@ -319,35 +320,6 @@ interface DashboardSummary {
   worker_voice_items: number;
   nonconformity_items: number;
   documents_by_site: { site_id: number | null; count: number }[];
-}
-
-interface RiskDbHqKpis {
-  pending_requests: number;
-  pending_approval: number;
-  rejected: number;
-  approved: number;
-  reward_candidates: number;
-}
-
-interface RiskDbSiteKpis {
-  unreceived: number;
-  in_progress: number;
-  action_completed: number;
-  db_request_needed: number;
-  db_requested: number;
-}
-
-interface RiskDbOverviewPayload {
-  hq: {
-    combined: RiskDbHqKpis;
-    worker_voice: RiskDbHqKpis;
-    nonconformity: RiskDbHqKpis;
-  };
-  site: {
-    combined: RiskDbSiteKpis;
-    worker_voice: RiskDbSiteKpis;
-    nonconformity: RiskDbSiteKpis;
-  };
 }
 
 interface WeatherOverviewSite {
@@ -627,16 +599,16 @@ async function load() {
   try {
     const today = todayKst();
     const dashParams: Record<string, string> = { period: "day", date: today };
+    const riskDeferred = fetchRiskDbOverviewOptional();
     const settled = await Promise.allSettled([
       api.get<DashboardSummary>("/dashboard/summary"),
       api.get<SiteRow[]>("/sites"),
       api.get("/documents/hq-dashboard", { params: dashParams }),
       api.get<OpinionRow[]>("/opinions"),
       api.get<WeatherOverview>("/dashboard/weather/hq-overview"),
-      api.get<RiskDbOverviewPayload>("/dashboard/risk-db-overview"),
     ]);
 
-    const [sumRes, sitesRes, dashRes, opRes, weatherRes, riskRes] = settled;
+    const [sumRes, sitesRes, dashRes, opRes, weatherRes] = settled;
 
     if (sumRes.status === "fulfilled") {
       data.value = sumRes.value.data;
@@ -667,11 +639,7 @@ async function load() {
       recentOpinions.value = [];
     }
 
-    if (riskRes.status === "fulfilled") {
-      riskDbOverview.value = riskRes.value.data;
-    } else {
-      riskDbOverview.value = null;
-    }
+    riskDbOverview.value = await riskDeferred;
 
     if (weatherRes.status === "fulfilled") {
       weatherOverview.value = weatherRes.value.data;

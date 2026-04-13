@@ -11,6 +11,7 @@
 #   BESMA_RESTART_SLEEP — 재시작 후 첫 대기 초 (기본 6)
 #   BESMA_HEALTH_RETRIES — 헬스 curl 재시도 횟수 (기본 20)
 #   BESMA_HEALTH_RETRY_SLEEP — 재시도 간격 초 (기본 2)
+#   BESMA_VERIFY_OPENAPI_RISK_OVERVIEW=1 — 헬스 성공 후 openapi.json에 /dashboard/risk-db-overview 포함 여부 확인(없으면 경고만)
 
 set -euo pipefail
 
@@ -102,3 +103,13 @@ if [[ "${health_ok}" -ne 1 ]]; then
 fi
 
 echo "[deploy] OK: besma-backend is up"
+
+if [[ "${BESMA_VERIFY_OPENAPI_RISK_OVERVIEW:-0}" == "1" ]]; then
+  OPENAPI_URL="${HEALTH_URL%/health}/openapi.json"
+  echo "[deploy] verify openapi lists GET /dashboard/risk-db-overview (${OPENAPI_URL})"
+  if curl -fsS --max-time 20 "${OPENAPI_URL}" 2>/dev/null | grep -q '"/dashboard/risk-db-overview"'; then
+    echo "[deploy] OK: openapi includes risk-db-overview"
+  else
+    echo "[deploy] WARN: openapi에 /dashboard/risk-db-overview 없음 — 백엔드가 프론트보다 구버전일 수 있습니다." >&2
+  fi
+fi
