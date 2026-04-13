@@ -99,7 +99,7 @@ function opinionsListRouteName() {
 
 async function deleteOpinion() {
   if (!opinion.value || !canDelete.value) return;
-  if (!window.confirm("이 운영 아이디어 제안을 삭제할까요?")) return;
+  if (!window.confirm("이 운영 아이디어 제안을 삭제할까요?\n삭제 후에는 복구할 수 없습니다.")) return;
   deleting.value = true;
   try {
     const id = opinion.value.id;

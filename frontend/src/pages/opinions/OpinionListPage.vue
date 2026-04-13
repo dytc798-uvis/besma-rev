@@ -79,7 +79,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { opinionStatusLabel } from "@/utils/opinionStatus";
@@ -102,8 +102,17 @@ const newContent = ref("");
 const errorMessage = ref("");
 const deletingId = ref<number | null>(null);
 
+const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+
+function opinionDetailRouteName(): string {
+  const n = route.name?.toString() ?? "";
+  if (n.startsWith("hq-safe")) return "hq-safe-opinion-detail";
+  if (n.startsWith("site-")) return "site-opinion-detail";
+  if (n.startsWith("hq-other")) return "hq-other-opinion-detail";
+  return "hq-safe-opinion-detail";
+}
 
 function canDeleteOpinion(op: OpinionItem) {
   const role = auth.user?.role ?? "";
@@ -116,7 +125,13 @@ function canDeleteOpinion(op: OpinionItem) {
 
 async function deleteOpinionRow(op: OpinionItem) {
   if (!canDeleteOpinion(op)) return;
-  if (!window.confirm(`아이디어 #${op.id} 를 삭제할까요?`)) return;
+  if (
+    !window.confirm(
+      `운영 아이디어 제안(#${op.id})을 삭제할까요?\n삭제 후에는 복구할 수 없습니다.`,
+    )
+  ) {
+    return;
+  }
   deletingId.value = op.id;
   errorMessage.value = "";
   try {
@@ -151,9 +166,7 @@ async function load() {
 }
 
 function goDetail(id: number) {
-  router.push({ name: "hq-safe-opinion-detail", params: { id } }).catch(() => {
-    router.push({ name: "site-opinion-detail", params: { id } });
-  });
+  router.push({ name: opinionDetailRouteName(), params: { id: String(id) } });
 }
 
 function openNew() {

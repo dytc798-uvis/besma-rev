@@ -5,7 +5,7 @@ from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
 from app.modules.opinions.models import Opinion, OpinionStatus
 from app.modules.sites.models import Site
-from app.schemas.opinions import OpinionCreate, OpinionUpdate
+from app.schemas.opinions import OpinionCreate, OpinionOut, OpinionUpdate
 
 
 router = APIRouter(prefix="/opinions", tags=["opinions"])
@@ -18,7 +18,7 @@ def _is_opinion_admin(role: Role | str | None) -> bool:
     return value in {Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}
 
 
-@router.get("")
+@router.get("", response_model=list[OpinionOut])
 def list_opinions(
     db: DbDep,
     current_user: CurrentUserDep,
@@ -42,7 +42,7 @@ def list_opinions(
     return query.order_by(Opinion.created_at.desc()).all()
 
 
-@router.get("/{opinion_id}")
+@router.get("/{opinion_id}", response_model=OpinionOut)
 def get_opinion(opinion_id: int, db: DbDep, current_user: CurrentUserDep):
     opinion = db.query(Opinion).filter(Opinion.id == opinion_id).first()
     if not opinion:
@@ -52,7 +52,7 @@ def get_opinion(opinion_id: int, db: DbDep, current_user: CurrentUserDep):
     return opinion
 
 
-@router.post("")
+@router.post("", response_model=OpinionOut)
 def create_opinion(
     db: DbDep,
     current_user: CurrentUserDep,
@@ -88,7 +88,7 @@ def create_opinion(
     return opinion
 
 
-@router.put("/{opinion_id}")
+@router.put("/{opinion_id}", response_model=OpinionOut)
 def update_opinion(
     opinion_id: int,
     db: DbDep,
