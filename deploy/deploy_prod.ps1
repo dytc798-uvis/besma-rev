@@ -12,7 +12,7 @@ Usage (avoid broken profile that runs Set-Location at startup):
 Optional:
   -SshHost "ubuntu@api.example.com"
   -SshConfig "C:\Users\you\.ssh\config"
-  -IdentityFile "D:\besma-rev\besma-key.pem"   # REQUIRED if ssh-agent has no key for this host
+  -IdentityFile "D:\besma-rev\.secrets\besma-key.pem"   # if ssh-agent has no key (use .secrets/; gitignored)
 
 Remote steps are in remote_prod_deploy.sh (piped to ssh ... "bash -s").
 #>
