@@ -3,6 +3,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.config.security import get_password_hash, verify_password
 from app.core.auth import authenticate_user, create_user_access_token, DbDep, get_current_user
+from app.core.datetime_utils import utc_now
+from app.core.password_policy import validate_password_policy
 from app.core.permissions import Role
 from app.modules.sites.models import Site
 from app.modules.users.models import User
@@ -102,12 +104,6 @@ def me(db: DbDep, current_user=Depends(get_current_user)) -> UserMe:
     return UserMe.model_validate(current_user)
 
 
-def _validate_new_password(password: str) -> None:
-    # DECISION-032: 길이·복잡도 규칙 없음. 공백만 비밀번호는 불가.
-    if not (password or "").strip():
-        raise HTTPException(status_code=400, detail="NEW_PASSWORD_REQUIRED")
-
-
 @router.post("/change-password")
 def change_password(
     payload: ChangePasswordRequest,
@@ -117,15 +113,22 @@ def change_password(
     if not verify_password(payload.current_password, current_user.password_hash):
         raise HTTPException(status_code=400, detail="CURRENT_PASSWORD_INCORRECT")
 
-    _validate_new_password(payload.new_password)
+    if payload.new_password != payload.new_password_confirm:
+        raise HTTPException(status_code=400, detail="NEW_PASSWORD_CONFIRM_MISMATCH")
 
-    current_user.password_hash = get_password_hash(payload.new_password)
+    try:
+        validate_password_policy(payload.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    current_user.password_hash = get_password_hash(payload.new_password.strip())
     current_user.must_change_password = False
+    current_user.password_changed_at = utc_now()
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
 
-    return {"result": "ok"}
+    return {"result": "ok", "message": "비밀번호가 변경되었습니다."}
 
 
 @router.post("/logout")

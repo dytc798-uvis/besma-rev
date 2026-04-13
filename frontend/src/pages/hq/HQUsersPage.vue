@@ -47,6 +47,15 @@
           <div class="detail-item"><span>TBM 서명 여부</span><strong>{{ tbmSignLabel }}</strong></div>
         </div>
 
+        <div v-if="selectedUser" class="user-pw-reset">
+          <button type="button" class="stitch-btn-secondary" :disabled="resettingPw" @click="handleResetPassword">
+            {{ resettingPw ? "처리 중..." : "비밀번호 초기화" }}
+          </button>
+          <p class="user-pw-reset-hint">
+            임시 비밀번호가 생성됩니다. 저장·조회 API는 없으며, 발급 직후 한 번만 화면에 표시됩니다.
+          </p>
+        </div>
+
         <div class="stitch-kpi-grid kpi-user">
           <KpiCard
             label="최근 문서"
@@ -138,6 +147,7 @@ const keyword = ref("");
 const selectedUserId = ref<number | null>(null);
 const safetyRecord = ref<SafetyRecord | null>(null);
 const hasSafetyData = ref(false);
+const resettingPw = ref(false);
 
 const selectedUser = computed(() => users.value.find((u) => u.id === selectedUserId.value) ?? null);
 const filteredUsers = computed(() => {
@@ -237,6 +247,23 @@ async function selectUser(userId: number) {
   await loadSelectedUserDetail();
 }
 
+async function handleResetPassword() {
+  if (!selectedUser.value) return;
+  const u = selectedUser.value;
+  if (!window.confirm(`${u.name} (${u.login_id}) 계정의 비밀번호를 초기화할까요?`)) return;
+  resettingPw.value = true;
+  try {
+    const res = await api.post(`/users/${u.id}/admin-reset-password`);
+    const temp = res.data.temporary_password as string;
+    const msg = (res.data.message as string) || "";
+    window.alert(`임시 비밀번호:\n${temp}\n\n${msg}`);
+  } catch {
+    window.alert("초기화에 실패했습니다.");
+  } finally {
+    resettingPw.value = false;
+  }
+}
+
 onMounted(loadUsers);
 </script>
 
@@ -315,6 +342,19 @@ onMounted(loadUsers);
 
 .kpi-user {
   margin-top: 8px;
+}
+
+.user-pw-reset {
+  margin: 16px 0;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.user-pw-reset-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.45;
 }
 
 @media (max-width: 1024px) {

@@ -903,6 +903,20 @@
 
 ---
 
+### [DECISION-063]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-14 |
+| **Title** | 사용자 자율 비밀번호 변경·최소 길이 4자·정책 단일 모듈·관리자 초기화 |
+| **Context** | 운영 편의·초기 정착 단계에서 로그인 후 본인 변경을 허용하고, 첫 로그인 및 관리자 초기화 직후에는 변경을 강제한다. 복잡도 규칙은 두지 않되 최소 길이만 둔다. |
+| **Options** | A. 정책·검증을 라우트에 분산 / B. `validate_password_policy` 등 단일 모듈 + `must_change_password` 게이트 유지 + 확인 필드·관리자 초기화 API |
+| **Decision** | **B** |
+| **Reason** | [DECISION-018] 강제 변경·403 예외 경로는 유지하고, [DECISION-032]의 복잡도 폐지와 함께 최소 길이(4자)만 `app/core/password_policy.py`에서 조정 가능하게 한다. 관리자는 평문 조회 없이 초기화 시 임시 비밀번호만 1회 발급한다. |
+| **Impact Scope** | `password_policy.py`, `auth/routes.py`, `users/routes.py`, `users.models.password_changed_at`, Alembic `20260414_0032`, `ChangePasswordPage.vue`, `router/index.ts`, 레이아웃 비밀번호 변경 링크, `HQUsersPage.vue`, 관련 pytest |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -945,5 +959,6 @@
 | 2026-04-13 | Decision 058 추가 — 데모 시드 시 hq01~3 구행·login 대소문자 충돌 정리 |
 | 2026-04-13 | Decision 059 추가 — 근로자의견·부적합 관리대장 승인 단계 및 내 현장 문서 업로드 제외 |
 | 2026-04-14 | Decision 060 추가 — 운영 처리 축 vs 위험성평가 DB 승격 축 분리 |
+| 2026-04-14 | Decision 063 추가 — 비밀번호 자율 변경·최소 4자·정책 모듈·관리자 초기화 |
 | 2026-04-13 | Decision 061 추가 — 관리대장 문서는 문서취합·문서 단위 UI 참조 전용 |
 | 2026-04-13 | Decision 062 추가 — 대시보드 알림 우선·좌측 메뉴 주요업무 우선 |

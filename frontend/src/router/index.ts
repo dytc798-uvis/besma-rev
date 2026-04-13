@@ -212,17 +212,18 @@ router.beforeEach((to, _from, next) => {
     return;
   }
 
+  // dev 페르소나·기타 분기보다 먼저: 초기/초기화 비밀번호 미변경 시 우회 불가
+  if (auth.isAuthenticated && auth.mustChangePassword && to.path !== "/change-password") {
+    next({ name: "change-password" });
+    return;
+  }
+
   if (to.meta.devOnly && !auth.isTestPersonaMode) {
     next({ name: "login" });
     return;
   }
   if (to.meta.devOnly && auth.isTestPersonaMode && !auth.effectivePersona) {
     next({ name: "persona-select" });
-    return;
-  }
-
-  if (auth.isAuthenticated && auth.mustChangePassword && to.path !== "/change-password") {
-    next({ name: "change-password" });
     return;
   }
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
@@ -276,6 +277,10 @@ router.beforeEach((to, _from, next) => {
   }
 
   if (to.name === "login" && auth.isAuthenticated) {
+    if (auth.mustChangePassword) {
+      next({ name: "change-password" });
+      return;
+    }
     if (auth.isTestPersonaMode) {
       if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-documents" });
       else if (auth.effectivePersona === "SITE_MANAGER") next({ name: "site-documents" });

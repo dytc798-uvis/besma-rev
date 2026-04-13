@@ -27,6 +27,7 @@
           <button v-if="auth.isTestPersonaMode" class="secondary" style="margin-right: 8px" @click="goPersonaSelect">
             페르소나 전환
           </button>
+          <RouterLink class="secondary" style="margin-right: 8px; text-decoration: none; display: inline-block" to="/change-password">비밀번호 변경</RouterLink>
           <button class="secondary" @click="handleLogout">로그아웃</button>
         </div>
       </header>
