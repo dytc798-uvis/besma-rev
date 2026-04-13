@@ -38,6 +38,9 @@ class DocumentContentInvalidStateError(Exception):
     message: str
 
 
+# 문서 코멘트: 타인 삭제는 이 로그인만 허용 (DECISION-057).
+_DOCUMENT_COMMENT_MODERATOR_LOGIN_ID = "hq01"
+
 _STATUS_NOT_REQUIRED = "NOT_REQUIRED"
 _STATUS_NOT_SUBMITTED = "NOT_SUBMITTED"
 _STATUS_SUBMITTED = "SUBMITTED"
@@ -81,6 +84,29 @@ def list_document_comments(
         }
         for comment, user in rows
     ]
+
+
+def delete_document_comment(
+    db: Session,
+    *,
+    document_id: int,
+    comment_id: int,
+    acting_user: Any,
+) -> None:
+    row = (
+        db.query(DocumentComment)
+        .filter(DocumentComment.id == comment_id)
+        .filter(DocumentComment.document_id == document_id)
+        .first()
+    )
+    if not row:
+        raise ValueError("comment_not_found")
+    login = str(getattr(acting_user, "login_id", None) or "").strip().casefold()
+    actor_id = int(getattr(acting_user, "id"))
+    if login != _DOCUMENT_COMMENT_MODERATOR_LOGIN_ID and row.user_id != actor_id:
+        raise ValueError("comment_delete_forbidden")
+    db.delete(row)
+    db.commit()
 
 
 def create_document_comment(
