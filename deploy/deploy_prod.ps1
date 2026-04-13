@@ -12,12 +12,14 @@ Usage (avoid broken profile that runs Set-Location at startup):
 Optional:
   -SshHost "ubuntu@api.example.com"
   -SshConfig "C:\Users\you\.ssh\config"
+  -IdentityFile "D:\besma-rev\besma-key.pem"   # REQUIRED if ssh-agent has no key for this host
 
 Remote steps are in remote_prod_deploy.sh (piped to ssh ... "bash -s").
 #>
 param(
   [string]$SshHost = "besma-prod",
-  [string]$SshConfig = ""
+  [string]$SshConfig = "",
+  [string]$IdentityFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -53,6 +55,13 @@ $configPath = if ($SshConfig -ne "") { $SshConfig } else { $defaultConfig }
 
 # Build ssh argument list (OpenSSH on Windows)
 $sshArgs = @()
+if ($IdentityFile -ne "") {
+  if (-not (Test-Path -LiteralPath $IdentityFile)) {
+    throw "IdentityFile not found: $IdentityFile"
+  }
+  $resolvedId = (Resolve-Path -LiteralPath $IdentityFile).Path
+  $sshArgs += "-i", $resolvedId
+}
 if ($SshConfig -ne "" -and (Test-Path -LiteralPath $SshConfig)) {
   $sshArgs += "-F", $SshConfig
 } elseif (Test-Path -LiteralPath $defaultConfig) {
@@ -82,7 +91,11 @@ Write-Host ""
 Write-Host "[deploy_prod] $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssK') start -> ssh $SshHost" -ForegroundColor Cyan
 Write-Host "[deploy_prod] script: $RemoteBash (stdin)" -ForegroundColor DarkGray
 if ($sshArgs.Count -gt 0) {
-  Write-Host "[deploy_prod] ssh args: $($sshArgs -join ' ')" -ForegroundColor DarkGray
+  $redacted = $sshArgs -join ' '
+  if ($IdentityFile -ne "") {
+    $redacted = $redacted -replace [regex]::Escape((Resolve-Path -LiteralPath $IdentityFile).Path), '[identity]'
+  }
+  Write-Host "[deploy_prod] ssh args: $redacted" -ForegroundColor DarkGray
 }
 
 $raw = Get-Content -LiteralPath $RemoteBash -Raw -Encoding UTF8
@@ -112,6 +125,7 @@ try {
 if ($exit -ne 0) {
   Write-Host "[deploy_prod] ERROR: ssh exit code $exit" -ForegroundColor Red
   Write-Host "  If you see 'Could not resolve hostname', fix ~/.ssh/config Host alias or use -SshHost." -ForegroundColor Red
+  Write-Host "  If you see 'Permission denied (publickey)', pass -IdentityFile path\to\besma-key.pem (or use ssh-agent / ~/.ssh/config)." -ForegroundColor Red
   Write-Host "  If PowerShell profile errors appear first, use: powershell -NoProfile -File ..." -ForegroundColor Red
   Write-Host "  Check remote [prod-deploy ...] STEP lines above for the failing step." -ForegroundColor Red
   exit $exit
