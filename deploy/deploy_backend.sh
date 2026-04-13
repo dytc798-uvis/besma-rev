@@ -6,6 +6,11 @@
 #   RUN_MIGRATIONS=1 ./deploy/deploy_backend.sh   # Alembic upgrade head 실행 후 재시작
 #
 # 필요: git, curl, sudo(systemctl), 활성화된 besma-backend.service
+#
+# 환경변수(선택):
+#   BESMA_RESTART_SLEEP — 재시작 후 첫 대기 초 (기본 6)
+#   BESMA_HEALTH_RETRIES — 헬스 curl 재시도 횟수 (기본 20)
+#   BESMA_HEALTH_RETRY_SLEEP — 재시도 간격 초 (기본 2)
 
 set -euo pipefail
 
@@ -13,7 +18,9 @@ PROJECT_ROOT="${BESMA_PROJECT_ROOT:-/home/ubuntu/besma-rev}"
 BACKEND_DIR="${PROJECT_ROOT}/backend"
 VENV_PY="${BACKEND_DIR}/.venv/bin/python"
 HEALTH_URL="${BESMA_HEALTH_URL:-http://127.0.0.1:8001/health}"
-RESTART_SLEEP="${BESMA_RESTART_SLEEP:-4}"
+RESTART_SLEEP="${BESMA_RESTART_SLEEP:-6}"
+HEALTH_RETRIES="${BESMA_HEALTH_RETRIES:-20}"
+HEALTH_RETRY_SLEEP="${BESMA_HEALTH_RETRY_SLEEP:-2}"
 NGINX_UPLOAD_LIMIT="${BESMA_NGINX_CLIENT_MAX_BODY_SIZE:-20m}"
 
 cd "${PROJECT_ROOT}"
@@ -64,11 +71,23 @@ ensure_nginx_upload_limit
 echo "[deploy] systemctl restart besma-backend (sudo)"
 sudo systemctl restart besma-backend
 
-echo "[deploy] wait ${RESTART_SLEEP}s then health check: ${HEALTH_URL}"
+echo "[deploy] wait ${RESTART_SLEEP}s then health check: ${HEALTH_URL} (up to ${HEALTH_RETRIES} attempts, ${HEALTH_RETRY_SLEEP}s apart)"
 sleep "${RESTART_SLEEP}"
 
-if ! curl -fsS --max-time 15 "${HEALTH_URL}" | grep -q '"status"'; then
-  echo "[deploy] ERROR: health check failed (expected JSON with status)" >&2
+health_ok=0
+for ((i = 1; i <= HEALTH_RETRIES; i++)); do
+  if curl -fsS --max-time 12 "${HEALTH_URL}" 2>/dev/null | grep -q '"status"'; then
+    health_ok=1
+    break
+  fi
+  echo "[deploy] health attempt ${i}/${HEALTH_RETRIES} not ready yet, sleep ${HEALTH_RETRY_SLEEP}s..."
+  sleep "${HEALTH_RETRY_SLEEP}"
+done
+
+if [[ "${health_ok}" -ne 1 ]]; then
+  echo "[deploy] ERROR: health check failed after ${HEALTH_RETRIES} attempts (expected JSON with status)" >&2
+  echo "[deploy] systemctl status besma-backend:" >&2
+  sudo systemctl status besma-backend --no-pager -l || true
   echo "[deploy] hint: journalctl -u besma-backend -n 80 --no-pager" >&2
   exit 1
 fi
