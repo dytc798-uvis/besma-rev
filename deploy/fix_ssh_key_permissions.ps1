@@ -52,14 +52,17 @@ $sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 Write-Host "[fix_ssh_key] target: $targetPath" -ForegroundColor Cyan
 Write-Host "[fix_ssh_key] user: $user (SID $sid)" -ForegroundColor DarkGray
 
-function Invoke-Icacls {
-  param([string[]]$Args)
-  $p = Start-Process -FilePath "icacls.exe" -ArgumentList $Args -Wait -PassThru -NoNewWindow
-  return $p.ExitCode
+function Invoke-IcaclsExe {
+  # icacls stdout 이 반환값과 섞이지 않도록 Out-Host 로 호스트만 출력.
+  param([Parameter(Mandatory)][string[]]$IcArguments)
+  & icacls.exe @IcArguments | Out-Host
+  $exit = $LASTEXITCODE
+  if ($null -eq $exit) { $exit = 0 }
+  return [int]$exit
 }
 
 # 1) 상속 끄기 + 본인에게 읽기만
-$code = Invoke-Icacls @($targetPath, "/inheritance:r")
+$code = Invoke-IcaclsExe -IcArguments @($targetPath, "/inheritance:r")
 if ($code -ne 0) {
   Write-Host "[fix_ssh_key] ERROR: icacls /inheritance:r failed (exit $code). Try:" -ForegroundColor Red
   Write-Host "  1) PowerShell을 '관리자 권한으로 실행'한 뒤 다시 이 스크립트 실행" -ForegroundColor Yellow
@@ -68,7 +71,7 @@ if ($code -ne 0) {
   exit $code
 }
 
-$code = Invoke-Icacls @($targetPath, "/grant:r", "${user}:R")
+$code = Invoke-IcaclsExe -IcArguments @($targetPath, "/grant:r", "${user}:R")
 if ($code -ne 0) {
   Write-Host "[fix_ssh_key] ERROR: icacls /grant failed (exit $code). 관리자 권한 또는 takeown 필요." -ForegroundColor Red
   exit $code
@@ -81,7 +84,7 @@ $removes = @(
   "NT AUTHORITY\Authenticated Users"
 )
 foreach ($r in $removes) {
-  $null = Start-Process -FilePath "icacls.exe" -ArgumentList @($targetPath, "/remove", $r) -Wait -PassThru -NoNewWindow
+  $null = & icacls.exe $targetPath /remove $r 2>$null
 }
 
 Write-Host "[fix_ssh_key] current ACL:" -ForegroundColor Cyan
