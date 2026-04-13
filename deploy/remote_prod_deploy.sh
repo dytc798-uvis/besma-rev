@@ -20,31 +20,40 @@ BESMA_ROOT="${BESMA_ROOT:-$HOME/besma-rev}"
 BACKEND_DIR="${BESMA_ROOT}/backend"
 VENV_ALEMBIC="${BACKEND_DIR}/.venv/bin/alembic"
 
-log "STEP 1/7: cd ${BESMA_ROOT}"
+log "STEP 1/8: cd ${BESMA_ROOT}"
 cd "${BESMA_ROOT}" || fail "경로 없음: ${BESMA_ROOT}"
 
-log "STEP 2/7: git pull --ff-only"
+log "STEP 2/8: git pull --ff-only"
 git pull --ff-only
 
-log "STEP 3/7: cd ${BACKEND_DIR}"
+log "STEP 3/8: cd ${BACKEND_DIR}"
 cd "${BACKEND_DIR}" || fail "backend 경로 없음: ${BACKEND_DIR}"
 
+VENV_PY="${BACKEND_DIR}/.venv/bin/python"
+if [[ ! -x "${VENV_PY}" ]]; then
+  fail "python 실행 파일 없음: ${VENV_PY}"
+fi
 if [[ ! -x "${VENV_ALEMBIC}" ]]; then
   fail "alembic 실행 파일 없음: ${VENV_ALEMBIC}"
 fi
 
-log "STEP 4/7: alembic current"
+log "STEP 4/8: verify app.main import (ENV=prod, alembic 전에 실패 조기 검출)"
+if ! ENV=prod "${VENV_PY}" -c "from app.main import app"; then
+  fail "app.main import 실패 — 서비스 재시작하지 말고 코드·커밋을 먼저 수정"
+fi
+
+log "STEP 5/8: alembic current"
 "${VENV_ALEMBIC}" current
 
-log "STEP 5/7: alembic upgrade head"
+log "STEP 6/8: alembic upgrade head"
 "${VENV_ALEMBIC}" upgrade head
 
-log "STEP 6/7: 저장소 루트에서 deploy_backend.sh (RUN_MIGRATIONS=0 — 마이그레이션은 위에서 이미 적용)"
+log "STEP 7/8: 저장소 루트에서 deploy_backend.sh (RUN_MIGRATIONS=0 — 마이그레이션은 위에서 이미 적용)"
 cd "${BESMA_ROOT}" || fail "루트 복귀 실패: ${BESMA_ROOT}"
 chmod +x ./deploy/deploy_backend.sh
 RUN_MIGRATIONS=0 bash ./deploy/deploy_backend.sh
 
-log "STEP 7/7: curl health (재확인)"
+log "STEP 8/8: curl health (재확인)"
 if ! curl -fsS --max-time 15 http://127.0.0.1:8001/health; then
   fail "health HTTP 요청 실패"
 fi

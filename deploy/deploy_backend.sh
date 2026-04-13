@@ -58,6 +58,15 @@ cd "${BACKEND_DIR}"
 echo "[deploy] install backend dependencies"
 "${VENV_PY}" -m pip install -r requirements.txt
 
+# systemctl 재시작 전에 ImportError를 잡는다 (routes만 올라가고 service 누락 등).
+echo "[deploy] verify import app.main (ENV=prod; skip with BESMA_SKIP_IMPORT_VERIFY=1)"
+if [[ "${BESMA_SKIP_IMPORT_VERIFY:-0}" != "1" ]]; then
+  if ! (cd "${BACKEND_DIR}" && ENV=prod "${VENV_PY}" -c "from app.main import app"); then
+    echo "[deploy] ERROR: app.main import failed — uvicorn은 즉시 종료됩니다. 코드 수정 후 재배포하세요." >&2
+    exit 1
+  fi
+fi
+
 # DB 마이그레이션: 기본 비활성. 운영에서 필요할 때만 RUN_MIGRATIONS=1
 if [[ "${RUN_MIGRATIONS:-0}" == "1" ]]; then
   echo "[deploy] alembic upgrade head"
