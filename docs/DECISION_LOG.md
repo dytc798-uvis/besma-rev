@@ -917,6 +917,20 @@
 
 ---
 
+### [DECISION-064]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-14 |
+| **Title** | 운영 서버 배포 절차를 저장소 스크립트로 고정 |
+| **Context** | 배포 순서를 기억·채팅에 의존하면 재현성이 떨어지고, Cursor·운영자 간 실행 불일치가 생긴다. |
+| **Options** | A. 문서만 유지 / B. `ssh besma-prod` + 고정 원격 단계를 `deploy/deploy_prod.ps1`(및 보조 bash)로 코드화 |
+| **Decision** | **B** |
+| **Reason** | **운영 서버 배포는 기억이 아니라 코드화된 배포 스크립트로 수행한다.** SSH 키·비밀번호는 저장소에 두지 않고, 로컬 `~/.ssh/config`의 Host 별칭 `besma-prod`만 사용한다. |
+| **Impact Scope** | `deploy/deploy_prod.ps1`, `deploy/deploy_prod.sh`, `deploy/remote_prod_deploy.sh`, 운영 배포 시 이 스크립트를 표준으로 사용 |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -960,5 +974,6 @@
 | 2026-04-13 | Decision 059 추가 — 근로자의견·부적합 관리대장 승인 단계 및 내 현장 문서 업로드 제외 |
 | 2026-04-14 | Decision 060 추가 — 운영 처리 축 vs 위험성평가 DB 승격 축 분리 |
 | 2026-04-14 | Decision 063 추가 — 비밀번호 자율 변경·최소 4자·정책 모듈·관리자 초기화 |
+| 2026-04-14 | Decision 064 추가 — 운영 배포를 deploy_prod 스크립트로 고정(besma-prod) |
 | 2026-04-13 | Decision 061 추가 — 관리대장 문서는 문서취합·문서 단위 UI 참조 전용 |
 | 2026-04-13 | Decision 062 추가 — 대시보드 알림 우선·좌측 메뉴 주요업무 우선 |
