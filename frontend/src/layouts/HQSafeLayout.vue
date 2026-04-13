@@ -2,38 +2,50 @@
   <div class="hq-safe-shell layout-root" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <aside class="layout-sidebar">
       <h1 class="sidebar-brand">BESMA CSMS 안전보건플랫폼 · HQ 안전</h1>
-      <nav class="layout-menu">
-        <RouterLink to="/hq-safe/dashboard">대시보드</RouterLink>
-        <RouterLink :style="menuOrderStyle('tbm-monitor')" to="/hq-safe/tbm-monitor">TBM 모니터</RouterLink>
-        <RouterLink :style="menuOrderStyle('risk-library')" to="/hq-safe/risk-library">위험성평가 DB 조회</RouterLink>
-        <RouterLink :style="menuOrderStyle('site-search')" to="/hq-safe/site-search">현장 검색</RouterLink>
-        <RouterLink :style="menuOrderStyle('document-explorer')" to="/hq-safe/document-explorer">문서 탐색</RouterLink>
-        <RouterLink :style="menuOrderStyle('periodic-monitoring')" to="/hq-safe/periodic-monitoring">주기 기반 문서 모니터링</RouterLink>
-        <RouterLink :style="menuOrderStyle('documents')" to="/hq-safe/documents" @click="collapseSidebar"
-          >문서 취합 현황
-          <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span></RouterLink
-        >
-        <RouterLink :style="menuOrderStyle('approvals-inbox')" to="/hq-safe/approvals/inbox">결재함(공사중)</RouterLink>
-        <RouterLink :style="menuOrderStyle('approvals-history')" to="/hq-safe/approvals/history">승인/반려 이력</RouterLink>
-        <RouterLink :style="menuOrderStyle('opinions')" to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
-        <RouterLink :style="menuOrderStyle('notices')" to="/hq-safe/notices">공지사항</RouterLink>
-        <RouterLink :style="menuOrderStyle('safety-policy-goals')" to="/hq-safe/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
-        <RouterLink
-          v-for="m in dynamicMenus"
-          :key="`hq-dyn-${m.slug}`"
-          :style="menuOrderStyle(`dynamic:${m.id}`)"
-          :to="`/hq-safe/custom-menus/${m.slug}`"
-        >
-          {{ m.title }}
-        </RouterLink>
-        <RouterLink :style="menuOrderStyle('safety-education')" to="/hq-safe/safety-education">안전 교육</RouterLink>
-        <RouterLink :style="menuOrderStyle('safety-inspections')" to="/hq-safe/safety-inspections">안전 점검</RouterLink>
-        <RouterLink :style="menuOrderStyle('nonconformities')" to="/hq-safe/nonconformities">부적합사항</RouterLink>
-        <RouterLink :style="menuOrderStyle('worker-voice')" to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
-        <RouterLink :style="menuOrderStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
-        <RouterLink :style="menuOrderStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
-        <RouterLink :style="menuOrderStyle('settings')" to="/hq-safe/settings">안전문서 설정관리</RouterLink>
-        <RouterLink :style="menuOrderStyle('user-guide')" to="/hq-safe/user-guide">사용설명서</RouterLink>
+      <nav class="layout-menu layout-menu-hq">
+        <RouterLink class="hq-menu-dashboard" to="/hq-safe/dashboard">대시보드</RouterLink>
+
+        <div class="hq-menu-group">
+          <p class="hq-menu-section-label">주요업무</p>
+          <RouterLink :style="menuOrderPrimaryStyle('notices')" to="/hq-safe/notices">공지사항</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('safety-policy-goals')" to="/hq-safe/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('risk-library')" to="/hq-safe/risk-library">위험성평가 DB 조회</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('worker-voice')" to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('nonconformities')" to="/hq-safe/nonconformities">부적합사항</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('document-explorer')" to="/hq-safe/document-explorer">문서 탐색</RouterLink>
+          <RouterLink
+            :style="menuOrderPrimaryStyle('documents')"
+            to="/hq-safe/documents"
+            @click="collapseSidebar"
+          >
+            문서 취합 현황
+            <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span>
+          </RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('periodic-monitoring')" to="/hq-safe/periodic-monitoring">주기 기반 문서 모니터링</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('approvals-history')" to="/hq-safe/approvals/history">승인/반려 이력</RouterLink>
+          <RouterLink
+            v-for="m in dynamicMenus"
+            :key="`hq-dyn-${m.slug}`"
+            :style="menuOrderPrimaryStyle(`dynamic:${m.id}`)"
+            :to="`/hq-safe/custom-menus/${m.slug}`"
+          >
+            {{ m.title }}
+          </RouterLink>
+        </div>
+
+        <div class="hq-menu-group hq-menu-group-secondary">
+          <p class="hq-menu-section-label">부가 메뉴</p>
+          <RouterLink :style="menuOrderSecondaryStyle('site-search')" to="/hq-safe/site-search">현장 검색</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('opinions')" to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('safety-education')" to="/hq-safe/safety-education">안전 교육</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('safety-inspections')" to="/hq-safe/safety-inspections">안전 점검</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('user-guide')" to="/hq-safe/user-guide">사용설명서</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('tbm-monitor')" to="/hq-safe/tbm-monitor">TBM 모니터</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('settings')" to="/hq-safe/settings">안전문서 설정관리</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('approvals-inbox')" to="/hq-safe/approvals/inbox">결재함(공사중)</RouterLink>
+        </div>
       </nav>
     </aside>
     <section class="layout-content">
@@ -67,34 +79,15 @@ import { useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
 import { todayKst } from "@/utils/datetime";
+import { buildHqMenuOrderMaps } from "@/config/hqSidebarMenuGroups";
 
 const auth = useAuthStore();
 const router = useRouter();
 const badge = ref({ incomplete_count: 0 });
 const sidebarCollapsed = ref(false);
 const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
-const menuOrderMap = ref<Record<string, number>>({});
-const HQ_FIXED_MENU_KEYS = [
-  "tbm-monitor",
-  "risk-library",
-  "site-search",
-  "document-explorer",
-  "periodic-monitoring",
-  "documents",
-  "approvals-inbox",
-  "approvals-history",
-  "opinions",
-  "notices",
-  "safety-policy-goals",
-  "safety-education",
-  "safety-inspections",
-  "nonconformities",
-  "worker-voice",
-  "sites",
-  "users",
-  "settings",
-  "user-guide",
-] as const;
+const menuOrderPrimary = ref<Record<string, number>>({});
+const menuOrderSecondary = ref<Record<string, number>>({});
 
 onMounted(() => {
   if (!auth.user) {
@@ -127,25 +120,34 @@ async function loadDynamicMenus() {
     await loadMenuOrder();
   } catch {
     dynamicMenus.value = [];
-    menuOrderMap.value = {};
+    menuOrderPrimary.value = {};
+    menuOrderSecondary.value = {};
   }
 }
 
 async function loadMenuOrder() {
   const dynamicKeys = dynamicMenus.value.map((m) => `dynamic:${m.id}`);
-  const fallback = [...HQ_FIXED_MENU_KEYS, ...dynamicKeys];
   try {
     const res = await api.get("/dynamic-menus/menu-order/HQ_SAFE");
     const ordered = Array.isArray(res.data?.ordered_keys) ? (res.data.ordered_keys as string[]) : [];
-    const merged = [...ordered, ...fallback.filter((k) => !ordered.includes(k))];
-    menuOrderMap.value = Object.fromEntries(merged.map((k, idx) => [k, idx + 1]));
+    const maps = buildHqMenuOrderMaps(ordered, dynamicKeys);
+    menuOrderPrimary.value = maps.primary;
+    menuOrderSecondary.value = maps.secondary;
   } catch {
-    menuOrderMap.value = Object.fromEntries(fallback.map((k, idx) => [k, idx + 1]));
+    const maps = buildHqMenuOrderMaps(null, dynamicKeys);
+    menuOrderPrimary.value = maps.primary;
+    menuOrderSecondary.value = maps.secondary;
   }
 }
 
-function menuOrderStyle(key: string) {
-  const order = menuOrderMap.value[key];
+function menuOrderPrimaryStyle(key: string) {
+  const order = menuOrderPrimary.value[key];
+  if (!order) return undefined;
+  return { order };
+}
+
+function menuOrderSecondaryStyle(key: string) {
+  const order = menuOrderSecondary.value[key];
   if (!order) return undefined;
   return { order };
 }
@@ -208,6 +210,53 @@ function handleLogout() {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+
+.layout-menu-hq {
+  gap: 10px;
+}
+
+.hq-menu-dashboard {
+  display: block;
+  margin: 2px 10px 4px;
+  padding: 10px 14px;
+  color: #475569;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+.hq-menu-dashboard:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.hq-menu-dashboard.router-link-active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.hq-menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hq-menu-group-secondary {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.hq-menu-section-label {
+  margin: 0 10px 6px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
 }
 
 .hq-safe-shell .layout-menu a {

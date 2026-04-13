@@ -13,6 +13,138 @@
         </div>
       </header>
 
+      <section v-if="riskDbOverview" class="dash-alerts" aria-labelledby="dash-alerts-title">
+        <h2 id="dash-alerts-title" class="dash-alerts-title">처리 필요 알림</h2>
+        <p class="dash-alerts-sub">관리대장 전용 — 위험성평가 DB 등록 요청·본사 판단 (문서취합 알림과 별도)</p>
+        <BaseCard class="summary-group-card risk-ledger-split-card">
+          <div class="risk-ledger-split">
+            <div class="risk-ledger-section">
+              <h3 class="risk-ledger-section-title">근로자의견청취</h3>
+              <p class="risk-ledger-section-sub">본사에서 확인할 DB 관련 건입니다. 카드를 누르면 관리대장 목록으로 이동합니다.</p>
+              <div class="risk-db-kpi-grid">
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('db_pending', 'voice')"
+                  @keydown.enter="goHqLedgerFilter('db_pending', 'voice')"
+                >
+                  <span class="risk-db-kpi-title">DB 등록 승인 대기</span>
+                  <strong>{{ riskDbOverview.hq.worker_voice.pending_approval }}</strong>
+                  <small class="risk-db-kpi-hint">본사 승인 필요</small>
+                </div>
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('db_requests', 'voice')"
+                  @keydown.enter="goHqLedgerFilter('db_requests', 'voice')"
+                >
+                  <span class="risk-db-kpi-title">DB 등록 요청 건</span>
+                  <strong>{{ riskDbOverview.hq.worker_voice.pending_requests }}</strong>
+                  <small class="risk-db-kpi-hint">요청 접수·검토 대상</small>
+                </div>
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('rejected', 'voice')"
+                  @keydown.enter="goHqLedgerFilter('rejected', 'voice')"
+                >
+                  <span class="risk-db-kpi-title">DB 반려 건</span>
+                  <strong>{{ riskDbOverview.hq.worker_voice.rejected }}</strong>
+                  <small class="risk-db-kpi-hint">재검토·현장 안내</small>
+                </div>
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('reward', 'voice')"
+                  @keydown.enter="goHqLedgerFilter('reward', 'voice')"
+                >
+                  <span class="risk-db-kpi-title">포상 후보</span>
+                  <strong>{{ riskDbOverview.hq.worker_voice.reward_candidates }}</strong>
+                  <small class="risk-db-kpi-hint">포상 검토 대상</small>
+                </div>
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('db_confirmed', 'voice')"
+                  @keydown.enter="goHqLedgerFilter('db_confirmed', 'voice')"
+                >
+                  <span class="risk-db-kpi-title">DB 승격 확정</span>
+                  <strong>{{ riskDbOverview.hq.worker_voice.approved }}</strong>
+                  <small class="risk-db-kpi-hint">승격 조건 충족(자동 DB 반영 아님)</small>
+                </div>
+              </div>
+            </div>
+            <div class="risk-ledger-divider" aria-hidden="true" />
+            <div class="risk-ledger-section">
+              <h3 class="risk-ledger-section-title">부적합사항</h3>
+              <p class="risk-ledger-section-sub">본사에서 확인할 DB 관련 건입니다. 카드를 누르면 관리대장 목록으로 이동합니다.</p>
+              <div class="risk-db-kpi-grid">
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('db_pending', 'nonconf')"
+                  @keydown.enter="goHqLedgerFilter('db_pending', 'nonconf')"
+                >
+                  <span class="risk-db-kpi-title">DB 등록 승인 대기</span>
+                  <strong>{{ riskDbOverview.hq.nonconformity.pending_approval }}</strong>
+                  <small class="risk-db-kpi-hint">본사 승인 필요</small>
+                </div>
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('db_requests', 'nonconf')"
+                  @keydown.enter="goHqLedgerFilter('db_requests', 'nonconf')"
+                >
+                  <span class="risk-db-kpi-title">DB 등록 요청 건</span>
+                  <strong>{{ riskDbOverview.hq.nonconformity.pending_requests }}</strong>
+                  <small class="risk-db-kpi-hint">요청 접수·검토 대상</small>
+                </div>
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('rejected', 'nonconf')"
+                  @keydown.enter="goHqLedgerFilter('rejected', 'nonconf')"
+                >
+                  <span class="risk-db-kpi-title">DB 반려 건</span>
+                  <strong>{{ riskDbOverview.hq.nonconformity.rejected }}</strong>
+                  <small class="risk-db-kpi-hint">재검토·현장 안내</small>
+                </div>
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('reward', 'nonconf')"
+                  @keydown.enter="goHqLedgerFilter('reward', 'nonconf')"
+                >
+                  <span class="risk-db-kpi-title">포상 후보</span>
+                  <strong>{{ riskDbOverview.hq.nonconformity.reward_candidates }}</strong>
+                  <small class="risk-db-kpi-hint">포상 검토 대상</small>
+                </div>
+                <div
+                  class="risk-db-kpi-card risk-db-kpi-card--action"
+                  role="button"
+                  tabindex="0"
+                  @click="goHqLedgerFilter('db_confirmed', 'nonconf')"
+                  @keydown.enter="goHqLedgerFilter('db_confirmed', 'nonconf')"
+                >
+                  <span class="risk-db-kpi-title">DB 승격 확정</span>
+                  <strong>{{ riskDbOverview.hq.nonconformity.approved }}</strong>
+                  <small class="risk-db-kpi-hint">승격 조건 충족(자동 DB 반영 아님)</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </BaseCard>
+      </section>
+
       <section class="summary-groups">
         <BaseCard class="summary-group-card">
           <div class="summary-group-head">
@@ -169,6 +301,7 @@
 import { computed, onMounted, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 import { api } from "@/services/api";
+import type { LedgerDashboardFilter } from "@/utils/ledgerDashboardFilter";
 import {
   BaseCard,
   FilterBar,
@@ -186,6 +319,35 @@ interface DashboardSummary {
   worker_voice_items: number;
   nonconformity_items: number;
   documents_by_site: { site_id: number | null; count: number }[];
+}
+
+interface RiskDbHqKpis {
+  pending_requests: number;
+  pending_approval: number;
+  rejected: number;
+  approved: number;
+  reward_candidates: number;
+}
+
+interface RiskDbSiteKpis {
+  unreceived: number;
+  in_progress: number;
+  action_completed: number;
+  db_request_needed: number;
+  db_requested: number;
+}
+
+interface RiskDbOverviewPayload {
+  hq: {
+    combined: RiskDbHqKpis;
+    worker_voice: RiskDbHqKpis;
+    nonconformity: RiskDbHqKpis;
+  };
+  site: {
+    combined: RiskDbSiteKpis;
+    worker_voice: RiskDbSiteKpis;
+    nonconformity: RiskDbSiteKpis;
+  };
 }
 
 interface WeatherOverviewSite {
@@ -251,6 +413,7 @@ const sites = ref<SiteRow[]>([]);
 const siteSummaryMap = ref<Record<number, DashboardSiteSummary>>({});
 const recentOpinions = ref<OpinionRow[]>([]);
 const weatherOverview = ref<WeatherOverview | null>(null);
+const riskDbOverview = ref<RiskDbOverviewPayload | null>(null);
 
 const filterSiteId = ref("");
 const filterSiteStatus = ref<"ALL" | "IN_PROGRESS" | "STOPPED" | "COMPLETED" | "UNKNOWN">("ALL");
@@ -422,6 +585,11 @@ function goOpinions() {
   router.push({ name: "hq-safe-opinions" });
 }
 
+function goHqLedgerFilter(filter: LedgerDashboardFilter, board: "voice" | "nonconf") {
+  const name = board === "voice" ? "hq-safe-worker-voice" : "hq-safe-nonconformities";
+  router.push({ name, query: { filter } });
+}
+
 const officeTitle = computed(() => {
   const office = weatherOverview.value?.office;
   if (!office) return "정보 없음";
@@ -465,9 +633,10 @@ async function load() {
       api.get("/documents/hq-dashboard", { params: dashParams }),
       api.get<OpinionRow[]>("/opinions"),
       api.get<WeatherOverview>("/dashboard/weather/hq-overview"),
+      api.get<RiskDbOverviewPayload>("/dashboard/risk-db-overview"),
     ]);
 
-    const [sumRes, sitesRes, dashRes, opRes, weatherRes] = settled;
+    const [sumRes, sitesRes, dashRes, opRes, weatherRes, riskRes] = settled;
 
     if (sumRes.status === "fulfilled") {
       data.value = sumRes.value.data;
@@ -496,6 +665,12 @@ async function load() {
       recentOpinions.value = (opRes.value.data || []).slice(0, 8);
     } else {
       recentOpinions.value = [];
+    }
+
+    if (riskRes.status === "fulfilled") {
+      riskDbOverview.value = riskRes.value.data;
+    } else {
+      riskDbOverview.value = null;
     }
 
     if (weatherRes.status === "fulfilled") {
@@ -529,6 +704,25 @@ onMounted(load);
   max-width: none;
   margin: 0;
   box-sizing: border-box;
+}
+
+.dash-alerts {
+  margin-bottom: 20px;
+}
+
+.dash-alerts-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.dash-alerts-sub {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.45;
 }
 
 .dash-loading {
@@ -656,6 +850,96 @@ onMounted(load);
 .ledger-nav-card:hover,
 .panel-link-btn:hover {
   filter: brightness(0.98);
+}
+
+.risk-ledger-split-card {
+  overflow: visible;
+}
+
+.risk-ledger-split {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .risk-ledger-split {
+    grid-template-columns: 1fr;
+  }
+
+  .risk-ledger-divider {
+    width: 100%;
+    height: 1px;
+    min-height: 0;
+  }
+}
+
+.risk-ledger-section-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.risk-ledger-section-sub {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.risk-ledger-divider {
+  width: 1px;
+  min-height: 120px;
+  background: linear-gradient(to bottom, transparent, #e2e8f0 12%, #e2e8f0 88%, transparent);
+  align-self: stretch;
+}
+
+.risk-db-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.risk-db-kpi-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 14px 10px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.risk-db-kpi-card:hover {
+  border-color: #cbd5e1;
+  background: #fff;
+}
+
+.risk-db-kpi-card--action:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.risk-db-kpi-title {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.risk-db-kpi-card strong {
+  font-size: 24px;
+  color: #0f172a;
+}
+
+.risk-db-kpi-hint {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.35;
+  margin-top: 2px;
 }
 
 .weather-overview {

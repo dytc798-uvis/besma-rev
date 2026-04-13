@@ -13,6 +13,23 @@
         >
           안전보건 방침 및 목표
         </RouterLink>
+        <p v-if="!isMobileViewport" class="site-menu-section-label">주요업무</p>
+        <RouterLink :class="menuLinkClass('risk-library', '/site/risk-library')" :style="menuOrderStyle('risk-library')" to="/site/risk-library">
+          <span class="menu-icon" v-if="menuIcon('risk-library')">{{ menuIcon("risk-library") }}</span>
+          위험성평가 DB 조회
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" :style="menuOrderStyle('worker-voice')" to="/site/worker-voice">
+          <span class="menu-icon" v-if="menuIcon('worker-voice')">{{ menuIcon("worker-voice") }}</span>
+          근로자의견청취
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('nonconformities', '/site/nonconformities')" :style="menuOrderStyle('nonconformities')" to="/site/nonconformities">
+          <span class="menu-icon" v-if="menuIcon('nonconformities')">{{ menuIcon("nonconformities") }}</span>
+          부적합사항
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('document-explorer', '/site/document-explorer')" :style="menuOrderStyle('document-explorer')" to="/site/document-explorer">
+          <span class="menu-icon" v-if="menuIcon('document-explorer')">{{ menuIcon("document-explorer") }}</span>
+          문서 탐색
+        </RouterLink>
         <RouterLink
           v-for="m in dynamicMenus"
           :key="`site-dyn-${m.slug}`"
@@ -22,26 +39,11 @@
         >
           {{ m.title }}
         </RouterLink>
+        <p class="site-menu-section-label">기타 메뉴</p>
         <RouterLink :class="menuLinkClass('safety-education', '/site/safety-education')" :style="menuOrderStyle('safety-education')" to="/site/safety-education">안전 교육</RouterLink>
         <RouterLink :class="menuLinkClass('safety-inspections', '/site/safety-inspections')" :style="menuOrderStyle('safety-inspections')" to="/site/safety-inspections">안전 점검</RouterLink>
-        <RouterLink :class="menuLinkClass('nonconformities', '/site/nonconformities')" :style="menuOrderStyle('nonconformities')" to="/site/nonconformities">
-          <span class="menu-icon" v-if="menuIcon('nonconformities')">{{ menuIcon("nonconformities") }}</span>
-          부적합사항
-        </RouterLink>
-        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" :style="menuOrderStyle('worker-voice')" to="/site/worker-voice">
-          <span class="menu-icon" v-if="menuIcon('worker-voice')">{{ menuIcon("worker-voice") }}</span>
-          근로자의견청취
-        </RouterLink>
         <RouterLink :class="menuLinkClass('mobile', '/site/mobile')" :style="menuOrderStyle('mobile')" to="/site/mobile">모바일 운영</RouterLink>
         <RouterLink :class="menuLinkClass('mobile-site-search', '/site/mobile/site-search')" :style="menuOrderStyle('mobile-site-search')" to="/site/mobile/site-search">현장 검색</RouterLink>
-        <RouterLink :class="menuLinkClass('document-explorer', '/site/document-explorer')" :style="menuOrderStyle('document-explorer')" to="/site/document-explorer">
-          <span class="menu-icon" v-if="menuIcon('document-explorer')">{{ menuIcon("document-explorer") }}</span>
-          문서 탐색
-        </RouterLink>
-        <RouterLink :class="menuLinkClass('risk-library', '/site/risk-library')" :style="menuOrderStyle('risk-library')" to="/site/risk-library">
-          <span class="menu-icon" v-if="menuIcon('risk-library')">{{ menuIcon("risk-library") }}</span>
-          위험성평가 DB 조회
-        </RouterLink>
         <RouterLink :class="menuLinkClass('documents', '/site/documents')" :style="menuOrderStyle('documents')" to="/site/documents">
           <span class="menu-icon" v-if="menuIcon('documents')">{{ menuIcon("documents") }}</span>
           내 현장 문서 <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span>
@@ -108,14 +110,14 @@ const menuOrderMap = ref<Record<string, number>>({});
 const SITE_FIXED_MENU_KEYS = [
   "notices",
   "safety-policy-goals",
+  "risk-library",
+  "worker-voice",
+  "nonconformities",
+  "document-explorer",
   "safety-education",
   "safety-inspections",
-  "nonconformities",
-  "worker-voice",
   "mobile",
   "mobile-site-search",
-  "document-explorer",
-  "risk-library",
   "documents",
   "communications",
   "opinions",
@@ -126,7 +128,7 @@ const sidebarCollapsed = ref(false);
 const isMobileViewport = ref(false);
 let unreadTimer: number | null = null;
 const headerSiteLabel = computed(() => (siteName.value ? `현장: ${siteName.value}` : "현장: -"));
-const PRIMARY_MENUS = ["documents", "risk-library", "worker-voice", "document-explorer", "nonconformities"] as const;
+const PRIMARY_MENUS = ["risk-library", "worker-voice", "nonconformities", "document-explorer", "documents"] as const;
 
 onMounted(() => {
   initializeLayout();
@@ -406,5 +408,15 @@ function menuIcon(key: string) {
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.site-menu-section-label {
+  margin: 12px 16px 6px;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(229, 231, 235, 0.55);
 }
 </style>
