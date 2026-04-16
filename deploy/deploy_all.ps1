@@ -58,7 +58,9 @@ if (-not $SkipPush) {
 }
 
 Exec-Step "Deploy backend on remote server" {
-  ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" $remoteCmd
+  # Windows CRLF in here-string breaks remote bash (`set: invalid option`, `cd: ...\r`).
+  $unix = $remoteCmd -replace "`r`n", "`n" -replace "`r", "`n"
+  $unix | & ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "bash -s"
 }
 
 Exec-Step "Verify API endpoints on remote" {
