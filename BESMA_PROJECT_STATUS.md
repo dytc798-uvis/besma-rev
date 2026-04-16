@@ -80,8 +80,19 @@
 
 ---
 
-## 6. 변경 이력 (이 문서)
+## 6. 운영 서버 배포 (요약)
+
+| 항목 | 내용 |
+|------|------|
+| **백엔드** | `deploy/deploy_all.ps1` — 프론트 로컬 빌드 검증 → `git push` → SSH로 `git pull` + `deploy/deploy_backend.sh` + `systemctl restart besma-backend`. 키·호스트는 `deploy/BACKEND_OPERATIONS.md` 참고. |
+| **스크립트 주의** | Windows에서 원격 bash로 넘길 때 **CRLF 제거** 후 `bash -s`로 파이프 (`deploy_all.ps1` 반영됨). |
+| **프론트엔드** | 이 저장소 기본 배포는 **API(8001)만 서버 systemd**. 정적 UI는 **별도 호스팅**(예: Vercel, nginx `dist/`)에서 `npm run build` 결과물을 배포해야 브라우저에 최신 UI가 반영된다. |
+
+---
+
+## 7. 변경 이력 (이 문서)
 
 | 날짜 | 내용 |
 |------|------|
 | 2026-04-16 | 초안: 일일안전회의 허브 통합·반응형·OPEN/INVARIANT 연계·병목·충돌 표 정리. |
+| 2026-04-16 | §6 추가: 운영 배포·프론트 분리 안내. |
