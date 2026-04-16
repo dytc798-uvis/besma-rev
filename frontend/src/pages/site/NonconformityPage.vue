@@ -76,16 +76,6 @@
               <textarea v-model="createDraft.action_after" rows="2" />
             </label>
             <label>
-              <span>상태</span>
-              <select v-model="createDraft.action_status">
-                <option value="">선택</option>
-                <option value="OPEN">접수</option>
-                <option value="IN_PROGRESS">조치중</option>
-                <option value="DONE">완료</option>
-                <option value="HOLD">보류</option>
-              </select>
-            </label>
-            <label>
               <span>담당자</span>
               <input v-model="createDraft.action_owner" type="text" />
             </label>
@@ -113,6 +103,7 @@
             <p class="panel-sub">저장 후 현재 목록이 즉시 다시 조회됩니다.</p>
           </div>
         </div>
+        <p v-if="dashboardListFilter" class="dashboard-filter-banner">{{ dashboardFilterBannerText }}</p>
         <div class="table-wrap">
           <table class="ledger-table">
             <thead>
@@ -120,14 +111,16 @@
                 <th>No</th>
                 <th>부적합 내용</th>
                 <th>조치 전/후</th>
-                <th>상태/담당</th>
+                <th>담당</th>
                 <th>기한/완료</th>
                 <th>사진</th>
+                <th>운영 처리</th>
+                <th>DB 승격</th>
                 <th>저장</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in currentItems" :key="item.id">
+              <tr v-for="item in displayNcSiteItems" :key="item.id">
                 <td>{{ item.row_no }}</td>
                 <td>
                   <textarea v-model="draftItems[item.id].issue_text" rows="3" />
@@ -140,15 +133,7 @@
                 </td>
                 <td>
                   <div class="cell-stack">
-                    <select v-model="draftItems[item.id].action_status">
-                      <option value="">선택</option>
-                      <option value="OPEN">접수</option>
-                      <option value="IN_PROGRESS">조치중</option>
-                      <option value="DONE">완료</option>
-                      <option value="HOLD">보류</option>
-                    </select>
                     <input v-model="draftItems[item.id].action_owner" type="text" placeholder="담당자" />
-                    <span class="mini-badge">{{ actionStatusLabel(item.action_status) }}</span>
                   </div>
                 </td>
                 <td>
@@ -166,11 +151,51 @@
                   </div>
                 </td>
                 <td>
+                  <div class="cell-stack ops-block">
+                    <div class="sub-label">접수</div>
+                    <span class="mini-badge" :class="ncReceiptBadge(item)">{{ ncReceiptLabel(item) }}</span>
+                    <div class="btn-row">
+                      <button class="stitch-btn-secondary btn-sm" type="button" :disabled="!canNcSiteApprove(item)" @click="ncSiteApprove(item.id)">접수</button>
+                      <button class="stitch-btn-secondary btn-sm danger" type="button" :disabled="!canNcSiteReject(item)" @click="ncSiteReject(item.id)">반려</button>
+                    </div>
+                    <p v-if="item.site_reject_note" class="reject-note">반려: {{ item.site_reject_note }}</p>
+                    <div class="sub-label">조치 상태</div>
+                    <select v-model="ncActionDrafts[item.id]" class="action-select">
+                      <option value="not_started">미조치</option>
+                      <option value="in_progress">조치중</option>
+                      <option value="completed">조치완료</option>
+                    </select>
+                    <button class="stitch-btn-secondary btn-sm" type="button" @click="ncSaveActionStatus(item.id)">조치 저장</button>
+                    <div class="sub-label">현장 메모</div>
+                    <textarea v-model="ncSiteCommentDrafts[item.id]" rows="2" />
+                    <button class="stitch-btn-secondary btn-sm" type="button" @click="ncSaveSiteComment(item.id)">메모 저장</button>
+                  </div>
+                </td>
+                <td>
+                  <div class="cell-stack db-block">
+                    <p class="db-hint">DB 반영은 현장 요청 + 본사 승인 절차입니다.</p>
+                    <span class="mini-badge db-badge">{{ ncRiskReqLabel(item) }}</span>
+                    <span class="mini-badge db-badge-hq" :class="ncRiskHqBadge(item)">{{ ncRiskHqLabel(item) }}</span>
+                    <button
+                      class="stitch-btn-primary btn-sm"
+                      type="button"
+                      :disabled="!canNcRequestRiskDb(item)"
+                      title="반복 위험이 있거나 타 현장 적용이 필요한 경우에만 누르세요. 접수·조치와 별개입니다."
+                      @click="ncRequestRiskDb(item.id)"
+                    >
+                      위험성평가 DB 등록 요청
+                    </button>
+                  </div>
+                </td>
+                <td>
                   <button class="stitch-btn-primary btn-sm" type="button" @click="saveItem(item.id)">저장</button>
                 </td>
               </tr>
               <tr v-if="currentItems.length === 0">
-                <td colspan="7" class="empty-cell">등록된 row가 없습니다.</td>
+                <td colspan="9" class="empty-cell">등록된 row가 없습니다.</td>
+              </tr>
+              <tr v-else-if="displayNcSiteItems.length === 0">
+                <td colspan="9" class="empty-cell">이 필터에 해당하는 row가 없습니다.</td>
               </tr>
             </tbody>
           </table>
@@ -209,15 +234,88 @@
         </table>
       </div>
     </section>
+
+    <section v-if="!isSite" class="panel">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title">전체 부적합 row</h2>
+          <p class="panel-sub">본사는 DB 등록 요청에 대한 승인·반려와 포상 후보만 처리합니다.</p>
+        </div>
+      </div>
+      <p v-if="dashboardListFilter" class="dashboard-filter-banner">{{ dashboardFilterBannerText }}</p>
+      <div class="table-wrap">
+        <table class="ledger-table hq-nc-table">
+          <thead>
+            <tr>
+              <th>현장/대장</th>
+              <th>내용</th>
+              <th>접수·조치</th>
+              <th>DB요청/HQ</th>
+              <th>본사 메모</th>
+              <th>액션</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in displayNcHqItems" :key="row.id">
+              <td>{{ row.ledger_title || "-" }}</td>
+              <td>{{ row.issue_text }}</td>
+              <td>
+                <div class="cell-stack">
+                  <span>{{ ncReceiptLabel(row) }}</span>
+                  <span class="text-muted">조치: {{ ncActionUi(row.action_status) }}</span>
+                </div>
+              </td>
+              <td>
+                <div class="cell-stack">
+                  <span>{{ ncRiskReqLabel(row) }}</span>
+                  <span class="mini-badge db-badge-hq" :class="ncRiskHqBadge(row)">{{ ncRiskHqLabel(row) }}</span>
+                  <span v-if="row.ready_for_risk_db" class="text-ok">DB 승격 확정</span>
+                </div>
+              </td>
+              <td>
+                <textarea v-model="ncHqCommentDrafts[row.id]" rows="2" />
+                <button class="stitch-btn-secondary btn-sm" type="button" @click="ncSaveHqComment(row.id)">저장</button>
+              </td>
+              <td class="action-inline hq-nc-actions">
+                <button
+                  class="stitch-btn-secondary btn-sm"
+                  type="button"
+                  :disabled="!canNcHqApproveRiskDb(row)"
+                  title="현장에서 위험성평가 DB 등록 요청을 한 항목만 승인할 수 있습니다."
+                  @click="ncHqApproveRiskDb(row.id)"
+                >
+                  DB 등록 승인
+                </button>
+                <button class="stitch-btn-secondary btn-sm danger" type="button" :disabled="!canNcHqRejectRiskDb(row)" @click="ncHqRejectRiskDb(row.id)">DB 등록 반려</button>
+                <button class="stitch-btn-primary btn-sm" type="button" :disabled="!canNcHqReward(row)" @click="ncHqReward(row.id)">포상후보등록</button>
+              </td>
+            </tr>
+            <tr v-if="hqRowItems.length === 0">
+              <td colspan="6" class="empty-cell">등록된 row가 없습니다.</td>
+            </tr>
+            <tr v-else-if="displayNcHqItems.length === 0">
+              <td colspan="6" class="empty-cell">이 필터에 해당하는 row가 없습니다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { canPreviewInBrowser } from "@/utils/filePreview";
 import { formatDateTimeKst } from "@/utils/datetime";
+import {
+  isLedgerDashboardFilter,
+  ledgerFilterDescription,
+  rowMatchesLedgerFilter,
+  type LedgerDashboardFilter,
+} from "@/utils/ledgerDashboardFilter";
 
 interface LedgerRow {
   id: number;
@@ -232,6 +330,7 @@ interface LedgerRow {
 interface NonconformityItemRow {
   id: number;
   row_no: number;
+  ledger_title?: string;
   issue_text: string;
   action_before?: string | null;
   action_after?: string | null;
@@ -241,6 +340,20 @@ interface NonconformityItemRow {
   action_owner?: string | null;
   before_photo_url?: string | null;
   after_photo_url?: string | null;
+  receipt_decision?: string | null;
+  site_approved?: boolean;
+  site_rejected?: boolean;
+  site_reject_note?: string | null;
+  site_action_comment?: string | null;
+  site_comment?: string | null;
+  hq_review_comment?: string | null;
+  hq_comment?: string | null;
+  risk_db_request_status?: string | null;
+  risk_db_hq_status?: string | null;
+  ready_for_risk_db?: boolean;
+  hq_checked?: boolean;
+  hq_final_approved?: boolean;
+  reward_candidate?: boolean;
 }
 
 interface CurrentLedgerPayload {
@@ -253,13 +366,29 @@ interface DraftItem {
   issue_text: string;
   action_before: string;
   action_after: string;
-  action_status: string;
   action_due_date: string;
   completed_at: string;
   action_owner: string;
 }
 
 const auth = useAuthStore();
+const route = useRoute();
+const dashboardListFilter = ref<LedgerDashboardFilter | null>(null);
+
+watch(
+  () => route.query.filter,
+  (q) => {
+    const v = Array.isArray(q) ? q[0] : q;
+    dashboardListFilter.value = typeof v === "string" && isLedgerDashboardFilter(v) ? v : null;
+  },
+  { immediate: true },
+);
+
+const dashboardFilterBannerText = computed(() => {
+  const f = dashboardListFilter.value;
+  return f ? `대시보드 필터: ${ledgerFilterDescription(f)} (목록에 맞는 row만 표시)` : "";
+});
+
 const ledgers = ref<LedgerRow[]>([]);
 const currentLedger = ref<CurrentLedgerPayload | null>(null);
 const ledgerFile = ref<File | null>(null);
@@ -269,11 +398,14 @@ const savingCreate = ref(false);
 const draftItems = ref<Record<number, DraftItem>>({});
 const beforePhotos = ref<Record<number, File | null>>({});
 const afterPhotos = ref<Record<number, File | null>>({});
+const hqRowItems = ref<NonconformityItemRow[]>([]);
+const ncActionDrafts = ref<Record<number, string>>({});
+const ncSiteCommentDrafts = ref<Record<number, string>>({});
+const ncHqCommentDrafts = ref<Record<number, string>>({});
 const createDraft = ref<DraftItem>({
   issue_text: "",
   action_before: "",
   action_after: "",
-  action_status: "",
   action_due_date: "",
   completed_at: "",
   action_owner: "",
@@ -281,13 +413,27 @@ const createDraft = ref<DraftItem>({
 
 const isSite = computed(() => auth.user?.role === "SITE");
 const currentItems = computed(() => currentLedger.value?.items ?? []);
+const hqRoles = computed(() => ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN"].includes(auth.user?.role || ""));
+
+const displayNcSiteItems = computed(() => {
+  const list = currentItems.value;
+  const f = dashboardListFilter.value;
+  if (!f) return list;
+  return list.filter((item) => rowMatchesLedgerFilter(item, f));
+});
+
+const displayNcHqItems = computed(() => {
+  const list = hqRowItems.value;
+  const f = dashboardListFilter.value;
+  if (!f) return list;
+  return list.filter((item) => rowMatchesLedgerFilter(item, f));
+});
 
 function emptyDraft(): DraftItem {
   return {
     issue_text: "",
     action_before: "",
     action_after: "",
-    action_status: "",
     action_due_date: "",
     completed_at: "",
     action_owner: "",
@@ -299,7 +445,6 @@ function draftFromItem(item: NonconformityItemRow): DraftItem {
     issue_text: item.issue_text || "",
     action_before: item.action_before || "",
     action_after: item.action_after || "",
-    action_status: item.action_status || "",
     action_due_date: item.action_due_date || "",
     completed_at: item.completed_at || "",
     action_owner: item.action_owner || "",
@@ -308,6 +453,32 @@ function draftFromItem(item: NonconformityItemRow): DraftItem {
 
 function syncDrafts(items: NonconformityItemRow[]) {
   draftItems.value = Object.fromEntries(items.map((item) => [item.id, draftFromItem(item)]));
+}
+
+function ncActionToUi(v?: string | null) {
+  const x = (v || "not_started").toLowerCase();
+  if (["in_progress"].includes(x)) return "in_progress";
+  if (["completed", "done", "closed"].includes(x)) return "completed";
+  return "not_started";
+}
+
+function syncNcOpsDrafts(items: NonconformityItemRow[]) {
+  const a: Record<number, string> = {};
+  const s: Record<number, string> = {};
+  for (const it of items) {
+    a[it.id] = ncActionToUi(it.action_status);
+    s[it.id] = it.site_action_comment || it.site_comment || "";
+  }
+  ncActionDrafts.value = { ...ncActionDrafts.value, ...a };
+  ncSiteCommentDrafts.value = { ...ncSiteCommentDrafts.value, ...s };
+}
+
+function syncNcHqCommentDrafts(items: NonconformityItemRow[]) {
+  const h: Record<number, string> = {};
+  for (const it of items) {
+    h[it.id] = it.hq_review_comment || it.hq_comment || "";
+  }
+  ncHqCommentDrafts.value = { ...ncHqCommentDrafts.value, ...h };
 }
 
 function sourceLabel(sourceType?: string) {
@@ -381,10 +552,14 @@ async function load() {
     currentLedger.value = res.data;
     ledgers.value = res.data.imports ?? [];
     syncDrafts(res.data.items ?? []);
+    syncNcOpsDrafts(res.data.items ?? []);
     return;
   }
   const res = await api.get<{ items: LedgerRow[] }>("/safety-features/nonconformities");
   ledgers.value = res.data.items ?? [];
+  const rowRes = await api.get<{ items: NonconformityItemRow[] }>("/safety-features/nonconformities/items");
+  hqRowItems.value = rowRes.data.items ?? [];
+  syncNcHqCommentDrafts(hqRowItems.value);
 }
 
 function buildItemForm(draft: DraftItem) {
@@ -392,11 +567,168 @@ function buildItemForm(draft: DraftItem) {
   form.append("issue_text", draft.issue_text || "");
   form.append("action_before", draft.action_before || "");
   form.append("action_after", draft.action_after || "");
-  form.append("action_status", draft.action_status || "");
+  form.append("action_status", "");
   form.append("action_due_date", draft.action_due_date || "");
   form.append("completed_at", draft.completed_at || "");
   form.append("action_owner", draft.action_owner || "");
   return form;
+}
+
+function ncReceiptLabel(item: NonconformityItemRow) {
+  const x = (item.receipt_decision || "").toLowerCase();
+  if (x === "accepted") return "접수";
+  if (x === "rejected") return "반려";
+  return "대기";
+}
+
+function ncReceiptBadge(item: NonconformityItemRow) {
+  const x = (item.receipt_decision || "").toLowerCase();
+  if (x === "rejected") return "badge-warn";
+  if (x === "accepted") return "badge-slate";
+  return "";
+}
+
+function ncRiskReqLabel(item: NonconformityItemRow) {
+  return (item.risk_db_request_status || "").toLowerCase() === "requested" ? "요청됨" : "미요청";
+}
+
+function ncRiskHqLabel(item: NonconformityItemRow) {
+  const x = (item.risk_db_hq_status || "").toLowerCase();
+  if (x === "approved") return "본사 승인";
+  if (x === "rejected") return "본사 반려";
+  return "본사 대기";
+}
+
+function ncRiskHqBadge(item: NonconformityItemRow) {
+  const x = (item.risk_db_hq_status || "").toLowerCase();
+  if (x === "approved") return "badge-blue";
+  if (x === "rejected") return "badge-warn";
+  return "";
+}
+
+function ncActionUi(v?: string | null) {
+  const u = ncActionToUi(v);
+  if (u === "in_progress") return "조치중";
+  if (u === "completed") return "조치완료";
+  return "미조치";
+}
+
+function ncRiskDbLocked(item: NonconformityItemRow) {
+  return (item.risk_db_hq_status || "").toLowerCase() === "approved" || !!item.hq_final_approved;
+}
+
+function canNcSiteApprove(item: NonconformityItemRow) {
+  const rec = (item.receipt_decision || "").toLowerCase();
+  return isSite.value && !ncRiskDbLocked(item) && (rec !== "accepted" || !!item.site_rejected);
+}
+
+function canNcSiteReject(item: NonconformityItemRow) {
+  const rec = (item.receipt_decision || "").toLowerCase();
+  return isSite.value && !ncRiskDbLocked(item) && rec !== "rejected" && !item.site_rejected;
+}
+
+function canNcRequestRiskDb(item: NonconformityItemRow) {
+  return (
+    isSite.value &&
+    (item.receipt_decision || "").toLowerCase() === "accepted" &&
+    !item.site_rejected &&
+    (item.risk_db_hq_status || "").toLowerCase() !== "approved"
+  );
+}
+
+function canNcHqApproveRiskDb(item: NonconformityItemRow) {
+  return (
+    hqRoles.value &&
+    (item.receipt_decision || "").toLowerCase() === "accepted" &&
+    !item.site_rejected &&
+    (item.risk_db_request_status || "").toLowerCase() === "requested" &&
+    (item.risk_db_hq_status || "").toLowerCase() === "pending"
+  );
+}
+
+function canNcHqRejectRiskDb(item: NonconformityItemRow) {
+  return (
+    hqRoles.value &&
+    (item.risk_db_request_status || "").toLowerCase() === "requested" &&
+    (item.risk_db_hq_status || "").toLowerCase() !== "approved"
+  );
+}
+
+function canNcHqReward(item: NonconformityItemRow) {
+  return (
+    hqRoles.value &&
+    !!item.site_approved &&
+    !item.site_rejected &&
+    (item.risk_db_hq_status || "").toLowerCase() === "approved" &&
+    !item.reward_candidate
+  );
+}
+
+async function ncSiteApprove(itemId: number) {
+  await api.post(`/safety-features/nonconformities/items/${itemId}/site-approve`);
+  await load();
+}
+
+async function ncSiteReject(itemId: number) {
+  const note = window.prompt("반려 사유(선택)") || "";
+  const form = new FormData();
+  form.append("reject_note", note);
+  await api.post(`/safety-features/nonconformities/items/${itemId}/site-reject`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  await load();
+}
+
+async function ncSaveActionStatus(itemId: number) {
+  const form = new FormData();
+  form.append("action_status", ncActionDrafts.value[itemId] || "not_started");
+  await api.post(`/safety-features/nonconformities/items/${itemId}/action-status`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  await load();
+}
+
+async function ncSaveSiteComment(itemId: number) {
+  const form = new FormData();
+  form.append("comment", ncSiteCommentDrafts.value[itemId] || "");
+  await api.post(`/safety-features/nonconformities/items/${itemId}/site-action-comment`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  await load();
+}
+
+async function ncSaveHqComment(itemId: number) {
+  const form = new FormData();
+  form.append("comment", ncHqCommentDrafts.value[itemId] || "");
+  await api.post(`/safety-features/nonconformities/items/${itemId}/hq-review-comment`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  await load();
+}
+
+async function ncRequestRiskDb(itemId: number) {
+  await api.post(`/safety-features/nonconformities/items/${itemId}/request-risk-db-registration`);
+  await load();
+}
+
+async function ncHqApproveRiskDb(itemId: number) {
+  await api.post(`/safety-features/nonconformities/items/${itemId}/approve-risk-db-registration`);
+  await load();
+}
+
+async function ncHqRejectRiskDb(itemId: number) {
+  const note = window.prompt("DB 등록 반려 사유(선택)") || "";
+  const form = new FormData();
+  form.append("reject_note", note);
+  await api.post(`/safety-features/nonconformities/items/${itemId}/reject-risk-db-registration`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  await load();
+}
+
+async function ncHqReward(itemId: number) {
+  await api.post(`/safety-features/nonconformities/items/${itemId}/reward-candidate`);
+  await load();
 }
 
 async function uploadLedger() {
@@ -613,7 +945,72 @@ select {
 .ledger-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 1180px;
+}
+
+.hq-nc-table {
   min-width: 960px;
+}
+
+.sub-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.db-hint {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.ops-block .btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.db-block {
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.db-badge {
+  margin-right: 6px;
+}
+
+.action-select {
+  max-width: 140px;
+}
+
+.text-muted {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.text-ok {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: #166534;
+}
+
+.dashboard-filter-banner {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  font-size: 12px;
+  color: #1e40af;
+}
+
+.hq-nc-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
 }
 
 .ledger-table th,
@@ -669,6 +1066,56 @@ select {
 
 .empty-cell {
   text-align: center;
+}
+
+.mini-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.badge-good {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge-blue {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.badge-slate {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.badge-warn {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.stitch-btn-secondary.danger {
+  color: #b91c1c;
+}
+
+.action-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reject-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #b91c1c;
+}
+
+.btn-sm {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 @media (max-width: 960px) {

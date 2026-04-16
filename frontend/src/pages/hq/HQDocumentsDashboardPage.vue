@@ -116,7 +116,7 @@
                   </td>
                   <td v-for="col in requirementColumns" :key="`cell-${row.site_id}-${col.requirement_key}`" class="status-cell">
                     <div class="matrix-cell-inner">
-                      <template v-if="isLedgerManagedDocumentType(col.requirement_key)">
+                      <template v-if="isLedgerManagedDocumentType(col.document_type_code)">
                         <button
                           type="button"
                           class="status-pill status-pill-ledger-ref"
@@ -408,14 +408,20 @@ const matrixItems = computed(() =>
   }),
 );
 function requirementColumnKey(item: DashboardItem): string {
-  return (item.document_type_code || "").trim() || `REQ-${item.requirement_id}`;
+  // 상세 이동은 requirement_id 축으로 고정해 문서코드 중복/누락 시에도 셀 충돌을 막는다.
+  return `REQ-${item.requirement_id}`;
 }
 const requirementColumns = computed(() => {
-  const seen = new Map<string, { requirement_key: string; requirement_id: number; title: string }>();
+  const seen = new Map<string, { requirement_key: string; requirement_id: number; title: string; document_type_code: string | null }>();
   for (const item of matrixItems.value) {
     const key = requirementColumnKey(item);
     if (!seen.has(key)) {
-      seen.set(key, { requirement_key: key, requirement_id: item.requirement_id, title: item.title });
+      seen.set(key, {
+        requirement_key: key,
+        requirement_id: item.requirement_id,
+        title: item.title,
+        document_type_code: (item.document_type_code || "").trim() || null,
+      });
     }
   }
   return Array.from(seen.values()).sort((a, b) => a.title.localeCompare(b.title, "ko"));
@@ -548,7 +554,7 @@ function matrixDisplayCell(siteId: number, requirementKeyOrId: string | number):
     site_id: siteId,
     site_name: siteName,
     requirement_id: typeof requirementKeyOrId === "number" ? requirementKeyOrId : -1,
-    document_type_code: typeof requirementKeyOrId === "string" ? requirementKeyOrId : null,
+    document_type_code: col?.document_type_code ?? null,
     title: col?.title ?? "-",
     frequency: "",
     status: "NOT_SUBMITTED",
@@ -569,13 +575,15 @@ function matrixDisplayCell(siteId: number, requirementKeyOrId: string | number):
 }
 
 function goLedgerFromMatrix(siteId: number, requirementKey: string) {
-  const name = hqLedgerRouteForDocumentType(requirementKey);
+  const col = requirementColumns.value.find((c) => c.requirement_key === requirementKey);
+  const name = hqLedgerRouteForDocumentType(col?.document_type_code ?? null);
   if (!name) return;
   void router.push({ name, query: { site_id: String(siteId) } });
 }
 
 function goInstanceDetail(siteId: number, requirementKey: string) {
-  if (isLedgerManagedDocumentType(requirementKey)) {
+  const col = requirementColumns.value.find((c) => c.requirement_key === requirementKey);
+  if (isLedgerManagedDocumentType(col?.document_type_code ?? null)) {
     goLedgerFromMatrix(siteId, requirementKey);
     return;
   }

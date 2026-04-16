@@ -300,7 +300,7 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
     { key: "safety-inspections", label: "안전 점검" },
     { key: "nonconformities", label: "부적합사항" },
     { key: "worker-voice", label: "근로자의견청취" },
-    { key: "mobile", label: "모바일 운영" },
+    { key: "mobile", label: "일일안전회의(일일위험성평가)" },
     { key: "mobile-site-search", label: "현장 검색" },
     { key: "document-explorer", label: "문서 탐색" },
     { key: "risk-library", label: "위험성평가 DB 조회" },

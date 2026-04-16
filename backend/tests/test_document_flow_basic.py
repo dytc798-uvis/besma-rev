@@ -87,7 +87,7 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    current_user = {"value": SimpleNamespace(id=1, role=Role.SITE, site_id=site_id)}
+    current_user = {"value": SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_doc_manager")}
     app.dependency_overrides[get_current_user_with_bypass] = lambda: current_user["value"]
     client = TestClient(app)
 
@@ -152,7 +152,7 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert site_comment_res.json()["user_role"] == "SITE"
     assert int(site_comment_res.json()["instance_id"]) == first_instance_id
 
-    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id)
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id, login_id="hq_doc_reviewer")
     hq_comment_list_res = client.get(f"/documents/{first_document_id}/comments")
     assert hq_comment_list_res.status_code == 200
     assert [row["comment_text"] for row in hq_comment_list_res.json()] == ["현장 확인 요청 사항 메모"]
@@ -177,7 +177,7 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert approve_res.status_code == 200
     assert approve_res.json()["current_status"] == DocumentStatus.APPROVED
 
-    current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id)
+    current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_doc_manager")
     site_comment_list_res = client.get(f"/documents/{first_document_id}/comments")
     assert site_comment_list_res.status_code == 200
     assert [row["user_role"] for row in site_comment_list_res.json()] == ["SITE", "HQ"]
@@ -185,6 +185,25 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
         "현장 확인 요청 사항 메모",
         "본사 검토 예정, 추가 자료는 승인 흐름과 별개로 남깁니다.",
     ]
+
+    site_comment_id = int(site_comment_list_res.json()[0]["id"])
+    hq_comment_id = int(site_comment_list_res.json()[1]["id"])
+
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id, login_id="hq_doc_reviewer")
+    assert client.delete(f"/documents/{first_document_id}/comments/{site_comment_id}").status_code == 403
+
+    current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_doc_manager")
+    assert client.delete(f"/documents/{first_document_id}/comments/{hq_comment_id}").status_code == 403
+
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id, login_id="hq01")
+    assert client.delete(f"/documents/{first_document_id}/comments/{site_comment_id}").status_code == 204
+    after_delete_res = client.get(f"/documents/{first_document_id}/comments")
+    assert after_delete_res.status_code == 200
+    assert [row["comment_text"] for row in after_delete_res.json()] == [
+        "본사 검토 예정, 추가 자료는 승인 흐름과 별개로 남깁니다.",
+    ]
+
+    current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_doc_manager")
 
     second_upload_res = client.post(
         "/document-submissions/upload",
@@ -198,7 +217,7 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert second_upload_res.status_code == 200
     second_document_id = int(second_upload_res.json()["document_id"])
 
-    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id)
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id, login_id="hq_doc_reviewer")
     start_review_second_res = client.post(
         f"/documents/{second_document_id}/review",
         json={"action": "start_review", "comment": "검토 시작"},

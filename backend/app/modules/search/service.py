@@ -242,8 +242,19 @@ def search_risk_library(
         )
 
     scored.sort(key=lambda x: (x.score, x.row.risk_r, -x.row.id), reverse=True)
-    total = len(scored)
-    paged = scored[max(0, offset) : max(0, offset) + max(1, limit)]
+
+    # 동일 위험요인/대책 중복은 상위 점수(정렬상 먼저 온 항목) 1건만 남긴다.
+    deduped: list[_ScoredResult] = []
+    seen_keys: set[str] = set()
+    for item in scored:
+        key = f"{(item.row.risk_factor or '').strip().lower()}||{(item.row.countermeasure or '').strip().lower()}"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped.append(item)
+
+    total = len(deduped)
+    paged = deduped[max(0, offset) : max(0, offset) + max(1, limit)]
 
     results = []
     for item in paged:

@@ -348,7 +348,9 @@ onMounted(async () => {
 
 .header-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  align-items: center;
 }
 
 h1 {
@@ -848,7 +850,7 @@ h1 {
   margin-bottom: 8px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .page-header {
     flex-direction: column;
     align-items: stretch;

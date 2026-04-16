@@ -86,3 +86,69 @@ def test_hq_upload_and_site_view_policy_goal(tmp_path: Path):
     file_view = client.get(hq_view.json()["policy"]["file_url"])
     assert file_view.status_code == 200
     assert file_view.headers["content-disposition"].startswith("inline;")
+
+
+def test_site_user_can_upload_site_scope_policy(tmp_path: Path):
+    db_file = tmp_path / "test_safety_policy_goals_site_upload.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.safety_policy_goals import models as spg_models  # noqa: F401
+    from app.modules.workers import models as worker_models  # noqa: F401
+    from app.modules.documents import models as document_models  # noqa: F401
+    from app.modules.document_generation import models as document_generation_models  # noqa: F401
+    from app.modules.document_settings import models as document_settings_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    site = Site(site_code="S-SPG-SU", site_name="현장 업로드 테스트")
+    setup_db.add(site)
+    setup_db.flush()
+    setup_db.add(
+        User(id=1, name="site", login_id="site_only", password_hash="x", site_id=site.id, role=Role.SITE),
+    )
+    setup_db.commit()
+    site_id = site.id
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(safety_policy_goals_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=1, role=Role.SITE, site_id=site_id, login_id="site_only"
+    )
+    client = TestClient(app)
+
+    up = client.post(
+        "/safety-policy-goals/upload",
+        data={"scope": "SITE", "kind": "POLICY", "title": "현장 방침(현장계정)", "site_id": str(site_id)},
+        files={"file": ("policy_site.txt", b"site policy body", "text/plain")},
+    )
+    assert up.status_code == 200, up.text
+
+    view = client.get("/safety-policy-goals/view", params={"scope": "SITE"})
+    assert view.status_code == 200
+    assert view.json()["policy"]["title"] == "현장 방침(현장계정)"
+
+    bad_site = client.post(
+        "/safety-policy-goals/upload",
+        data={"scope": "SITE", "kind": "TARGET", "title": "다른현장", "site_id": str(site_id + 999)},
+        files={"file": ("t.txt", b"x", "text/plain")},
+    )
+    assert bad_site.status_code == 403
+
+    hq_up = client.post(
+        "/safety-policy-goals/upload",
+        data={"scope": "HQ", "kind": "POLICY", "title": "본사"},
+        files={"file": ("h.txt", b"h", "text/plain")},
+    )
+    assert hq_up.status_code == 403

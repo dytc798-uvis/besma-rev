@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import mimetypes
 from datetime import date
 from pathlib import Path
@@ -17,6 +18,7 @@ from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
 from app.core.upload_processing import process_uploaded_image
 from app.modules.documents.models import Document
+from app.modules.safety_features import risk_gates as rg
 from app.modules.safety_features.models import (
     NonconformityItem,
     NonconformityLedger,
@@ -46,6 +48,47 @@ def _assert_site_access(current_user, site_id: int | None) -> None:
 def _role_value(current_user) -> str:
     role = getattr(current_user, "role", None)
     return role.value if hasattr(role, "value") else str(role)
+
+
+_HQ_ROLE_VALUES = {Role.HQ_SAFE.value, Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}
+
+
+def _require_site_only(current_user) -> None:
+    if _role_value(current_user) != Role.SITE.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SITE only")
+
+
+def _require_hq_only(current_user) -> None:
+    if _role_value(current_user) not in _HQ_ROLE_VALUES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ only")
+
+
+def _ledger_risk_db_site_edit_locked(item: WorkerVoiceItem | NonconformityItem) -> bool:
+    return rg.risk_db_hq_status_effective(item) == rg.RISK_DB_HQ_APPROVED
+
+
+def _sync_hq_checked_mirror(item: WorkerVoiceItem | NonconformityItem) -> None:
+    if rg.risk_db_hq_status_effective(item) == rg.RISK_DB_HQ_APPROVED:
+        item.hq_checked = True
+        item.hq_checked_by_user_id = getattr(item, "risk_db_hq_decided_by_user_id", None)
+        item.hq_checked_at = getattr(item, "risk_db_hq_decided_at", None) or utc_now()
+    else:
+        item.hq_checked = False
+        item.hq_checked_by_user_id = None
+        item.hq_checked_at = None
+
+
+def _clear_risk_db_axis_on_site_receipt_reject(item: WorkerVoiceItem | NonconformityItem) -> None:
+    item.risk_db_request_status = rg.RISK_DB_REQ_PENDING
+    item.risk_db_hq_status = rg.RISK_DB_HQ_PENDING
+    item.risk_db_requested_at = None
+    item.risk_db_requested_by_user_id = None
+    item.risk_db_hq_decided_at = None
+    item.risk_db_hq_decided_by_user_id = None
+    item.reward_candidate = False
+    item.reward_candidate_by_user_id = None
+    item.reward_candidate_at = None
+    _sync_hq_checked_mirror(item)
 
 
 def _parse_optional_date(value: str | None) -> date | None:
@@ -171,7 +214,33 @@ def _get_or_create_nonconformity_ledger(db, current_user, site_id: int | None):
     return ledger
 
 
+def _norm_key_part(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _worker_voice_import_key(row: dict) -> str:
+    return "|".join(
+        [
+            _norm_key_part(row.get("worker_name")),
+            _norm_key_part(row.get("worker_birth_date")),
+            _norm_key_part(row.get("worker_phone_number")),
+            _norm_key_part(row.get("opinion_text")),
+        ]
+    )
+
+
+def _nonconformity_import_key(row: dict) -> str:
+    return "|".join(
+        [
+            _norm_key_part(row.get("issue_text")),
+            _norm_key_part(row.get("improvement_action")),
+        ]
+    )
+
+
 def _serialize_worker_voice_item(item: WorkerVoiceItem, ledger: WorkerVoiceLedger, comment_map: dict[int, list[dict]] | None = None):
+    receipt = rg.receipt_decision_effective(item)
+    act = rg.normalize_action_status(item.action_status) or item.action_status
     return {
         "id": item.id,
         "ledger_id": ledger.id,
@@ -185,12 +254,27 @@ def _serialize_worker_voice_item(item: WorkerVoiceItem, ledger: WorkerVoiceLedge
         "opinion_text": item.opinion_text,
         "action_before": item.action_before,
         "action_after": item.action_after,
-        "action_status": item.action_status,
+        "action_status": act,
         "action_owner": item.action_owner,
         "before_photo_url": (f"/safety-features/worker-voice/items/{item.id}/before-photo" if item.before_photo_path else None),
         "after_photo_url": (f"/safety-features/worker-voice/items/{item.id}/after-photo" if item.after_photo_path else None),
+        "receipt_decision": receipt,
         "site_approved": item.site_approved,
+        "site_rejected": item.site_rejected,
+        "site_reject_note": item.site_reject_note,
+        "site_action_comment": item.site_action_comment,
+        "site_comment": item.site_action_comment,
+        "hq_review_comment": item.hq_review_comment,
+        "hq_comment": item.hq_review_comment,
+        "risk_db_request_status": rg.risk_db_request_status_effective(item),
+        "risk_db_hq_status": rg.risk_db_hq_status_effective(item),
+        "risk_db_requested_at": item.risk_db_requested_at,
+        "risk_db_requested_by_user_id": item.risk_db_requested_by_user_id,
+        "risk_db_hq_decided_at": item.risk_db_hq_decided_at,
+        "risk_db_hq_decided_by_user_id": item.risk_db_hq_decided_by_user_id,
+        "ready_for_risk_db": rg.worker_voice_item_ready_for_risk_db(item),
         "hq_checked": item.hq_checked,
+        "hq_final_approved": rg.risk_db_hq_status_effective(item) == rg.RISK_DB_HQ_APPROVED,
         "reward_candidate": item.reward_candidate,
         "created_at": item.created_at,
         "updated_at": item.updated_at,
@@ -198,15 +282,19 @@ def _serialize_worker_voice_item(item: WorkerVoiceItem, ledger: WorkerVoiceLedge
     }
 
 
-def _serialize_nonconformity_item(item: NonconformityItem):
+def _serialize_nonconformity_item(item: NonconformityItem, ledger: NonconformityLedger | None = None):
     after_photo_url = f"/safety-features/nonconformities/items/{item.id}/after-photo" if (item.after_photo_path or item.improvement_photo_path) else None
+    receipt = rg.receipt_decision_effective(item)
+    act = rg.normalize_action_status(item.action_status) or item.action_status
     return {
         "id": item.id,
+        "ledger_id": item.ledger_id,
+        "ledger_title": (ledger.title if ledger else ""),
         "row_no": item.row_no,
         "issue_text": item.issue_text,
         "action_before": item.action_before,
         "action_after": item.improvement_action,
-        "action_status": item.action_status,
+        "action_status": act,
         "action_due_date": item.action_due_date,
         "completed_at": item.improvement_date,
         "action_owner": item.improvement_owner,
@@ -216,6 +304,24 @@ def _serialize_nonconformity_item(item: NonconformityItem):
         "improvement_date": item.improvement_date,
         "improvement_owner": item.improvement_owner,
         "improvement_photo_url": after_photo_url,
+        "receipt_decision": receipt,
+        "site_approved": item.site_approved,
+        "site_rejected": item.site_rejected,
+        "site_reject_note": item.site_reject_note,
+        "site_action_comment": item.site_action_comment,
+        "site_comment": item.site_action_comment,
+        "hq_review_comment": item.hq_review_comment,
+        "hq_comment": item.hq_review_comment,
+        "risk_db_request_status": rg.risk_db_request_status_effective(item),
+        "risk_db_hq_status": rg.risk_db_hq_status_effective(item),
+        "risk_db_requested_at": item.risk_db_requested_at,
+        "risk_db_requested_by_user_id": item.risk_db_requested_by_user_id,
+        "risk_db_hq_decided_at": item.risk_db_hq_decided_at,
+        "risk_db_hq_decided_by_user_id": item.risk_db_hq_decided_by_user_id,
+        "ready_for_risk_db": rg.nonconformity_item_ready_for_risk_db(item),
+        "hq_checked": item.hq_checked,
+        "hq_final_approved": rg.risk_db_hq_status_effective(item) == rg.RISK_DB_HQ_APPROVED,
+        "reward_candidate": item.reward_candidate,
         "updated_at": item.updated_at,
     }
 
@@ -546,6 +652,46 @@ def _extract_worker_voice_rows_from_csv(content: bytes) -> list[dict]:
     return _extract_worker_voice_rows_from_rows(rows)
 
 
+def _is_worker_voice_ledger_shape(rows: list[tuple | list]) -> bool:
+    if not rows:
+        return False
+
+    def norm(v: object) -> str:
+        if v is None:
+            return ""
+        return str(v).strip().replace(" ", "").replace("\n", "")
+
+    for row in rows[:30]:
+        cells = [norm(c) for c in row]
+        non_empty_count = sum(1 for c in cells if c)
+        opinion_indices = [idx for idx, c in enumerate(cells) if ("의견" in c or "건의" in c or "제안" in c or c == "내용")]
+        name_indices = [idx for idx, c in enumerate(cells) if ("근로자" in c or "성명" in c or "이름" in c)]
+        has_split_columns = any(oi != ni for oi in opinion_indices for ni in name_indices)
+        if non_empty_count >= 2 and opinion_indices and name_indices and has_split_columns:
+            return True
+    return False
+
+
+def _is_nonconformity_ledger_shape(content: bytes) -> bool:
+    wb = load_workbook(io.BytesIO(content), data_only=True)
+    ws = wb.worksheets[0]
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return False
+
+    def norm(v: object) -> str:
+        if v is None:
+            return ""
+        return str(v).strip().replace(" ", "").replace("\n", "")
+
+    for row in rows[:30]:
+        cells = [norm(c) for c in row]
+        line = "|".join(cells)
+        if ("부적합" in line or "지적" in line) and ("조치" in line or "담당" in line):
+            return True
+    return False
+
+
 @router.post("/worker-voice/upload")
 async def upload_worker_voice_ledger(
     db: DbDep,
@@ -566,7 +712,7 @@ async def upload_worker_voice_ledger(
     filename = f"worker_voice_{int(utc_now().timestamp())}{ext}"
     stored = _ensure_documents_dir() / filename
     stored.write_bytes(content)
-    ledger = WorkerVoiceLedger(
+    import_ledger = WorkerVoiceLedger(
         site_id=site_id,
         title=clean_title,
         file_path=str(stored.relative_to(settings.storage_root)),
@@ -576,17 +722,53 @@ async def upload_worker_voice_ledger(
         source_type="IMPORT",
         uploaded_at=utc_now(),
     )
-    db.add(ledger)
+    db.add(import_ledger)
     db.flush()
+
+    manual_ledger = _get_or_create_worker_voice_ledger(db, current_user, site_id)
+    manual_ledger.title = clean_title
+    manual_ledger.file_path = str(stored.relative_to(settings.storage_root))
+    manual_ledger.file_name = file.filename or filename
+    manual_ledger.file_size = len(content)
+    manual_ledger.uploaded_by_user_id = current_user.id
+    manual_ledger.uploaded_at = utc_now()
+    db.add(manual_ledger)
     suffix = ext.lower()
     if suffix == ".csv":
-        parsed_rows = _extract_worker_voice_rows_from_csv(content)
+        text = content.decode("utf-8-sig", errors="replace")
+        csv_rows = [row for row in csv.reader(io.StringIO(text))]
+        if not _is_worker_voice_ledger_shape(csv_rows):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="근로자 의견청취 관리대장 형식 파일만 업로드할 수 있습니다.")
+        parsed_rows = _extract_worker_voice_rows_from_rows(csv_rows)
     else:
-        parsed_rows = _extract_worker_voice_rows(content)
+        wb = load_workbook(io.BytesIO(content), data_only=True)
+        ws = wb.worksheets[0]
+        excel_rows = list(ws.iter_rows(values_only=True))
+        if not _is_worker_voice_ledger_shape(excel_rows):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="근로자 의견청취 관리대장 형식 파일만 업로드할 수 있습니다.")
+        parsed_rows = _extract_worker_voice_rows_from_rows(excel_rows)
+    if not parsed_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="근로자 의견청취 행을 찾지 못했습니다. 관리대장 형식을 확인해 주세요.")
+    existing_items = (
+        db.query(WorkerVoiceItem)
+        .filter(WorkerVoiceItem.ledger_id == manual_ledger.id)
+        .all()
+    )
+    existing_by_key = {_worker_voice_import_key(
+        {
+            "worker_name": item.worker_name,
+            "worker_birth_date": item.worker_birth_date,
+            "worker_phone_number": item.worker_phone_number,
+            "opinion_text": item.opinion_text,
+        }
+    ): item for item in existing_items}
+
     for row in parsed_rows:
-        db.add(
-            WorkerVoiceItem(
-                ledger_id=ledger.id,
+        key = _worker_voice_import_key(row)
+        item = existing_by_key.get(key)
+        if item is None:
+            item = WorkerVoiceItem(
+                ledger_id=manual_ledger.id,
                 row_no=row["row_no"],
                 worker_name=row["worker_name"],
                 worker_birth_date=row["worker_birth_date"],
@@ -594,10 +776,19 @@ async def upload_worker_voice_ledger(
                 opinion_kind=row["opinion_kind"],
                 opinion_text=row["opinion_text"],
             )
-        )
+            db.add(item)
+            existing_by_key[key] = item
+            continue
+        item.row_no = row["row_no"]
+        item.worker_name = row["worker_name"]
+        item.worker_birth_date = row["worker_birth_date"]
+        item.worker_phone_number = row["worker_phone_number"]
+        item.opinion_kind = row["opinion_kind"]
+        item.opinion_text = row["opinion_text"]
+        db.add(item)
     db.commit()
-    db.refresh(ledger)
-    return {"id": ledger.id}
+    db.refresh(import_ledger)
+    return {"id": import_ledger.id}
 
 
 @router.get("/worker-voice/items")
@@ -752,6 +943,11 @@ def update_worker_voice_item(
     _assert_site_access(current_user, ledger.site_id if ledger else None)
     if current_user.role != Role.SITE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can edit rows")
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot edit row after HQ approved risk DB registration",
+        )
     if opinion_text is not None:
         clean_opinion = opinion_text.strip()
         if not clean_opinion:
@@ -763,7 +959,8 @@ def update_worker_voice_item(
     item.opinion_kind = (opinion_kind or "").strip() or None
     item.action_before = (action_before or "").strip() or None
     item.action_after = (action_after or "").strip() or None
-    item.action_status = (action_status or "").strip() or None
+    norm_as = rg.normalize_action_status(action_status)
+    item.action_status = norm_as if norm_as is not None else ((action_status or "").strip() or None)
     item.action_owner = (action_owner or "").strip() or None
     db.add(item)
     db.commit()
@@ -784,6 +981,8 @@ async def upload_worker_voice_item_before_photo(
     _assert_site_access(current_user, ledger.site_id if ledger else None)
     if current_user.role != Role.SITE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can upload photos")
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot upload photos after HQ approved risk DB registration")
     content = await file.read()
     item.before_photo_path = _store_resized_image("worker_voice_before", item.id, content)
     db.add(item)
@@ -805,6 +1004,8 @@ async def upload_worker_voice_item_after_photo(
     _assert_site_access(current_user, ledger.site_id if ledger else None)
     if current_user.role != Role.SITE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can upload photos")
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot upload photos after HQ approved risk DB registration")
     content = await file.read()
     item.after_photo_path = _store_resized_image("worker_voice_after", item.id, content)
     db.add(item)
@@ -839,50 +1040,211 @@ def view_worker_voice_item_after_photo(item_id: int, db: DbDep, current_user: Cu
 
 
 @router.post("/worker-voice/items/{item_id}/site-approve")
+@router.post("/worker-voice/items/{item_id}/site-accept")
 def site_approve_worker_voice(item_id: int, db: DbDep, current_user: CurrentUserDep):
     item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
     ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
     _assert_site_access(current_user, ledger.site_id if ledger else None)
-    if _role_value(current_user) != Role.SITE.value:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can approve first")
+    _require_site_only(current_user)
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot change receipt after HQ approved risk DB registration",
+        )
+    item.receipt_decision = rg.RECEIPT_ACCEPTED
     item.site_approved = True
     item.site_approved_by_user_id = current_user.id
     item.site_approved_at = utc_now()
+    item.site_rejected = False
+    item.site_reject_note = None
+    item.site_rejected_at = None
+    item.site_rejected_by_user_id = None
     db.add(item)
     db.commit()
     return {"ok": True}
 
 
-@router.post("/worker-voice/items/{item_id}/hq-check")
-def hq_check_worker_voice(item_id: int, db: DbDep, current_user: CurrentUserDep):
+@router.post("/worker-voice/items/{item_id}/site-reject")
+def site_reject_worker_voice(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    reject_note: str | None = Form(None),
+):
     item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
-    if not item.site_approved:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE approval required first")
-    if _role_value(current_user) not in {Role.HQ_SAFE.value, Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only HQ can check")
-    item.hq_checked = True
-    item.hq_checked_by_user_id = current_user.id
-    item.hq_checked_at = utc_now()
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    _require_site_only(current_user)
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot reject receipt after HQ approved risk DB registration")
+    note = (reject_note or "").strip() or None
+    item.receipt_decision = rg.RECEIPT_REJECTED
+    item.site_rejected = True
+    item.site_reject_note = note
+    item.site_rejected_at = utc_now()
+    item.site_rejected_by_user_id = current_user.id
+    item.site_approved = False
+    item.site_approved_by_user_id = None
+    item.site_approved_at = None
+    _clear_risk_db_axis_on_site_receipt_reject(item)
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/worker-voice/items/{item_id}/action-status")
+def worker_voice_set_action_status(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    action_status: str = Form(...),
+):
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    _require_site_only(current_user)
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot change action status after HQ approved risk DB registration")
+    norm = rg.normalize_action_status(action_status)
+    if norm not in {rg.ACTION_NOT_STARTED, rg.ACTION_IN_PROGRESS, rg.ACTION_COMPLETED}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid action_status")
+    item.action_status = norm
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/worker-voice/items/{item_id}/request-risk-db-registration")
+def worker_voice_request_risk_db_registration(item_id: int, db: DbDep, current_user: CurrentUserDep):
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    _require_site_only(current_user)
+    if rg.receipt_decision_effective(item) != rg.RECEIPT_ACCEPTED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE must accept receipt before risk DB request")
+    if getattr(item, "site_rejected", False):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE rejected receipt")
+    if rg.risk_db_hq_status_effective(item) == rg.RISK_DB_HQ_APPROVED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Risk DB registration already approved")
+    now = utc_now()
+    if rg.risk_db_request_status_effective(item) == rg.RISK_DB_REQ_REQUESTED:
+        if rg.risk_db_hq_status_effective(item) == rg.RISK_DB_HQ_REJECTED:
+            item.risk_db_hq_status = rg.RISK_DB_HQ_PENDING
+    else:
+        item.risk_db_request_status = rg.RISK_DB_REQ_REQUESTED
+        item.risk_db_requested_at = now
+        item.risk_db_requested_by_user_id = current_user.id
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/worker-voice/items/{item_id}/site-action-comment")
+def worker_voice_set_site_action_comment(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    comment: str | None = Form(None),
+):
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    _require_site_only(current_user)
+    item.site_action_comment = (comment or "").strip() or None
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/worker-voice/items/{item_id}/hq-review-comment")
+def worker_voice_set_hq_review_comment(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    comment: str | None = Form(None),
+):
+    _require_hq_only(current_user)
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    item.hq_review_comment = (comment or "").strip() or None
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/worker-voice/items/{item_id}/approve-risk-db-registration")
+@router.post("/worker-voice/items/{item_id}/hq-check")
+def approve_risk_db_registration_worker_voice(item_id: int, db: DbDep, current_user: CurrentUserDep):
+    _require_hq_only(current_user)
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    rg.assert_hq_can_approve_risk_db(item)
+    now = utc_now()
+    item.risk_db_hq_status = rg.RISK_DB_HQ_APPROVED
+    item.risk_db_hq_decided_at = now
+    item.risk_db_hq_decided_by_user_id = current_user.id
+    _sync_hq_checked_mirror(item)
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/worker-voice/items/{item_id}/reject-risk-db-registration")
+def reject_risk_db_registration_worker_voice(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    reject_note: str | None = Form(None),
+):
+    _require_hq_only(current_user)
+    item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(WorkerVoiceLedger).filter(WorkerVoiceLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    rg.assert_hq_can_reject_risk_db(item)
+    now = utc_now()
+    item.risk_db_hq_status = rg.RISK_DB_HQ_REJECTED
+    item.risk_db_hq_decided_at = now
+    item.risk_db_hq_decided_by_user_id = current_user.id
+    note = (reject_note or "").strip()
+    if note:
+        item.hq_review_comment = note
+    _sync_hq_checked_mirror(item)
     db.add(item)
     db.commit()
     return {"ok": True}
 
 
 @router.post("/worker-voice/items/{item_id}/reward-candidate")
+@router.post("/worker-voice/items/{item_id}/mark-reward-candidate")
 def promote_worker_voice_reward_candidate(item_id: int, db: DbDep, current_user: CurrentUserDep):
     item = db.query(WorkerVoiceItem).filter(WorkerVoiceItem.id == item_id).first()
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    _require_hq_only(current_user)
     if not item.site_approved:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE approval required first")
-    if not item.hq_checked:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="HQ check required first")
-    if _role_value(current_user) not in {Role.HQ_SAFE.value, Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only HQ can select reward candidates")
+    if item.site_rejected:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE rejected items cannot be reward candidates")
+    if rg.risk_db_hq_status_effective(item) != rg.RISK_DB_HQ_APPROVED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="HQ risk DB registration approval required first")
     item.reward_candidate = True
     item.reward_candidate_by_user_id = current_user.id
     item.reward_candidate_at = utc_now()
@@ -939,7 +1301,7 @@ async def upload_nonconformity_ledger(
     stored = _ensure_documents_dir() / filename
     stored.write_bytes(content)
 
-    ledger = NonconformityLedger(
+    import_ledger = NonconformityLedger(
         site_id=site_id,
         title=clean_title,
         file_path=str(stored.relative_to(settings.storage_root)),
@@ -949,23 +1311,57 @@ async def upload_nonconformity_ledger(
         source_type="IMPORT",
         uploaded_at=utc_now(),
     )
-    db.add(ledger)
+    db.add(import_ledger)
     db.flush()
 
+    manual_ledger = _get_or_create_nonconformity_ledger(db, current_user, site_id)
+    manual_ledger.title = clean_title
+    manual_ledger.file_path = str(stored.relative_to(settings.storage_root))
+    manual_ledger.file_name = file.filename or filename
+    manual_ledger.file_size = len(content)
+    manual_ledger.uploaded_by_user_id = current_user.id
+    manual_ledger.uploaded_at = utc_now()
+    db.add(manual_ledger)
+
+    if not _is_nonconformity_ledger_shape(content):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="부적합사항 관리대장 형식 파일만 업로드할 수 있습니다.")
     rows = _extract_ledger_rows(content)
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="부적합사항 행을 찾지 못했습니다. 관리대장 형식을 확인해 주세요.")
+    existing_items = (
+        db.query(NonconformityItem)
+        .filter(NonconformityItem.ledger_id == manual_ledger.id)
+        .all()
+    )
+    existing_by_key = {_nonconformity_import_key(
+        {
+            "issue_text": item.issue_text,
+            "improvement_action": item.improvement_action,
+        }
+    ): item for item in existing_items}
+
     for r in rows:
-        db.add(
-            NonconformityItem(
-                ledger_id=ledger.id,
+        key = _nonconformity_import_key(r)
+        item = existing_by_key.get(key)
+        if item is None:
+            item = NonconformityItem(
+                ledger_id=manual_ledger.id,
                 row_no=r["row_no"],
                 issue_text=r["issue_text"],
                 improvement_action=r["improvement_action"],
                 improvement_owner=r["improvement_owner"],
             )
-        )
+            db.add(item)
+            existing_by_key[key] = item
+            continue
+        item.row_no = r["row_no"]
+        item.issue_text = r["issue_text"]
+        item.improvement_action = r["improvement_action"]
+        item.improvement_owner = r["improvement_owner"]
+        db.add(item)
     db.commit()
-    db.refresh(ledger)
-    return {"id": ledger.id}
+    db.refresh(import_ledger)
+    return {"id": import_ledger.id}
 
 
 @router.get("/nonconformities")
@@ -990,27 +1386,16 @@ def list_nonconformity_ledgers(db: DbDep, current_user: CurrentUserDep):
     }
 
 
-@router.get("/nonconformities/{ledger_id}")
-def get_nonconformity_ledger_detail(ledger_id: int, db: DbDep, current_user: CurrentUserDep):
-    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == ledger_id).first()
-    if ledger is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ledger not found")
-    _assert_site_access(current_user, ledger.site_id)
-    items = (
-        db.query(NonconformityItem)
-        .filter(NonconformityItem.ledger_id == ledger_id)
-        .order_by(NonconformityItem.row_no.asc(), NonconformityItem.id.asc())
-        .all()
+@router.get("/nonconformities/items")
+def list_nonconformity_items(db: DbDep, current_user: CurrentUserDep):
+    q = db.query(NonconformityItem, NonconformityLedger).join(
+        NonconformityLedger, NonconformityLedger.id == NonconformityItem.ledger_id
     )
+    if current_user.role == Role.SITE:
+        q = q.filter(NonconformityLedger.site_id == current_user.site_id)
+    rows = q.order_by(NonconformityLedger.uploaded_at.desc(), NonconformityItem.row_no.asc(), NonconformityItem.id.asc()).all()
     return {
-        "ledger": {
-            "id": ledger.id,
-            "title": ledger.title,
-            "source_type": getattr(ledger, "source_type", "IMPORT"),
-            "uploaded_at": ledger.uploaded_at,
-            "file_name": ledger.file_name,
-        },
-        "items": [_serialize_nonconformity_item(i) for i in items],
+        "items": [_serialize_nonconformity_item(item, ledger) for item, ledger in rows],
     }
 
 
@@ -1044,7 +1429,7 @@ def get_current_nonconformity_ledger_detail(db: DbDep, current_user: CurrentUser
             "uploaded_at": ledger.uploaded_at,
             "file_name": ledger.file_name,
         },
-        "items": [_serialize_nonconformity_item(i) for i in items],
+        "items": [_serialize_nonconformity_item(i, ledger) for i in items],
         "imports": [
             {
                 "id": row.id,
@@ -1056,6 +1441,30 @@ def get_current_nonconformity_ledger_detail(db: DbDep, current_user: CurrentUser
             }
             for row in imports
         ],
+    }
+
+
+@router.get("/nonconformities/{ledger_id}")
+def get_nonconformity_ledger_detail(ledger_id: int, db: DbDep, current_user: CurrentUserDep):
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == ledger_id).first()
+    if ledger is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ledger not found")
+    _assert_site_access(current_user, ledger.site_id)
+    items = (
+        db.query(NonconformityItem)
+        .filter(NonconformityItem.ledger_id == ledger_id)
+        .order_by(NonconformityItem.row_no.asc(), NonconformityItem.id.asc())
+        .all()
+    )
+    return {
+        "ledger": {
+            "id": ledger.id,
+            "title": ledger.title,
+            "source_type": getattr(ledger, "source_type", "IMPORT"),
+            "uploaded_at": ledger.uploaded_at,
+            "file_name": ledger.file_name,
+        },
+        "items": [_serialize_nonconformity_item(i, ledger) for i in items],
     }
 
 
@@ -1114,6 +1523,11 @@ def update_nonconformity_item(
     _assert_site_access(current_user, ledger.site_id if ledger else None)
     if current_user.role != Role.SITE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can edit rows")
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot edit row after HQ approved risk DB registration",
+        )
     if issue_text is not None:
         clean_issue = issue_text.strip()
         if not clean_issue:
@@ -1121,10 +1535,225 @@ def update_nonconformity_item(
         item.issue_text = clean_issue
     item.action_before = (action_before or "").strip() or None
     item.improvement_action = (action_after or "").strip() or None
-    item.action_status = (action_status or "").strip() or None
+    norm_as = rg.normalize_action_status(action_status)
+    item.action_status = norm_as if norm_as is not None else ((action_status or "").strip() or None)
     item.action_due_date = _parse_optional_date(action_due_date)
     item.improvement_date = _parse_optional_date(completed_at)
     item.improvement_owner = (action_owner or "").strip() or None
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/site-approve")
+@router.post("/nonconformities/items/{item_id}/site-accept")
+def site_approve_nonconformity(item_id: int, db: DbDep, current_user: CurrentUserDep):
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    _require_site_only(current_user)
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot change receipt after HQ approved risk DB registration",
+        )
+    item.receipt_decision = rg.RECEIPT_ACCEPTED
+    item.site_approved = True
+    item.site_approved_by_user_id = current_user.id
+    item.site_approved_at = utc_now()
+    item.site_rejected = False
+    item.site_reject_note = None
+    item.site_rejected_at = None
+    item.site_rejected_by_user_id = None
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/site-reject")
+def site_reject_nonconformity(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    reject_note: str | None = Form(None),
+):
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    _require_site_only(current_user)
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot reject receipt after HQ approved risk DB registration")
+    note = (reject_note or "").strip() or None
+    item.receipt_decision = rg.RECEIPT_REJECTED
+    item.site_rejected = True
+    item.site_reject_note = note
+    item.site_rejected_at = utc_now()
+    item.site_rejected_by_user_id = current_user.id
+    item.site_approved = False
+    item.site_approved_by_user_id = None
+    item.site_approved_at = None
+    _clear_risk_db_axis_on_site_receipt_reject(item)
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/action-status")
+def nonconformity_set_action_status(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    action_status: str = Form(...),
+):
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    _require_site_only(current_user)
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot change action status after HQ approved risk DB registration")
+    norm = rg.normalize_action_status(action_status)
+    if norm not in {rg.ACTION_NOT_STARTED, rg.ACTION_IN_PROGRESS, rg.ACTION_COMPLETED}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid action_status")
+    item.action_status = norm
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/request-risk-db-registration")
+def nonconformity_request_risk_db_registration(item_id: int, db: DbDep, current_user: CurrentUserDep):
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    _require_site_only(current_user)
+    if rg.receipt_decision_effective(item) != rg.RECEIPT_ACCEPTED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE must accept receipt before risk DB request")
+    if getattr(item, "site_rejected", False):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE rejected receipt")
+    if rg.risk_db_hq_status_effective(item) == rg.RISK_DB_HQ_APPROVED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Risk DB registration already approved")
+    now = utc_now()
+    if rg.risk_db_request_status_effective(item) == rg.RISK_DB_REQ_REQUESTED:
+        if rg.risk_db_hq_status_effective(item) == rg.RISK_DB_HQ_REJECTED:
+            item.risk_db_hq_status = rg.RISK_DB_HQ_PENDING
+    else:
+        item.risk_db_request_status = rg.RISK_DB_REQ_REQUESTED
+        item.risk_db_requested_at = now
+        item.risk_db_requested_by_user_id = current_user.id
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/site-action-comment")
+def nonconformity_set_site_action_comment(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    comment: str | None = Form(None),
+):
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    _require_site_only(current_user)
+    item.site_action_comment = (comment or "").strip() or None
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/hq-review-comment")
+def nonconformity_set_hq_review_comment(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    comment: str | None = Form(None),
+):
+    _require_hq_only(current_user)
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    item.hq_review_comment = (comment or "").strip() or None
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/approve-risk-db-registration")
+@router.post("/nonconformities/items/{item_id}/hq-check")
+def approve_risk_db_registration_nonconformity(item_id: int, db: DbDep, current_user: CurrentUserDep):
+    _require_hq_only(current_user)
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    rg.assert_hq_can_approve_risk_db(item)
+    now = utc_now()
+    item.risk_db_hq_status = rg.RISK_DB_HQ_APPROVED
+    item.risk_db_hq_decided_at = now
+    item.risk_db_hq_decided_by_user_id = current_user.id
+    _sync_hq_checked_mirror(item)
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/reject-risk-db-registration")
+def reject_risk_db_registration_nonconformity(
+    item_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    reject_note: str | None = Form(None),
+):
+    _require_hq_only(current_user)
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    ledger = db.query(NonconformityLedger).filter(NonconformityLedger.id == item.ledger_id).first()
+    _assert_site_access(current_user, ledger.site_id if ledger else None)
+    rg.assert_hq_can_reject_risk_db(item)
+    now = utc_now()
+    item.risk_db_hq_status = rg.RISK_DB_HQ_REJECTED
+    item.risk_db_hq_decided_at = now
+    item.risk_db_hq_decided_by_user_id = current_user.id
+    note = (reject_note or "").strip()
+    if note:
+        item.hq_review_comment = note
+    _sync_hq_checked_mirror(item)
+    db.add(item)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/nonconformities/items/{item_id}/reward-candidate")
+@router.post("/nonconformities/items/{item_id}/mark-reward-candidate")
+def promote_nonconformity_reward_candidate(item_id: int, db: DbDep, current_user: CurrentUserDep):
+    item = db.query(NonconformityItem).filter(NonconformityItem.id == item_id).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+    _require_hq_only(current_user)
+    if not item.site_approved:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE approval required first")
+    if item.site_rejected:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="SITE rejected items cannot be reward candidates")
+    if rg.risk_db_hq_status_effective(item) != rg.RISK_DB_HQ_APPROVED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="HQ risk DB registration approval required first")
+    item.reward_candidate = True
+    item.reward_candidate_by_user_id = current_user.id
+    item.reward_candidate_at = utc_now()
     db.add(item)
     db.commit()
     return {"ok": True}
@@ -1144,6 +1773,8 @@ async def upload_nonconformity_item_before_photo(
     _assert_site_access(current_user, ledger.site_id if ledger else None)
     if current_user.role != Role.SITE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can upload photos")
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot upload photos after HQ approved risk DB registration")
     content = await file.read()
     item.before_photo_path = _store_resized_image("nonconf_before", item.id, content)
     db.add(item)
@@ -1165,6 +1796,8 @@ async def upload_nonconformity_item_after_photo(
     _assert_site_access(current_user, ledger.site_id if ledger else None)
     if current_user.role != Role.SITE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only SITE can upload photos")
+    if _ledger_risk_db_site_edit_locked(item):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cannot upload photos after HQ approved risk DB registration")
     content = await file.read()
     stored = _store_resized_image("nonconf_after", item.id, content)
     item.after_photo_path = stored

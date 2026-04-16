@@ -29,6 +29,7 @@
 import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 
 const loginId = ref("");
 const password = ref("");
@@ -62,7 +63,7 @@ async function handleLogin() {
     } else if (auth.user?.ui_type === "HQ_SAFE") {
       router.push({ name: "hq-safe-document-explorer" });
     } else if (auth.user?.ui_type === "SITE") {
-      router.push({ name: "site-mobile-ops" });
+      router.push({ name: siteMobileOrDesktopHomeName() });
     } else if (auth.user?.ui_type === "HQ_OTHER") {
       router.push({ name: "hq-other-dashboard" });
     } else {

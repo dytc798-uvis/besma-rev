@@ -48,6 +48,7 @@ import { useRouter } from "vue-router";
 import axios from "axios";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
+import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -98,7 +99,7 @@ async function handleChangePassword() {
     }
 
     if (auth.user?.ui_type === "SITE") {
-      router.replace({ name: "site-mobile-ops" });
+      router.replace({ name: siteMobileOrDesktopHomeName() });
       return;
     }
 

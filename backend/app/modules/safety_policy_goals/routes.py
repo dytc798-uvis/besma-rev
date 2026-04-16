@@ -88,6 +88,14 @@ def get_policy_goal_view(
     }
 
 
+def _role_value(role) -> str:
+    return role.value if isinstance(role, Role) else str(role)
+
+
+def _is_hq_uploader(role) -> bool:
+    return _role_value(role) in {Role.HQ_SAFE.value, Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}
+
+
 @router.post("/upload")
 async def upload_policy_goal_document(
     db: DbDep,
@@ -98,22 +106,41 @@ async def upload_policy_goal_document(
     site_id: int | None = Form(None),
     file: UploadFile = File(...),
 ):
-    if current_user.role not in {Role.HQ_SAFE.value, Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     normalized_scope = _normalize_scope(scope)
     normalized_kind = _normalize_kind(kind)
     clean_title = (title or "").strip()
     if not clean_title:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="title is required")
-    target_site_id = site_id
-    if normalized_scope == "SITE":
-        if not target_site_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="site_id is required for SITE scope")
+
+    hq_ok = _is_hq_uploader(current_user.role)
+    site_ok = _role_value(current_user.role) == Role.SITE.value
+
+    target_site_id: int | None
+    if normalized_scope == "HQ":
+        if not hq_ok:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+        target_site_id = None
+    else:
+        # SITE scope: 본사가 대리 등록하거나, 현장 사용자가 자기 현장만 등록
+        if site_ok:
+            if not current_user.site_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="site context required for SITE uploads",
+                )
+            target_site_id = int(current_user.site_id)
+            if site_id is not None and int(site_id) != target_site_id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="site_id mismatch")
+        elif hq_ok:
+            if not site_id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="site_id is required for SITE scope")
+            target_site_id = int(site_id)
+        else:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
         site_exists = db.query(Site.id).filter(Site.id == target_site_id).first()
         if site_exists is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
-    else:
-        target_site_id = None
 
     storage_dir = _ensure_documents_dir()
     source_name = file.filename or "upload.bin"

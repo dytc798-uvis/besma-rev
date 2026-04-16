@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config.security import get_password_hash, verify_password
@@ -24,6 +26,56 @@ SITE_DEMO_USERS: list[tuple[str, str]] = [
     ("박명식", "site02"),
     ("박규철", "site03"),
 ]
+
+
+def _canonical_demo_login_ids() -> set[str]:
+    return {pair[1] for pair in HQ_DEMO_USERS} | {pair[1] for pair in SITE_DEMO_USERS}
+
+
+def _purge_demo_login_id_case_collisions(db: Session) -> None:
+    """Canonical 데모 login_id(hq01, site01 등)와 대소문자만 다른 행을 제거한다 (예: HQ01)."""
+    exact = _canonical_demo_login_ids()
+    lower_to_canon: dict[str, str] = {}
+    for x in exact:
+        lower_to_canon[x.lower()] = x
+    lowered_keys = list(lower_to_canon.keys())
+    candidates = db.query(User).filter(func.lower(User.login_id).in_(lowered_keys)).all()
+    for u in candidates:
+        canon = lower_to_canon.get((u.login_id or "").lower())
+        if canon is None or u.login_id == canon:
+            continue
+        try:
+            with db.begin_nested():
+                db.delete(u)
+                db.flush()
+        except IntegrityError:
+            pass
+
+
+_CANONICAL_HQ_NAME_BY_LOGIN: dict[str, str] = {login_id: name for name, login_id in HQ_DEMO_USERS}
+
+
+def _try_delete_legacy_hq_demo_login_slugs(db: Session) -> None:
+    """
+    login_id가 hq01~hq03인데 표시 이름이 정본(정상익·엄재복·김복수)과 다르면 구버전 행으로 보고 삭제 시도한다.
+    이미 맞게 매핑된 행은 유지해 user id가 매 시드마다 바뀌지 않게 한다.
+    FK 등으로 삭제가 불가하면 savepoint만 롤백되고, 이후 upsert가 이름·역할을 교정한다.
+    """
+    for lid in ("hq01", "hq02", "hq03"):
+        row = db.query(User).filter(User.login_id == lid).first()
+        if row is None:
+            continue
+        expected = _CANONICAL_HQ_NAME_BY_LOGIN.get(lid)
+        if expected is None:
+            continue
+        if (row.name or "").strip() == expected.strip():
+            continue
+        try:
+            with db.begin_nested():
+                db.delete(row)
+                db.flush()
+        except IntegrityError:
+            pass
 
 
 @dataclass
@@ -150,8 +202,12 @@ def ensure_demo_login_users(
     )
     site_for_site_users = preferred_c18_site or site
 
+    _purge_demo_login_id_case_collisions(db)
+    _try_delete_legacy_hq_demo_login_slugs(db)
+
     results: list[DemoUserResult] = []
     for name, login_id in HQ_DEMO_USERS:
+        user_password = "1234" if login_id == "hq01" else password
         results.append(
             _upsert_demo_user(
                 db,
@@ -159,7 +215,7 @@ def ensure_demo_login_users(
                 login_id=login_id,
                 role=Role.HQ_SAFE,
                 ui_type=UIType.HQ_SAFE,
-                password=password,
+                password=user_password,
                 site_id=None,
                 department="안전보건실",
             )

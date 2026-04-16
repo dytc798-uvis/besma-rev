@@ -145,7 +145,7 @@ def test_nonconformity_manual_row_management(tmp_path: Path):
     assert payload["ledger"]["source_type"] == "MANUAL"
     assert len(payload["items"]) == 1
     assert payload["items"][0]["issue_text"] == "난간 고정 불량"
-    assert payload["items"][0]["action_status"] == "IN_PROGRESS"
+    assert payload["items"][0]["action_status"] == "in_progress"
 
     item_id = payload["items"][0]["id"]
     update_res = client.post(
@@ -163,4 +163,216 @@ def test_nonconformity_manual_row_management(tmp_path: Path):
     assert update_res.status_code == 200
 
     current_res = client.get("/safety-features/nonconformities/overview/current")
-    assert current_res.json()["items"][0]["action_status"] == "DONE"
+    assert current_res.json()["items"][0]["action_status"] == "completed"
+
+
+def test_worker_voice_hq_final_requires_site_approval(tmp_path: Path):
+    client, current_user = build_test_client(tmp_path)
+    create_res = client.post(
+        "/safety-features/worker-voice/items",
+        data={
+            "worker_name": "홍길동",
+            "opinion_kind": "대면청취",
+            "opinion_text": "의견",
+            "action_before": "",
+            "action_after": "",
+            "action_status": "",
+            "action_owner": "",
+        },
+    )
+    assert create_res.status_code == 200
+    item_id = client.get("/safety-features/worker-voice/ledger").json()["items"][0]["id"]
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=1)
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/approve-risk-db-registration").status_code == 409
+
+
+def test_worker_voice_site_reject_blocks_hq_final(tmp_path: Path):
+    client, current_user = build_test_client(tmp_path)
+    client.post(
+        "/safety-features/worker-voice/items",
+        data={
+            "worker_name": "홍길동",
+            "opinion_kind": "대면청취",
+            "opinion_text": "의견",
+            "action_before": "",
+            "action_after": "",
+            "action_status": "",
+            "action_owner": "",
+        },
+    )
+    item_id = client.get("/safety-features/worker-voice/ledger").json()["items"][0]["id"]
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/site-reject", data={"reject_note": "보완"}).status_code == 200
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=1)
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/approve-risk-db-registration").status_code == 409
+
+
+def test_worker_voice_hq_approve_requires_db_request(tmp_path: Path):
+    client, current_user = build_test_client(tmp_path)
+    client.post(
+        "/safety-features/worker-voice/items",
+        data={
+            "worker_name": "a",
+            "opinion_kind": "x",
+            "opinion_text": "y",
+            "action_before": "",
+            "action_after": "",
+            "action_status": "",
+            "action_owner": "",
+        },
+    )
+    item_id = client.get("/safety-features/worker-voice/ledger").json()["items"][0]["id"]
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/site-approve").status_code == 200
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=1)
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/approve-risk-db-registration").status_code == 409
+
+
+def test_nonconformity_hq_final_requires_site_approval(tmp_path: Path):
+    client, current_user = build_test_client(tmp_path)
+    client.post(
+        "/safety-features/nonconformities/items",
+        data={
+            "issue_text": "테스트",
+            "action_before": "",
+            "action_after": "",
+            "action_status": "",
+            "action_due_date": "",
+            "completed_at": "",
+            "action_owner": "",
+        },
+    )
+    item_id = client.get("/safety-features/nonconformities/overview/current").json()["items"][0]["id"]
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=1)
+    assert client.post(f"/safety-features/nonconformities/items/{item_id}/approve-risk-db-registration").status_code == 409
+
+
+def test_nonconformity_approval_chain(tmp_path: Path):
+    client, current_user = build_test_client(tmp_path)
+    client.post(
+        "/safety-features/nonconformities/items",
+        data={
+            "issue_text": "체인 테스트",
+            "action_before": "",
+            "action_after": "",
+            "action_status": "",
+            "action_due_date": "",
+            "completed_at": "",
+            "action_owner": "",
+        },
+    )
+    item_id = client.get("/safety-features/nonconformities/overview/current").json()["items"][0]["id"]
+    assert client.post(f"/safety-features/nonconformities/items/{item_id}/site-approve").status_code == 200
+    assert client.post(f"/safety-features/nonconformities/items/{item_id}/request-risk-db-registration").status_code == 200
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=1)
+    assert client.post(f"/safety-features/nonconformities/items/{item_id}/approve-risk-db-registration").status_code == 200
+    assert client.post(f"/safety-features/nonconformities/items/{item_id}/reward-candidate").status_code == 200
+    row = next(r for r in client.get("/safety-features/nonconformities/items").json()["items"] if r["id"] == item_id)
+    assert row["site_approved"] is True
+    assert row["hq_checked"] is True
+    assert row["reward_candidate"] is True
+    assert row["ready_for_risk_db"] is True
+
+
+def test_hq_reject_risk_db_then_not_ready(tmp_path: Path):
+    client, current_user = build_test_client(tmp_path)
+    client.post(
+        "/safety-features/worker-voice/items",
+        data={
+            "worker_name": "a",
+            "opinion_kind": "x",
+            "opinion_text": "z",
+            "action_before": "",
+            "action_after": "",
+            "action_status": "",
+            "action_owner": "",
+        },
+    )
+    item_id = client.get("/safety-features/worker-voice/ledger").json()["items"][0]["id"]
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/site-approve").status_code == 200
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/request-risk-db-registration").status_code == 200
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=1)
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/reject-risk-db-registration", data={"reject_note": "no"}).status_code == 200
+    row = next(r for r in client.get("/safety-features/worker-voice/items").json()["items"] if r["id"] == item_id)
+    assert row["ready_for_risk_db"] is False
+    assert row["risk_db_hq_status"] == "rejected"
+
+
+def test_site_cannot_call_hq_risk_approve(tmp_path: Path):
+    client, current_user = build_test_client(tmp_path)
+    client.post(
+        "/safety-features/worker-voice/items",
+        data={
+            "worker_name": "a",
+            "opinion_kind": "x",
+            "opinion_text": "w",
+            "action_before": "",
+            "action_after": "",
+            "action_status": "",
+            "action_owner": "",
+        },
+    )
+    item_id = client.get("/safety-features/worker-voice/ledger").json()["items"][0]["id"]
+    client.post(f"/safety-features/worker-voice/items/{item_id}/site-approve")
+    client.post(f"/safety-features/worker-voice/items/{item_id}/request-risk-db-registration")
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/approve-risk-db-registration").status_code == 403
+
+
+def test_hq_cannot_call_site_accept(tmp_path: Path):
+    client, current_user = build_test_client(tmp_path)
+    client.post(
+        "/safety-features/worker-voice/items",
+        data={
+            "worker_name": "a",
+            "opinion_kind": "x",
+            "opinion_text": "w",
+            "action_before": "",
+            "action_after": "",
+            "action_status": "",
+            "action_owner": "",
+        },
+    )
+    item_id = client.get("/safety-features/worker-voice/ledger").json()["items"][0]["id"]
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=1)
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/site-approve").status_code == 403
+
+
+def test_risk_db_gate_helpers():
+    from app.modules.safety_features import risk_gates as rg
+    from app.modules.safety_features.risk_gates import nonconformity_item_ready_for_risk_db, worker_voice_item_ready_for_risk_db
+
+    base = SimpleNamespace(
+        site_rejected=False,
+        site_approved=True,
+        receipt_decision=rg.RECEIPT_ACCEPTED,
+        risk_db_request_status=rg.RISK_DB_REQ_PENDING,
+        risk_db_hq_status=rg.RISK_DB_HQ_PENDING,
+        hq_checked=False,
+    )
+    assert worker_voice_item_ready_for_risk_db(base) is False
+    requested = SimpleNamespace(
+        site_rejected=False,
+        site_approved=True,
+        receipt_decision=rg.RECEIPT_ACCEPTED,
+        risk_db_request_status=rg.RISK_DB_REQ_REQUESTED,
+        risk_db_hq_status=rg.RISK_DB_HQ_PENDING,
+        hq_checked=False,
+    )
+    assert worker_voice_item_ready_for_risk_db(requested) is False
+    ready = SimpleNamespace(
+        site_rejected=False,
+        site_approved=True,
+        receipt_decision=rg.RECEIPT_ACCEPTED,
+        risk_db_request_status=rg.RISK_DB_REQ_REQUESTED,
+        risk_db_hq_status=rg.RISK_DB_HQ_APPROVED,
+        hq_checked=True,
+    )
+    assert worker_voice_item_ready_for_risk_db(ready) is True
+    rejected = SimpleNamespace(
+        site_rejected=True,
+        site_approved=False,
+        receipt_decision=rg.RECEIPT_ACCEPTED,
+        risk_db_request_status=rg.RISK_DB_REQ_REQUESTED,
+        risk_db_hq_status=rg.RISK_DB_HQ_APPROVED,
+        hq_checked=True,
+    )
+    assert worker_voice_item_ready_for_risk_db(rejected) is False
+    assert nonconformity_item_ready_for_risk_db(ready) is True

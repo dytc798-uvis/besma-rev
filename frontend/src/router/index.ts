@@ -22,7 +22,9 @@ import TestSiteManagerPage from "@/pages/test/TestSiteManagerPage.vue";
 import TestWorkerPage from "@/pages/test/TestWorkerPage.vue";
 import WorkerMobileListPage from "@/pages/worker/WorkerMobileListPage.vue";
 import WorkerMobileDetailPage from "@/pages/worker/WorkerMobileDetailPage.vue";
+import SiteDailySafetyShellLayout from "@/layouts/SiteDailySafetyShellLayout.vue";
 import SiteMobileOpsPage from "@/pages/site/SiteMobileOpsPage.vue";
+import SiteMobileDailyCapturePage from "@/pages/site/SiteMobileDailyCapturePage.vue";
 import HQTbmMonitorPage from "@/pages/hq/HQTbmMonitorPage.vue";
 import HQWorkerSafetyRecordPage from "@/pages/hq/HQWorkerSafetyRecordPage.vue";
 import HQDocumentsDashboardPage from "@/pages/hq/HQDocumentsDashboardPage.vue";
@@ -49,6 +51,7 @@ import SiteMobileSiteSearchPage from "@/pages/site/SiteMobileSiteSearchPage.vue"
 import SiteInfoPage from "@/pages/site/SiteInfoPage.vue";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
 import UserGuidePage from "@/pages/common/UserGuidePage.vue";
+import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 
 const routes: RouteRecordRaw[] = [
   {
@@ -143,9 +146,16 @@ const routes: RouteRecordRaw[] = [
       { path: "communications", name: "site-communications", component: SiteCommunicationsPage },
       { path: "documents/:id", name: "site-document-detail", component: DocumentDetailPage },
       { path: "documents/:id/tbm-view", name: "site-document-tbm-view", component: DocumentTbmViewPage },
-      { path: "mobile", name: "site-mobile-ops", component: SiteMobileOpsPage },
-      { path: "mobile/site-search", name: "site-mobile-site-search", component: SiteMobileSiteSearchPage },
-      { path: "mobile/communications", name: "site-mobile-communications", component: SiteMobileCommunicationsPage },
+      {
+        path: "mobile",
+        component: SiteDailySafetyShellLayout,
+        children: [
+          { path: "", name: "site-mobile-ops", component: SiteMobileOpsPage },
+          { path: "daily-capture", name: "site-mobile-daily-capture", component: SiteMobileDailyCapturePage },
+          { path: "site-search", name: "site-mobile-site-search", component: SiteMobileSiteSearchPage },
+          { path: "communications", name: "site-mobile-communications", component: SiteMobileCommunicationsPage },
+        ],
+      },
       { path: "risk-library", name: "site-risk-library", component: RiskLibraryPage },
       { path: "info", name: "site-info", component: SiteInfoPage },
       { path: "opinions", name: "site-opinions", component: OpinionListPage },
@@ -238,7 +248,7 @@ router.beforeEach((to, _from, next) => {
         return;
       }
       if (auth.effectivePersona === "SITE_MANAGER") {
-        next({ name: "site-documents" });
+        next({ name: siteMobileOrDesktopHomeName() });
         return;
       }
       if (auth.effectiveUiType === "HQ_SAFE") {
@@ -247,7 +257,7 @@ router.beforeEach((to, _from, next) => {
       }
       if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
-      else if (auth.user?.ui_type === "SITE") next({ name: "site-documents" });
+      else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
       else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next();
       return;
@@ -255,7 +265,7 @@ router.beforeEach((to, _from, next) => {
 
     if (to.meta.persona && auth.effectivePersona && to.meta.persona !== auth.effectivePersona) {
       if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-documents" });
-      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: "site-documents" });
+      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: siteMobileOrDesktopHomeName() });
       else next({ name: "worker-mobile-list" });
       return;
     }
@@ -263,14 +273,14 @@ router.beforeEach((to, _from, next) => {
     if (to.meta.uiType && auth.effectiveUiType && to.meta.uiType !== auth.effectiveUiType) {
       if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.effectiveUiType === "HQ_SAFE") next({ name: "hq-safe-documents" });
-      else if (auth.effectiveUiType === "SITE") next({ name: "site-documents" });
+      else if (auth.effectiveUiType === "SITE") next({ name: siteMobileOrDesktopHomeName() });
       else next({ name: "hq-other-dashboard" });
       return;
     }
   } else if (to.meta.uiType && auth.user && auth.user.ui_type !== to.meta.uiType) {
     if (auth.user.role === "WORKER") next({ name: "worker-mobile-list" });
     else if (auth.user.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
-    else if (auth.user.ui_type === "SITE") next({ name: "site-documents" });
+    else if (auth.user.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
     else if (auth.user.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next({ name: "login" });
     return;
@@ -283,16 +293,16 @@ router.beforeEach((to, _from, next) => {
     }
     if (auth.isTestPersonaMode) {
       if (auth.effectivePersona === "HQ_ADMIN") next({ name: "hq-safe-documents" });
-      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: "site-documents" });
+      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: siteMobileOrDesktopHomeName() });
       else if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
-      else if (auth.user?.ui_type === "SITE") next({ name: "site-documents" });
+      else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
       else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next();
     } else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
     else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
-    else if (auth.user?.ui_type === "SITE") next({ name: "site-documents" });
+    else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next();
     return;

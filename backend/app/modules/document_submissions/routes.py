@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import logging
 import re
 import zipfile
@@ -21,6 +22,7 @@ from app.modules.document_generation.models import (
     PeriodBasis,
     WorkflowStatus,
 )
+from app.modules.document_submissions.models import ReviewAction
 from app.modules.document_submissions.service import (
     add_review_history,
     get_instance_or_404,
@@ -38,11 +40,13 @@ router = APIRouter(prefix="/document-submissions", tags=["document-submissions-o
 logger = logging.getLogger(__name__)
 
 HQ_DEMO_READONLY_LOGIN_IDS = {"hq01", "hq02", "hq03", "hq04", "hq05"}
-DAILY_UPLOAD_DOC_CODES = {"DAILY_TBM", "SUPERVISOR_CHECKLIST"}
+DAILY_UPLOAD_DOC_CODES = {"DAILY_TBM", "DAILY_SAFETY_MEETING_LOG", "SUPERVISOR_CHECKLIST"}
 DAILY_UPLOAD_NAME_BY_CODE = {
     "DAILY_TBM": "TBM",
+    "DAILY_SAFETY_MEETING_LOG": "DAILY_SAFETY_MEETING_LOG",
     "SUPERVISOR_CHECKLIST": "SUPERVISOR_CHECKLIST",
 }
+MERGE_APPEND_DOCUMENT_CODES = frozenset({"DAILY_TBM", "DAILY_SAFETY_MEETING_LOG", "SUPERVISOR_CHECKLIST"})
 
 
 def _ensure_documents_dir() -> Path:
@@ -120,6 +124,47 @@ def _optimize_uploaded_content(content: bytes, source_name: str, content_type: s
             return content, ext
 
     return content, ext
+
+
+def _merge_pdf_bytes(parts: list[bytes]) -> bytes:
+    from pypdf import PdfReader, PdfWriter
+
+    writer = PdfWriter()
+    for part in parts:
+        reader = PdfReader(io.BytesIO(part))
+        for page in reader.pages:
+            writer.add_page(page)
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+async def _collect_pdf_parts_from_uploads(files: list[UploadFile]) -> list[bytes]:
+    parts: list[bytes] = []
+    for uf in files:
+        raw = await uf.read()
+        name = uf.filename or "file.bin"
+        ctype = uf.content_type
+        if is_image_upload(name, ctype):
+            try:
+                asset = process_uploaded_image(
+                    raw,
+                    source_name=name,
+                    content_type=ctype,
+                    generate_pdf=True,
+                )
+            except RuntimeError as exc:
+                raise ValueError(str(exc)) from exc
+            if not asset.pdf_bytes:
+                raise ValueError("image_pdf_conversion_failed")
+            parts.append(asset.pdf_bytes)
+            continue
+        ext = Path(name).suffix.lower()
+        if ext == ".pdf":
+            parts.append(raw)
+            continue
+        raise ValueError(f"unsupported_attachment:{ext or 'unknown'}")
+    return parts
 
 
 def _write_bytes(storage_dir: Path, filename: str, content: bytes) -> str:
@@ -242,7 +287,9 @@ async def upload_document_for_instance(
     requirement_id: Annotated[int | None, Form()] = None,
     period_start: Annotated[date | None, Form()] = None,
     period_end: Annotated[date | None, Form()] = None,
-    file: UploadFile = File(...),
+    append_only: Annotated[bool, Form()] = False,
+    file: Annotated[UploadFile | None, File()] = None,
+    append_files: Annotated[list[UploadFile] | None, File()] = None,
 ):
     """
     POST /document-submissions/upload
@@ -250,10 +297,112 @@ async def upload_document_for_instance(
     - Document(1:1) 연결/생성 (documents.instance_id UNIQUE 기준)
     - instance.workflow_status: NOT_SUBMITTED/REJECTED -> SUBMITTED
     - 오케스트레이션 status/status_reason는 건드리지 않는다
+    - append_files: TBM·일일안전회의일지·관리감독자점검표 등 허용 코드에서, 본문 PDF 뒤에 이미지/PDF 페이지 병합
+    - append_only + instance_id: 이미 제출된 PDF 뒤에 사진만 추가(SUBMITTED/UNDER_REVIEW만, APPROVED 불가)
     """
     # 데모 혼선 방지를 위해 HQ 데모 계정(hq01~hq05)은 업로드를 읽기전용으로 강제한다.
     if current_user.role == Role.HQ_SAFE and current_user.login_id in HQ_DEMO_READONLY_LOGIN_IDS:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ demo accounts are read-only")
+
+    append_list = list(append_files) if append_files else []
+
+    if append_only:
+        if instance_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="append_only requires instance_id")
+        if not append_list:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="append_only requires append_files")
+        try:
+            inst_append = get_instance_or_404(db, instance_id)
+        except LookupError:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instance not found")
+        ledger_append = (inst_append.document_type_code or "").strip()
+        if ledger_append not in MERGE_APPEND_DOCUMENT_CODES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="attachment append is not enabled for this document type",
+            )
+        assert_not_ledger_managed_document_type(ledger_append)
+        if current_user.role == Role.SITE and inst_append.site_id != current_user.site_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+        if inst_append.workflow_status == WorkflowStatus.APPROVED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="approved documents cannot be modified with photo append",
+            )
+        if inst_append.workflow_status not in {WorkflowStatus.SUBMITTED, WorkflowStatus.UNDER_REVIEW}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="append is allowed only for SUBMITTED or UNDER_REVIEW documents",
+            )
+        doc_append = db.query(Document).filter(Document.instance_id == inst_append.id).first()
+        if doc_append is None or not doc_append.file_path:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document file not found")
+        base_path = settings.storage_root / doc_append.file_path
+        if not base_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="stored file missing")
+        base_bytes = base_path.read_bytes()
+        if not base_bytes.startswith(b"%PDF"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="base file must be PDF to append photos",
+            )
+        try:
+            extra_append = await _collect_pdf_parts_from_uploads(append_list)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        try:
+            merged_append = _merge_pdf_bytes([base_bytes, *extra_append])
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"pdf_merge_failed: {exc}",
+            ) from exc
+        if len(merged_append) > settings.document_upload_max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"파일 크기는 최적화 후 기준 {settings.document_upload_max_bytes // (1024 * 1024)}MB 이하만 업로드할 수 있습니다.",
+            )
+        _record_upload_history(db, doc=doc_append, action_type="BEFORE_REUPLOAD")
+        doc_append.version_no = (doc_append.version_no or 1) + 1
+        storage_dir_append = _ensure_documents_dir()
+        timestamp_append = int(utc_now().timestamp())
+        safe_keep = doc_append.file_name or "document.pdf"
+        filename_append = f"instance_{inst_append.id}_{timestamp_append}_{safe_keep}"
+        stored_append = storage_dir_append / filename_append
+        stored_append.write_bytes(merged_append)
+        doc_append.file_path = str(stored_append.relative_to(settings.storage_root))
+        doc_append.file_size = len(merged_append)
+        doc_append.uploaded_by_user_id = current_user.id
+        doc_append.uploaded_at = utc_now()
+        wf_keep = inst_append.workflow_status
+        add_review_history(
+            db,
+            inst=inst_append,
+            document_id=doc_append.id,
+            action_type=ReviewAction.ATTACH_APPEND,
+            action_by_user_id=current_user.id,
+            comment=None,
+            from_workflow_status=wf_keep,
+            to_workflow_status=wf_keep,
+        )
+        db.add(inst_append)
+        db.add(doc_append)
+        _record_upload_history(db, doc=doc_append, action_type=ReviewAction.ATTACH_APPEND)
+        db.commit()
+        db.refresh(inst_append)
+        db.refresh(doc_append)
+        return {
+            "instance_id": inst_append.id,
+            "orchestration_status": inst_append.status,
+            "workflow_status": inst_append.workflow_status,
+            "document_id": doc_append.id,
+            "file_path": doc_append.file_path,
+            "original_file_path": doc_append.original_file_path,
+            "optimized_file_path": doc_append.optimized_file_path,
+        }
+
+    if file is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="file is required")
 
     if instance_id is not None:
         try:
@@ -363,6 +512,30 @@ async def upload_document_for_instance(
             f"{stem}__optimized{image_asset.optimized_ext}",
             image_asset.optimized_bytes,
         )
+
+    ledger_merge = (inst.document_type_code or document_type_code or "").strip()
+    if append_list and ledger_merge not in MERGE_APPEND_DOCUMENT_CODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="append_files are only allowed for daily merge-enabled document types",
+        )
+    if append_list and ledger_merge in MERGE_APPEND_DOCUMENT_CODES:
+        if primary_ext != ".pdf":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="merging attachments requires the main file to be PDF",
+            )
+        try:
+            extra_merge = await _collect_pdf_parts_from_uploads(append_list)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        try:
+            primary_content = _merge_pdf_bytes([primary_content, *extra_merge])
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"pdf_merge_failed: {exc}",
+            ) from exc
 
     if len(primary_content) > settings.document_upload_max_bytes:
         raise HTTPException(

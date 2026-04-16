@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func
 
 from app.config.settings import settings
 from app.core.auth import DbDep
 from app.core.permissions import CurrentUserDep, Role
+from app.modules.dashboard.risk_db_overview import compute_risk_db_overview
 from app.modules.documents.models import Document, DocumentStatus
 from app.modules.opinions.models import Opinion, OpinionStatus
 from app.modules.safety_features.models import NonconformityItem, NonconformityLedger, WorkerVoiceItem, WorkerVoiceLedger
@@ -20,6 +21,8 @@ from app.modules.dashboard.weather_service import (
 
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+_RISK_DB_OVERVIEW_ROLES = frozenset({Role.SITE, Role.HQ_SAFE, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN})
 
 
 def _site_status_rank(status: str | None) -> int:
@@ -92,6 +95,19 @@ def dashboard_summary(
             {"site_id": site_id, "count": count} for site_id, count in by_site
         ],
     }
+
+
+@router.get("/risk-db-overview")
+def risk_db_overview(db: DbDep, current_user: CurrentUserDep):
+    """근로자의견·부적합 관리대장: 운영 축 + 위험성평가 DB 승격 축 집계(본사/현장 공용)."""
+    if current_user.role not in _RISK_DB_OVERVIEW_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    site_scope: int | None = None
+    if current_user.role == Role.SITE:
+        if not current_user.site_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SITE without site_id")
+        site_scope = current_user.site_id
+    return compute_risk_db_overview(db, site_scope)
 
 
 @router.get("/weather/site-summary")

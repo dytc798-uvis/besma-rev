@@ -70,8 +70,7 @@
               <th>S</th>
               <th>R</th>
               <th>비고</th>
-              <th>원본 위치</th>
-              <th>점수</th>
+              <th>출처</th>
             </tr>
           </thead>
           <tbody>
@@ -104,16 +103,10 @@
               <td>{{ row.risk_s }}</td>
               <td>{{ row.risk_r }}</td>
               <td>{{ row.note || "-" }}</td>
-              <td>{{ row.source_file || "-" }} / {{ row.source_sheet || "-" }} / row {{ row.source_row ?? "-" }}</td>
-              <td>
-                {{ row.score?.toFixed(1) ?? "-" }}
-                <div class="matched" v-if="row.matched_tokens?.length > 0">
-                  {{ row.matched_tokens.join(", ") }}
-                </div>
-              </td>
+              <td>{{ renderSourceLabel(row) }}</td>
             </tr>
             <tr v-if="rows.length === 0">
-              <td colspan="10" class="empty">검색 결과가 없습니다.</td>
+              <td colspan="9" class="empty">검색 결과가 없습니다.</td>
             </tr>
           </tbody>
         </table>
@@ -142,8 +135,7 @@
             <th>S</th>
             <th>R</th>
             <th>비고</th>
-            <th>원본 위치</th>
-            <th>점수</th>
+            <th>출처</th>
           </tr>
         </thead>
         <tbody>
@@ -156,8 +148,7 @@
             <td>{{ row.risk_s }}</td>
             <td>{{ row.risk_r }}</td>
             <td>{{ row.note || "-" }}</td>
-            <td>{{ row.source_sheet || "-" }} / row {{ row.source_row ?? "-" }}</td>
-            <td>{{ row.score?.toFixed(1) ?? "-" }}</td>
+            <td>{{ renderSourceLabel(row) }}</td>
           </tr>
         </tbody>
       </table>
@@ -217,6 +208,35 @@ function buildQuery() {
 const modeLabel = computed(() =>
   activeMode.value === "nlp_beta" ? "자연어 검색(beta)" : "빠른 검색",
 );
+
+function normalizeSourceName(fileName: string | null | undefined): string {
+  const raw = (fileName || "").trim();
+  if (!raw) return "";
+  if (
+    raw.includes("최초위험성평가 표준 모델(배포용).xlsx")
+    || raw.includes("부현전기 최초위험성평가 표준 모델rev02")
+  ) {
+    return "위험성평가표준모델";
+  }
+  return raw;
+}
+
+function renderSourceLabel(row: RiskLibraryItem): string {
+  const sourceFile = normalizeSourceName(row.source_file);
+  const sourceSheet = (row.source_sheet || "").trim();
+  const hasRow = row.source_row != null;
+  if (!sourceFile && !sourceSheet && !hasRow) {
+    return "근로자의견청취";
+  }
+
+  const left = sourceFile || "-";
+  const middle = sourceSheet || "-";
+  const right = hasRow ? `row ${row.source_row}` : "row -";
+  if (left === "-" && middle === "-" && right === "row -") {
+    return "근로자의견청취";
+  }
+  return `${left} / ${middle} / ${right}`;
+}
 
 async function fetchNow(mode: RiskSearchMode = activeMode.value) {
   activeMode.value = mode;

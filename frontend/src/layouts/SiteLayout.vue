@@ -1,12 +1,24 @@
 <template>
-  <div class="layout-root" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+  <div
+    class="layout-root site-shell"
+    :class="{
+      'sidebar-collapsed': !isMobileViewport && sidebarCollapsed,
+      'site-mobile-layout': isMobileViewport,
+      'mobile-drawer-open': isMobileViewport && mobileDrawerOpen,
+    }"
+  >
+    <div
+      v-if="isMobileViewport && mobileDrawerOpen"
+      class="mobile-drawer-backdrop"
+      aria-hidden="true"
+      @click="mobileDrawerOpen = false"
+    />
     <aside class="layout-sidebar">
       <h1>BESMA CSMS 안전보건플랫폼 · 현장</h1>
-      <nav class="layout-menu">
+      <nav v-if="!isMobileViewport" class="layout-menu">
         <RouterLink :class="menuLinkClass('dashboard', '/site/dashboard')" to="/site/dashboard">대시보드</RouterLink>
         <RouterLink :class="menuLinkClass('notices', '/site/notices')" :style="menuOrderStyle('notices')" to="/site/notices">공지사항</RouterLink>
         <RouterLink
-          v-if="!isMobileViewport"
           :class="menuLinkClass('safety-policy-goals', '/site/safety-policy-goals')"
           :style="menuOrderStyle('safety-policy-goals')"
           to="/site/safety-policy-goals"
@@ -42,7 +54,9 @@
         <p class="site-menu-section-label">기타 메뉴</p>
         <RouterLink :class="menuLinkClass('safety-education', '/site/safety-education')" :style="menuOrderStyle('safety-education')" to="/site/safety-education">안전 교육</RouterLink>
         <RouterLink :class="menuLinkClass('safety-inspections', '/site/safety-inspections')" :style="menuOrderStyle('safety-inspections')" to="/site/safety-inspections">안전 점검</RouterLink>
-        <RouterLink :class="menuLinkClass('mobile', '/site/mobile')" :style="menuOrderStyle('mobile')" to="/site/mobile">모바일 운영</RouterLink>
+        <RouterLink :class="menuLinkClass('mobile', '/site/mobile')" :style="menuOrderStyle('mobile')" to="/site/mobile">
+          일일안전회의(일일위험성평가)
+        </RouterLink>
         <RouterLink :class="menuLinkClass('mobile-site-search', '/site/mobile/site-search')" :style="menuOrderStyle('mobile-site-search')" to="/site/mobile/site-search">현장 검색</RouterLink>
         <RouterLink :class="menuLinkClass('documents', '/site/documents')" :style="menuOrderStyle('documents')" to="/site/documents">
           <span class="menu-icon" v-if="menuIcon('documents')">{{ menuIcon("documents") }}</span>
@@ -55,27 +69,74 @@
         <RouterLink :class="menuLinkClass('info', '/site/info')" :style="menuOrderStyle('info')" to="/site/info">설정</RouterLink>
         <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" :style="menuOrderStyle('user-guide')" to="/site/user-guide">사용설명서</RouterLink>
       </nav>
+      <nav v-else class="layout-menu layout-menu-mobile-site">
+        <RouterLink :class="menuLinkClass('mobile', '/site/mobile')" to="/site/mobile" @click="closeMobileDrawer">
+          일일안전회의(일일위험성평가)
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('documents', '/site/documents')" to="/site/documents" @click="closeMobileDrawer">
+          내 현장 문서 <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span>
+        </RouterLink>
+        <RouterLink
+          :class="menuLinkClass('mobile-communications', '/site/mobile/communications')"
+          to="/site/mobile/communications"
+          @click="closeMobileDrawer"
+        >
+          소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span>
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('notices', '/site/notices')" to="/site/notices" @click="closeMobileDrawer">공지사항</RouterLink>
+        <RouterLink
+          :class="menuLinkClass('safety-policy-goals', '/site/safety-policy-goals')"
+          to="/site/safety-policy-goals"
+          @click="closeMobileDrawer"
+        >
+          안전보건 방침·목표
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" to="/site/worker-voice" @click="closeMobileDrawer">
+          근로자의견청취
+        </RouterLink>
+        <RouterLink
+          :class="menuLinkClass('nonconformities', '/site/nonconformities')"
+          to="/site/nonconformities"
+          @click="closeMobileDrawer"
+        >
+          부적합사항
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('risk-library', '/site/risk-library')" to="/site/risk-library" @click="closeMobileDrawer">
+          위험성평가 DB
+        </RouterLink>
+        <RouterLink
+          :class="menuLinkClass('mobile-site-search', '/site/mobile/site-search')"
+          to="/site/mobile/site-search"
+          @click="closeMobileDrawer"
+        >
+          현장 검색
+        </RouterLink>
+        <RouterLink class="menu-link menu-link-secondary" to="/change-password" @click="closeMobileDrawer">비밀번호 변경</RouterLink>
+        <RouterLink :class="menuLinkClass('info', '/site/info')" to="/site/info" @click="closeMobileDrawer">설정</RouterLink>
+        <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" to="/site/user-guide" @click="closeMobileDrawer">
+          사용설명서
+        </RouterLink>
+      </nav>
     </aside>
     <section class="layout-content">
-      <header class="layout-header">
+      <header class="layout-header" :class="{ 'layout-header-site-mobile': isMobileViewport }">
         <div class="layout-header-left">
-          <button class="sidebar-toggle-btn" @click="toggleSidebar">
-            {{ sidebarCollapsed ? "펼치기" : "접기" }}
+          <button type="button" class="sidebar-toggle-btn" :aria-expanded="isMobileViewport ? mobileDrawerOpen : !sidebarCollapsed" @click="toggleSidebar">
+            <span v-if="isMobileViewport" class="hamburger-glyph" aria-hidden="true">☰</span>
+            <template v-else>{{ sidebarCollapsed ? "펼치기" : "접기" }}</template>
           </button>
-          <span>BESMA CSMS 안전보건플랫폼 · SITE</span>
+          <span class="layout-header-product">BESMA · SITE</span>
         </div>
         <div class="layout-header-center">
           {{ headerSiteLabel }}
         </div>
-        <div>
-          <span style="margin-right: 8px">
+        <div class="layout-header-actions">
+          <span v-if="!isMobileViewport" class="header-user-line">
             {{ auth.user?.name }} ({{ auth.user?.login_id }})
-            <template v-if="auth.isTestPersonaMode && auth.effectivePersona">
-              / Persona: {{ auth.effectivePersona }}
-            </template>
+            <template v-if="auth.isTestPersonaMode && auth.effectivePersona"> / Persona: {{ auth.effectivePersona }}</template>
           </span>
-          <RouterLink class="secondary" style="margin-right: 8px; text-decoration: none; display: inline-block" to="/change-password">비밀번호 변경</RouterLink>
-          <button class="secondary" @click="handleLogout">로그아웃</button>
+          <RouterLink v-if="!isMobileViewport" class="secondary header-link" to="/change-password">비밀번호 변경</RouterLink>
+          <button type="button" class="secondary" @click="handleLogout">로그아웃</button>
         </div>
       </header>
       <div v-if="tickerTitles.length > 0" class="notice-ticker">
@@ -93,7 +154,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
@@ -127,9 +188,18 @@ const SITE_FIXED_MENU_KEYS = [
 ] as const;
 const sidebarCollapsed = ref(false);
 const isMobileViewport = ref(false);
+const mobileDrawerOpen = ref(false);
 let unreadTimer: number | null = null;
 const headerSiteLabel = computed(() => (siteName.value ? `현장: ${siteName.value}` : "현장: -"));
-const PRIMARY_MENUS = ["risk-library", "worker-voice", "nonconformities", "document-explorer", "documents"] as const;
+const PRIMARY_MENUS = [
+  "mobile",
+  "safety-policy-goals",
+  "risk-library",
+  "worker-voice",
+  "nonconformities",
+  "document-explorer",
+  "documents",
+] as const;
 
 onMounted(() => {
   initializeLayout();
@@ -141,6 +211,15 @@ onMounted(() => {
   }, 30000);
 });
 
+watch(
+  () => route.path,
+  () => {
+    if (isMobileViewport.value) {
+      mobileDrawerOpen.value = false;
+    }
+  },
+);
+
 onUnmounted(() => {
   window.removeEventListener("resize", syncViewport);
   window.removeEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
@@ -151,7 +230,11 @@ onUnmounted(() => {
 });
 
 function syncViewport() {
-  isMobileViewport.value = window.innerWidth <= 768;
+  const nextMobile = window.innerWidth <= 768;
+  if (nextMobile !== isMobileViewport.value) {
+    mobileDrawerOpen.value = false;
+  }
+  isMobileViewport.value = nextMobile;
 }
 
 async function initializeLayout() {
@@ -252,7 +335,15 @@ function handleLogout() {
 }
 
 function toggleSidebar() {
+  if (isMobileViewport.value) {
+    mobileDrawerOpen.value = !mobileDrawerOpen.value;
+    return;
+  }
   sidebarCollapsed.value = !sidebarCollapsed.value;
+}
+
+function closeMobileDrawer() {
+  mobileDrawerOpen.value = false;
 }
 
 function isPrimaryMenu(key: string) {
@@ -263,12 +354,20 @@ function isMenuActive(path: string) {
   return route.path === path;
 }
 
+/** `/site/mobile` 허브: 작업계획·일지 탭 모두 동일 사이드 메뉴 항목으로 표시 */
+function menuItemActive(key: string, path: string) {
+  if (key === "mobile") {
+    return route.name === "site-mobile-ops" || route.name === "site-mobile-daily-capture";
+  }
+  return isMenuActive(path);
+}
+
 function menuLinkClass(key: string, path: string) {
   return {
     "menu-link": true,
     "menu-link-primary": isPrimaryMenu(key),
     "menu-link-secondary": !isPrimaryMenu(key),
-    "menu-link-active": isMenuActive(path),
+    "menu-link-active": menuItemActive(key, path),
   };
 }
 
@@ -315,6 +414,10 @@ function menuIcon(key: string) {
   text-decoration: none;
   color: #eff6ff;
   transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.3;
+  word-break: keep-all;
 }
 
 .menu-link-primary {
@@ -409,6 +512,38 @@ function menuIcon(key: string) {
   padding: 6px 10px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.hamburger-glyph {
+  display: inline-block;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.layout-header-site-mobile .layout-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.layout-header-site-mobile .layout-header-center {
+  max-width: 36%;
+}
+
+.layout-header-product {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.layout-header-actions .header-link {
+  text-decoration: none;
+  display: inline-block;
+}
+
+.layout-menu-mobile-site {
+  padding-bottom: 24px;
 }
 
 .site-menu-section-label {

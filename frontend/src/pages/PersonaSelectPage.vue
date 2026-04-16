@@ -21,6 +21,7 @@
 <script setup lang="ts">
 import { useRouter } from "vue-router";
 import { useAuthStore, type TestPersona } from "@/stores/auth";
+import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -31,7 +32,7 @@ function routeByPersona(persona: TestPersona) {
     return;
   }
   if (persona === "SITE_MANAGER") {
-    router.push({ name: "site-mobile-ops" });
+    router.push({ name: siteMobileOrDesktopHomeName() });
     return;
   }
   router.push({ name: "worker-mobile-list" });
@@ -54,7 +55,7 @@ function goDefault() {
     return;
   }
   if (auth.user?.ui_type === "SITE") {
-    router.push({ name: "site-mobile-ops" });
+    router.push({ name: siteMobileOrDesktopHomeName() });
     return;
   }
   router.push({ name: "hq-other-dashboard" });
