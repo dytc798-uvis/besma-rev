@@ -12,6 +12,7 @@
           <RouterLink :style="menuOrderPrimaryStyle('risk-library')" to="/hq-safe/risk-library">위험성평가 DB 조회</RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('worker-voice')" to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('nonconformities')" to="/hq-safe/nonconformities">부적합사항</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고 최초보고</RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('document-explorer')" to="/hq-safe/document-explorer">문서 탐색</RouterLink>
           <RouterLink
             :style="menuOrderPrimaryStyle('documents')"
@@ -21,7 +22,6 @@
             문서 취합 현황
             <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span>
           </RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('periodic-monitoring')" to="/hq-safe/periodic-monitoring">주기 기반 문서 모니터링</RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('approvals-history')" to="/hq-safe/approvals/history">승인/반려 이력</RouterLink>
           <RouterLink
             v-for="m in dynamicMenus"

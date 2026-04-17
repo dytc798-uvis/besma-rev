@@ -35,7 +35,7 @@
       <div class="toolbar-actions">
         <button v-if="isLedgerManagedDoc" type="button" class="primary" @click="goLedgerFromDocumentDetail">관리대장에서 보기</button>
         <router-link
-          v-if="doc && !isLedgerManagedDoc"
+          v-if="doc && !isLedgerManagedDoc && isTbmDocument"
           class="secondary"
           :to="`/documents/${doc.id}/tbm-view`"
           style="display: inline-flex; align-items: center; text-decoration: none; padding: 6px 12px; border-radius: 4px; background-color: #e5e7eb; color: #111827;"
@@ -120,6 +120,7 @@ interface DocumentDetail {
   rejection_reason: string | null;
   version_no: number;
   document_type?: string | null;
+  document_type_code?: string | null;
 }
 
 const route = useRoute();
@@ -133,6 +134,7 @@ const rejectReason = ref("");
 const downloading = ref(false);
 
 const isLedgerManagedDoc = computed(() => isLedgerManagedDocumentType(doc.value?.document_type));
+const isTbmDocument = computed(() => (doc.value?.document_type_code || "").trim() === "DAILY_TBM");
 const ledgerManagedUxMessage = LEDGER_MANAGED_UX_MESSAGE;
 
 const canApprove = computed(

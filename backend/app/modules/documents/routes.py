@@ -337,16 +337,27 @@ def get_hq_dashboard(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
 
     parsed_period = _parse_period(period)
-    sites = db.query(Site).order_by(site_list_priority_order(), Site.id.asc()).all()
+    # 단일 현장(scope) 요청일 때는 전체 현장 목록을 먼저 읽지 않도록 쿼리를 분기한다.
+    if site_id is not None:
+        sites = (
+            db.query(Site)
+            .filter(Site.id == int(site_id))
+            .order_by(site_list_priority_order(), Site.id.asc())
+            .all()
+        )
+    elif site_code:
+        sites = (
+            db.query(Site)
+            .filter(Site.site_code == site_code)
+            .order_by(site_list_priority_order(), Site.id.asc())
+            .all()
+        )
+    else:
+        sites = db.query(Site).order_by(site_list_priority_order(), Site.id.asc()).all()
+        sites = _dedupe_sites_by_uploaded_documents(db, sites)
+
     if team_slot:
         sites = [s for s in sites if _site_team_slot(s.site_name) == team_slot]
-    # site_id가 명시되면 실제 연결된 현장을 우선 본다.
-    if site_code and site_id is None:
-        sites = [s for s in sites if s.site_code == site_code]
-    if site_id is not None:
-        sites = [s for s in sites if s.id == int(site_id)]
-    else:
-        sites = _dedupe_sites_by_uploaded_documents(db, sites)
     site_summaries: list[dict] = []
     all_items: list[dict] = []
     pending_review_count = 0
@@ -750,7 +761,20 @@ def get_hq_badge_counts(
 def get_document(document_id: int, db: DbDep, current_user: CurrentUserDep):
     doc = _get_document_or_404(db, document_id=document_id)
     _assert_document_access(doc, current_user)
-    return doc
+    requirement_code: str | None = None
+    if doc.instance_id:
+        req = (
+            db.query(DocumentRequirement.code)
+            .join(DocumentInstance, DocumentInstance.selected_requirement_id == DocumentRequirement.id)
+            .filter(DocumentInstance.id == doc.instance_id)
+            .first()
+        )
+        if req and req[0]:
+            requirement_code = str(req[0]).strip() or None
+
+    payload = {k: v for k, v in vars(doc).items() if not k.startswith("_")}
+    payload["document_type_code"] = requirement_code
+    return payload
 
 
 @router.get("/{document_id}/comments", response_model=list[DocumentCommentResponse])

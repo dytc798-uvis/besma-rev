@@ -315,7 +315,6 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
     { key: "risk-library", label: "위험성평가 DB 조회" },
     { key: "site-search", label: "현장 검색" },
     { key: "document-explorer", label: "문서 탐색" },
-    { key: "periodic-monitoring", label: "주기 기반 문서 모니터링" },
     { key: "documents", label: "문서 취합 현황" },
     { key: "approvals-inbox", label: "결재함(공사중)" },
     { key: "approvals-history", label: "승인/반려 이력" },

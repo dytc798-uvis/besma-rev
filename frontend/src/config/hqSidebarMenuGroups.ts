@@ -9,9 +9,9 @@ export const HQ_SIDEBAR_PRIMARY_KEYS = [
   "risk-library",
   "worker-voice",
   "nonconformities",
+  "accidents",
   "document-explorer",
   "documents",
-  "periodic-monitoring",
   "approvals-history",
 ] as const;
 
