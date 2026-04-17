@@ -459,6 +459,7 @@ def _pick_latest_for_requirement(
             Document.site_id == site_id,
             or_(
                 DocumentInstance.selected_requirement_id == requirement.id,
+                DocumentInstance.document_type_code == requirement.code,
                 Document.document_type == requirement.code,
                 and_(
                     requirement.code == "DAILY_TBM",
