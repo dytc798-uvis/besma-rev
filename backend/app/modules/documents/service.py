@@ -412,6 +412,8 @@ def _status_from_doc(doc: Document, inst: DocumentInstance | None, is_required: 
         return _STATUS_APPROVED
     if doc.current_status == "REJECTED":
         return _STATUS_REJECTED
+    if inst and inst.workflow_status == WorkflowStatus.REJECTED:
+        return _STATUS_REJECTED
     if doc.current_status == "UNDER_REVIEW" or (inst and inst.workflow_status == WorkflowStatus.UNDER_REVIEW):
         return _STATUS_IN_REVIEW
     return _STATUS_SUBMITTED if is_required else _STATUS_NOT_REQUIRED

@@ -132,10 +132,16 @@
                         <button
                           type="button"
                           class="status-pill"
-                          :class="statusPillClass(matrixDisplayCell(row.site_id, col.requirement_key).status)"
+                          :class="
+                            statusPillClass(effectiveHqMatrixStatus(matrixDisplayCell(row.site_id, col.requirement_key)))
+                          "
                           @click="goInstanceDetail(row.site_id, col.requirement_key)"
                         >
-                          {{ statusCompactLabel(matrixDisplayCell(row.site_id, col.requirement_key).status) }}
+                          {{
+                            statusCompactLabel(
+                              effectiveHqMatrixStatus(matrixDisplayCell(row.site_id, col.requirement_key)),
+                            )
+                          }}
                         </button>
                         <button type="button" class="inst-detail-link" @click="goInstanceDetail(row.site_id, col.requirement_key)">
                           상세
@@ -144,10 +150,16 @@
                       <template v-else>
                         <span
                           class="status-pill status-pill-no-instance"
-                          :class="statusPillClass(matrixDisplayCell(row.site_id, col.requirement_key).status)"
+                          :class="
+                            statusPillClass(effectiveHqMatrixStatus(matrixDisplayCell(row.site_id, col.requirement_key)))
+                          "
                           title="이 주기에 DocumentInstance(회차)가 아직 생성되지 않았습니다. 목록이 갱신되면 회차가 생길 수 있습니다."
                         >
-                          {{ statusCompactLabel(matrixDisplayCell(row.site_id, col.requirement_key).status) }}
+                          {{
+                            statusCompactLabel(
+                              effectiveHqMatrixStatus(matrixDisplayCell(row.site_id, col.requirement_key)),
+                            )
+                          }}
                         </span>
                         <span
                           class="no-instance-badge"
@@ -297,6 +309,10 @@ interface DashboardItem {
   latest_instance_id?: number | null;
   category?: string | null;
   section?: string | null;
+  /** 레거시 status가 NOT_SUBMITTED로 정규화돼도 본사 매트릭스에서 반려를 드러내기 위한 필드 */
+  current_cycle_last_submission_status?: string | null;
+  unresolved_rejected_document_id?: number | null;
+  rejected_backlog_count?: number;
 }
 interface MatrixCellItem extends DashboardItem {}
 
@@ -468,15 +484,27 @@ function statusLabel(status: string) {
   return map[status] ?? status;
 }
 
+/** API는 반려를 status=NOT_SUBMITTED로 두고 확장 필드에만 REJECTED를 두는 경우가 있다. */
+function effectiveHqMatrixStatus(row: DashboardItem): string {
+  if (row.status === "REJECTED") return "REJECTED";
+  if (row.workflow_status === "REJECTED") return "REJECTED";
+  if (row.current_cycle_last_submission_status === "REJECTED") return "REJECTED";
+  if (row.unresolved_rejected_document_id != null) return "REJECTED";
+  if ((row.rejected_backlog_count ?? 0) > 0) return "REJECTED";
+  return row.status;
+}
+
 function statusCompactLabel(status: string) {
   if (status === "APPROVED") return "승인";
   if (status === "SUBMITTED" || status === "IN_REVIEW") return "검토대기";
+  if (status === "REJECTED") return "반려";
   return "미제출";
 }
 
 function statusPillClass(status: string) {
   if (status === "APPROVED") return "status-pill-approved";
   if (status === "SUBMITTED" || status === "IN_REVIEW") return "status-pill-pending";
+  if (status === "REJECTED") return "status-pill-rejected";
   return "status-pill-not-submitted";
 }
 
