@@ -40,7 +40,7 @@ def transition_instance_workflow_status(
         return TransitionResult(from_status=cur, to_status=inst.workflow_status)
 
     if action == "approve":
-        if cur not in {WorkflowStatus.SUBMITTED, WorkflowStatus.UNDER_REVIEW}:
+        if cur not in {WorkflowStatus.SUBMITTED, WorkflowStatus.UNDER_REVIEW, WorkflowStatus.REJECTED}:
             raise ValueError(f"invalid transition: {cur} -> APPROVED (approve)")
         inst.workflow_status = WorkflowStatus.APPROVED
         return TransitionResult(from_status=cur, to_status=inst.workflow_status)

@@ -46,6 +46,12 @@ def test_reject_transition_contract():
     assert inst.workflow_status == WorkflowStatus.REJECTED
 
 
+def test_approve_transition_allows_rejected():
+    inst = _inst(WorkflowStatus.REJECTED)
+    transition_instance_workflow_status(inst, action="approve")
+    assert inst.workflow_status == WorkflowStatus.APPROVED
+
+
 def test_invalid_transition_raises():
     inst = _inst(WorkflowStatus.NOT_SUBMITTED)
     with pytest.raises(ValueError):

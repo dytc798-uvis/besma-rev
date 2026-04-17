@@ -90,6 +90,7 @@
       </BaseCard>
 
       <BaseCard class="main-panel !p-[22px] mt-4" title="회차 히스토리">
+        <p class="sub m-0 mb-2">행을 선택하면 아래 코멘트가 해당 회차 제출 문서 기준으로 바뀝니다. 「파일 보기」로 당시 제출본을 엽니다.</p>
         <p v-if="historyLoading" class="sub m-0 mb-2">히스토리를 불러오는 중...</p>
         <p v-else-if="historyLoadError" class="detail-error-banner m-0 mb-2">{{ historyLoadError }}</p>
         <div class="stitch-table-shell">
@@ -102,29 +103,51 @@
                 <th>상태</th>
                 <th>재업로드</th>
                 <th>코멘트</th>
+                <th>문서</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in historyItems" :key="r.instance_id">
+              <tr
+                v-for="r in historyItems"
+                :key="r.instance_id"
+                role="button"
+                tabindex="0"
+                class="history-inst-row"
+                :class="{ 'history-inst-row-selected': selectedHistoryDocumentId === r.document_id }"
+                @click="selectHistoryRow(r)"
+                @keydown.enter.prevent="selectHistoryRow(r)"
+              >
                 <td>{{ r.period_label }}</td>
                 <td>{{ formatDateTime(r.submitted_at) }}</td>
                 <td>{{ formatDateTime(r.reviewed_at) }}</td>
                 <td>{{ workflowUiLabel(r.workflow_status, r.is_missing) }}</td>
                 <td>{{ r.reupload_count }}</td>
                 <td class="cell-note">{{ r.review_note || "—" }}</td>
+                <td>
+                  <button
+                    v-if="r.document_id"
+                    type="button"
+                    class="stitch-btn-secondary"
+                    @click.stop="openPreviewForHistoryRow(r)"
+                  >
+                    파일 보기
+                  </button>
+                  <span v-else class="sub">—</span>
+                </td>
               </tr>
               <tr v-if="!historyLoading && !historyLoadError && historyItems.length === 0">
-                <td colspan="6" class="sub">히스토리가 없습니다.</td>
+                <td colspan="7" class="sub">히스토리가 없습니다.</td>
               </tr>
             </tbody>
           </table>
         </div>
       </BaseCard>
 
-      <BaseCard v-if="currentRow?.document_id && !isLedgerManagedInstance" class="main-panel !p-[22px] mt-4">
+      <BaseCard v-if="currentRow && commentsDocumentId && !isLedgerManagedInstance" class="main-panel !p-[22px] mt-4">
         <DocumentCommentsPanel
-          :document-id="currentRow.document_id"
+          :document-id="commentsDocumentId"
           :document-type-code="currentRow.document_type_code"
+          :title="selectedHistoryDocumentId != null ? '선택 회차 문서 코멘트' : '현재 회차 문서 코멘트'"
         />
       </BaseCard>
     </template>
@@ -199,6 +222,7 @@ const loadError = ref("");
 const historyLoading = ref(false);
 const historyLoadError = ref("");
 const historyItems = ref<HistoryRow[]>([]);
+const selectedHistoryDocumentId = ref<number | null>(null);
 const currentRow = ref<HistoryRow | null>(null);
 const documentRecord = ref<DocumentRecord | null>(null);
 const reviewComment = ref("");
@@ -231,13 +255,15 @@ const canApplyReview = computed(() => {
   return Boolean(
     currentRow.value?.document_id &&
       st &&
-      (st === "SUBMITTED" || st === "IN_REVIEW") &&
+      (st === "SUBMITTED" || st === "IN_REVIEW" || st === "REJECTED") &&
       !isLedgerManagedDocumentType(currentRow.value?.document_type_code),
   );
 });
 
 const isLedgerManagedInstance = computed(() => isLedgerManagedDocumentType(currentRow.value?.document_type_code));
 const ledgerManagedUxMessage = LEDGER_MANAGED_UX_MESSAGE;
+
+const commentsDocumentId = computed(() => selectedHistoryDocumentId.value ?? currentRow.value?.document_id ?? null);
 
 function displaySiteName(siteName: string) {
   if (siteName.includes("청라C18") || siteName.includes("C18BL")) {
@@ -312,6 +338,7 @@ async function loadAll() {
   historyLoadError.value = "";
   currentRow.value = null;
   historyItems.value = [];
+  selectedHistoryDocumentId.value = null;
   documentRecord.value = null;
 
   const id = instanceIdNum.value;
@@ -392,10 +419,18 @@ async function submitReview(action: "approve" | "reject") {
   }
 }
 
-async function openPreview() {
-  const docId = currentRow.value?.document_id;
-  const name = currentRow.value?.current_file_name;
-  if (!docId || !canPreviewInBrowser(name)) return;
+function selectHistoryRow(r: HistoryRow) {
+  selectedHistoryDocumentId.value = r.document_id ?? null;
+}
+
+async function openPreviewForHistoryRow(r: HistoryRow) {
+  const docId = r.document_id;
+  const name = r.current_file_name;
+  if (!docId) return;
+  await openPreviewForDocument(docId, name);
+}
+
+async function openPreviewForDocument(docId: number, name: string | null | undefined) {
   const res = await api.get(`/documents/${docId}/file`, {
     params: { disposition: "inline" },
     responseType: "blob",
@@ -403,13 +438,13 @@ async function openPreview() {
   const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
   const blob = new Blob([res.data], { type: contentType });
   const url = window.URL.createObjectURL(blob);
-  if (isPdfFile(name)) {
+  if (canPreviewInBrowser(name) && isPdfFile(name)) {
     previewKind.value = "pdf";
     previewUrl.value = url;
     previewOpen.value = true;
     return;
   }
-  if (isImageFile(name)) {
+  if (canPreviewInBrowser(name) && isImageFile(name)) {
     previewKind.value = "image";
     previewUrl.value = url;
     previewOpen.value = true;
@@ -417,6 +452,13 @@ async function openPreview() {
   }
   window.open(url, "_blank", "noopener");
   setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+}
+
+async function openPreview() {
+  const docId = currentRow.value?.document_id;
+  const name = currentRow.value?.current_file_name;
+  if (!docId || !canPreviewInBrowser(name)) return;
+  await openPreviewForDocument(docId, name);
 }
 
 function closePreview() {
@@ -590,6 +632,17 @@ watch(
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.history-inst-row {
+  cursor: pointer;
+}
+.history-inst-row:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: -2px;
+}
+.history-inst-row-selected {
+  background: #e0e7ff;
 }
 
 .mt-4 {
