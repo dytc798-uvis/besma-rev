@@ -382,6 +382,18 @@ def test_daily_upload_file_name_and_supervisor_daily_override(tmp_path: Path):
         due_rule_text="주 1회 점검 후 작성",
     )
     setup_db.add(req)
+    req_site_manager = DocumentRequirement(
+        site_id=site_id,
+        document_type_id=doc_type.id,
+        code="SITE_MANAGER_CHECKLIST",
+        title="현장소장 점검표",
+        frequency="WEEKLY",
+        is_required=True,
+        is_enabled=True,
+        display_order=2,
+        due_rule_text="주 1회 점검 후 작성",
+    )
+    setup_db.add(req_site_manager)
     setup_db.add(
         User(
             id=1,
@@ -394,6 +406,7 @@ def test_daily_upload_file_name_and_supervisor_daily_override(tmp_path: Path):
     )
     setup_db.commit()
     requirement_id = req.id
+    site_manager_requirement_id = req_site_manager.id
     setup_db.close()
 
     app = FastAPI()
@@ -436,20 +449,41 @@ def test_daily_upload_file_name_and_supervisor_daily_override(tmp_path: Path):
     assert supervisor_upload.status_code == 200
     supervisor_document_id = int(supervisor_upload.json()["document_id"])
 
+    site_manager_upload = client.post(
+        "/document-submissions/upload",
+        data={
+            "site_id": str(site_id),
+            "requirement_id": str(site_manager_requirement_id),
+            "document_type_code": "SITE_MANAGER_CHECKLIST",
+            "work_date": today,
+        },
+        files={"file": ("site-manager.pdf", b"check-site", "application/pdf")},
+    )
+    assert site_manager_upload.status_code == 200
+    site_manager_document_id = int(site_manager_upload.json()["document_id"])
+
     db_check = TestingSessionLocal()
     try:
         tbm_doc = db_check.query(Document).filter(Document.id == tbm_document_id).first()
         supervisor_doc = db_check.query(Document).filter(Document.id == supervisor_document_id).first()
+        site_manager_doc = db_check.query(Document).filter(Document.id == site_manager_document_id).first()
         assert tbm_doc is not None
         assert supervisor_doc is not None
+        assert site_manager_doc is not None
         assert tbm_doc.file_name == "TBM_C18BL_260410.hwp"
         assert supervisor_doc.file_name == "SUPERVISOR_CHECKLIST_C18BL_260410.pdf"
+        assert site_manager_doc.file_name == "SITE_MANAGER_CHECKLIST_C18BL_260410.pdf"
 
         supervisor_inst = db_check.query(DocumentInstance).filter(DocumentInstance.id == supervisor_doc.instance_id).first()
         assert supervisor_inst is not None
         assert supervisor_inst.period_start.isoformat() == today
         assert supervisor_inst.period_end.isoformat() == today
         assert supervisor_inst.cycle_code == "DAILY"
+        site_manager_inst = db_check.query(DocumentInstance).filter(DocumentInstance.id == site_manager_doc.instance_id).first()
+        assert site_manager_inst is not None
+        assert site_manager_inst.period_start.isoformat() == today
+        assert site_manager_inst.period_end.isoformat() == today
+        assert site_manager_inst.cycle_code == "DAILY"
 
         status_rows = get_site_requirement_status(
             db_check,
@@ -458,9 +492,118 @@ def test_daily_upload_file_name_and_supervisor_daily_override(tmp_path: Path):
             target_date=date.fromisoformat(today),
         )
         sup_row = next(r for r in status_rows if r.get("document_type_code") == "SUPERVISOR_CHECKLIST")
+        site_manager_row = next(r for r in status_rows if r.get("document_type_code") == "SITE_MANAGER_CHECKLIST")
         assert sup_row["frequency"] == "DAILY"
+        assert site_manager_row["frequency"] == "DAILY"
+        assert sup_row["latest_document_id"] == supervisor_document_id
+        assert site_manager_row["latest_document_id"] == site_manager_document_id
+        assert sup_row["latest_instance_id"] == supervisor_doc.instance_id
+        assert site_manager_row["latest_instance_id"] == site_manager_doc.instance_id
     finally:
         db_check.close()
+
+
+def test_document_replace_keeps_instance_and_increments_version(tmp_path: Path):
+    db_file = tmp_path / "test_document_replace.db"
+    engine = create_engine(
+        f"sqlite:///{db_file}",
+        connect_args={"check_same_thread": False},
+    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.workers import models as worker_models  # noqa: F401
+    from app.modules.documents import models as document_models  # noqa: F401
+    from app.modules.approvals import models as approval_models  # noqa: F401
+    from app.modules.opinions import models as opinion_models  # noqa: F401
+    from app.modules.document_settings import models as document_settings_models  # noqa: F401
+    from app.modules.document_generation import models as document_generation_models  # noqa: F401
+    from app.modules.document_submissions import models as document_submissions_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    site = Site(site_code="S-REPLACE-001", site_name="수정 테스트 현장")
+    setup_db.add(site)
+    setup_db.flush()
+    site_id = site.id
+    setup_db.add(
+        User(
+            id=1,
+            name="site-manager",
+            login_id="site_doc_manager",
+            password_hash="x",
+            site_id=site_id,
+            role=Role.SITE,
+        )
+    )
+    setup_db.commit()
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(document_submissions_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=1,
+        role=Role.SITE,
+        site_id=site_id,
+        login_id="site_doc_manager",
+    )
+    client = TestClient(app)
+
+    upload_res = client.post(
+        "/document-submissions/upload",
+        data={
+            "site_id": str(site_id),
+            "document_type_code": "DAILY_DOC",
+            "work_date": date(2026, 4, 16).isoformat(),
+        },
+        files={"file": ("origin.txt", b"v1", "text/plain")},
+    )
+    assert upload_res.status_code == 200
+    payload = upload_res.json()
+    instance_id = int(payload["instance_id"])
+    document_id = int(payload["document_id"])
+
+    db_before = TestingSessionLocal()
+    try:
+        doc_before = db_before.query(Document).filter(Document.id == document_id).first()
+        assert doc_before is not None
+        before_version = int(doc_before.version_no)
+        before_path = doc_before.file_path
+    finally:
+        db_before.close()
+
+    replace_res = client.post(
+        "/document-submissions/replace",
+        data={"instance_id": str(instance_id)},
+        files={"file": ("replaced.txt", b"v2", "text/plain")},
+    )
+    assert replace_res.status_code == 200
+    replace_payload = replace_res.json()
+    assert int(replace_payload["instance_id"]) == instance_id
+    assert int(replace_payload["document_id"]) == document_id
+    assert replace_payload["workflow_status"] == WorkflowStatus.SUBMITTED
+
+    db_after = TestingSessionLocal()
+    try:
+        doc_after = db_after.query(Document).filter(Document.id == document_id).first()
+        inst_after = db_after.query(DocumentInstance).filter(DocumentInstance.id == instance_id).first()
+        assert doc_after is not None
+        assert inst_after is not None
+        assert doc_after.version_no == before_version + 1
+        assert doc_after.file_path != before_path
+        assert doc_after.current_status == DocumentStatus.SUBMITTED
+        assert inst_after.workflow_status == WorkflowStatus.SUBMITTED
+    finally:
+        db_after.close()
 
 
 def test_document_upload_rejects_file_over_10mb(tmp_path: Path):

@@ -49,7 +49,13 @@ _STATUS_APPROVED = "APPROVED"
 _STATUS_REJECTED = "REJECTED"
 _PRIMARY_SITE_FREQUENCIES = {"DAILY", "WEEKLY", "MONTHLY", "ROLLING", "ADHOC", "EVENT", "ONE_TIME"}
 # 제출 API와 동일하게 특정 요구사항 코드는 저장된 주기와 무관하게 현장 대시보드에서 일별(당일)로 취급한다.
-_SITE_REQUIREMENT_ALWAYS_DAILY_CODES = frozenset({"SUPERVISOR_CHECKLIST"})
+_SITE_REQUIREMENT_ALWAYS_DAILY_CODES = frozenset(
+    {
+        "SUPERVISOR_CHECKLIST",
+        "SITE_MANAGER_CHECKLIST",
+        "SAFETY_MANAGER_DAILY_LOG",
+    }
+)
 
 
 def _effective_site_requirement_frequency(requirement_code: str | None, stored_frequency: str | None) -> str:
@@ -454,7 +460,6 @@ def _pick_latest_for_requirement(
             or_(
                 DocumentInstance.selected_requirement_id == requirement.id,
                 Document.document_type == requirement.code,
-                Document.document_type == requirement.document_type.code,
             ),
         )
     )
