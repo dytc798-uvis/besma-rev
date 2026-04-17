@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config.settings import settings
 from app.core.auth import get_current_user_with_bypass, get_db
+from app.core.datetime_utils import utc_now
 from app.core.database import Base
 from app.core.enums import Role
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
@@ -177,17 +178,24 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert approve_res.status_code == 200
     assert approve_res.json()["current_status"] == DocumentStatus.APPROVED
 
+    comm_res = client.get("/documents/hq-communications", params={"limit": 20})
+    assert comm_res.status_code == 200
+    comm_items = comm_res.json()["items"]
+    assert any(item["document_id"] == first_document_id for item in comm_items)
+
     current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_doc_manager")
     site_comment_list_res = client.get(f"/documents/{first_document_id}/comments")
     assert site_comment_list_res.status_code == 200
-    assert [row["user_role"] for row in site_comment_list_res.json()] == ["SITE", "HQ"]
-    assert [row["comment_text"] for row in site_comment_list_res.json()] == [
-        "현장 확인 요청 사항 메모",
-        "본사 검토 예정, 추가 자료는 승인 흐름과 별개로 남깁니다.",
-    ]
+    timeline = site_comment_list_res.json()
+    assert [row["user_role"] for row in timeline] == ["SITE", "HQ", "HQ"]
+    assert [row.get("source", "comment") for row in timeline] == ["comment", "comment", "approval"]
+    assert timeline[0]["comment_text"] == "현장 확인 요청 사항 메모"
+    assert timeline[1]["comment_text"] == "본사 검토 예정, 추가 자료는 승인 흐름과 별개로 남깁니다."
+    assert "[파일:" in timeline[2]["comment_text"] and "승인" in timeline[2]["comment_text"]
 
-    site_comment_id = int(site_comment_list_res.json()[0]["id"])
-    hq_comment_id = int(site_comment_list_res.json()[1]["id"])
+    comment_rows = [row for row in timeline if row.get("source", "comment") == "comment"]
+    site_comment_id = int(comment_rows[0]["id"])
+    hq_comment_id = int(comment_rows[1]["id"])
 
     current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id, login_id="hq_doc_reviewer")
     assert client.delete(f"/documents/{first_document_id}/comments/{site_comment_id}").status_code == 403
@@ -199,9 +207,10 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert client.delete(f"/documents/{first_document_id}/comments/{site_comment_id}").status_code == 204
     after_delete_res = client.get(f"/documents/{first_document_id}/comments")
     assert after_delete_res.status_code == 200
-    assert [row["comment_text"] for row in after_delete_res.json()] == [
-        "본사 검토 예정, 추가 자료는 승인 흐름과 별개로 남깁니다.",
-    ]
+    after_rows = after_delete_res.json()
+    assert [row.get("source", "comment") for row in after_rows] == ["comment", "approval"]
+    assert after_rows[0]["comment_text"] == "본사 검토 예정, 추가 자료는 승인 흐름과 별개로 남깁니다."
+    assert after_rows[1].get("source") == "approval"
 
     current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_doc_manager")
 
@@ -748,3 +757,90 @@ def test_document_upload_image_keeps_original_and_optimized_derivatives(tmp_path
         assert doc.optimized_file_path and (settings.storage_root / doc.optimized_file_path).exists()
     finally:
         db_check.close()
+
+
+def test_documents_peer_comment_count_site_sees_hq_only(tmp_path: Path):
+    """SITE 티커: 타인(HQ)이 단 문서 코멘트만 집계한다."""
+    db_file = tmp_path / "test_peer_comment_count.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.workers import models as worker_models  # noqa: F401
+    from app.modules.documents import models as document_models  # noqa: F401
+    from app.modules.approvals import models as approval_models  # noqa: F401
+    from app.modules.opinions import models as opinion_models  # noqa: F401
+    from app.modules.document_settings import models as document_settings_models  # noqa: F401
+    from app.modules.document_generation import models as document_generation_models  # noqa: F401
+    from app.modules.document_submissions import models as document_submissions_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    site = Site(site_code="S-PEER-001", site_name="피어카운트 현장")
+    setup_db.add(site)
+    setup_db.flush()
+    site_id = site.id
+    setup_db.add_all(
+        [
+            User(
+                id=1,
+                name="site",
+                login_id="site_peer",
+                password_hash="x",
+                site_id=site_id,
+                role=Role.SITE,
+            ),
+            User(
+                id=2,
+                name="hq",
+                login_id="hq_peer",
+                password_hash="x",
+                site_id=site_id,
+                role=Role.HQ_SAFE,
+            ),
+        ]
+    )
+    setup_db.commit()
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(document_submissions_router)
+    app.include_router(documents_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    current = {"user": SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_peer")}
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: current["user"]
+    client = TestClient(app)
+
+    day = date(2026, 4, 17).isoformat()
+    up = client.post(
+        "/document-submissions/upload",
+        data={"site_id": str(site_id), "document_type_code": "DAILY_DOC", "work_date": day},
+        files={"file": ("a.txt", b"x", "text/plain")},
+    )
+    assert up.status_code == 200
+    doc_id = int(up.json()["document_id"])
+
+    assert client.get("/documents/comments/peer-count").json()["peer_comment_count"] == 0
+
+    current["user"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id, login_id="hq_peer")
+    assert (
+        client.post(
+            f"/documents/{doc_id}/comments",
+            json={"comment_text": "본사에서 남긴 메모"},
+        ).status_code
+        == 201
+    )
+
+    current["user"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_peer")
+    assert client.get("/documents/comments/peer-count").json()["peer_comment_count"] == 1
+
+    future_after = (utc_now() + timedelta(days=1)).isoformat()
+    assert client.get("/documents/comments/peer-count", params={"after": future_after}).json()["peer_comment_count"] == 0

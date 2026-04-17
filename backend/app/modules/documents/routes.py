@@ -9,6 +9,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
@@ -23,7 +24,7 @@ from app.modules.document_submissions.service import (
     transition_instance_workflow_status,
 )
 from app.modules.documents.ledger_managed import assert_not_ledger_managed_document, assert_not_ledger_managed_document_type
-from app.modules.documents.models import Document, DocumentStatus, DocumentUploadHistory
+from app.modules.documents.models import Document, DocumentComment, DocumentStatus, DocumentUploadHistory
 from app.modules.document_settings.models import DocumentRequirement
 from app.modules.documents.service import (
     create_document_comment,
@@ -37,6 +38,7 @@ from app.modules.documents.service import (
     get_tbm_periodic_monthly_monitoring,
     get_tbm_periodic_daily_monitoring,
     list_document_comments,
+    list_document_comments_with_review,
 )
 from app.schemas.document_dashboard import HQDashboardResponse, RequirementStatusResponse
 from app.modules.sites.models import Site
@@ -69,6 +71,28 @@ class DocumentCommentResponse(BaseModel):
     user_role: str
     comment_text: str
     created_at: datetime
+    source: str = "comment"
+    review_action: str | None = None
+    file_context_label: str | None = None
+    deletable: bool = True
+
+
+class HQCommunicationItemResponse(BaseModel):
+    item_key: str
+    source: str
+    source_id: int
+    document_id: int
+    title: str
+    site_id: int
+    site_name: str
+    user_name: str
+    user_role: str
+    comment_text: str
+    created_at: datetime
+
+
+class HQCommunicationListResponse(BaseModel):
+    items: list[HQCommunicationItemResponse]
 
 
 def _parse_period(period: str) -> str:
@@ -743,6 +767,34 @@ def get_site_badge_counts(
     }
 
 
+@router.get("/comments/peer-count")
+def get_peer_document_comment_count(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    after: datetime | None = Query(
+        None,
+        description="이 시각 이후에 등록된 타인 코멘트만 집계. 생략 시 최근 14일로 제한.",
+    ),
+):
+    """현장 계정: 소속 현장 문서에 달린 다른 사용자 코멘트 수(SITE 티커용)."""
+    if current_user.role != Role.SITE or not current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    cutoff = after
+    if cutoff is None:
+        cutoff = utc_now() - timedelta(days=14)
+    n = (
+        db.query(func.count(DocumentComment.id))
+        .join(Document, Document.id == DocumentComment.document_id)
+        .filter(
+            Document.site_id == int(current_user.site_id),
+            DocumentComment.user_id != int(current_user.id),
+            DocumentComment.created_at > cutoff,
+        )
+        .scalar()
+    )
+    return {"peer_comment_count": int(n or 0)}
+
+
 @router.get("/badges/hq")
 def get_hq_badge_counts(
     db: DbDep,
@@ -770,6 +822,79 @@ def get_hq_badge_counts(
     }
 
 
+@router.get("/hq-communications", response_model=HQCommunicationListResponse)
+def get_hq_communications(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    limit: int = Query(100, ge=1, le=500),
+):
+    if current_user.role != Role.HQ_SAFE:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    entries: list[dict] = []
+
+    comment_rows = (
+        db.query(DocumentComment, Document, Site, User)
+        .join(Document, Document.id == DocumentComment.document_id)
+        .join(Site, Site.id == Document.site_id)
+        .join(User, User.id == DocumentComment.user_id)
+        .order_by(DocumentComment.created_at.desc(), DocumentComment.id.desc())
+        .limit(limit)
+        .all()
+    )
+    for c, d, s, u in comment_rows:
+        entries.append(
+            {
+                "item_key": f"comment:{c.id}",
+                "source": "comment",
+                "source_id": int(c.id),
+                "document_id": int(d.id),
+                "title": d.title,
+                "site_id": int(s.id),
+                "site_name": s.site_name,
+                "user_name": u.name,
+                "user_role": ("SITE" if u.role == Role.SITE else "HQ"),
+                "comment_text": c.comment_text,
+                "created_at": c.created_at,
+            }
+        )
+
+    approval_rows = (
+        db.query(ApprovalHistory, Document, Site, User)
+        .join(Document, Document.id == ApprovalHistory.document_id)
+        .join(Site, Site.id == Document.site_id)
+        .join(User, User.id == ApprovalHistory.action_by_user_id)
+        .filter(
+            ApprovalHistory.action_type.in_([ApprovalAction.APPROVE, ApprovalAction.REJECT]),
+            ApprovalHistory.comment.isnot(None),
+            ApprovalHistory.comment != "",
+        )
+        .order_by(ApprovalHistory.action_at.desc(), ApprovalHistory.id.desc())
+        .limit(limit)
+        .all()
+    )
+    for h, d, s, u in approval_rows:
+        action_label = "승인" if h.action_type == ApprovalAction.APPROVE else "반려"
+        entries.append(
+            {
+                "item_key": f"approval:{h.id}",
+                "source": "approval",
+                "source_id": int(h.id),
+                "document_id": int(d.id),
+                "title": d.title,
+                "site_id": int(s.id),
+                "site_name": s.site_name,
+                "user_name": u.name,
+                "user_role": ("SITE" if u.role == Role.SITE else "HQ"),
+                "comment_text": f"[{action_label}] {h.comment}",
+                "created_at": h.action_at,
+            }
+        )
+
+    entries.sort(key=lambda row: row["created_at"], reverse=True)
+    return {"items": entries[:limit]}
+
+
 @router.get("/{document_id}")
 def get_document(document_id: int, db: DbDep, current_user: CurrentUserDep):
     doc = _get_document_or_404(db, document_id=document_id)
@@ -795,7 +920,7 @@ def get_document_comments(document_id: int, db: DbDep, current_user: CurrentUser
     doc = _get_document_or_404(db, document_id=document_id)
     _assert_document_access(doc, current_user)
     assert_not_ledger_managed_document(doc)
-    rows = list_document_comments(db, document_id=document_id)
+    rows = list_document_comments_with_review(db, document_id=document_id)
     return [DocumentCommentResponse(**row) for row in rows]
 
 

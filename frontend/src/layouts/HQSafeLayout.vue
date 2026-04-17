@@ -20,9 +20,9 @@
             @click="collapseSidebar"
           >
             문서 취합 현황
-            <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span>
+            <span v-if="unreadCommunicationCount > 0" class="hq-menu-count-badge">{{ unreadCommunicationCount }}</span>
           </RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('approvals-history')" to="/hq-safe/approvals/history">승인/반려 이력</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('approvals-history')" to="/hq-safe/approvals/history">본사-현장 소통</RouterLink>
           <RouterLink
             v-for="m in dynamicMenus"
             :key="`hq-dyn-${m.slug}`"
@@ -81,10 +81,12 @@ import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
 import { todayKst } from "@/utils/datetime";
 import { buildHqMenuOrderMaps } from "@/config/hqSidebarMenuGroups";
+import { getReadCommunicationKeys } from "@/utils/hqCommunicationRead";
 
 const auth = useAuthStore();
 const router = useRouter();
 const badge = ref({ incomplete_count: 0 });
+const unreadCommunicationCount = ref(0);
 const sidebarCollapsed = ref(false);
 const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
 const menuOrderPrimary = ref<Record<string, number>>({});
@@ -95,12 +97,15 @@ onMounted(() => {
     auth.loadMe();
   }
   loadBadge();
+  void loadUnreadCommunications();
   loadDynamicMenus();
   window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
+  window.addEventListener("besma-hq-communication-read", handleCommunicationRead as EventListener);
 });
 
 onUnmounted(() => {
   window.removeEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
+  window.removeEventListener("besma-hq-communication-read", handleCommunicationRead as EventListener);
 });
 
 async function loadBadge() {
@@ -111,6 +116,21 @@ async function loadBadge() {
     badge.value = res.data;
   } catch {
     badge.value = { incomplete_count: 0 };
+  }
+}
+
+function handleCommunicationRead() {
+  void loadUnreadCommunications();
+}
+
+async function loadUnreadCommunications() {
+  try {
+    const res = await api.get("/documents/hq-communications", { params: { limit: 120 } });
+    const items = (res.data?.items ?? []) as Array<{ item_key?: string }>;
+    const read = getReadCommunicationKeys(auth.user?.login_id ?? null);
+    unreadCommunicationCount.value = items.filter((row) => row.item_key && !read.has(row.item_key)).length;
+  } catch {
+    unreadCommunicationCount.value = 0;
   }
 }
 
@@ -284,6 +304,21 @@ function handleLogout() {
   color: #fff;
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
+}
+
+.hq-menu-count-badge {
+  margin-left: 8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  display: inline-block;
 }
 
 .hq-safe-shell .layout-content {

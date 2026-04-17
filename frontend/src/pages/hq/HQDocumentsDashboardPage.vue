@@ -195,22 +195,38 @@
               </button>
               <p class="sub">버튼을 눌러 새 탭에서 표 형태로 확인하세요.</p>
             </BaseCard>
-            <BaseCard class="extra-card" title="승인/반려 이력">
+            <BaseCard class="extra-card" title="본사-현장 소통">
               <div class="history-head">
-                <span class="sub">최근 {{ approvalHistory.length }}건</span>
+                <span class="sub">미확인 {{ unreadCommunicationCount }}건 · 최근 {{ communicationItems.length }}건</span>
                 <button type="button" class="stitch-btn-secondary pending-open-btn" @click="historyCollapsed = !historyCollapsed">
                   {{ historyCollapsed ? "펼치기" : "접기" }}
                 </button>
               </div>
               <ul v-if="!historyCollapsed" class="extra-list">
-                <li v-for="row in approvalHistory" :key="`hist-${row.document_id}-${row.reviewed_at}`">
+                <li
+                  v-for="row in communicationItems"
+                  :key="row.item_key"
+                  :class="{ 'comm-unread': !isCommunicationRead(row.item_key) }"
+                >
                   <button type="button" class="link-btn" @click="goDetail(row.document_id)">
                     {{ displaySiteName(row.site_name) }} · {{ row.title }}
                   </button>
-                  <span class="sub">{{ statusLabel(row.status) }} · {{ formatDateTime(row.reviewed_at) }}</span>
-                  <span v-if="row.review_note" class="sub">사유: {{ row.review_note }}</span>
+                  <span class="sub">{{ row.user_name }} ({{ row.user_role }}) · {{ formatDateTime(row.created_at) }}</span>
+                  <button type="button" class="link-btn comm-comment" @click="goDetail(row.document_id)">
+                    {{ row.comment_text }}
+                  </button>
+                  <div class="comm-actions">
+                    <button
+                      type="button"
+                      class="stitch-btn-secondary"
+                      :disabled="isCommunicationRead(row.item_key)"
+                      @click="confirmCommunication(row.item_key)"
+                    >
+                      {{ isCommunicationRead(row.item_key) ? "확인됨" : "확인" }}
+                    </button>
+                  </div>
                 </li>
-                <li v-if="approvalHistory.length === 0" class="sub">이력 없음</li>
+                <li v-if="communicationItems.length === 0" class="sub">소통 내역 없음</li>
               </ul>
               <p v-else class="sub">공간 절약을 위해 접어 두었습니다.</p>
             </BaseCard>
@@ -265,10 +281,12 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
+import { useAuthStore } from "@/stores/auth";
 import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.vue";
 import { DEMO_PILOT_SITE_CODE, isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
 import { formatDateTimeKst, todayKst } from "@/utils/datetime";
+import { getReadCommunicationKeys, markCommunicationRead } from "@/utils/hqCommunicationRead";
 import {
   hqLedgerRouteForDocumentType,
   isLedgerManagedDocumentType,
@@ -323,13 +341,18 @@ interface PendingDocumentRow {
   status: string;
 }
 
-interface ApprovalHistoryRow {
+interface CommunicationItemRow {
+  item_key: string;
+  source: string;
+  source_id: number;
   document_id: number;
   title: string;
+  site_id: number;
   site_name: string;
-  status: string;
-  reviewed_at: string | null;
-  review_note: string | null;
+  user_name: string;
+  user_role: string;
+  comment_text: string;
+  created_at: string | null;
 }
 
 interface PendingSummary {
@@ -354,6 +377,7 @@ interface DocumentDetailModalData {
 
 const router = useRouter();
 const route = useRoute();
+const auth = useAuthStore();
 /** 기본 period: Decision sample-hq-doc-001 (월간 기본) 승인 반영 */
 const period = ref<"all" | "day" | "week" | "month" | "quarter" | "half_year" | "year" | "event">("month");
 const selectedSiteId = ref<number | null>(null);
@@ -397,11 +421,15 @@ const siteSummaries = ref<SiteSummaryRow[]>([]);
 const items = ref<DashboardItem[]>([]);
 const signalStatus = ref<"GREEN" | "YELLOW" | "RED">("GREEN");
 const pendingDocuments = ref<PendingDocumentRow[]>([]);
-const approvalHistory = ref<ApprovalHistoryRow[]>([]);
+const communicationItems = ref<CommunicationItemRow[]>([]);
 const pendingSummary = ref<PendingSummary>({ day: 0, week: 0, month: 0 });
 const historyCollapsed = ref(true);
 const dashboardLoading = ref(true);
 const dashboardBackgroundPreparing = ref(false);
+const communicationReadKeys = ref<Set<string>>(new Set());
+const unreadCommunicationCount = computed(
+  () => communicationItems.value.filter((row) => !communicationReadKeys.value.has(row.item_key)).length,
+);
 const hqKpiAggregate = computed(() => {
   let totalRequiredSum = 0;
   let submittedSum = 0;
@@ -656,7 +684,6 @@ function applyDashboardPayload(
     signal_status?: "GREEN" | "YELLOW" | "RED";
     pending_documents?: PendingDocumentRow[];
     pending_documents_summary?: PendingSummary;
-    approval_history?: ApprovalHistoryRow[];
   },
   routeSiteId: number | null,
 ) {
@@ -665,12 +692,28 @@ function applyDashboardPayload(
   signalStatus.value = payload.signal_status ?? "GREEN";
   pendingDocuments.value = payload.pending_documents ?? [];
   pendingSummary.value = payload.pending_documents_summary ?? { day: 0, week: 0, month: 0 };
-  approvalHistory.value = payload.approval_history ?? [];
   if (routeSiteId != null && siteSummaries.value.some((s) => s.site_id === routeSiteId)) {
     selectedSiteId.value = routeSiteId;
   } else {
     selectedSiteId.value = siteSummaries.value[0]?.site_id ?? null;
   }
+}
+
+function isCommunicationRead(itemKey: string): boolean {
+  return communicationReadKeys.value.has(itemKey);
+}
+
+function confirmCommunication(itemKey: string) {
+  markCommunicationRead(authLoginId.value, itemKey);
+  communicationReadKeys.value = getReadCommunicationKeys(authLoginId.value);
+}
+
+const authLoginId = computed(() => auth.user?.login_id ?? null);
+
+async function loadCommunications() {
+  const res = await api.get("/documents/hq-communications", { params: { limit: 120 } });
+  communicationItems.value = (res.data?.items ?? []) as CommunicationItemRow[];
+  communicationReadKeys.value = getReadCommunicationKeys(authLoginId.value);
 }
 
 async function syncFallbackSiteId(routeSiteId: number | null) {
@@ -706,6 +749,7 @@ async function load() {
       });
       if (ticket !== hqDashboardLoadTicket) return;
       applyDashboardPayload(quick.data, routeSiteId);
+      await loadCommunications();
       dashboardLoading.value = false;
       dashboardBackgroundPreparing.value = true;
       void api
@@ -713,6 +757,7 @@ async function load() {
         .then((full) => {
           if (ticket !== hqDashboardLoadTicket) return;
           applyDashboardPayload(full.data, routeSiteId);
+          void loadCommunications();
         })
         .finally(() => {
           if (ticket === hqDashboardLoadTicket) {
@@ -725,6 +770,7 @@ async function load() {
     const res = await api.get("/documents/hq-dashboard", { params: paramsBase });
     if (ticket !== hqDashboardLoadTicket) return;
     applyDashboardPayload(res.data, routeSiteId);
+    await loadCommunications();
     await syncFallbackSiteId(routeSiteId);
 
     const reviewSiteRaw = route.query.review_site_id;
@@ -1121,6 +1167,22 @@ watch(
   padding-left: 16px;
   display: grid;
   gap: 6px;
+}
+
+.comm-unread {
+  border-left: 3px solid #dc2626;
+  padding-left: 8px;
+}
+
+.comm-comment {
+  display: block;
+  text-align: left;
+  margin: 4px 0;
+}
+
+.comm-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .link-btn {

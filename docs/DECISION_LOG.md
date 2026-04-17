@@ -931,6 +931,173 @@
 
 ---
 
+### [DECISION-065]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-16 |
+| **Title** | 문서취합 오업로드 수정은 파일 교체형(A)으로 통일하고 현장 `수정` 버튼을 제공 |
+| **Context** | 문서취합에서 잘못 올린 서류를 현장에서 즉시 정정할 수 있어야 하며, 기존 제출 이력 추적도 유지해야 한다. |
+| **Options** | A. 파일 교체형(같은 제출건 유지, 버전 이력 추가) / B. 제출 취소+재업로드 / C. 메타수정+파일재선택 분리 |
+| **Decision** | **A** |
+| **Reason** | 현장 사용자 수정 동선을 가장 짧게 만들면서도 `DocumentUploadHistory`/검토이력으로 변경 추적을 유지할 수 있다. |
+| **Impact Scope** | `backend/app/modules/document_submissions/routes.py`, `backend/app/modules/document_submissions/models.py`, `frontend/src/pages/site/SiteDocumentsDashboardPage.vue`, 관련 테스트 및 문서취합 업로드 UX |
+
+---
+
+### [DECISION-066]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-16 |
+| **Title** | 점검표/업무일지 주기는 현장 기준 `일 1회`로 고정하고 `현장소장 점검표`를 신설 |
+| **Context** | 현장 화면에서 `관리감독자 점검표`가 주 1회로 보인다는 운영 이슈가 접수되었고, `현장소장 점검표`를 별도 업로드 항목으로 추가 요청이 확정되었다. |
+| **Options** | A. 화면 표시만 일 1회로 보정 / B. DB 요구사항 주기와 화면 계산을 모두 일 1회로 고정 + 신규 요구사항 추가 |
+| **Decision** | **B** |
+| **Reason** | 표시 보정만으로는 기존 데이터의 주기 불일치가 재발할 수 있어, 요구사항 주기 교정(마이그레이션)과 신규 항목 추가를 함께 적용한다. |
+| **Impact Scope** | `backend/alembic/versions/20260416_0034_daily_checklists_and_site_manager_requirement.py`, `backend/app/seed/seed_data.py`, `backend/app/modules/documents/service.py`, `backend/app/modules/document_submissions/routes.py`, 관련 테스트 |
+
+---
+
+### [DECISION-067]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-16 |
+| **Title** | 운영 아이디어 제안은 현장 작성/조회 + 본사 검토·조치 전용으로 분리 |
+| **Context** | 현장에서는 제안을 등록하고 진행상태를 확인하되, 검토/조치 상태 변경은 본사만 수행해야 한다. 또한 SITE 사이드바에서는 운영 아이디어 메뉴를 노출하지 않기로 했다. |
+| **Options** | A. 현장/본사 모두 검토 가능 유지 / B. 현장은 제안·조회만, 본사(HQ)만 상태/조치 업데이트 |
+| **Decision** | **B** |
+| **Reason** | 검토 권한 책임을 본사로 고정해 운영 일관성을 확보하고, 현장은 조치 완료 여부를 읽기 전용으로 확인하도록 분리한다. |
+| **Impact Scope** | `backend/app/modules/opinions/routes.py`, `frontend/src/pages/opinions/OpinionDetailPage.vue`, `frontend/src/layouts/SiteLayout.vue`, `frontend/src/pages/dashboard/SiteDashboard.vue`, 관련 테스트 |
+
+---
+
+### [DECISION-068]
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-16 |
+| **Title** | 운영 아이디어 제안은 이름 입력칸을 제거하고 로그인 사용자 정보로 제안자를 자동 저장 |
+| **Context** | 운영 아이디어 등록 시 사용자가 이름을 매번 직접 입력하면 중복 입력과 오기입이 발생한다. 로그인 사용자가 이미 식별 가능한 상태이므로 제안자 표시는 사용자 정보로 자동 채워야 한다. |
+| **Options** | A. 이름 입력칸 제거 + 로그인 사용자 이름 자동 저장 / B. 자동 입력하되 수정 가능 / C. 수동 입력 유지 |
+| **Decision** | **A** |
+| **Reason** | 입력 단계를 줄이고 제안자 식별 정확도를 높이며, 현장/본사 모두 동일한 등록 UX를 제공할 수 있다. |
+| **Impact Scope** | `backend/app/modules/opinions/routes.py`, `backend/app/schemas/opinions.py`, `frontend/src/pages/opinions/OpinionListPage.vue`, 관련 테스트 |
+
+---
+
+### [DECISION-069]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-17 |
+| **Title** | SITE 사이드바에도 `운영 아이디어 제안` 메뉴를 다시 노출한다 |
+| **Context** | [DECISION-067]에서 권한 분리(B: 현장 제안·조회, 본사만 검토·조치)는 유지하되, SITE 사이드바에서 메뉴를 숨기면 현장 사용자가 기능을 찾기 어렵다는 운영 피드백이 확정되었다. |
+| **Options** | A. SITE 사이드바에 `운영 아이디어 제안` 링크 복구 / B. 사이드바는 숨기고 대시보드 등 단일 진입만 유지 |
+| **Decision** | **A** |
+| **Reason** | 등록·조회 동선을 사이드바에서 바로 열 수 있게 하되, 백엔드·상세 화면의 본사 전용 상태 변경 제한([DECISION-067] B)은 그대로 둔다. [DECISION-067] 본문의 “SITE 사이드바 비노출” 문구는 본 결정으로 대체된다. |
+| **Impact Scope** | `frontend/src/layouts/SiteLayout.vue` |
+
+---
+
+### [DECISION-070]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-17 |
+| **Title** | 안전보건 방침 및 목표 화면에서 방침·목표 두 패널을 한 뷰포트 안에 동시에 보이도록 높이 레이아웃을 조정한다 |
+| **Context** | 미리보기 영역에 과도한 `min-height`(뷰포트 비율·고정 px)가 들어가 한 화면에 두 패널이 들어가지 않고 바깥 스크롤이 생겼다. [DECISION-041]의 역할 분기·기능 범위는 유지하고 표시만 최적화한다. |
+| **Options** | A. 페이지·패널을 `flex`/`minmax(0,1fr)`로 뷰포트 높이에 맞춤 / B. 기존 큰 `min-height` 유지 |
+| **Decision** | **A** |
+| **Reason** | 동시 비교([DECISION-041] HQ 2패널·SITE 좌우) 목적에 맞게, 카드 본문이 남는 세로 공간을 두 패널이 나눠 쓰도록 한다. |
+| **Impact Scope** | `frontend/src/pages/site/SafetyPolicyGoalsPage.vue` |
+
+---
+
+### [DECISION-071]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-17 |
+| **Title** | SITE 공지 티커는 `min-width:100%` + 과도한 이동 거리로 생기는 긴 공백을 제거하고, 이중 트랙 + `-50%` 루프로 매끄럽게 표시한다 |
+| **Context** | 티커 트랙이 뷰포트 너비까지 강제로 넓어지고 `translateX(±100%)`가 트랙 전체 너비 기준이라, 짧은 공지 문구가 지난 뒤에도 빈 트랙만 오래 스크롤되어 다시 보이기까지 간격이 길어 보였다. |
+| **Options** | A. 트랙을 콘텐츠 너비(`max-content`)로 두고 동일 목록을 두 번 렌더한 뒤 `0 → translateX(-50%)` 무한 루프 + 속도는 `scrollWidth` 기반 / B. 기존 애니메이션 유지 |
+| **Decision** | **A** |
+| **Reason** | 공지 텍스트 길이와 무관하게 끊김 없이 반복되고, 읽기 속도에 맞춰 한 세트 이동 시간을 자동으로 맞출 수 있다. |
+| **Impact Scope** | `frontend/src/layouts/SiteLayout.vue` |
+
+---
+
+### [DECISION-072]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-17 |
+| **Title** | SITE 공지 티커는 최근 3건 중 열람한 공지는 제외하고, 열람은 공지 상세 API 조회 시 자동 반영하며 티커 바는 두껍게 표시한다 |
+| **Context** | 티커에 이미 본 공지가 반복되면 신경이 쓰이고, 별도 '확인했습니다' 버튼을 눌러야만 숨겨지면 동선이 길어진다. 티커 가독성도 높일 필요가 있다. |
+| **Options** | A. 최근 3건 풀에서 로컬 열람 기록으로 제외 + 상세 조회 시 자동 기록 + 티커 높이·글자 확대 / B. 버튼 확인 후에만 제외 |
+| **Decision** | **A** |
+| **Reason** | 공지 게시판에서 본문을 불러온 시점은 실질적 열람으로 볼 수 있어 별도 버튼 없이도 공정하며, 로그인 id별 `localStorage`로 SITE 티커만 필터한다. |
+| **Impact Scope** | `frontend/src/utils/noticeTickerRead.ts`, `frontend/src/layouts/SiteLayout.vue`, `frontend/src/pages/site/SiteNoticeBoardPage.vue`, `backend/app/modules/notices/routes.py`, `backend/tests/test_notices_routes.py` |
+
+---
+
+### [DECISION-073]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-17 |
+| **Title** | SITE 상단 티커에 「미확인 문서 코멘트 N건」을 표시하고, 회차 이력에서 지난 제출본을 열어 볼 수 있게 한다 |
+| **Context** | 문서 코멘트는 승인·반려와 별도로 누적되며, 현장은 본사(HQ) 등 타인이 남긴 코멘트를 놓치기 쉽다. 또 이력(회차)별 제출 스냅샷은 `DocumentUploadHistory`에 있으나 UI에서 파일 열기가 막히는 경우가 있다. |
+| **Options** | A. 티커 + 이력 행에서 파일/코멘트 연동(기존 `/documents` API 범위) / B. 티커만 / C. 별도 알림 DB·푸시 |
+| **Decision** | **A** (C는 하지 않음) |
+| **Reason** | [DECISION-003] 경로를 유지한 채 집계 API(`GET /documents/comments/peer-count`)와 로컬 확인 시각(`login_id`별 `localStorage`)으로 SITE 티커를 구현한다. 「미확인」은 **소속 현장 문서에 대한 다른 사용자 코멘트**이며, 확인 시각 이전 구간은 최초에는 **최근 14일**만 집계한다(`after` 생략 시 서버 cutoff). 문서취합 화면 방문·티커 링크 클릭 시 확인 시각을 갱신한다. 회차 히스토리는 행 선택 시 코멘트 패널을 해당 `document_id`로 맞추고, 스냅샷 파일이 없으면 현재 문서 파일 API로 대체 시도한다. |
+| **Impact Scope** | `backend/app/modules/documents/routes.py`, `frontend/src/utils/documentCommentTickerRead.ts`, `frontend/src/layouts/SiteLayout.vue`, `frontend/src/pages/site/SiteDocumentsDashboardPage.vue`, `frontend/src/pages/hq/HQDocumentInstanceDetailPage.vue`, `backend/tests/test_document_flow_basic.py` |
+
+---
+
+### [DECISION-074]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-17 |
+| **Title** | 승인·반려 코멘트를 문서 코멘트 API 타임라인에 통합하고 파일명 라벨을 붙인다 |
+| **Context** | 승인/반려 의견이 `approval_histories`에만 있으면 문서 코멘트 패널과 흐름이 갈라져 보인다. |
+| **Options** | A. `GET /documents/{id}/comments` 응답에 승인·반려 행을 병합(기존 테이블 유지) / B. 승인 시 `document_comments`에 이중 기록 |
+| **Decision** | **A** |
+| **Reason** | 단일 진실 원천(`approval_histories`)을 유지하고, 목록만 합성한다. 본문은 `[파일: {표시파일명}] 승인` 또는 `반려`로 시작하고 이어서 검토 코멘트를 붙인다. 내부용 배포 검증 코멘트(`_is_internal_review_comment`)는 타임라인에서 제외한다. 삭제 API는 사용자 코멘트만 해당한다(`source=approval` 행은 `deletable=false`). |
+| **Impact Scope** | `backend/app/modules/documents/service.py`, `backend/app/modules/documents/routes.py`(`DocumentCommentResponse`), `frontend/src/components/documents/DocumentCommentsPanel.vue`, `backend/tests/test_document_flow_basic.py` |
+
+---
+
+### [DECISION-075]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-17 |
+| **Title** | SITE 사이드바 `내 현장 문서` 미완료 수는 현장 기준으로 고정하고 빨간 원형 배지로 표시한다 |
+| **Context** | 사용자는 `문서 취합 현황 (557)`처럼 보이는 괄호형 숫자가 전체 집계처럼 보여 혼란스럽고, 알림형 배지(빨간 원 + 숫자)를 원했다. |
+| **Options** | A. 현장 기준 + 메뉴 우측 빨간 원형 배지 / B. 현장 기준 + 메뉴 앞쪽 배지 / C. 현장 기준 + 기존 괄호형 유지 |
+| **Decision** | **A** |
+| **Reason** | 현장 사용자에게는 본인 현장의 미완료 수가 핵심이며, 원형 배지는 괄호형보다 인지성이 높다. |
+| **Impact Scope** | `frontend/src/layouts/SiteLayout.vue`, `backend/app/modules/documents/routes.py`(`GET /documents/badges/site` 사용) |
+
+---
+
+### [DECISION-076]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-17 |
+| **Title** | HQ 문서취합의 `승인/반려 이력`을 `본사-현장 소통`으로 전환하고, 확인 버튼 기반으로 배지를 감소시킨다 |
+| **Context** | 문서별 코멘트/검토 의견을 한 곳에서 확인하고, 사용자가 명시적으로 확인한 건만 배지에서 빠지길 원했다. |
+| **Options** | A. 수동 확인(확인 버튼) + 코멘트 클릭 시 문서 상세 이동 / B. 열람 즉시 자동 확인 / C. 서버 저장형 확인 상태 |
+| **Decision** | **A** |
+| **Reason** | 사용자의 “확인 버튼을 눌러야 숫자 감소” 요구를 정확히 만족하며, 기존 API 구조를 크게 깨지 않고 빠르게 반영 가능하다. |
+| **Impact Scope** | `backend/app/modules/documents/routes.py`(`GET /documents/hq-communications`), `frontend/src/pages/hq/HQDocumentsDashboardPage.vue`, `frontend/src/layouts/HQSafeLayout.vue`, `frontend/src/utils/hqCommunicationRead.ts`, `frontend/src/pages/hq/HQDocumentSettingsPage.vue` |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -977,3 +1144,11 @@
 | 2026-04-14 | Decision 064 추가 — 운영 배포를 deploy_prod 스크립트로 고정(besma-prod) |
 | 2026-04-13 | Decision 061 추가 — 관리대장 문서는 문서취합·문서 단위 UI 참조 전용 |
 | 2026-04-13 | Decision 062 추가 — 대시보드 알림 우선·좌측 메뉴 주요업무 우선 |
+| 2026-04-16 | Decision 065 추가 — 문서취합 오업로드 수정을 파일 교체형(A) + 현장 수정 버튼으로 확정 |
+| 2026-04-16 | Decision 066 추가 — 점검표/업무일지 일 1회 고정 + 현장소장 점검표 신설 |
+| 2026-04-16 | Decision 067 추가 — 운영 아이디어는 현장 제안/조회 + 본사 검토/조치 전용으로 분리 |
+| 2026-04-16 | Decision 068 추가 — 운영 아이디어는 이름 입력칸 제거 + 로그인 사용자 정보로 제안자 자동 저장 |
+| 2026-04-17 | Decision 069 추가 — SITE 사이드바 `운영 아이디어 제안` 메뉴 재노출([DECISION-067]의 사이드바 비노출 문구는 본 결정으로 대체) |
+| 2026-04-17 | Decision 070 추가 — 방침/목표 화면을 뷰포트 내 2패널 동시 표시로 레이아웃 조정 |
+| 2026-04-17 | Decision 071 추가 — SITE 공지 티커 무한 스크롤 공백 제거(이중 트랙·`-50%`·너비 기반 duration) |
+| 2026-04-17 | Decision 072 추가 — 티커 최근 3건·열람 제외(상세 조회 자동)·티커 바 두께 |

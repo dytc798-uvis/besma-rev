@@ -317,7 +317,7 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
     { key: "document-explorer", label: "문서 탐색" },
     { key: "documents", label: "문서 취합 현황" },
     { key: "approvals-inbox", label: "결재함(공사중)" },
-    { key: "approvals-history", label: "승인/반려 이력" },
+    { key: "approvals-history", label: "본사-현장 소통" },
     { key: "opinions", label: "운영 아이디어 제안" },
     { key: "notices", label: "공지사항" },
     { key: "safety-policy-goals", label: "안전보건 방침 및 목표" },
