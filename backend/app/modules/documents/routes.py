@@ -139,6 +139,14 @@ def _site_team_slot(site_name: str) -> str | None:
     return None
 
 
+def _site_cluster_key(site_name: str | None) -> str:
+    name = (site_name or "").strip()
+    # 운영 표기(prefix) 차이로 같은 현장이 중복 생성되는 경우를 한 군으로 본다.
+    name = re.sub(r"\(삼성인정제\)", "", name)
+    name = re.sub(r"\s+", "", name)
+    return name.lower()
+
+
 def _dedupe_sites_by_uploaded_documents(db: Session, sites: list[Site]) -> list[Site]:
     if len(sites) <= 1:
         return sites
@@ -346,12 +354,17 @@ def get_hq_dashboard(
             .all()
         )
     elif site_code:
-        sites = (
-            db.query(Site)
-            .filter(Site.site_code == site_code)
-            .order_by(site_list_priority_order(), Site.id.asc())
-            .all()
-        )
+        anchor = db.query(Site).filter(Site.site_code == site_code).first()
+        if anchor is None:
+            sites = []
+        else:
+            cluster_key = _site_cluster_key(anchor.site_name)
+            if cluster_key:
+                candidates = db.query(Site).order_by(site_list_priority_order(), Site.id.asc()).all()
+                related_sites = [s for s in candidates if _site_cluster_key(s.site_name) == cluster_key]
+            else:
+                related_sites = [anchor]
+            sites = _dedupe_sites_by_uploaded_documents(db, related_sites or [anchor])
     else:
         sites = db.query(Site).order_by(site_list_priority_order(), Site.id.asc()).all()
         sites = _dedupe_sites_by_uploaded_documents(db, sites)

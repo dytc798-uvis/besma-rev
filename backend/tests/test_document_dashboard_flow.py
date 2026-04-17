@@ -556,6 +556,14 @@ def test_hq_document_queries_prioritize_site_id_over_site_code(tmp_path: Path):
     assert deduped_dashboard.status_code == 200
     assert [row["site_id"] for row in deduped_dashboard.json()["site_summaries"]] == [actual_site_id]
 
+    site_code_scoped = client.get(
+        "/documents/hq-dashboard",
+        params={"period": "day", "date": today, "site_code": "SITE002"},
+    )
+    assert site_code_scoped.status_code == 200
+    assert [row["site_id"] for row in site_code_scoped.json()["site_summaries"]] == [actual_site_id]
+    assert all(item["site_id"] == actual_site_id for item in site_code_scoped.json()["items"])
+
     dashboard = client.get(
         "/documents/hq-dashboard",
         params={"period": "day", "date": today, "site_id": actual_site_id, "site_code": "SITE002"},
