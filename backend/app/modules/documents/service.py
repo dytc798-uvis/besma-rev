@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from types import SimpleNamespace
@@ -10,6 +10,7 @@ from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 from app.modules.approvals.models import ApprovalAction, ApprovalHistory
+from app.core.enums import Role
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
 from app.modules.document_settings.models import ContractorDocumentBundleItem, DocumentRequirement
 from app.modules.documents.models import Document, DocumentComment, DocumentUploadHistory
@@ -90,6 +91,105 @@ def list_document_comments(
         }
         for comment, user in rows
     ]
+
+
+def _document_file_label(doc: Document | None) -> str:
+    if doc is None:
+        return "—"
+    fn = (doc.file_name or "").strip()
+    if fn:
+        return fn
+    if doc.file_path:
+        return Path(doc.file_path).name
+    return "파일 없음"
+
+
+def _approval_actor_role_label(actor: User | None) -> str:
+    if actor is None:
+        return "HQ"
+    if getattr(actor, "role", None) == Role.SITE:
+        return "SITE"
+    return "HQ"
+
+
+def list_document_comments_with_review(
+    db: Session,
+    *,
+    document_id: int,
+) -> list[dict[str, Any]]:
+    """
+    사용자 코멘트와 승인/반려(approval_histories)를 시간순으로 합친 타임라인.
+    승인/반려 줄은 본문 앞에 [파일: …] 라벨을 붙인다.
+    """
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    file_label = _document_file_label(doc)
+
+    base_comments = list_document_comments(db, document_id=document_id)
+    entries: list[tuple[datetime, int, int, dict[str, Any]]] = []
+
+    for row in base_comments:
+        created = row["created_at"]
+        if created is None:
+            continue
+        cid = int(row["id"])
+        entries.append(
+            (
+                created,
+                0,
+                cid,
+                {
+                    **row,
+                    "source": "comment",
+                    "review_action": None,
+                    "file_context_label": None,
+                    "deletable": True,
+                },
+            )
+        )
+
+    hist_rows = (
+        db.query(ApprovalHistory, User)
+        .join(User, User.id == ApprovalHistory.action_by_user_id)
+        .filter(
+            ApprovalHistory.document_id == document_id,
+            ApprovalHistory.action_type.in_([ApprovalAction.APPROVE, ApprovalAction.REJECT]),
+        )
+        .all()
+    )
+    for h, actor in hist_rows:
+        if _is_internal_review_comment(h.comment):
+            continue
+        label = "승인" if h.action_type == ApprovalAction.APPROVE else "반려"
+        body = f"[파일: {file_label}] {label}"
+        ctext = (h.comment or "").strip()
+        if ctext:
+            body = f"{body}\n{ctext}"
+        actor_label = _approval_actor_role_label(actor)
+        hid = int(h.id)
+        entries.append(
+            (
+                h.action_at,
+                1,
+                hid,
+                {
+                    "id": -(hid),
+                    "document_id": document_id,
+                    "instance_id": doc.instance_id if doc else None,
+                    "user_id": h.action_by_user_id,
+                    "user_name": actor.name if actor else f"user#{h.action_by_user_id}",
+                    "user_role": actor_label,
+                    "comment_text": body,
+                    "created_at": h.action_at,
+                    "source": "approval",
+                    "review_action": h.action_type,
+                    "file_context_label": file_label,
+                    "deletable": False,
+                },
+            )
+        )
+
+    entries.sort(key=lambda t: (t[0], t[1], t[2]))
+    return [t[3] for t in entries]
 
 
 def delete_document_comment(
