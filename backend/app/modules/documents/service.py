@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from types import SimpleNamespace
 
-from sqlalchemy import case, func, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 from app.modules.approvals.models import ApprovalAction, ApprovalHistory
@@ -460,6 +460,10 @@ def _pick_latest_for_requirement(
             or_(
                 DocumentInstance.selected_requirement_id == requirement.id,
                 Document.document_type == requirement.code,
+                and_(
+                    requirement.code == "DAILY_TBM",
+                    Document.document_type == requirement.document_type.code,
+                ),
             ),
         )
     )
