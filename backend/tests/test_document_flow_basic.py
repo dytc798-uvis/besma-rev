@@ -471,8 +471,8 @@ def test_daily_upload_file_name_and_supervisor_daily_override(tmp_path: Path):
         assert supervisor_doc is not None
         assert site_manager_doc is not None
         assert tbm_doc.file_name == "TBM_C18BL_260410.hwp"
-        assert supervisor_doc.file_name == "SUPERVISOR_CHECKLIST_C18BL_260410.pdf"
-        assert site_manager_doc.file_name == "SITE_MANAGER_CHECKLIST_C18BL_260410.pdf"
+        assert supervisor_doc.file_name == "관리감독자점검표_C18BL_260410.pdf"
+        assert site_manager_doc.file_name == "현장소장점검표_C18BL_260410.pdf"
 
         supervisor_inst = db_check.query(DocumentInstance).filter(DocumentInstance.id == supervisor_doc.instance_id).first()
         assert supervisor_inst is not None

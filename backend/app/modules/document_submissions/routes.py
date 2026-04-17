@@ -40,13 +40,29 @@ router = APIRouter(prefix="/document-submissions", tags=["document-submissions-o
 logger = logging.getLogger(__name__)
 
 HQ_DEMO_READONLY_LOGIN_IDS = {"hq01", "hq02", "hq03", "hq04", "hq05"}
-DAILY_UPLOAD_DOC_CODES = {"DAILY_TBM", "DAILY_SAFETY_MEETING_LOG", "SUPERVISOR_CHECKLIST"}
+DAILY_UPLOAD_DOC_CODES = {
+    "DAILY_TBM",
+    "DAILY_SAFETY_MEETING_LOG",
+    "SUPERVISOR_CHECKLIST",
+    "SITE_MANAGER_CHECKLIST",
+    "SAFETY_MANAGER_DAILY_LOG",
+}
 DAILY_UPLOAD_NAME_BY_CODE = {
     "DAILY_TBM": "TBM",
-    "DAILY_SAFETY_MEETING_LOG": "DAILY_SAFETY_MEETING_LOG",
-    "SUPERVISOR_CHECKLIST": "SUPERVISOR_CHECKLIST",
+    "DAILY_SAFETY_MEETING_LOG": "일일안전회의일지",
+    "SUPERVISOR_CHECKLIST": "관리감독자점검표",
+    "SITE_MANAGER_CHECKLIST": "현장소장점검표",
+    "SAFETY_MANAGER_DAILY_LOG": "안전담당자업무일지",
 }
-MERGE_APPEND_DOCUMENT_CODES = frozenset({"DAILY_TBM", "DAILY_SAFETY_MEETING_LOG", "SUPERVISOR_CHECKLIST"})
+MERGE_APPEND_DOCUMENT_CODES = frozenset(
+    {
+        "DAILY_TBM",
+        "DAILY_SAFETY_MEETING_LOG",
+        "SUPERVISOR_CHECKLIST",
+        "SITE_MANAGER_CHECKLIST",
+        "SAFETY_MANAGER_DAILY_LOG",
+    }
+)
 
 
 def _ensure_documents_dir() -> Path:
@@ -622,6 +638,150 @@ async def upload_document_for_instance(
         doc.current_status,
         inst.workflow_status,
     )
+
+    return {
+        "instance_id": inst.id,
+        "orchestration_status": inst.status,
+        "workflow_status": inst.workflow_status,
+        "document_id": doc.id,
+        "file_path": doc.file_path,
+        "original_file_path": doc.original_file_path,
+        "optimized_file_path": doc.optimized_file_path,
+    }
+
+
+@router.post("/replace")
+async def replace_uploaded_document_file(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    instance_id: Annotated[int, Form(...)],
+    file: Annotated[UploadFile, File(...)],
+):
+    """
+    POST /document-submissions/replace
+    - 기존 제출건(DocumentInstance + Document)의 파일을 같은 문서에서 교체한다.
+    - Document/Instance id는 유지하고 version_no + 이력만 증가한다.
+    - APPROVED는 수정 불가, SITE는 자기 site만 허용.
+    """
+    if current_user.role == Role.HQ_SAFE and current_user.login_id in HQ_DEMO_READONLY_LOGIN_IDS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ demo accounts are read-only")
+
+    try:
+        inst = get_instance_or_404(db, instance_id)
+    except LookupError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instance not found")
+
+    if current_user.role == Role.SITE and inst.site_id != current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    ledger_code = (inst.document_type_code or "").strip()
+    assert_not_ledger_managed_document_type(ledger_code)
+
+    if inst.workflow_status == WorkflowStatus.APPROVED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="approved documents cannot be replaced")
+    if inst.workflow_status not in {WorkflowStatus.SUBMITTED, WorkflowStatus.UNDER_REVIEW, WorkflowStatus.REJECTED}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="replace is allowed only for SUBMITTED, UNDER_REVIEW, or REJECTED documents",
+        )
+
+    doc = db.query(Document).filter(Document.instance_id == inst.id).first()
+    if doc is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found for instance")
+
+    source_name = file.filename or "upload.bin"
+    content = await file.read()
+    timestamp = int(utc_now().timestamp())
+    primary_content, primary_ext = _optimize_uploaded_content(content, source_name, file.content_type)
+    original_file_path: str | None = None
+    optimized_file_path: str | None = None
+
+    storage_dir = _ensure_documents_dir()
+    if is_image_upload(source_name, file.content_type):
+        try:
+            image_asset = process_uploaded_image(
+                content,
+                source_name=source_name,
+                content_type=file.content_type,
+                generate_pdf=True,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+        primary_content = image_asset.pdf_bytes or primary_content
+        primary_ext = ".pdf"
+        stem = f"instance_{inst.id}_{timestamp}_{Path(source_name).stem}"
+        original_file_path = _write_bytes(
+            storage_dir,
+            f"{stem}__original{image_asset.original_ext}",
+            image_asset.original_bytes,
+        )
+        optimized_file_path = _write_bytes(
+            storage_dir,
+            f"{stem}__optimized{image_asset.optimized_ext}",
+            image_asset.optimized_bytes,
+        )
+
+    if len(primary_content) > settings.document_upload_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"파일 크기는 최적화 후 기준 {settings.document_upload_max_bytes // (1024 * 1024)}MB 이하만 업로드할 수 있습니다.",
+        )
+
+    requirement_title = (
+        db.query(DocumentRequirement.title)
+        .filter(DocumentRequirement.id == inst.selected_requirement_id)
+        .scalar()
+        if inst.selected_requirement_id
+        else None
+    )
+    site_row = db.query(Site.site_code, Site.site_name).filter(Site.id == inst.site_id).first()
+    site_code = site_row[0] if site_row else None
+    site_name = site_row[1] if site_row and site_row[1] else f"site_{inst.site_id}"
+    safe_name = _build_saved_filename(
+        document_type_code=inst.document_type_code or doc.document_type,
+        requirement_title=requirement_title or doc.title,
+        site_code=site_code,
+        site_name=site_name,
+        period_start=inst.period_start,
+        extension=primary_ext,
+    )
+    next_version = (doc.version_no or 1) + 1
+    filename = f"instance_{inst.id}_{timestamp}_v{next_version}_{safe_name}"
+    stored_path = storage_dir / filename
+    stored_path.write_bytes(primary_content)
+
+    _record_upload_history(db, doc=doc, action_type="BEFORE_REPLACE_UPLOAD")
+    doc.version_no = next_version
+    doc.file_path = str(stored_path.relative_to(settings.storage_root))
+    doc.original_file_path = original_file_path
+    doc.optimized_file_path = optimized_file_path
+    doc.file_name = safe_name
+    doc.file_size = len(primary_content)
+    doc.uploaded_by_user_id = current_user.id
+    doc.uploaded_at = utc_now()
+    doc.current_status = DocumentStatus.SUBMITTED
+    doc.rejection_reason = None
+
+    before = inst.workflow_status
+    if before == WorkflowStatus.REJECTED:
+        inst.workflow_status = WorkflowStatus.SUBMITTED
+
+    add_review_history(
+        db,
+        inst=inst,
+        document_id=doc.id,
+        action_type=ReviewAction.REPLACE_UPLOAD,
+        action_by_user_id=current_user.id,
+        comment=None,
+        from_workflow_status=before,
+        to_workflow_status=inst.workflow_status,
+    )
+    db.add(inst)
+    db.add(doc)
+    _record_upload_history(db, doc=doc, action_type=ReviewAction.REPLACE_UPLOAD)
+    db.commit()
+    db.refresh(inst)
+    db.refresh(doc)
 
     return {
         "instance_id": inst.id,
