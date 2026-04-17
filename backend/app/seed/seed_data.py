@@ -719,11 +719,13 @@ def seed_document_requirements(db: Session) -> None:
 
     defs = [
         ("DAILY_TBM", "TBM", "DAILY", "당일 작업 시작 전 작성", "DAILY_DOC"),
-        ("DAILY_RISK_ASSESSMENT", "일일위험성평가", "DAILY", "당일 작업 시작 전 작성", "DAILY_DOC"),
-        ("DAILY_SAFETY_MEETING_LOG", "일일안전회의일지", "DAILY", "당일 안전회의 후 작성", "DAILY_DOC"),
+        ("DAILY_RISK_ASSESSMENT", "일일위험성평가", "DAILY", "당일 안전회의 시 작성", "DAILY_DOC"),
+        ("DAILY_SAFETY_MEETING_LOG", "일일안전회의일지", "DAILY", "당일 안전회의 시 작성", "DAILY_DOC"),
         ("ADHOC_RISK_ASSESSMENT", "수시위험성평가", "ADHOC", "작업변경/위험요인 발생 시 작성", "INSPECTION"),
         ("AUTO_WORKER_OPINION_LOG", "근로자의견청취대장", "ROLLING", "의견 등록 시 갱신", "OPINION_RELATED"),
-        ("SUPERVISOR_CHECKLIST", "관리감독자 점검표", "DAILY", "당일 업로드 (점검 완료 후)", "INSPECTION"),
+        ("SUPERVISOR_CHECKLIST", "관리감독자 점검표", "DAILY", "일 1회 업로드 (점검 완료 후)", "INSPECTION"),
+        ("SITE_MANAGER_CHECKLIST", "현장소장 점검표", "DAILY", "일 1회 업로드 (점검 완료 후)", "INSPECTION"),
+        ("SAFETY_MANAGER_DAILY_LOG", "안전관리자 업무일지", "DAILY", "일 1회 업로드 (업무 종료 후)", "INSPECTION"),
         ("EMERGENCY_DRILL_REPORT", "비상사태훈련보고서", "ADHOC", "비상훈련 실시 후 작성", "ACCIDENT"),
         ("REGULAR_EDUCATION", "정기교육", "MONTHLY", "월 1회 교육 후 작성", "DAILY_DOC"),
         ("SPECIAL_EDUCATION", "특별교육", "ADHOC", "특별교육 실시 후 작성", "DAILY_DOC"),
