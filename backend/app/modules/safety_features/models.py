@@ -20,6 +20,24 @@ class SafetyEducationMaterial(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 
 
+class SafetyEducationMaterialDeletion(Base):
+    """안전 교육 자료 삭제 감사(원본 행 삭제 후에도 보존)."""
+
+    __tablename__ = "safety_education_material_deletions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    material_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    site_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    uploaded_by_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uploaded_by_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    deleted_by_user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    deleted_by_login: Mapped[str] = mapped_column(String(50), nullable=False)
+    deleted_by_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
 class SafetyInspectionComment(Base):
     __tablename__ = "safety_inspection_comments"
 

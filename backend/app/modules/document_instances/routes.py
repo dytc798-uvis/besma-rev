@@ -5,7 +5,7 @@ from datetime import date
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.core.auth import DbDep
-from app.core.permissions import CurrentUserDep, Role
+from app.core.permissions import CurrentUserDep, assert_hq_safe_workspace
 from app.modules.document_instances.service import (
     get_instance_history_row_by_id,
     list_instance_history_rows,
@@ -21,8 +21,7 @@ router = APIRouter(prefix="/document-instances", tags=["document-instances"])
 
 
 def _require_hq_safe(current_user: CurrentUserDep) -> None:
-    if current_user.role != Role.HQ_SAFE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_hq_safe_workspace(current_user)
 
 
 @router.get("/history", response_model=DocumentInstanceHistoryListResponse)

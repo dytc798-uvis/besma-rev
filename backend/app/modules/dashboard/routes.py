@@ -22,7 +22,9 @@ from app.modules.dashboard.weather_service import (
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
-_RISK_DB_OVERVIEW_ROLES = frozenset({Role.SITE, Role.HQ_SAFE, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN})
+_RISK_DB_OVERVIEW_ROLES = frozenset(
+    {Role.SITE, Role.HQ_SAFE, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN, Role.ACCIDENT_ADMIN}
+)
 
 
 def _site_status_rank(status: str | None) -> int:

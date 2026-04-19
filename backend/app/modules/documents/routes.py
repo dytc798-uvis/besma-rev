@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.config.settings import settings
 from app.core.datetime_utils import utc_now
 from app.core.auth import DbDep, get_current_user
-from app.core.permissions import CurrentUserDep, Role
+from app.core.permissions import CurrentUserDep, Role, assert_hq_safe_workspace
 from app.modules.approvals.models import ApprovalAction, ApprovalHistory
 from app.modules.document_generation.models import DocumentInstance
 from app.modules.document_submissions.service import (
@@ -365,8 +365,7 @@ def get_hq_dashboard(
     team_slot: str | None = Query(None, pattern="^(1|2|3|4|5|6|gwal)$"),
     site_code: str | None = None,
 ):
-    if current_user.role != Role.HQ_SAFE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_hq_safe_workspace(current_user)
 
     parsed_period = _parse_period(period)
     # 단일 현장(scope) 요청일 때는 전체 현장 목록을 먼저 읽지 않도록 쿼리를 분기한다.
@@ -550,8 +549,7 @@ def get_tbm_periodic_monthly(
     year_month: str = Query(..., description="YYYY-MM"),
     site_id: int | None = None,
 ):
-    if current_user.role != Role.HQ_SAFE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_hq_safe_workspace(current_user)
 
     y, m, start, end, ym_label = _parse_year_month(year_month)
 
@@ -587,8 +585,7 @@ def get_tbm_periodic_daily(
     year_month: str = Query(..., description="YYYY-MM"),
     site_id: int = Query(..., description="Site id"),
 ):
-    if current_user.role != Role.HQ_SAFE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_hq_safe_workspace(current_user)
 
     y, m, start, end, ym_label = _parse_year_month(year_month)
 
@@ -624,8 +621,7 @@ def get_hq_pending_documents(
     site_id: int | None = None,
     site_code: str | None = None,
 ):
-    if current_user.role != Role.HQ_SAFE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_hq_safe_workspace(current_user)
 
     query = (
         db.query(Document, Site, DocumentInstance, DocumentRequirement, User)
@@ -801,8 +797,7 @@ def get_hq_badge_counts(
     current_user: CurrentUserDep,
     date_value: date = Query(..., alias="date"),
 ):
-    if current_user.role != Role.HQ_SAFE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_hq_safe_workspace(current_user)
     sites = db.query(Site).order_by(site_list_priority_order(), Site.id.asc()).all()
     pending = 0
     rejected = 0
@@ -828,8 +823,7 @@ def get_hq_communications(
     current_user: CurrentUserDep,
     limit: int = Query(100, ge=1, le=500),
 ):
-    if current_user.role != Role.HQ_SAFE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_hq_safe_workspace(current_user)
 
     entries: list[dict] = []
 
@@ -1172,8 +1166,7 @@ def review_document(
     업무 리뷰 전이 단일 진입점 (JSON).
     action: start_review | approve | reject
     """
-    if current_user.role != Role.HQ_SAFE:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_hq_safe_workspace(current_user)
 
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:

@@ -11,6 +11,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, sta
 from fastapi.responses import FileResponse, Response
 from openpyxl import load_workbook
 
+from app.config.security import verify_password
 from app.config.settings import settings
 from app.core.auth import DbDep
 from app.core.datetime_utils import utc_now
@@ -23,6 +24,7 @@ from app.modules.safety_features.models import (
     NonconformityItem,
     NonconformityLedger,
     SafetyEducationMaterial,
+    SafetyEducationMaterialDeletion,
     SafetyInspectionComment,
     WorkerVoiceComment,
     WorkerVoiceItem,
@@ -30,6 +32,7 @@ from app.modules.safety_features.models import (
 )
 from app.modules.sites.models import Site
 from app.modules.users.models import User
+from app.schemas.safety_education import SafetyEducationDeleteRequest
 
 router = APIRouter(prefix="/safety-features", tags=["safety-features"])
 
@@ -50,7 +53,12 @@ def _role_value(current_user) -> str:
     return role.value if hasattr(role, "value") else str(role)
 
 
-_HQ_ROLE_VALUES = {Role.HQ_SAFE.value, Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}
+_HQ_ROLE_VALUES = {
+    Role.HQ_SAFE.value,
+    Role.HQ_SAFE_ADMIN.value,
+    Role.SUPER_ADMIN.value,
+    Role.ACCIDENT_ADMIN.value,
+}
 
 
 def _require_site_only(current_user) -> None:
@@ -359,7 +367,7 @@ async def upload_education_material(
     site_id: int | None = Form(None),
     file: UploadFile = File(...),
 ):
-    if _role_value(current_user) not in {Role.HQ_SAFE.value, Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}:
+    if _role_value(current_user) not in _HQ_ROLE_VALUES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     clean_title = (title or "").strip()
     if not clean_title:
@@ -386,6 +394,77 @@ async def upload_education_material(
     db.commit()
     db.refresh(row)
     return {"id": row.id}
+
+
+@router.get("/education/deletions")
+def list_education_deletion_log(db: DbDep, current_user: CurrentUserDep):
+    q = db.query(SafetyEducationMaterialDeletion)
+    if current_user.role == Role.SITE:
+        q = q.filter(
+            (SafetyEducationMaterialDeletion.site_id.is_(None))
+            | (SafetyEducationMaterialDeletion.site_id == current_user.site_id)
+        )
+    rows = (
+        q.order_by(SafetyEducationMaterialDeletion.deleted_at.desc(), SafetyEducationMaterialDeletion.id.desc())
+        .limit(200)
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "material_id": r.material_id,
+                "title": r.title,
+                "site_id": r.site_id,
+                "file_name": r.file_name,
+                "uploaded_by_name": r.uploaded_by_name,
+                "deleted_at": r.deleted_at,
+                "deleted_by_login": r.deleted_by_login,
+                "deleted_by_name": r.deleted_by_name,
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.post("/education/{material_id}/delete")
+def delete_education_material(
+    material_id: int,
+    body: SafetyEducationDeleteRequest,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    if _role_value(current_user) not in _HQ_ROLE_VALUES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    if not verify_password(body.password, current_user.password_hash):
+        # 401은 프론트 axios 인터셉터가 전역 로그아웃으로 처리할 수 있어 비밀번호 오류는 403으로 둔다.
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="비밀번호가 일치하지 않습니다.")
+    row = db.query(SafetyEducationMaterial).filter(SafetyEducationMaterial.id == material_id).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="자료를 찾을 수 없습니다.")
+    uploader = db.query(User).filter(User.id == row.uploaded_by_user_id).first()
+    audit = SafetyEducationMaterialDeletion(
+        material_id=row.id,
+        title=row.title,
+        site_id=row.site_id,
+        file_name=row.file_name,
+        uploaded_by_user_id=row.uploaded_by_user_id,
+        uploaded_by_name=uploader.name if uploader else None,
+        deleted_by_user_id=current_user.id,
+        deleted_by_login=current_user.login_id,
+        deleted_by_name=current_user.name,
+        deleted_at=utc_now(),
+    )
+    full_path = settings.storage_root / row.file_path
+    db.add(audit)
+    db.delete(row)
+    db.commit()
+    try:
+        if full_path.exists():
+            full_path.unlink()
+    except OSError:
+        pass
+    return {"ok": True}
 
 
 @router.get("/inspections")
