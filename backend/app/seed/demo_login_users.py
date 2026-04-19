@@ -208,12 +208,13 @@ def ensure_demo_login_users(
     results: list[DemoUserResult] = []
     for name, login_id in HQ_DEMO_USERS:
         user_password = "1234" if login_id == "hq01" else password
+        role = Role.ACCIDENT_ADMIN if login_id == "hq01" else Role.HQ_SAFE
         results.append(
             _upsert_demo_user(
                 db,
                 name=name,
                 login_id=login_id,
-                role=Role.HQ_SAFE,
+                role=role,
                 ui_type=UIType.HQ_SAFE,
                 password=user_password,
                 site_id=None,

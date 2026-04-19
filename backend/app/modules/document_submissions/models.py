@@ -15,6 +15,7 @@ class ReviewAction:
     APPROVE = "APPROVE"
     REJECT = "REJECT"
     ATTACH_APPEND = "ATTACH_APPEND"
+    REPLACE_UPLOAD = "REPLACE_UPLOAD"
 
 
 class DocumentReviewHistory(Base):

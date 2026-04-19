@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 8
 
     storage_root: Path = BASE_DIR / "storage"
+    accident_nas_root: Path | None = Field(default=None, validation_alias="BESMA_ACCIDENT_NAS_ROOT")
     documents_dir_name: str = "documents"
     images_dir_name: str = "images"
     document_explorer_base_dir: Path = BASE_DIR / "docs" / "base"

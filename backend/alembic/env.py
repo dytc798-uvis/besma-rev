@@ -32,6 +32,7 @@ def _load_model_metadata() -> None:
     from app.modules.document_submissions import models as _document_submissions_models  # noqa: F401
     from app.modules.law_registry import models as _law_registry_models  # noqa: F401
     from app.modules.communications import models as _communications_models  # noqa: F401
+    from app.modules.accidents import models as _accidents_models  # noqa: F401
 
 
 _load_model_metadata()

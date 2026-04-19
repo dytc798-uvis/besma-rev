@@ -36,6 +36,11 @@ import HQUsersPage from "@/pages/hq/HQUsersPage.vue";
 import HQDocumentSettingsPage from "@/pages/hq/HQDocumentSettingsPage.vue";
 import HQContractorDocumentBundleSettingsPage from "@/pages/hq/HQContractorDocumentBundleSettingsPage.vue";
 import HQPeriodicDocumentMonitoringPage from "@/pages/hq/HQPeriodicDocumentMonitoringPage.vue";
+import HQAccidentsListPage from "@/pages/hq/HQAccidentsListPage.vue";
+import HQAccidentInitialRegisterPage from "@/pages/hq/HQAccidentInitialRegisterPage.vue";
+import HQAccidentDetailPage from "@/pages/hq/HQAccidentDetailPage.vue";
+import HQAccidentWorklistPage from "@/pages/hq/HQAccidentWorklistPage.vue";
+import HQAccidentReportPage from "@/pages/hq/HQAccidentReportPage.vue";
 import RiskLibraryPage from "@/pages/risk/RiskLibraryPage.vue";
 import SiteDocumentsDashboardPage from "@/pages/site/SiteDocumentsDashboardPage.vue";
 import SiteNoticeBoardPage from "@/pages/site/SiteNoticeBoardPage.vue";
@@ -94,6 +99,36 @@ const routes: RouteRecordRaw[] = [
       { path: "safety-education", name: "hq-safe-safety-education", component: SafetyEducationPage },
       { path: "safety-inspections", name: "hq-safe-safety-inspections", component: SafetyInspectionBoardPage },
       { path: "nonconformities", name: "hq-safe-nonconformities", component: NonconformityPage },
+      {
+        path: "accidents",
+        name: "hq-safe-accidents",
+        component: HQAccidentsListPage,
+        meta: { requiresAccidentAdmin: true },
+      },
+      {
+        path: "accidents/worklist",
+        name: "hq-safe-accidents-worklist",
+        component: HQAccidentWorklistPage,
+        meta: { requiresAccidentAdmin: true },
+      },
+      {
+        path: "accidents/new",
+        name: "hq-safe-accidents-new",
+        component: HQAccidentInitialRegisterPage,
+        meta: { requiresAccidentAdmin: true },
+      },
+      {
+        path: "accidents/:id",
+        name: "hq-safe-accident-detail",
+        component: HQAccidentDetailPage,
+        meta: { requiresAccidentAdmin: true },
+      },
+      {
+        path: "accidents/:id/report",
+        name: "hq-safe-accident-report",
+        component: HQAccidentReportPage,
+        meta: { requiresAccidentAdmin: true },
+      },
       { path: "worker-voice", name: "hq-safe-worker-voice", component: WorkerVoiceBoardPage },
       { path: "custom-menus/:slug", name: "hq-safe-dynamic-menu", component: DynamicMenuRuntimePage },
       { path: "documents/pending-review", name: "hq-safe-documents-pending", component: HQPendingDocumentsPage },
@@ -239,6 +274,21 @@ router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     next({ name: "login" });
     return;
+  }
+  if (to.meta.requiresAccidentAdmin && auth.user?.role !== "ACCIDENT_ADMIN") {
+    if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-dashboard" });
+    else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
+    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+    else next({ name: "login" });
+    return;
+  }
+  if (to.name === "hq-safe-accidents" && typeof window !== "undefined") {
+    const stored = window.localStorage.getItem("besma_accident_prefer_worklist");
+    const preferWorklist = stored == null ? true : stored === "true";
+    if (preferWorklist && to.query.bypassWorklist !== "1") {
+      next({ name: "hq-safe-accidents-worklist" });
+      return;
+    }
   }
 
   if (auth.isAuthenticated && auth.isTestPersonaMode) {

@@ -12,7 +12,7 @@
           <RouterLink :style="menuOrderPrimaryStyle('risk-library')" to="/hq-safe/risk-library">위험성평가 DB 조회</RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('worker-voice')" to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('nonconformities')" to="/hq-safe/nonconformities">부적합사항</RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고 최초보고</RouterLink>
+          <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('document-explorer')" to="/hq-safe/document-explorer">문서 탐색</RouterLink>
           <RouterLink
             :style="menuOrderPrimaryStyle('documents')"
@@ -75,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
@@ -91,6 +91,7 @@ const sidebarCollapsed = ref(false);
 const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
 const menuOrderPrimary = ref<Record<string, number>>({});
 const menuOrderSecondary = ref<Record<string, number>>({});
+const canAccessAccidents = computed(() => auth.user?.role === "ACCIDENT_ADMIN");
 
 onMounted(() => {
   if (!auth.user) {

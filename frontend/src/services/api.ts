@@ -16,9 +16,9 @@ function resolveApiBaseUrl() {
     if (host === "besma.co.kr" || host === "www.besma.co.kr") {
       return `${window.location.protocol}//api.besma.co.kr`;
     }
-    return `${window.location.protocol}//${host}:8001`;
+    return `${window.location.protocol}//${host}:8000`;
   }
-  return "http://127.0.0.1:8001";
+  return "http://127.0.0.1:8000";
 }
 
 export const api = axios.create({
@@ -30,9 +30,10 @@ export const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const auth = useAuthStore();
-  if (auth.token) {
+  const token = auth.token || localStorage.getItem("besma_token");
+  if (token) {
     config.headers = config.headers ?? {};
-    config.headers.Authorization = `Bearer ${auth.token}`;
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });

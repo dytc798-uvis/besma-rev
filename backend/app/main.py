@@ -27,6 +27,7 @@ from app.modules.communications.routes import router as communications_router
 from app.modules.notices.routes import router as notices_router
 from app.modules.safety_policy_goals.routes import router as safety_policy_goals_router
 from app.modules.safety_features.routes import router as safety_features_router
+from app.modules.accidents.routes import router as accidents_router
 
 
 _original_request_form = Request.form
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(notices_router)
     app.include_router(safety_policy_goals_router)
     app.include_router(safety_features_router)
+    app.include_router(accidents_router)
 
     @app.on_event("startup")
     async def on_startup() -> None:
