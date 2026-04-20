@@ -32,10 +32,9 @@
       <thead>
         <tr>
           <th>사고ID</th>
-          <th>사고일시</th>
+          <th>사고일</th>
           <th>현장명</th>
           <th>성명</th>
-          <th>파싱</th>
           <th>상태</th>
           <th>관리구분</th>
           <th>첨부</th>
@@ -45,10 +44,9 @@
       <tbody>
         <tr v-for="row in items" :key="row.id" class="click-row" @click="goDetail(row.id)">
           <td>{{ row.accident_id }}</td>
-          <td>{{ formatDt(row.accident_datetime || row.accident_datetime_text || row.created_at) }}</td>
+          <td>{{ formatAccidentDateForListRow(row.accident_datetime, row.accident_datetime_text, row.created_at) }}</td>
           <td>{{ row.site_standard_name || row.site_name || "—" }}</td>
           <td>{{ row.injured_person_name || "—" }}</td>
-          <td>{{ row.parse_status }}</td>
           <td>{{ row.status }}</td>
           <td>{{ row.management_category }}</td>
           <td>{{ row.has_attachments ? "Y" : "N" }}</td>
@@ -57,7 +55,7 @@
           </td>
         </tr>
         <tr v-if="!loading && items.length === 0">
-          <td colspan="9" class="empty">표시할 사고가 없습니다.</td>
+          <td colspan="8" class="empty">표시할 사고가 없습니다.</td>
         </tr>
       </tbody>
     </table>
@@ -76,6 +74,7 @@ import {
   syncAccidentsToMasterExcel,
   type AccidentListItem,
 } from "@/services/accidents";
+import { formatAccidentDateForListRow } from "@/utils/accidentDateDisplay";
 
 const router = useRouter();
 const items = ref<AccidentListItem[]>([]);
@@ -85,14 +84,6 @@ const errorMessage = ref("");
 const showAll = ref(false);
 const storedPreferWorklist = localStorage.getItem("besma_accident_prefer_worklist");
 const preferWorklist = ref(storedPreferWorklist == null ? true : storedPreferWorklist === "true");
-
-function formatDt(value: string) {
-  try {
-    return new Date(value).toLocaleString("ko-KR");
-  } catch {
-    return value;
-  }
-}
 
 function persistWorklistPreference() {
   localStorage.setItem("besma_accident_prefer_worklist", String(preferWorklist.value));

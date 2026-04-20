@@ -100,8 +100,18 @@
           <div class="matrix-wrap">
             <table class="matrix-table">
               <thead>
-                <tr>
-                  <th class="site-col">현장명</th>
+                <tr class="matrix-group-header-row">
+                  <th rowspan="2" class="site-col site-col-corner">현장명</th>
+                  <th
+                    v-for="grp in requirementColumnGroups"
+                    :key="`grp-${grp.key}`"
+                    :colspan="grp.columns.length"
+                    class="req-group-header"
+                  >
+                    {{ grp.label }}
+                  </th>
+                </tr>
+                <tr class="matrix-col-header-row">
                   <th v-for="col in requirementColumns" :key="`col-${col.requirement_key}`" class="req-col">
                     {{ col.title }}
                   </th>
@@ -198,36 +208,57 @@
             <BaseCard class="extra-card" title="본사-현장 소통">
               <div class="history-head">
                 <span class="sub">미확인 {{ unreadCommunicationCount }}건 · 최근 {{ communicationItems.length }}건</span>
-                <button type="button" class="stitch-btn-secondary pending-open-btn" @click="historyCollapsed = !historyCollapsed">
-                  {{ historyCollapsed ? "펼치기" : "접기" }}
-                </button>
+                <div class="history-controls">
+                  <label class="sub comm-toggle">
+                    <input v-model="showUnreadOnly" type="checkbox" />
+                    미확인만
+                  </label>
+                  <button type="button" class="stitch-btn-secondary pending-open-btn" @click="historyCollapsed = !historyCollapsed">
+                    {{ historyCollapsed ? "펼치기" : "접기" }}
+                  </button>
+                </div>
               </div>
-              <ul v-if="!historyCollapsed" class="extra-list">
-                <li
-                  v-for="row in communicationItems"
-                  :key="row.item_key"
-                  :class="{ 'comm-unread': !isCommunicationRead(row.item_key) }"
-                >
-                  <button type="button" class="link-btn" @click="goDetail(row.document_id)">
-                    {{ displaySiteName(row.site_name) }} · {{ row.title }}
-                  </button>
-                  <span class="sub">{{ row.user_name }} ({{ row.user_role }}) · {{ formatDateTime(row.created_at) }}</span>
-                  <button type="button" class="link-btn comm-comment" @click="goDetail(row.document_id)">
-                    {{ row.comment_text }}
-                  </button>
-                  <div class="comm-actions">
-                    <button
-                      type="button"
-                      class="stitch-btn-secondary"
-                      :disabled="isCommunicationRead(row.item_key)"
-                      @click="confirmCommunication(row.item_key)"
+              <div v-if="!historyCollapsed" class="comm-table-wrap">
+                <table class="comm-table">
+                  <thead>
+                    <tr>
+                      <th>날짜</th>
+                      <th>문서</th>
+                      <th>코멘트</th>
+                      <th>확인</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="row in displayedCommunicationItems"
+                      :key="row.item_key"
+                      role="button"
+                      tabindex="0"
+                      class="comm-row"
+                      :class="{ 'comm-unread': !isCommunicationRead(row.item_key) }"
+                      @click="goDetail(row.document_id)"
+                      @keydown.enter.prevent="goDetail(row.document_id)"
                     >
-                      {{ isCommunicationRead(row.item_key) ? "확인됨" : "확인" }}
-                    </button>
-                  </div>
-                </li>
-                <li v-if="communicationItems.length === 0" class="sub">소통 내역 없음</li>
-              </ul>
+                      <td>{{ formatDateTime(row.created_at) }}</td>
+                      <td>{{ displaySiteName(row.site_name) }} · {{ row.title }}</td>
+                      <td class="comm-comment-cell">{{ row.comment_text }}</td>
+                      <td>
+                        <button
+                          type="button"
+                          class="stitch-btn-secondary"
+                          :disabled="isCommunicationRead(row.item_key)"
+                          @click.stop="confirmCommunication(row.item_key)"
+                        >
+                          {{ isCommunicationRead(row.item_key) ? "확인됨" : "확인" }}
+                        </button>
+                      </td>
+                    </tr>
+                    <tr v-if="displayedCommunicationItems.length === 0">
+                      <td colspan="4" class="sub">표시할 소통 내역이 없습니다.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
               <p v-else class="sub">공간 절약을 위해 접어 두었습니다.</p>
             </BaseCard>
           </div>
@@ -292,6 +323,7 @@ import {
   isLedgerManagedDocumentType,
   LEDGER_MANAGED_UX_MESSAGE,
 } from "@/utils/ledgerManagedDocument";
+import { requirementFrequencyKoLabel, requirementFrequencySortOrder } from "@/utils/requirementFrequencyGroups";
 
 interface SiteSummaryRow {
   site_id: number;
@@ -423,12 +455,16 @@ const signalStatus = ref<"GREEN" | "YELLOW" | "RED">("GREEN");
 const pendingDocuments = ref<PendingDocumentRow[]>([]);
 const communicationItems = ref<CommunicationItemRow[]>([]);
 const pendingSummary = ref<PendingSummary>({ day: 0, week: 0, month: 0 });
-const historyCollapsed = ref(true);
+const historyCollapsed = ref(false);
+const showUnreadOnly = ref(true);
 const dashboardLoading = ref(true);
 const dashboardBackgroundPreparing = ref(false);
 const communicationReadKeys = ref<Set<string>>(new Set());
 const unreadCommunicationCount = computed(
   () => communicationItems.value.filter((row) => !communicationReadKeys.value.has(row.item_key)).length,
+);
+const displayedCommunicationItems = computed(() =>
+  showUnreadOnly.value ? communicationItems.value.filter((row) => !isCommunicationRead(row.item_key)) : communicationItems.value,
 );
 const hqKpiAggregate = computed(() => {
   let totalRequiredSum = 0;
@@ -456,7 +492,10 @@ function requirementColumnKey(item: DashboardItem): string {
   return `REQ-${item.requirement_id}`;
 }
 const requirementColumns = computed(() => {
-  const seen = new Map<string, { requirement_key: string; requirement_id: number; title: string; document_type_code: string | null }>();
+  const seen = new Map<
+    string,
+    { requirement_key: string; requirement_id: number; title: string; document_type_code: string | null; frequency: string }
+  >();
   for (const item of matrixItems.value) {
     const key = requirementColumnKey(item);
     if (!seen.has(key)) {
@@ -465,10 +504,33 @@ const requirementColumns = computed(() => {
         requirement_id: item.requirement_id,
         title: item.title,
         document_type_code: (item.document_type_code || "").trim() || null,
+        frequency: (item.frequency || "").trim() || "",
       });
     }
   }
-  return Array.from(seen.values()).sort((a, b) => a.title.localeCompare(b.title, "ko"));
+  return Array.from(seen.values()).sort((a, b) => {
+    const oa = requirementFrequencySortOrder(a.frequency);
+    const ob = requirementFrequencySortOrder(b.frequency);
+    if (oa !== ob) return oa - ob;
+    return a.title.localeCompare(b.title, "ko");
+  });
+});
+
+/** 선택 기간(일간/월간…) 조회 결과 열을 주기(일간·월간·…)별로 묶어 상단 행에 표시 */
+const requirementColumnGroups = computed(() => {
+  type Col = (typeof requirementColumns.value)[number];
+  const cols = requirementColumns.value;
+  const groups: { key: string; label: string; columns: Col[] }[] = [];
+  for (const col of cols) {
+    const label = requirementFrequencyKoLabel(col.frequency);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) {
+      last.columns.push(col);
+    } else {
+      groups.push({ key: `${label}-${col.requirement_id}`, label, columns: [col] });
+    }
+  }
+  return groups;
 });
 const matrixRows = computed(() =>
   siteSummaries.value.filter((site) => {
@@ -1162,6 +1224,18 @@ watch(
   margin-bottom: 8px;
 }
 
+.history-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comm-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .extra-list {
   margin: 0;
   padding-left: 16px;
@@ -1169,20 +1243,39 @@ watch(
   gap: 6px;
 }
 
-.comm-unread {
-  border-left: 3px solid #dc2626;
-  padding-left: 8px;
+.comm-table-wrap {
+  overflow: auto;
 }
 
-.comm-comment {
-  display: block;
+.comm-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.comm-table th,
+.comm-table td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 6px;
+  font-size: 12px;
   text-align: left;
-  margin: 4px 0;
+  vertical-align: top;
 }
 
-.comm-actions {
-  display: flex;
-  justify-content: flex-end;
+.comm-row {
+  cursor: pointer;
+}
+
+.comm-row:hover {
+  background: #f8fafc;
+}
+
+.comm-unread {
+  background: #fff7ed;
+}
+
+.comm-comment-cell {
+  max-width: 340px;
+  white-space: pre-wrap;
 }
 
 .link-btn {
@@ -1252,6 +1345,30 @@ watch(
   background: #f8fafc;
   font-weight: 700;
   text-align: center;
+}
+
+.matrix-group-header-row .req-group-header {
+  top: 0;
+  z-index: 5;
+  background: #e0f2fe;
+  color: #0c4a6e;
+  font-size: 11px;
+  padding: 6px 4px;
+  border-bottom: 1px solid #bae6fd;
+}
+
+.matrix-col-header-row th.req-col {
+  top: 30px;
+  z-index: 4;
+  background: #f8fafc;
+}
+
+.site-col-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 7;
+  vertical-align: middle;
 }
 
 .site-col {

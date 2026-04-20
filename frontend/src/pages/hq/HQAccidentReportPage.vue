@@ -34,7 +34,7 @@
           <div><dt>사고ID</dt><dd>{{ detail.accident_id }}</dd></div>
           <div><dt>현장명</dt><dd>{{ detail.site_standard_name || detail.site_name || "—" }}</dd></div>
           <div><dt>보고자</dt><dd>{{ nz(detail.reporter_name) }}</dd></div>
-          <div><dt>사고일시</dt><dd>{{ formatDateTime(detail.accident_datetime || detail.accident_datetime_text) }}</dd></div>
+          <div><dt>사고일시</dt><dd>{{ formatAccidentMoment(detail.accident_datetime, detail.accident_datetime_text) }}</dd></div>
           <div class="full-row"><dt>사고장소</dt><dd>{{ nz(detail.accident_place) }}</dd></div>
         </dl>
       </section>
@@ -67,10 +67,9 @@
       </section>
 
       <section class="report-section">
-        <h2>증빙</h2>
+        <h2>비고</h2>
         <dl class="info-grid">
-          <div><dt>첨부 여부</dt><dd>{{ detail.has_attachments ? `Y (${detail.attachments.length}건)` : "N" }}</dd></div>
-          <div class="full-row text-block"><dt>NAS 경로</dt><dd>{{ displayNasPath }}</dd></div>
+          <div class="full-row text-block"><dt>비고</dt><dd>{{ nz(detail.notes) }}</dd></div>
         </dl>
       </section>
     </article>
@@ -81,7 +80,7 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import { fetchAccidentDetail, type AccidentDetail } from "@/services/accidents";
-import { toDisplayedAccidentNasPath } from "@/utils/accidentNasPath";
+import { formatAccidentMoment } from "@/utils/accidentDateDisplay";
 
 const route = useRoute();
 const detail = ref<AccidentDetail | null>(null);
@@ -90,10 +89,6 @@ const errorMessage = ref("");
 
 const accidentId = computed(() => Number(route.params.id));
 const shouldAutoPrint = computed(() => route.query.autoPrint === "1");
-const displayNasPath = computed(() => {
-  if (!detail.value) return "—";
-  return toDisplayedAccidentNasPath(detail.value.nas_folder_path, detail.value.accident_id);
-});
 
 function nz(value: string | null | undefined) {
   const text = String(value ?? "").trim();

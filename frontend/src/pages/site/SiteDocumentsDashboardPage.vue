@@ -6,6 +6,7 @@
         <p class="page-note">기준일 {{ targetDate }} 기준으로 지금 처리할 문서와 반려 재조치 문서를 분리해서 보여줍니다.</p>
       </div>
       <div class="controls">
+        <button class="secondary" @click="confirmDocComments">문서 코멘트 확인</button>
         <button class="secondary" @click="load">새로고침</button>
       </div>
     </div>
@@ -46,10 +47,20 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in currentTaskItems" :key="`current-${item.requirement_id}`">
+          <template v-if="currentTaskItems.length === 0">
+            <tr>
+              <td colspan="6" class="empty-cell">현재 처리할 문서가 없습니다.</td>
+            </tr>
+          </template>
+          <template v-else>
+            <template v-for="grp in currentTaskGroups" :key="grp.key">
+              <tr class="freq-group-row">
+                <td colspan="6" class="freq-group-cell">{{ grp.label }}</td>
+              </tr>
+              <tr v-for="item in grp.items" :key="`current-${item.requirement_id}`">
             <td>
               <div class="cell-title">{{ item.title }}</div>
-              <div class="cell-subtitle">{{ sectionLabel(item.section) }} · {{ frequencyLabel(item.frequency) }}</div>
+              <div class="cell-subtitle">{{ sectionLabel(item.section) }}</div>
               <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">관리대장 전용 · 문서취합은 참조</div>
             </td>
             <td>{{ item.current_period_label || frequencyLabel(item.frequency) }}</td>
@@ -82,13 +93,19 @@
               >
                 보기
               </button>
+              <button
+                v-if="canReplaceCurrentDocument(item)"
+                class="secondary"
+                @click="openReplace(item)"
+              >
+                수정
+              </button>
               <button v-if="!isLedgerManagedRequirement(item)" class="secondary" @click="openHistory(item)">이력 보기</button>
               <button v-else type="button" class="secondary ledger-nav-btn" @click="goLedgerPage(item)">관리대장에서 보기</button>
             </td>
-          </tr>
-          <tr v-if="currentTaskItems.length === 0">
-            <td colspan="6" class="empty-cell">현재 처리할 문서가 없습니다.</td>
-          </tr>
+              </tr>
+            </template>
+          </template>
         </tbody>
       </table>
     </section>
@@ -109,10 +126,20 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in reworkItems" :key="`rework-${item.requirement_id}-${item.unresolved_rejected_document_id}`">
+          <template v-if="reworkItems.length === 0">
+            <tr>
+              <td colspan="5" class="empty-cell">현재 재조치가 필요한 문서는 없습니다.</td>
+            </tr>
+          </template>
+          <template v-else>
+            <template v-for="grp in reworkGroups" :key="grp.key">
+              <tr class="freq-group-row">
+                <td colspan="5" class="freq-group-cell">{{ grp.label }}</td>
+              </tr>
+              <tr v-for="item in grp.items" :key="`rework-${item.requirement_id}-${item.unresolved_rejected_document_id}`">
             <td>
               <div class="cell-title">{{ item.title }}</div>
-              <div class="cell-subtitle">{{ sectionLabel(item.section) }} · {{ frequencyLabel(item.frequency) }}</div>
+              <div class="cell-subtitle">{{ sectionLabel(item.section) }}</div>
               <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">관리대장 전용 · 문서취합은 참조</div>
               <div class="rework-meta">
                 <span class="badge status-badge status-rejected-strong">반려</span>
@@ -143,10 +170,9 @@
               <button v-if="!isLedgerManagedRequirement(item)" class="secondary" @click="openHistory(item)">이력 보기</button>
               <button v-else type="button" class="secondary ledger-nav-btn" @click="goLedgerPage(item)">관리대장에서 보기</button>
             </td>
-          </tr>
-          <tr v-if="reworkItems.length === 0">
-            <td colspan="5" class="empty-cell">현재 재조치가 필요한 문서는 없습니다.</td>
-          </tr>
+              </tr>
+            </template>
+          </template>
         </tbody>
       </table>
     </section>
@@ -168,7 +194,17 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in periodicItems" :key="`periodic-${item.requirement_id}`">
+          <template v-if="periodicItems.length === 0">
+            <tr>
+              <td colspan="6" class="empty-cell">표시할 주기 문서가 없습니다.</td>
+            </tr>
+          </template>
+          <template v-else>
+            <template v-for="grp in periodicGroups" :key="grp.key">
+              <tr class="freq-group-row">
+                <td colspan="6" class="freq-group-cell">{{ grp.label }}</td>
+              </tr>
+              <tr v-for="item in grp.items" :key="`periodic-${item.requirement_id}`">
             <td>
               <div class="cell-title">{{ item.title }}</div>
               <div class="cell-subtitle">{{ sectionLabel(item.section) }}</div>
@@ -199,13 +235,19 @@
               >
                 보기
               </button>
+              <button
+                v-if="canReplaceCurrentDocument(item)"
+                class="secondary"
+                @click="openReplace(item)"
+              >
+                수정
+              </button>
               <button v-if="!isLedgerManagedRequirement(item)" class="secondary" @click="openHistory(item)">이력 보기</button>
               <button v-else type="button" class="secondary ledger-nav-btn" @click="goLedgerPage(item)">관리대장에서 보기</button>
             </td>
-          </tr>
-          <tr v-if="periodicItems.length === 0">
-            <td colspan="6" class="empty-cell">표시할 주기 문서가 없습니다.</td>
-          </tr>
+              </tr>
+            </template>
+          </template>
         </tbody>
       </table>
     </section>
@@ -213,7 +255,15 @@
 
   <div v-if="uploadTarget" class="modal-backdrop" @click.self="closeUpload">
     <div class="modal-card">
-      <div class="card-title">{{ uploadTarget.current_cycle_needs_reupload || uploadTarget.unresolved_rejected_document_id ? "문서 수정 업로드" : "문서 업로드" }}</div>
+      <div class="card-title">
+        {{
+          uploadMode === "replace"
+            ? "문서 수정"
+            : uploadTarget.current_cycle_needs_reupload || uploadTarget.unresolved_rejected_document_id
+              ? "문서 수정 업로드"
+              : "문서 업로드"
+        }}
+      </div>
       <p class="upload-title">{{ uploadTarget.title }}</p>
       <p class="upload-note">
         Req ID: {{ uploadTarget.requirement_id }} · {{ sectionLabel(uploadTarget.section) }} ·
@@ -228,7 +278,15 @@
       <div class="modal-actions">
         <button class="secondary" @click="closeUpload">취소</button>
         <button class="primary" :disabled="!selectedFile || uploading" @click="submitUpload">
-          {{ uploading ? "업로드 중..." : uploadTarget.current_cycle_needs_reupload || uploadTarget.unresolved_rejected_document_id ? "수정 업로드" : "업로드" }}
+          {{
+            uploading
+              ? "업로드 중..."
+              : uploadMode === "replace"
+                ? "수정 완료"
+                : uploadTarget.current_cycle_needs_reupload || uploadTarget.unresolved_rejected_document_id
+                  ? "수정 업로드"
+                  : "업로드"
+          }}
         </button>
       </div>
     </div>
@@ -254,7 +312,15 @@
           <tr
             v-for="row in historyItems"
             :key="row.history_id"
-            :class="{ 'history-current-row': isCurrentCycleHistory(row) }"
+            role="button"
+            tabindex="0"
+            class="history-row"
+            :class="{
+              'history-current-row': isCurrentCycleHistory(row),
+              'history-row-selected': historyFocusedDocumentId === row.document_id,
+            }"
+            @click="selectHistoryRow(row)"
+            @keydown.enter.prevent="selectHistoryRow(row)"
           >
             <td>
               <div>{{ row.period_label || "-" }}</div>
@@ -274,11 +340,12 @@
             </td>
             <td class="actions">
               <button
-                v-if="row.history_file_available && row.file_download_url && row.file_name"
+                v-if="row.history_file_available || row.document_id"
+                type="button"
                 class="secondary"
-                @click="openHistoryFile(row.file_download_url, row.file_name)"
+                @click.stop="openHistoryRowFile(row)"
               >
-                보기
+                파일 보기
               </button>
             </td>
           </tr>
@@ -291,7 +358,7 @@
         v-if="historyCommentDocumentId && historyTarget && !isLedgerManagedRequirement(historyTarget)"
         :document-id="historyCommentDocumentId"
         :document-type-code="historyTarget.document_type_code"
-        title="현재 문서 코멘트"
+        :title="historyFocusedDocumentId != null ? '선택 회차 문서 코멘트' : '현재 문서 코멘트'"
       />
       <div class="modal-actions">
         <button class="secondary" @click="closeHistory">닫기</button>
@@ -308,6 +375,8 @@ import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst, todayKst, toDate } from "@/utils/datetime";
 import { isLedgerManagedDocumentType, siteLedgerRouteForDocumentType } from "@/utils/ledgerManagedDocument";
+import { markDocCommentTickerAck } from "@/utils/documentCommentTickerRead";
+import { requirementFrequencyKoLabel, requirementFrequencySortOrder } from "@/utils/requirementFrequencyGroups";
 
 interface RequirementStatusItem {
   requirement_id: number;
@@ -396,16 +465,22 @@ const items = ref<RequirementStatusItem[]>([]);
 const completionUploadEnabled = ref(false);
 
 const uploadTarget = ref<RequirementStatusItem | null>(null);
+const uploadMode = ref<"upload" | "replace">("upload");
 const selectedFile = ref<File | null>(null);
 const uploading = ref(false);
 const uploadError = ref("");
 const historyTarget = ref<RequirementStatusItem | null>(null);
 const historyItems = ref<HistoryItem[]>([]);
+/** 이력 모달에서 선택한 회차의 문서 ID — 코멘트 패널·강조 표시에 사용 */
+const historyFocusedDocumentId = ref<number | null>(null);
 
 const siteId = computed(() => auth.effectiveSiteId ?? auth.user?.site_id ?? null);
-const historyCommentDocumentId = computed(
-  () => historyTarget.value?.current_cycle_document_id ?? historyTarget.value?.unresolved_rejected_document_id ?? null,
-);
+const historyCommentDocumentId = computed(() => {
+  if (historyFocusedDocumentId.value != null) return historyFocusedDocumentId.value;
+  return (
+    historyTarget.value?.current_cycle_document_id ?? historyTarget.value?.unresolved_rejected_document_id ?? null
+  );
+});
 
 const visibleItems = computed(() =>
   items.value.filter((item) => isDisplayableRequirementId(item.requirement_id) && item.is_required && item.current_cycle_status !== "NOT_REQUIRED"),
@@ -428,6 +503,36 @@ const periodicItems = computed(() =>
     .filter((item) => item.site_display_bucket === "PERIODIC_OTHER")
     .sort(compareByCurrentPriority),
 );
+
+function groupItemsByFrequency(
+  items: RequirementStatusItem[],
+  innerSort?: (a: RequirementStatusItem, b: RequirementStatusItem) => number,
+): { key: string; label: string; items: RequirementStatusItem[] }[] {
+  if (!items.length) return [];
+  const sorted = [...items].sort((a, b) => {
+    const oa = requirementFrequencySortOrder(a.frequency);
+    const ob = requirementFrequencySortOrder(b.frequency);
+    if (oa !== ob) return oa - ob;
+    if (innerSort) return innerSort(a, b);
+    return (a.title || "").localeCompare(b.title || "", "ko");
+  });
+  const groups: { key: string; label: string; items: RequirementStatusItem[] }[] = [];
+  for (const item of sorted) {
+    const label = requirementFrequencyKoLabel(item.frequency);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.items.push(item);
+    else groups.push({ key: `${label}-${item.requirement_id}`, label, items: [item] });
+  }
+  return groups;
+}
+
+function reworkInnerSort(a: RequirementStatusItem, b: RequirementStatusItem) {
+  return compareDateDesc(a.unresolved_rejected_uploaded_at, b.unresolved_rejected_uploaded_at) || a.requirement_id - b.requirement_id;
+}
+
+const currentTaskGroups = computed(() => groupItemsByFrequency(currentTaskItems.value, compareByCurrentPriority));
+const reworkGroups = computed(() => groupItemsByFrequency(reworkItems.value, reworkInnerSort));
+const periodicGroups = computed(() => groupItemsByFrequency(periodicItems.value, compareByCurrentPriority));
 
 const pendingCurrentCount = computed(() => currentTaskItems.value.filter((item) => item.current_cycle_status === "NOT_SUBMITTED").length);
 const approvedCount = computed(() => visibleItems.value.filter((item) => item.current_cycle_status === "APPROVED").length);
@@ -518,20 +623,7 @@ function sectionLabel(section: string | null | undefined) {
 }
 
 function frequencyLabel(frequency: string | null | undefined) {
-  const key = (frequency || "").toUpperCase();
-  const map: Record<string, string> = {
-    DAILY: "일별",
-    WEEKLY: "주별",
-    MONTHLY: "월별",
-    HALF_YEARLY: "반기",
-    YEARLY: "연간",
-    QUARTERLY: "분기",
-    ROLLING: "수시",
-    ADHOC: "수시",
-    EVENT: "수시",
-    ONE_TIME: "1회",
-  };
-  return map[key] ?? frequency ?? "-";
+  return requirementFrequencyKoLabel(frequency);
 }
 
 function statusClass(status: string) {
@@ -591,6 +683,20 @@ async function openHistoryFile(path: string, fileName: string | null) {
   await openBlobFile(path, fileName);
 }
 
+function selectHistoryRow(row: HistoryItem) {
+  historyFocusedDocumentId.value = row.document_id ?? null;
+}
+
+async function openHistoryRowFile(row: HistoryItem) {
+  if (row.history_file_available && row.file_download_url && row.file_name) {
+    await openHistoryFile(row.file_download_url, row.file_name);
+    return;
+  }
+  if (row.document_id) {
+    await openDocumentFile(row.document_id, row.file_name || "document.bin");
+  }
+}
+
 async function load() {
   if (!siteId.value) return;
   const res = await api.get("/documents/requirements/status", {
@@ -606,12 +712,23 @@ async function load() {
 
 function openUpload(item: RequirementStatusItem) {
   if (isLedgerManagedRequirement(item)) return;
+  uploadMode.value = "upload";
+  uploadTarget.value = item;
+  selectedFile.value = null;
+  uploadError.value = "";
+}
+
+function openReplace(item: RequirementStatusItem) {
+  if (isLedgerManagedRequirement(item)) return;
+  if (!canReplaceCurrentDocument(item)) return;
+  uploadMode.value = "replace";
   uploadTarget.value = item;
   selectedFile.value = null;
   uploadError.value = "";
 }
 
 function closeUpload() {
+  uploadMode.value = "upload";
   uploadTarget.value = null;
   selectedFile.value = null;
   uploadError.value = "";
@@ -621,6 +738,7 @@ async function openHistory(item: RequirementStatusItem) {
   if (isLedgerManagedRequirement(item)) return;
   if (!siteId.value) return;
   historyTarget.value = item;
+  historyFocusedDocumentId.value = null;
   const res = await api.get("/documents/history", {
     params: {
       site_id: siteId.value,
@@ -633,6 +751,7 @@ async function openHistory(item: RequirementStatusItem) {
 function closeHistory() {
   historyTarget.value = null;
   historyItems.value = [];
+  historyFocusedDocumentId.value = null;
 }
 
 function isCurrentCycleHistory(row: HistoryItem) {
@@ -650,6 +769,13 @@ function reuploadInstanceId(item: RequirementStatusItem | null) {
   return item.unresolved_rejected_instance_id || item.current_cycle_instance_id || null;
 }
 
+function canReplaceCurrentDocument(item: RequirementStatusItem) {
+  if (isLedgerManagedRequirement(item)) return false;
+  if (!item.current_cycle_document_id || !item.current_cycle_instance_id) return false;
+  const status = (item.current_cycle_status || "").toUpperCase();
+  return status === "SUBMITTED" || status === "IN_REVIEW";
+}
+
 async function submitUpload() {
   if (!uploadTarget.value || !selectedFile.value || !siteId.value) return;
   if (uploadTarget.value.section === "COMPLETION" && !completionUploadEnabled.value) return;
@@ -657,18 +783,25 @@ async function submitUpload() {
   uploadError.value = "";
   try {
     const form = new FormData();
-    const targetInstanceId = reuploadInstanceId(uploadTarget.value);
-    if (targetInstanceId) {
-      form.append("instance_id", String(targetInstanceId));
-    }
-    form.append("site_id", String(siteId.value));
-    form.append("requirement_id", String(uploadTarget.value.requirement_id));
-    form.append("document_type_code", uploadTarget.value.document_type_code);
-    form.append("work_date", targetDate.value);
     form.append("file", selectedFile.value);
-    await api.post("/document-submissions/upload", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    if (uploadMode.value === "replace") {
+      form.append("instance_id", String(uploadTarget.value.current_cycle_instance_id));
+      await api.post("/document-submissions/replace", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    } else {
+      const targetInstanceId = reuploadInstanceId(uploadTarget.value);
+      if (targetInstanceId) {
+        form.append("instance_id", String(targetInstanceId));
+      }
+      form.append("site_id", String(siteId.value));
+      form.append("requirement_id", String(uploadTarget.value.requirement_id));
+      form.append("document_type_code", uploadTarget.value.document_type_code);
+      form.append("work_date", targetDate.value);
+      await api.post("/document-submissions/upload", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    }
     closeUpload();
     await load();
   } catch (error: unknown) {
@@ -677,6 +810,10 @@ async function submitUpload() {
   } finally {
     uploading.value = false;
   }
+}
+
+function confirmDocComments() {
+  markDocCommentTickerAck(auth.user?.login_id ?? null);
 }
 
 onMounted(async () => {
@@ -715,6 +852,14 @@ onMounted(async () => {
 .status-approved { background: #ecfdf5; color: #15803d; border-color: #86efac; }
 .status-rejected-strong { background: linear-gradient(135deg, #fff7ed, #fee2e2); color: #c2410c; border-color: #fb923c; }
 .empty-cell { text-align: center; color: #6b7280; }
+.freq-group-cell {
+  background: #e0f2fe;
+  color: #0c4a6e;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #bae6fd;
+}
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .secondary.danger { border-color: #ef4444; color: #b91c1c; background: #fef2f2; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.4); display: flex; align-items: center; justify-content: center; z-index: 40; }
@@ -726,7 +871,10 @@ onMounted(async () => {
 .upload-help { margin: 8px 0 0; font-size: 12px; color: #475569; }
 .upload-error { margin: 8px 0 0; font-size: 12px; color: #b91c1c; font-weight: 600; }
 .history-note { margin: 6px 0 12px; font-size: 12px; color: #64748b; }
+.history-row { cursor: pointer; }
+.history-row:focus-visible { outline: 2px solid #3b82f6; outline-offset: -2px; }
 .history-current-row { background: #eff6ff; }
+.history-row-selected { background: #e0e7ff; }
 .history-current-label { margin-top: 4px; font-size: 12px; color: #1d4ed8; font-weight: 700; }
 .modal-actions { margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px; }
 
