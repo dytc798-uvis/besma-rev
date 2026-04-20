@@ -146,6 +146,7 @@ def download_nas_folder_launcher(
     """NAS 표시 경로로 탐색기를 여는 Windows 배치 파일을 내려받는다(클라이언트 PC에서 실행)."""
     _require_accident_access(user)
     row = service.get_accident_or_404(db, accident_id)
+    service.ensure_accident_folder_persisted(db, row)
     display = to_displayed_accident_nas_path(row.nas_folder_path, row.accident_id)
     if not display or not str(display).strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="NAS 경로가 없습니다.")

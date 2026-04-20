@@ -48,11 +48,17 @@ def to_displayed_accident_nas_path(path: str | None, accident_id: str | None = N
 
 
 def build_explorer_bat_bytes(display_path: str) -> bytes:
-    """Windows에서 더블클릭 시 해당 폴더를 탐색기로 연다."""
-    path = (display_path or "").strip()
+    """Windows에서 더블클릭 시 폴더가 없으면 만든 뒤 탐색기로 연다."""
+    path = (display_path or "").strip().rstrip("\\/")
     if not path:
         raise ValueError("empty path")
     # 배치에서 큰따옴표는 "" 로 이스케이프
     inner = path.replace('"', '""')
-    lines = ["@echo off", "chcp 65001 >nul", f'start "" explorer "{inner}"', ""]
+    lines = [
+        "@echo off",
+        "chcp 65001 >nul",
+        f'if not exist "{inner}" mkdir "{inner}"',
+        f'start "" explorer "{inner}"',
+        "",
+    ]
     return ("\r\n".join(lines)).encode("utf-8-sig")

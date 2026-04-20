@@ -139,6 +139,14 @@ def resolve_accident_folder(row: Accident) -> Path:
     return folder
 
 
+def ensure_accident_folder_persisted(db: Session, row: Accident) -> None:
+    """탐색기/업로드와 맞추기 위해 서버 측 사고 폴더를 생성하고 `nas_folder_path`를 DB에 반영한다."""
+    resolve_accident_folder(row)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+
 def _create_accident_row(
     db: Session,
     *,

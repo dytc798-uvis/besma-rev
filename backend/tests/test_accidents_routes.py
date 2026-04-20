@@ -108,6 +108,7 @@ def test_parse_and_create_and_list():
     bat = client.get(f"/accidents/{aid}/nas-folder-launcher")
     assert bat.status_code == 200
     assert b"explorer" in bat.content
+    assert b"mkdir" in bat.content.lower()
     assert "attachment" in (bat.headers.get("content-disposition") or "").lower()
 
 

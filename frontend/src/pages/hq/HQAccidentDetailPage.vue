@@ -3,12 +3,11 @@
     <div class="head-row">
       <div>
         <div class="card-title">사고 상세</div>
-        <p class="muted">사고정보 수정, 관리구분 변경, 증빙 업로드, NAS 경로 확인을 한 화면에서 처리합니다.</p>
+        <p class="muted">사고정보 수정, 관리구분 변경, 증빙 업로드, NAS 폴더 연결을 한 화면에서 처리합니다.</p>
       </div>
       <div class="toolbar">
         <button type="button" class="secondary" @click="openReportPreview">보고서 미리보기</button>
         <button type="button" class="secondary" @click="printReport">보고서 출력</button>
-        <button type="button" class="secondary" @click="copyNasPath">NAS 경로 복사</button>
         <button type="button" class="secondary" :disabled="nasOpening" @click="openNasFolderInExplorer">
           {{ nasOpening ? "준비 중…" : "탐색기 열기" }}
         </button>
@@ -30,6 +29,7 @@
         <dl class="meta-dl">
           <div><dt>사고ID</dt><dd>{{ detail.accident_id }}</dd></div>
           <div><dt>관리번호</dt><dd>{{ detail.display_code }}</dd></div>
+          <div><dt>사고일시</dt><dd>{{ formatAccidentMoment(detail.accident_datetime, detail.accident_datetime_text) }}</dd></div>
           <div><dt>파싱 상태</dt><dd>{{ detail.parse_status }}</dd></div>
           <div><dt>등록일시</dt><dd>{{ formatDt(detail.created_at) }}</dd></div>
         </dl>
@@ -108,7 +108,6 @@
             <label>NAS 폴더 경로</label>
             <div class="nas-path-row">
               <input class="input" :value="displayNasPath" readonly />
-              <button type="button" class="secondary" @click="copyNasPath">경로 복사</button>
               <button type="button" class="secondary" :disabled="nasOpening" @click="openNasFolderInExplorer">
                 {{ nasOpening ? "준비 중…" : "탐색기 열기" }}
               </button>
@@ -158,8 +157,8 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
+import { formatAccidentMoment } from "@/utils/accidentDateDisplay";
 import { toDisplayedAccidentNasPath } from "@/utils/accidentNasPath";
-import { copyTextToClipboard } from "@/utils/clipboard";
 import {
   downloadAccidentNasFolderLauncher,
   fetchAccidentDetail,
@@ -351,24 +350,6 @@ function attachmentHref(id: number) {
   return `${api.defaults.baseURL}/accidents/attachments/${id}`;
 }
 
-async function copyNasPath() {
-  if (!detail.value) {
-    window.alert("연결된 NAS 경로가 없습니다.");
-    return;
-  }
-  const path = displayNasPath.value;
-  if (!path) {
-    window.alert("연결된 NAS 경로가 없습니다.");
-    return;
-  }
-  try {
-    await copyTextToClipboard(path);
-    window.alert("NAS 경로를 클립보드에 복사했습니다.");
-  } catch {
-    window.alert("클립보드 복사에 실패했습니다.");
-  }
-}
-
 async function openNasFolderInExplorer() {
   if (!detail.value) {
     window.alert("연결된 NAS 경로가 없습니다.");
@@ -381,11 +362,12 @@ async function openNasFolderInExplorer() {
   nasOpening.value = true;
   try {
     await downloadAccidentNasFolderLauncher(detail.value.id);
+    await loadAll();
     window.alert(
-      "탐색기를 여는 실행 파일을 내려받았습니다.\n\n다운로드 폴더의 .bat 파일을 더블클릭하면 해당 NAS 폴더가 열립니다.\n(브라우저만으로는 Windows 탐색기를 직접 실행할 수 없어, 백엔드에서 검증한 경로로 배치를 내려줍니다.)",
+      "탐색기를 여는 실행 파일을 내려받았습니다.\n\n다운로드한 .bat 파일을 더블클릭하세요.\n폴더가 없으면 먼저 만들고 탐색기가 열립니다.\n(서버에도 동일 폴더가 준비됩니다.)",
     );
   } catch {
-    window.alert("탐색기 열기 파일을 받지 못했습니다. NAS 경로 복사를 이용해 주세요.");
+    window.alert("탐색기 열기 파일을 받지 못했습니다. NAS 연결과 권한을 확인해 주세요.");
   } finally {
     nasOpening.value = false;
   }
