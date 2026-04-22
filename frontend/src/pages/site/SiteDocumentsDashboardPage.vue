@@ -11,6 +11,43 @@
       </div>
     </div>
 
+    <section ref="unreadCommentPanelRef" class="section-card" :class="{ 'section-card-focus': shouldFocusUnreadPanel }">
+      <div class="section-head">
+        <h3>미확인 문서 코멘트 안내</h3>
+        <p>아래 항목에서 바로가기 버튼을 누르면 해당 문서 상세/코멘트로 이동합니다.</p>
+      </div>
+      <div class="actions">
+        <button class="secondary" @click="loadUnreadCommentItems">목록 새로고침</button>
+      </div>
+      <p v-if="unreadCommentLoading" class="history-note">불러오는 중...</p>
+      <p v-else-if="unreadCommentError" class="upload-error">{{ unreadCommentError }}</p>
+      <table v-else class="basic-table">
+        <thead>
+          <tr>
+            <th>시각</th>
+            <th>작성자</th>
+            <th>문서</th>
+            <th>코멘트</th>
+            <th>바로가기</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in unreadCommentItems" :key="`peer-comment-${item.comment_id}`">
+            <td>{{ formatDateTime(item.created_at) }}</td>
+            <td>{{ item.author_name }}</td>
+            <td>{{ item.title }}</td>
+            <td class="note-cell">{{ item.comment_text }}</td>
+            <td>
+              <button class="secondary" @click="openUnreadCommentTarget(item)">해당 문서 열기</button>
+            </td>
+          </tr>
+          <tr v-if="unreadCommentItems.length === 0">
+            <td colspan="5" class="empty-cell">미확인 문서 코멘트가 없습니다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <div class="summary-grid">
       <div class="summary-card">
         <div class="summary-label">현재 작업 문서</div>
@@ -173,6 +210,49 @@
               </tr>
             </template>
           </template>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section-card">
+      <div class="section-head">
+        <h3>본사 점검표 확인</h3>
+        <p>본사에서 업로드한 점검표를 확인합니다. 상태는 확인/개선 기준입니다.</p>
+      </div>
+      <table class="basic-table">
+        <thead>
+          <tr>
+            <th>항목</th>
+            <th>대상 주기</th>
+            <th>상태</th>
+            <th>개선 메모</th>
+            <th>파일</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="item in hqChecklistItems" :key="`site-hq-check-${item.checklist_code}`">
+            <td>{{ item.title }}</td>
+            <td>{{ item.period_label }}</td>
+            <td>
+              <span class="badge status-badge" :class="hqChecklistStatusClass(item.status)">
+                {{ hqChecklistStatusLabel(item.status) }}
+              </span>
+            </td>
+            <td class="note-cell">{{ item.improvement_note || "-" }}</td>
+            <td>
+              <button
+                v-if="item.entry_id != null && item.file_name"
+                class="secondary"
+                @click="openHqChecklistFile(item.entry_id)"
+              >
+                보기
+              </button>
+              <span v-else>-</span>
+            </td>
+          </tr>
+          <tr v-if="hqChecklistItems.length === 0">
+            <td colspan="5" class="empty-cell">등록된 본사 점검표가 없습니다.</td>
+          </tr>
         </tbody>
       </table>
     </section>
@@ -368,14 +448,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.vue";
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst, todayKst, toDate } from "@/utils/datetime";
 import { isLedgerManagedDocumentType, siteLedgerRouteForDocumentType } from "@/utils/ledgerManagedDocument";
-import { markDocCommentTickerAck } from "@/utils/documentCommentTickerRead";
+import { getDocCommentTickerAfterIso, markDocCommentTickerAck } from "@/utils/documentCommentTickerRead";
 import { requirementFrequencyKoLabel, requirementFrequencySortOrder } from "@/utils/requirementFrequencyGroups";
 
 interface RequirementStatusItem {
@@ -447,9 +527,22 @@ interface HistoryItem {
   period_label: string | null;
   history_file_available: boolean;
 }
+interface HQChecklistItem {
+  checklist_code: string;
+  title: string;
+  frequency: string;
+  period_label: string;
+  status: string;
+  file_name: string | null;
+  uploaded_at: string | null;
+  checked_at: string | null;
+  improvement_note: string | null;
+  entry_id: number | null;
+}
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 
 function isLedgerManagedRequirement(item: RequirementStatusItem) {
   return isLedgerManagedDocumentType(item.document_type_code);
@@ -473,6 +566,21 @@ const historyTarget = ref<RequirementStatusItem | null>(null);
 const historyItems = ref<HistoryItem[]>([]);
 /** 이력 모달에서 선택한 회차의 문서 ID — 코멘트 패널·강조 표시에 사용 */
 const historyFocusedDocumentId = ref<number | null>(null);
+const unreadCommentPanelRef = ref<HTMLElement | null>(null);
+const unreadCommentItems = ref<
+  Array<{
+    comment_id: number;
+    document_id: number;
+    title: string;
+    comment_text: string;
+    created_at: string | null;
+    author_name: string;
+  }>
+>([]);
+const unreadCommentLoading = ref(false);
+const unreadCommentError = ref("");
+const hqChecklistItems = ref<HQChecklistItem[]>([]);
+const shouldFocusUnreadPanel = computed(() => route.query.focus_comments === "1");
 
 const siteId = computed(() => auth.effectiveSiteId ?? auth.user?.site_id ?? null);
 const historyCommentDocumentId = computed(() => {
@@ -708,6 +816,57 @@ async function load() {
   });
   items.value = res.data.items;
   completionUploadEnabled.value = !!res.data.completion_upload_enabled;
+  const hqRes = await api.get("/documents/hq-checklists", {
+    params: { date: targetDate.value },
+  });
+  hqChecklistItems.value = (hqRes.data?.items ?? []) as HQChecklistItem[];
+  await loadUnreadCommentItems();
+}
+
+function hqChecklistStatusLabel(status: string) {
+  if (status === "CONFIRMED") return "확인";
+  if (status === "IMPROVEMENT_REQUIRED") return "개선요청";
+  return "확인대기";
+}
+
+function hqChecklistStatusClass(status: string) {
+  if (status === "CONFIRMED") return "status-approved";
+  if (status === "IMPROVEMENT_REQUIRED") return "status-pending";
+  return "status-submitted";
+}
+
+async function openHqChecklistFile(entryId: number) {
+  const res = await api.get(`/documents/hq-checklists/${entryId}/file`, {
+    responseType: "blob",
+  });
+  const blob = new Blob([res.data]);
+  const url = window.URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener");
+  setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+}
+
+async function loadUnreadCommentItems() {
+  unreadCommentLoading.value = true;
+  unreadCommentError.value = "";
+  try {
+    const after = getDocCommentTickerAfterIso(auth.user?.login_id ?? null);
+    const res = await api.get("/documents/comments/peer-items", {
+      params: {
+        ...(after ? { after } : {}),
+        limit: 40,
+      },
+    });
+    unreadCommentItems.value = res.data?.items ?? [];
+  } catch {
+    unreadCommentItems.value = [];
+    unreadCommentError.value = "미확인 코멘트 목록을 불러오지 못했습니다.";
+  } finally {
+    unreadCommentLoading.value = false;
+  }
+}
+
+async function openUnreadCommentTarget(item: { document_id: number }) {
+  await router.push({ name: "site-document-detail", params: { id: String(item.document_id) } });
 }
 
 function openUpload(item: RequirementStatusItem) {
@@ -821,7 +980,21 @@ onMounted(async () => {
     await auth.loadMe();
   }
   await load();
+  if (shouldFocusUnreadPanel.value) {
+    await nextTick();
+    unreadCommentPanelRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 });
+
+watch(
+  () => route.query.focus_comments,
+  async (nextVal) => {
+    if (nextVal === "1") {
+      await nextTick();
+      unreadCommentPanelRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  },
+);
 </script>
 
 <style scoped>
@@ -834,6 +1007,10 @@ onMounted(async () => {
 .summary-label { font-size: 12px; color: #64748b; }
 .summary-value { margin-top: 6px; font-size: 24px; font-weight: 700; color: #0f172a; }
 .section-card { margin-top: 12px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fff; }
+.section-card-focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
+}
 .section-card-alert { border-color: #fecaca; background: #fffafa; }
 .section-head h3 { margin: 0; font-size: 15px; }
 .section-head p { margin: 4px 0 10px; color: #475569; font-size: 12px; }

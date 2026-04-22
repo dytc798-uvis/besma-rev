@@ -1098,6 +1098,99 @@
 
 ---
 
+### [DECISION-077]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-17 |
+| **Title** | SITE 문서 코멘트 티커는 클릭/진입으로 소거하지 않고 `내 현장 문서` 화면의 명시적 확인 버튼으로만 소거한다 |
+| **Context** | 사용자는 티커를 클릭해 문서 화면에 들어가더라도 실제 확인 액션 전에는 티커가 사라지지 않길 원했다. |
+| **Options** | A. 클릭/진입으로는 유지 + 화면 내 `확인` 액션 시 소거 / B. 클릭 즉시 소거 유지 / C. 클릭 후 `전체 확인` 버튼으로 일괄 소거 |
+| **Decision** | **A** |
+| **Reason** | “안 읽었는데 사라짐”을 방지하고, 사용자가 명시적으로 확인한 경우에만 미확인 카운트를 줄이는 것이 요구 의도와 일치한다. |
+| **Impact Scope** | `frontend/src/layouts/SiteLayout.vue`, `frontend/src/pages/site/SiteDocumentsDashboardPage.vue`, `frontend/src/utils/documentCommentTickerRead.ts` |
+
+---
+
+### [DECISION-078]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-20 |
+| **Title** | 사고 후속조치 항목은 당분간 자동 연동 없이 수동 체크로만 운영 |
+| **Context** | 사고관리에서 `3일 내 사고보고서`, `5일 내 교육일지`, `수시 위험성평가 제출`, `근로가능 소견서`, `산업재해조사표 신고`, `요양급여 신청` 등은 아직 시스템 연동 범위가 확정되지 않았다. |
+| **Options** | A. 즉시 자동 연동(문서·기한·상태 계산) / B. 수동 체크만 제공하고 연동은 추후 별도 결정 / C. 항목 자체 미노출 |
+| **Decision** | **B** |
+| **Reason** | 오너 요청: 현재는 연동하면 안 되는 상황이며, 운영상 체크만 빠르게 수행해야 한다. |
+| **Impact Scope** | `frontend/src/pages/hq/HQAccidentDetailPage.vue` 수동 체크리스트 UI(브라우저 로컬 저장), 사고 도메인 백엔드 자동 집계/연동 로직은 이번 범위에서 미구현 |
+
+---
+
+### [DECISION-079]
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-22 |
+| **Title** | 문서취합현황에 `본사 점검표` 업로드 축을 추가하고 HQ 기본 기간을 `전체`로 고정 |
+| **Context** | 오너가 문서취합현황에서 `일간/월간/수시`와 별개로 `본사 점검표`를 선행 노출하고, HQ에서 업로드한 파일을 SITE에서 확인할 수 있어야 한다고 확정했다. 또한 HQ 화면 기본 기간이 `월간`으로 시작해 누락 인지가 어렵다는 피드백이 있어 기본값을 `전체`로 변경해야 했다. |
+| **Options** | A. `본사 점검표` 별도 축 + HQ 업로드 + SITE 확인 + 문서 클릭(이력) 항상 가능 + 기본기간 `전체` / B. 일간 하위 항목으로만 처리 / C. 클릭 정책만 완화 |
+| **Decision** | **A** |
+| **Reason** | 본사 업로드-현장 확인 흐름을 명확히 분리하고, 문서 누락 여부를 기본 화면에서 즉시 확인하기 위해서다. HQ 관점의 `SUBMITTED/IN_REVIEW` 라벨은 `검토대기` 대신 `업로드`로 통일한다. |
+| **Impact Scope** | `frontend/src/pages/hq/HQDocumentsDashboardPage.vue` (본사 점검표 그룹/업로드 모달/무회차 이력 모달/상태 라벨/기본기간 `all`) |
+
+---
+
+### [DECISION-080]
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-22 |
+| **Title** | SITE 대시보드는 날씨 대신 `본사-현장 소통`을 노출하고, HQ 작성분만 SITE에서 확인한다 |
+| **Context** | 오너 확정: SITE 대시보드의 날씨 카드는 당분간 무용지물이므로 제거하고, 같은 위치에 본사-현장 소통을 배치한다. 또한 본사(HQ)에서 작성한 코멘트/승인·반려 의견만 현장에서 확인하며, `확인` 클릭 시 해당 문서 상세로 이동해 코멘트를 보도록 한다. |
+| **Options** | A. HQ 작성분만 SITE 노출 + 날씨 대체 카드 + `확인` 즉시 상세 이동 / B. 확인 처리와 상세 이동 분리 / C. 양방향 소통 유지 |
+| **Decision** | **A** |
+| **Reason** | 현장 실행 동선을 단순화하고, 본사 전달사항 확인을 SITE 대시보드에서 즉시 처리할 수 있게 하기 위함이다. |
+| **Impact Scope** | `backend/app/modules/documents/routes.py`(`GET /documents/site-communications`), `frontend/src/pages/dashboard/SiteDashboard.vue`, `frontend/src/utils/siteCommunicationRead.ts` |
+
+---
+
+### [DECISION-081]
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-22 |
+| **Title** | SITE 티커 `미확인 문서 코멘트 N건` 클릭 시 `내 현장 문서` 상단 안내 패널(A)로 대상 문서를 명시 |
+| **Context** | 티커에서 `내 현장 문서`로 이동해도 어떤 문서를 눌러야 하는지 즉시 알기 어려워, N건 각각에 대한 클릭 대상 표시가 필요했다. |
+| **Options** | A. `내 현장 문서` 상단에 미확인 코멘트 목록 패널(문서명/코멘트/바로가기) 표시 / B. 티커 자체 드롭다운 리스트 / C. 현행 유지 |
+| **Decision** | **A** |
+| **Reason** | 기존 화면 구조를 크게 바꾸지 않으면서도 “어디를 눌러야 하는지”를 즉시 안내할 수 있다. |
+| **Impact Scope** | `backend/app/modules/documents/routes.py`(`GET /documents/comments/peer-items`), `frontend/src/layouts/SiteLayout.vue`(티커 라우팅 query), `frontend/src/pages/site/SiteDocumentsDashboardPage.vue`(상단 미확인 코멘트 안내 패널) |
+
+---
+
+### [DECISION-082]
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-22 |
+| **Title** | HQ 문서취합의 본사 전용 점검표 4종은 `확인/개선` 모델로 분리하고 SITE는 확인 전용으로 조회 |
+| **Context** | `본사 점검표`에 `관리감독자 점검표`가 포함되면 안 되며, 본사 전용 항목 4종을 별도 관리해야 한다. 또한 처리 흐름은 문서취합의 `승인/반려`가 아니라 `확인/개선`이어야 한다. |
+| **Options** | A. 본사 전용 4항목 + 별도 상태모델(`PENDING_CONFIRM/CONFIRMED/IMPROVEMENT_REQUIRED`) + 전용 업로드/상태 API / B. 기존 승인/반려 재사용(라벨 치환) / C. 별도 화면 분리 |
+| **Decision** | **A** |
+| **Reason** | 기존 문서취합 승인 플로우와 성격이 달라 상태모델을 분리해야 운영 혼선이 줄고 요구사항과 정확히 일치한다. |
+| **Impact Scope** | `backend/app/modules/documents/models.py`(`hq_checklist_entries`), `backend/alembic/versions/20260422_0043_hq_checklist_entries.py`, `backend/app/modules/documents/routes.py`(`GET/POST /documents/hq-checklists*`), `frontend/src/pages/hq/HQDocumentsDashboardPage.vue`, `frontend/src/pages/site/SiteDocumentsDashboardPage.vue` |
+
+---
+
+### [DECISION-083]
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-22 |
+| **Title** | 본사-현장 소통 확인 규칙을 교차 확인(A)으로 전환 |
+| **Context** | 오너 확정: 현장이 작성한 코멘트는 본사가 확인하고, 본사가 작성한 코멘트는 현장이 확인해야 한다. 본사/현장 모두 로그인 시 소통 영역은 유지되어야 한다. |
+| **Options** | A. 교차 확인 규칙(본사 화면=현장 작성분, 현장 화면=본사 작성분) / B. 전체 노출 + 확인대상만 교차 / C. 기존 일방향 유지 |
+| **Decision** | **A** |
+| **Reason** | 확인 책임 주체를 명확히 나누어 소통 흐름을 단순화하고, 양측 대시보드 소통 영역을 유지할 수 있다. |
+| **Impact Scope** | `backend/app/modules/documents/routes.py`(`GET /documents/hq-communications` 필터), SITE/HQ 소통 카드의 확인 동선(기존 UI 재사용) |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -1152,3 +1245,5 @@
 | 2026-04-17 | Decision 070 추가 — 방침/목표 화면을 뷰포트 내 2패널 동시 표시로 레이아웃 조정 |
 | 2026-04-17 | Decision 071 추가 — SITE 공지 티커 무한 스크롤 공백 제거(이중 트랙·`-50%`·너비 기반 duration) |
 | 2026-04-17 | Decision 072 추가 — 티커 최근 3건·열람 제외(상세 조회 자동)·티커 바 두께 |
+| 2026-04-17 | Decision 077 추가 — 문서 코멘트 티커는 클릭/진입으로 소거하지 않고 `내 현장 문서`의 확인 버튼으로만 소거 |
+| 2026-04-20 | Decision 078 추가 — 사고 후속조치 항목은 자동 연동 없이 수동 체크로만 운영 |

@@ -80,44 +80,59 @@
             <KpiCard label="현장 의견 접수" :value="data?.total_opinions ?? '—'" accent="slate" />
             <KpiCard label="미조치 의견" :value="data?.pending_opinions ?? '—'" accent="slate" />
           </section>
+          <div class="site-opinion-cta-row">
+            <button type="button" class="stitch-btn-secondary" @click="goOpinions">
+              운영 아이디어 제안/결과 확인
+            </button>
+          </div>
         </div>
       </BaseCard>
 
-      <BaseCard title="현장 기상 및 환경" class="weather-card">
+      <BaseCard title="본사-현장 소통" class="site-comm-card">
         <template #actions>
-          <span class="weather-updated">{{ formatDateTimeKst(weather?.snapshot_fetched_at || weather?.updated_at, "갱신 시각 없음") }}</span>
+          <span class="weather-updated">미확인 {{ unreadCommunicationCount }}건</span>
         </template>
-        <p v-if="weather" class="weather-snapshot-meta">
-          스냅샷 기준(KST·1일 2회): {{ formatDateTimeKst(weather.snapshot_anchor_kst, "—") }}
-          <span class="weather-snapshot-sep">·</span>
-          외부 조회 갱신: {{ formatDateTimeKst(weather.snapshot_fetched_at || weather.updated_at, "—") }}
-        </p>
-        <div v-if="weather?.available" class="weather-body">
-          <div class="weather-main-row">
-            <div>
-              <p class="weather-label">{{ weather.location_name }}</p>
-              <h2 class="weather-title">{{ weather.weather_label }} {{ tempText(weather.temperature) }}</h2>
-              <p class="weather-sub">체감 {{ tempText(weather.feels_like) }} · 풍속 {{ speedText(weather.wind_speed) }}</p>
-              <p class="weather-sub">강수 {{ mmText(weather.precipitation) }} / 강수확률 {{ percentText(weather.precipitation_probability) }}</p>
-            </div>
-            <div class="badge-stack">
-              <span class="status-badge" :class="badgeTone(weather.pm10_status)">미세먼지 {{ weather.pm10_status }}</span>
-              <span class="status-badge" :class="badgeTone(weather.pm25_status)">초미세먼지 {{ weather.pm25_status }}</span>
-            </div>
+        <p class="weather-snapshot-meta">본사에서 남긴 코멘트/승인·반려 의견만 표시됩니다.</p>
+        <div class="comm-table-wrap">
+          <table class="comm-table">
+            <thead>
+              <tr>
+                <th>날짜</th>
+                <th>문서</th>
+                <th>코멘트</th>
+                <th>확인</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in displayedCommunicationItems"
+                :key="row.item_key"
+                :class="{ 'comm-row-unread': !isCommunicationRead(row.item_key) }"
+              >
+                <td>{{ formatDateTimeKst(row.created_at, "—") }}</td>
+                <td>{{ row.title }}</td>
+                <td class="comm-comment-cell">{{ row.comment_text }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="stitch-btn-secondary"
+                    :disabled="isCommunicationRead(row.item_key)"
+                    @click="confirmAndOpenDetail(row)"
+                  >
+                    {{ isCommunicationRead(row.item_key) ? "확인됨" : "확인" }}
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="displayedCommunicationItems.length === 0">
+                <td colspan="4" class="neutral">표시할 본사-현장 소통이 없습니다.</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="site-opinion-cta-row">
+            <button type="button" class="stitch-btn-secondary" @click="showUnreadOnly = !showUnreadOnly">
+              {{ showUnreadOnly ? "전체 보기" : "미확인만 보기" }}
+            </button>
           </div>
-          <div class="dust-metrics">
-            <div class="metric-chip">PM10 {{ valueText(weather.pm10) }}</div>
-            <div class="metric-chip">PM2.5 {{ valueText(weather.pm25) }}</div>
-          </div>
-          <ul class="message-list">
-            <li v-for="message in behaviorMessages(weather.safety_messages)" :key="message">{{ message }}</li>
-            <li v-if="behaviorMessages(weather.safety_messages).length === 0" class="neutral">추가 안전 메시지 없음</li>
-          </ul>
-          <p v-if="weather.risk_assessment_required" class="risk-flag">위험성평가 반영 필요</p>
-        </div>
-        <div v-else class="weather-empty">
-          <strong>{{ weather?.status_text || "일시적 조회 실패" }}</strong>
-          <p>외부 기상/미세먼지 정보를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>
         </div>
       </BaseCard>
     </div>
@@ -125,13 +140,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { fetchRiskDbOverviewOptional, type RiskDbOverviewPayload } from "@/services/riskDbOverview";
 import { BaseCard, KpiCard } from "@/components/product";
 import { formatDateTimeKst } from "@/utils/datetime";
 import type { LedgerDashboardFilter } from "@/utils/ledgerDashboardFilter";
+import { getReadSiteCommunicationKeys, markSiteCommunicationRead } from "@/utils/siteCommunicationRead";
+import { useAuthStore } from "@/stores/auth";
 
 interface DashboardSummary {
   total_documents: number;
@@ -141,75 +158,75 @@ interface DashboardSummary {
   pending_opinions: number;
 }
 
-interface WeatherSummary {
-  available: boolean;
-  location_name: string;
-  weather_label: string;
-  temperature: number | null;
-  feels_like: number | null;
-  wind_speed: number | null;
-  precipitation: number | null;
-  precipitation_probability: number | null;
-  pm10: number | null;
-  pm10_status: string;
-  pm25: number | null;
-  pm25_status: string;
-  safety_messages: string[];
-  risk_assessment_required: boolean;
-  updated_at: string | null;
-  status_text?: string;
-  /** KST 앵커(05:00 또는 12:00) ISO 문자열 */
-  snapshot_anchor_kst?: string | null;
-  /** Open-Meteo 조회 완료 시각(UTC 권장) ISO 문자열 */
-  snapshot_fetched_at?: string | null;
+interface SiteCommunicationItem {
+  item_key: string;
+  source: string;
+  source_id: number;
+  document_id: number;
+  title: string;
+  site_id: number;
+  site_name: string;
+  user_name: string;
+  user_role: string;
+  comment_text: string;
+  created_at: string | null;
 }
 
 const router = useRouter();
+const auth = useAuthStore();
 const data = ref<DashboardSummary | null>(null);
-const weather = ref<WeatherSummary | null>(null);
+const communicationItems = ref<SiteCommunicationItem[]>([]);
 const riskDbOverview = ref<RiskDbOverviewPayload | null>(null);
 const summaryError = ref(false);
-const weatherError = ref(false);
+const showUnreadOnly = ref(true);
+const communicationReadKeys = ref<Set<string>>(new Set());
+const unreadCommunicationCount = ref(0);
 
 function goSiteLedgerFilter(filter: LedgerDashboardFilter, board: "voice" | "nonconf") {
   const name = board === "voice" ? "site-worker-voice" : "site-nonconformities";
   router.push({ name, query: { filter } });
 }
 
-function tempText(value: number | null) {
-  return value == null ? "—" : `${Math.round(value)}℃`;
+function goOpinions() {
+  router.push({ name: "site-opinions" });
 }
 
-function speedText(value: number | null) {
-  return value == null ? "—" : `${Math.round(value * 10) / 10}m/s`;
+function isCommunicationRead(itemKey: string) {
+  return communicationReadKeys.value.has(itemKey);
 }
 
-function mmText(value: number | null) {
-  return value == null ? "—" : `${Math.round(value * 10) / 10}mm`;
+const displayedCommunicationItems = computed(() =>
+  showUnreadOnly.value
+    ? communicationItems.value.filter((row) => !isCommunicationRead(row.item_key))
+    : communicationItems.value,
+);
+
+function syncReadState() {
+  const loginId = auth.user?.login_id ?? null;
+  communicationReadKeys.value = getReadSiteCommunicationKeys(loginId);
+  unreadCommunicationCount.value = communicationItems.value.filter((row) => !communicationReadKeys.value.has(row.item_key)).length;
 }
 
-function percentText(value: number | null) {
-  return value == null ? "—" : `${Math.round(value)}%`;
+async function confirmAndOpenDetail(row: SiteCommunicationItem) {
+  const loginId = auth.user?.login_id ?? null;
+  markSiteCommunicationRead(loginId, row.item_key);
+  syncReadState();
+  await router.push({ name: "site-document-detail", params: { id: String(row.document_id) } });
 }
 
-function valueText(value: number | null) {
-  return value == null ? "—" : `${Math.round(value)}`;
-}
-
-function badgeTone(status: string) {
-  if (status === "매우나쁨") return "tone-bad";
-  if (status === "나쁨") return "tone-warn";
-  if (status === "보통") return "tone-normal";
-  return "tone-good";
-}
-
-function behaviorMessages(messages: string[]) {
-  return messages.filter((message) => message !== "위험성평가 반영 필요");
+async function loadSiteCommunications() {
+  try {
+    const res = await api.get("/documents/site-communications", { params: { limit: 120 } });
+    communicationItems.value = (res.data?.items ?? []) as SiteCommunicationItem[];
+  } catch {
+    communicationItems.value = [];
+  } finally {
+    syncReadState();
+  }
 }
 
 async function load() {
   summaryError.value = false;
-  weatherError.value = false;
   const summaryPromise = api.get<DashboardSummary>("/dashboard/summary").then(
     (res) => {
       data.value = res.data;
@@ -222,35 +239,8 @@ async function load() {
   const riskPromise = fetchRiskDbOverviewOptional().then((data) => {
     riskDbOverview.value = data;
   });
-  const weatherPromise = api.get<WeatherSummary>("/dashboard/weather/site-summary").then(
-    (res) => {
-      weather.value = res.data;
-    },
-    () => {
-      weatherError.value = true;
-      weather.value = {
-        available: false,
-        location_name: "",
-        weather_label: "",
-        temperature: null,
-        feels_like: null,
-        wind_speed: null,
-        precipitation: null,
-        precipitation_probability: null,
-        pm10: null,
-        pm10_status: "",
-        pm25: null,
-        pm25_status: "",
-        safety_messages: [],
-        risk_assessment_required: false,
-        updated_at: null,
-        status_text: "일시적 조회 실패",
-        snapshot_anchor_kst: null,
-        snapshot_fetched_at: null,
-      };
-    },
-  );
-  await Promise.all([summaryPromise, weatherPromise, riskPromise]);
+  const communicationsPromise = loadSiteCommunications();
+  await Promise.all([summaryPromise, riskPromise, communicationsPromise]);
 }
 
 onMounted(load);
@@ -296,6 +286,12 @@ onMounted(load);
 
 .site-dash-doc-block {
   margin-top: 8px;
+}
+
+.site-opinion-cta-row {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .site-ledger-kpi-intro {
@@ -367,7 +363,7 @@ onMounted(load);
   line-height: 1.3;
 }
 
-.weather-card {
+.site-comm-card {
   min-height: 100%;
 }
 
@@ -383,102 +379,36 @@ onMounted(load);
   color: #94a3b8;
 }
 
-.weather-body {
-  display: grid;
-  gap: 12px;
-}
-
-.weather-main-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.weather-label,
-.weather-sub,
 .weather-updated {
   color: #64748b;
   font-size: 12px;
 }
 
-.weather-title {
-  margin: 6px 0;
-  font-size: 24px;
-  color: #0f172a;
+.comm-table-wrap {
+  overflow: auto;
 }
 
-.badge-stack {
-  display: grid;
-  gap: 8px;
-  align-content: start;
+.comm-table {
+  width: 100%;
+  border-collapse: collapse;
 }
 
-.status-badge,
-.metric-chip {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  border-radius: 999px;
-  padding: 6px 10px;
+.comm-table th,
+.comm-table td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 6px;
   font-size: 12px;
-  font-weight: 700;
+  text-align: left;
+  vertical-align: top;
 }
 
-.tone-good {
-  background: #dcfce7;
-  color: #166534;
+.comm-comment-cell {
+  max-width: 360px;
+  white-space: pre-wrap;
 }
 
-.tone-normal {
-  background: #e2e8f0;
-  color: #334155;
-}
-
-.tone-warn {
-  background: #ffedd5;
-  color: #c2410c;
-}
-
-.tone-bad {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-.dust-metrics {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.metric-chip {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.message-list {
-  margin: 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 6px;
-  color: #334155;
-  font-size: 13px;
-}
-
-.risk-flag {
-  margin: 0;
-  color: #b91c1c;
-  font-weight: 700;
-}
-
-.weather-empty {
-  color: #64748b;
-  font-size: 13px;
-}
-
-.weather-empty strong {
-  display: block;
-  color: #0f172a;
-  margin-bottom: 6px;
+.comm-row-unread {
+  background: #fff7ed;
 }
 
 .neutral {

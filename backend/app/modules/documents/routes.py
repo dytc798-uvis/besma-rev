@@ -24,7 +24,13 @@ from app.modules.document_submissions.service import (
     transition_instance_workflow_status,
 )
 from app.modules.documents.ledger_managed import assert_not_ledger_managed_document, assert_not_ledger_managed_document_type
-from app.modules.documents.models import Document, DocumentComment, DocumentStatus, DocumentUploadHistory
+from app.modules.documents.models import (
+    Document,
+    DocumentComment,
+    DocumentStatus,
+    DocumentUploadHistory,
+    HQChecklistEntry,
+)
 from app.modules.document_settings.models import DocumentRequirement
 from app.modules.documents.service import (
     create_document_comment,
@@ -93,6 +99,99 @@ class HQCommunicationItemResponse(BaseModel):
 
 class HQCommunicationListResponse(BaseModel):
     items: list[HQCommunicationItemResponse]
+
+
+class SiteCommunicationItemResponse(BaseModel):
+    item_key: str
+    source: str
+    source_id: int
+    document_id: int
+    title: str
+    site_id: int
+    site_name: str
+    user_name: str
+    user_role: str
+    comment_text: str
+    created_at: datetime
+
+
+class SiteCommunicationListResponse(BaseModel):
+    items: list[SiteCommunicationItemResponse]
+
+
+class SitePeerCommentItemResponse(BaseModel):
+    comment_id: int
+    document_id: int
+    title: str
+    comment_text: str
+    created_at: datetime
+    author_name: str
+
+
+class SitePeerCommentListResponse(BaseModel):
+    items: list[SitePeerCommentItemResponse]
+
+
+class HQChecklistCatalogItem(BaseModel):
+    checklist_code: str
+    title: str
+    frequency: str
+
+
+class HQChecklistItemResponse(BaseModel):
+    checklist_code: str
+    title: str
+    frequency: str
+    period_label: str
+    status: str
+    file_name: str | None = None
+    uploaded_at: datetime | None = None
+    checked_at: datetime | None = None
+    improvement_note: str | None = None
+    entry_id: int | None = None
+
+
+class HQChecklistListResponse(BaseModel):
+    date: date
+    items: list[HQChecklistItemResponse]
+    catalog: list[HQChecklistCatalogItem]
+
+
+class HQChecklistStatusUpdateBody(BaseModel):
+    action: str
+    note: str | None = None
+
+
+HQ_CHECKLIST_CATALOG: list[dict[str, str]] = [
+    {"checklist_code": "HQ_SAFETY_ROOM_WEEKLY", "title": "(주1회)안전실점검표", "frequency": "WEEKLY"},
+    {"checklist_code": "HQ_EXEC_PM_MONTHLY_2X", "title": "(월2회)안전임원/PM 점검표", "frequency": "MONTHLY_2X"},
+    {"checklist_code": "HQ_SAFETY_DIRECTOR_MONTHLY", "title": "(월1회)안전보건실장 점검표", "frequency": "MONTHLY"},
+    {"checklist_code": "HQ_CEO_MONTHLY", "title": "(월1회)대표이사점검표", "frequency": "MONTHLY"},
+]
+
+
+def _hq_checklist_period_label(freq: str, target: date) -> str:
+    if freq == "WEEKLY":
+        iso = target.isocalendar()
+        return f"{iso.year}-W{iso.week:02d}"
+    if freq == "MONTHLY_2X":
+        half = 1 if target.day <= 15 else 2
+        return f"{target.year:04d}-{target.month:02d}-H{half}"
+    return f"{target.year:04d}-{target.month:02d}"
+
+
+def _hq_checklist_allowed_for_read(current_user) -> bool:
+    return current_user.role in {
+        Role.SITE,
+        Role.HQ_SAFE,
+        Role.HQ_SAFE_ADMIN,
+        Role.SUPER_ADMIN,
+        Role.HQ_OTHER,
+    }
+
+
+def _hq_checklist_allowed_for_write(current_user) -> bool:
+    return current_user.role in {Role.HQ_SAFE, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN}
 
 
 def _parse_period(period: str) -> str:
@@ -791,6 +890,240 @@ def get_peer_document_comment_count(
     return {"peer_comment_count": int(n or 0)}
 
 
+@router.get("/comments/peer-items", response_model=SitePeerCommentListResponse)
+def get_peer_document_comment_items(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    after: datetime | None = Query(
+        None,
+        description="이 시각 이후에 등록된 타인 코멘트만 조회. 생략 시 최근 14일로 제한.",
+    ),
+    limit: int = Query(20, ge=1, le=200),
+):
+    """현장 계정: 소속 현장 문서에 달린 다른 사용자 코멘트 목록(티커 상세 안내용)."""
+    if current_user.role != Role.SITE or not current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    cutoff = after
+    if cutoff is None:
+        cutoff = utc_now() - timedelta(days=14)
+
+    rows = (
+        db.query(DocumentComment, Document, User)
+        .join(Document, Document.id == DocumentComment.document_id)
+        .join(User, User.id == DocumentComment.user_id)
+        .filter(
+            Document.site_id == int(current_user.site_id),
+            DocumentComment.user_id != int(current_user.id),
+            DocumentComment.created_at > cutoff,
+        )
+        .order_by(DocumentComment.created_at.desc(), DocumentComment.id.desc())
+        .limit(limit)
+        .all()
+    )
+    items = [
+        {
+            "comment_id": int(c.id),
+            "document_id": int(d.id),
+            "title": d.title,
+            "comment_text": c.comment_text,
+            "created_at": c.created_at,
+            "author_name": u.name,
+        }
+        for c, d, u in rows
+    ]
+    return {"items": items}
+
+
+@router.get("/hq-checklists", response_model=HQChecklistListResponse)
+def get_hq_checklists(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    date_value: date = Query(..., alias="date"),
+):
+    if not _hq_checklist_allowed_for_read(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    items: list[dict] = []
+    for row in HQ_CHECKLIST_CATALOG:
+        code = row["checklist_code"]
+        title = row["title"]
+        freq = row["frequency"]
+        period_label = _hq_checklist_period_label(freq, date_value)
+        entry = (
+            db.query(HQChecklistEntry)
+            .filter(
+                HQChecklistEntry.checklist_code == code,
+                HQChecklistEntry.period_label == period_label,
+            )
+            .order_by(HQChecklistEntry.updated_at.desc(), HQChecklistEntry.id.desc())
+            .first()
+        )
+        if entry is None:
+            items.append(
+                {
+                    "checklist_code": code,
+                    "title": title,
+                    "frequency": freq,
+                    "period_label": period_label,
+                    "status": "PENDING_CONFIRM",
+                    "file_name": None,
+                    "uploaded_at": None,
+                    "checked_at": None,
+                    "improvement_note": None,
+                    "entry_id": None,
+                }
+            )
+            continue
+        items.append(
+            {
+                "checklist_code": code,
+                "title": title,
+                "frequency": freq,
+                "period_label": period_label,
+                "status": entry.status,
+                "file_name": entry.file_name,
+                "uploaded_at": entry.created_at,
+                "checked_at": entry.checked_at,
+                "improvement_note": entry.improvement_note,
+                "entry_id": entry.id,
+            }
+        )
+
+    return {
+        "date": date_value,
+        "items": items,
+        "catalog": HQ_CHECKLIST_CATALOG,
+    }
+
+
+@router.post("/hq-checklists/upload")
+async def upload_hq_checklist(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    checklist_code: Annotated[str, Form(...)],
+    work_date: Annotated[date, Form(...)],
+    file: Annotated[UploadFile, File(...)],
+):
+    if not _hq_checklist_allowed_for_write(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    catalog = next((c for c in HQ_CHECKLIST_CATALOG if c["checklist_code"] == checklist_code), None)
+    if catalog is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown checklist_code")
+
+    content = await file.read()
+    source_name = file.filename or "upload.bin"
+    ext = Path(source_name).suffix or ".bin"
+    if len(content) > settings.document_upload_max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"파일 크기는 {settings.document_upload_max_bytes // (1024 * 1024)}MB 이하만 업로드할 수 있습니다.",
+        )
+    storage_dir = _ensure_storage_dir()
+    ts = int(utc_now().timestamp())
+    safe_name = f"{catalog['title'].replace(' ', '')}_{work_date.strftime('%Y%m%d')}{ext or Path(source_name).suffix or '.bin'}"
+    filename = f"hqcheck_{checklist_code}_{ts}_{safe_name}"
+    stored_path = storage_dir / filename
+    stored_path.write_bytes(content)
+
+    period_label = _hq_checklist_period_label(catalog["frequency"], work_date)
+    entry = (
+        db.query(HQChecklistEntry)
+        .filter(
+            HQChecklistEntry.checklist_code == checklist_code,
+            HQChecklistEntry.period_label == period_label,
+        )
+        .order_by(HQChecklistEntry.updated_at.desc(), HQChecklistEntry.id.desc())
+        .first()
+    )
+    if entry is None:
+        entry = HQChecklistEntry(
+            checklist_code=checklist_code,
+            checklist_title=catalog["title"],
+            frequency=catalog["frequency"],
+            period_label=period_label,
+            target_date=work_date,
+            status="PENDING_CONFIRM",
+        )
+        db.add(entry)
+    entry.checklist_title = catalog["title"]
+    entry.frequency = catalog["frequency"]
+    entry.target_date = work_date
+    entry.file_path = str(stored_path.relative_to(settings.storage_root))
+    entry.file_name = safe_name
+    entry.file_size = len(content)
+    entry.uploaded_by_user_id = current_user.id
+    entry.checked_by_user_id = None
+    entry.checked_at = None
+    entry.improvement_note = None
+    entry.status = "PENDING_CONFIRM"
+
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return {"entry_id": entry.id, "status": entry.status}
+
+
+@router.post("/hq-checklists/{entry_id}/status")
+def update_hq_checklist_status(
+    entry_id: int,
+    body: HQChecklistStatusUpdateBody,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    if not _hq_checklist_allowed_for_write(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    entry = db.query(HQChecklistEntry).filter(HQChecklistEntry.id == entry_id).first()
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Checklist entry not found")
+
+    action = (body.action or "").strip().lower()
+    if action == "confirm":
+        entry.status = "CONFIRMED"
+        entry.improvement_note = (body.note or "").strip() or None
+    elif action == "improve":
+        note = (body.note or "").strip()
+        if not note:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="improve action requires note")
+        entry.status = "IMPROVEMENT_REQUIRED"
+        entry.improvement_note = note
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="action must be confirm or improve")
+
+    entry.checked_by_user_id = current_user.id
+    entry.checked_at = utc_now()
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return {"entry_id": entry.id, "status": entry.status}
+
+
+@router.get("/hq-checklists/{entry_id}/file")
+def download_hq_checklist_file(
+    entry_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    disposition: str = Query("attachment"),
+):
+    if not _hq_checklist_allowed_for_read(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    entry = db.query(HQChecklistEntry).filter(HQChecklistEntry.id == entry_id).first()
+    if entry is None or not entry.file_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    file_path = settings.storage_root / entry.file_path
+    if not file_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    resolved_disposition = (disposition or "attachment").strip().lower()
+    if resolved_disposition not in {"attachment", "inline"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="disposition must be attachment or inline")
+    fallback_name = entry.file_name or file_path.name
+    media_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+    response = FileResponse(path=file_path, media_type=media_type, filename=fallback_name)
+    response.headers["Content-Disposition"] = f"{resolved_disposition}; filename*=UTF-8''{quote(fallback_name)}"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @router.get("/badges/hq")
 def get_hq_badge_counts(
     db: DbDep,
@@ -827,11 +1160,16 @@ def get_hq_communications(
 
     entries: list[dict] = []
 
+    my_id = int(current_user.id)
     comment_rows = (
         db.query(DocumentComment, Document, Site, User)
         .join(Document, Document.id == DocumentComment.document_id)
         .join(Site, Site.id == Document.site_id)
         .join(User, User.id == DocumentComment.user_id)
+        .filter(
+            DocumentComment.user_id != my_id,
+            User.role == Role.SITE,
+        )
         .order_by(DocumentComment.created_at.desc(), DocumentComment.id.desc())
         .limit(limit)
         .all()
@@ -862,6 +1200,8 @@ def get_hq_communications(
             ApprovalHistory.action_type.in_([ApprovalAction.APPROVE, ApprovalAction.REJECT]),
             ApprovalHistory.comment.isnot(None),
             ApprovalHistory.comment != "",
+            ApprovalHistory.action_by_user_id != my_id,
+            User.role == Role.SITE,
         )
         .order_by(ApprovalHistory.action_at.desc(), ApprovalHistory.id.desc())
         .limit(limit)
@@ -880,6 +1220,88 @@ def get_hq_communications(
                 "site_name": s.site_name,
                 "user_name": u.name,
                 "user_role": ("SITE" if u.role == Role.SITE else "HQ"),
+                "comment_text": f"[{action_label}] {h.comment}",
+                "created_at": h.action_at,
+            }
+        )
+
+    entries.sort(key=lambda row: row["created_at"], reverse=True)
+    return {"items": entries[:limit]}
+
+
+@router.get("/site-communications", response_model=SiteCommunicationListResponse)
+def get_site_communications(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    limit: int = Query(80, ge=1, le=300),
+):
+    if current_user.role != Role.SITE or not current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+    site_id = int(current_user.site_id)
+    entries: list[dict] = []
+
+    # 본사 작성 코멘트만 SITE에 노출
+    comment_rows = (
+        db.query(DocumentComment, Document, Site, User)
+        .join(Document, Document.id == DocumentComment.document_id)
+        .join(Site, Site.id == Document.site_id)
+        .join(User, User.id == DocumentComment.user_id)
+        .filter(
+            Document.site_id == site_id,
+            User.role.in_([Role.HQ_SAFE, Role.HQ_OTHER, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN]),
+        )
+        .order_by(DocumentComment.created_at.desc(), DocumentComment.id.desc())
+        .limit(limit)
+        .all()
+    )
+    for c, d, s, u in comment_rows:
+        entries.append(
+            {
+                "item_key": f"comment:{c.id}",
+                "source": "comment",
+                "source_id": int(c.id),
+                "document_id": int(d.id),
+                "title": d.title,
+                "site_id": int(s.id),
+                "site_name": s.site_name,
+                "user_name": u.name,
+                "user_role": "HQ",
+                "comment_text": c.comment_text,
+                "created_at": c.created_at,
+            }
+        )
+
+    # 본사 승인/반려 코멘트도 SITE에서 확인
+    approval_rows = (
+        db.query(ApprovalHistory, Document, Site, User)
+        .join(Document, Document.id == ApprovalHistory.document_id)
+        .join(Site, Site.id == Document.site_id)
+        .join(User, User.id == ApprovalHistory.action_by_user_id)
+        .filter(
+            Document.site_id == site_id,
+            ApprovalHistory.action_type.in_([ApprovalAction.APPROVE, ApprovalAction.REJECT]),
+            ApprovalHistory.comment.isnot(None),
+            ApprovalHistory.comment != "",
+            User.role.in_([Role.HQ_SAFE, Role.HQ_OTHER, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN]),
+        )
+        .order_by(ApprovalHistory.action_at.desc(), ApprovalHistory.id.desc())
+        .limit(limit)
+        .all()
+    )
+    for h, d, s, u in approval_rows:
+        action_label = "승인" if h.action_type == ApprovalAction.APPROVE else "반려"
+        entries.append(
+            {
+                "item_key": f"approval:{h.id}",
+                "source": "approval",
+                "source_id": int(h.id),
+                "document_id": int(d.id),
+                "title": d.title,
+                "site_id": int(s.id),
+                "site_name": s.site_name,
+                "user_name": u.name,
+                "user_role": "HQ",
                 "comment_text": f"[{action_label}] {h.comment}",
                 "created_at": h.action_at,
             }

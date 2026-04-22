@@ -60,12 +60,15 @@
         <RouterLink :class="menuLinkClass('mobile-site-search', '/site/mobile/site-search')" :style="menuOrderStyle('mobile-site-search')" to="/site/mobile/site-search">현장 검색</RouterLink>
         <RouterLink :class="menuLinkClass('documents', '/site/documents')" :style="menuOrderStyle('documents')" to="/site/documents">
           <span class="menu-icon" v-if="menuIcon('documents')">{{ menuIcon("documents") }}</span>
-          내 현장 문서 <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span>
+          <span class="menu-link-label">내 현장 문서</span>
+          <span v-if="badge.incomplete_count > 0" class="menu-count-badge" aria-label="미완료 문서 수">{{ badge.incomplete_count }}</span>
         </RouterLink>
         <RouterLink :class="menuLinkClass('communications', '/site/communications')" :style="menuOrderStyle('communications')" to="/site/communications">
           소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span>
         </RouterLink>
-        <RouterLink :class="menuLinkClass('opinions', '/site/opinions')" :style="menuOrderStyle('opinions')" to="/site/opinions">운영 아이디어 제안</RouterLink>
+        <RouterLink :class="menuLinkClass('opinions', '/site/opinions')" :style="menuOrderStyle('opinions')" to="/site/opinions">
+          운영 아이디어 제안
+        </RouterLink>
         <RouterLink :class="menuLinkClass('info', '/site/info')" :style="menuOrderStyle('info')" to="/site/info">설정</RouterLink>
         <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" :style="menuOrderStyle('user-guide')" to="/site/user-guide">사용설명서</RouterLink>
       </nav>
@@ -74,7 +77,8 @@
           일일안전회의(일일위험성평가)
         </RouterLink>
         <RouterLink :class="menuLinkClass('documents', '/site/documents')" to="/site/documents" @click="closeMobileDrawer">
-          내 현장 문서 <span v-if="badge.incomplete_count > 0">({{ badge.incomplete_count }})</span>
+          <span class="menu-link-label">내 현장 문서</span>
+          <span v-if="badge.incomplete_count > 0" class="menu-count-badge" aria-label="미완료 문서 수">{{ badge.incomplete_count }}</span>
         </RouterLink>
         <RouterLink
           :class="menuLinkClass('mobile-communications', '/site/mobile/communications')"
@@ -82,6 +86,9 @@
           @click="closeMobileDrawer"
         >
           소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span>
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('opinions', '/site/opinions')" to="/site/opinions" @click="closeMobileDrawer">
+          운영 아이디어 제안
         </RouterLink>
         <RouterLink :class="menuLinkClass('notices', '/site/notices')" to="/site/notices" @click="closeMobileDrawer">공지사항</RouterLink>
         <RouterLink
@@ -139,11 +146,25 @@
           <button type="button" class="secondary" @click="handleLogout">로그아웃</button>
         </div>
       </header>
-      <div v-if="tickerTitles.length > 0" class="notice-ticker">
-        <div class="notice-ticker-track">
-          <span class="notice-ticker-item" v-for="(title, idx) in tickerTitles" :key="`${idx}-${title}`">
-            [공지] {{ title }}
-          </span>
+      <div v-if="tickerItems.length > 0 || docCommentTickerCount > 0" class="notice-ticker">
+        <div
+          ref="tickerTrackRef"
+          class="notice-ticker-track"
+          :style="{ '--ticker-duration': `${tickerDurationSec}s` }"
+        >
+          <template v-for="cycle in 2" :key="cycle">
+            <RouterLink
+              v-if="docCommentTickerCount > 0"
+              :key="`${cycle}-doc-comment`"
+              class="notice-ticker-item notice-ticker-item-link"
+              :to="{ name: 'site-documents', query: { focus_comments: '1' } }"
+            >
+              [문서] 미확인 문서 코멘트 {{ docCommentTickerCount }}건
+            </RouterLink>
+            <span v-for="item in tickerItems" :key="`${cycle}-${item.id}`" class="notice-ticker-item">
+              [공지] {{ item.title }}
+            </span>
+          </template>
         </div>
       </div>
       <main class="layout-main">
@@ -154,11 +175,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
 import { todayKst } from "@/utils/datetime";
+import { getTickerReadNoticeIds } from "@/utils/noticeTickerRead";
+import { getDocCommentTickerAfterIso } from "@/utils/documentCommentTickerRead";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -166,7 +189,11 @@ const route = useRoute();
 const badge = ref({ incomplete_count: 0 });
 const communicationUnreadCount = ref(0);
 const siteName = ref<string>("");
-const tickerTitles = ref<string[]>([]);
+const tickerItems = ref<Array<{ id: number; title: string }>>([]);
+const docCommentTickerCount = ref(0);
+const tickerTrackRef = ref<HTMLElement | null>(null);
+/** 한 세트(공지 목록 한 바퀴)를 지나가는 데 걸리는 시간 — 내용 너비에 맞춤 */
+const tickerDurationSec = ref(18);
 const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
 const menuOrderMap = ref<Record<string, number>>({});
 const SITE_FIXED_MENU_KEYS = [
@@ -205,9 +232,12 @@ onMounted(() => {
   initializeLayout();
   syncViewport();
   window.addEventListener("resize", syncViewport);
+  window.addEventListener("resize", scheduleTickerDurationDebounced);
+  window.addEventListener("besma-notice-ticker-read", handleNoticeTickerRead as EventListener);
+  window.addEventListener("besma-doc-comment-ticker-ack", handleDocCommentTickerAck as EventListener);
   window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   unreadTimer = window.setInterval(() => {
-    void Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker()]);
+    void Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDocCommentTicker()]);
   }, 30000);
 });
 
@@ -220,9 +250,63 @@ watch(
   },
 );
 
+let tickerDurationDebounce: number | null = null;
+function scheduleTickerDurationDebounced() {
+  if (tickerDurationDebounce) {
+    window.clearTimeout(tickerDurationDebounce);
+  }
+  tickerDurationDebounce = window.setTimeout(() => {
+    tickerDurationDebounce = null;
+    void scheduleTickerDuration();
+  }, 150);
+}
+
+async function scheduleTickerDuration() {
+  await nextTick();
+  const el = tickerTrackRef.value;
+  if (!el || (tickerItems.value.length === 0 && docCommentTickerCount.value === 0)) return;
+  const fullW = el.scrollWidth;
+  if (fullW < 8) return;
+  const oneCopyW = fullW / 2;
+  const pxPerSec = 52;
+  const sec = oneCopyW / pxPerSec;
+  tickerDurationSec.value = Math.min(55, Math.max(10, Math.round(sec * 10) / 10));
+}
+
+watch(
+  [tickerItems, docCommentTickerCount],
+  () => {
+    void scheduleTickerDuration();
+  },
+  { flush: "post" },
+);
+
+function handleNoticeTickerRead() {
+  void loadNoticeTicker();
+}
+
+function handleDocCommentTickerAck() {
+  void loadDocCommentTicker();
+}
+
+watch(
+  () => auth.user?.login_id,
+  () => {
+    void loadNoticeTicker();
+    void loadDocCommentTicker();
+  },
+);
+
 onUnmounted(() => {
   window.removeEventListener("resize", syncViewport);
+  window.removeEventListener("resize", scheduleTickerDurationDebounced);
+  window.removeEventListener("besma-notice-ticker-read", handleNoticeTickerRead as EventListener);
+  window.removeEventListener("besma-doc-comment-ticker-ack", handleDocCommentTickerAck as EventListener);
   window.removeEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
+  if (tickerDurationDebounce) {
+    window.clearTimeout(tickerDurationDebounce);
+    tickerDurationDebounce = null;
+  }
   if (unreadTimer) {
     window.clearInterval(unreadTimer);
     unreadTimer = null;
@@ -242,7 +326,7 @@ async function initializeLayout() {
     await auth.loadMe();
   }
   await Promise.all([loadBadge(), loadSiteName()]);
-  await Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDynamicMenus()]);
+  await Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDocCommentTicker(), loadDynamicMenus()]);
 }
 
 async function loadBadge() {
@@ -285,10 +369,31 @@ async function loadSiteName() {
 
 async function loadNoticeTicker() {
   try {
-    const res = await api.get("/notices/latest", { params: { limit: 2 } });
-    tickerTitles.value = (res.data?.items ?? []).map((row: { title?: string }) => row.title || "").filter(Boolean);
+    const res = await api.get("/notices/latest", { params: { limit: 3 } });
+    const rows = (res.data?.items ?? []) as Array<{ id?: number; title?: string }>;
+    const read = getTickerReadNoticeIds(auth.user?.login_id ?? null);
+    tickerItems.value = rows
+      .filter((row) => row.id != null && typeof row.title === "string")
+      .map((row) => ({ id: Number(row.id), title: (row.title || "").trim() }))
+      .filter((row) => row.title.length > 0 && !read.has(row.id));
   } catch {
-    tickerTitles.value = [];
+    tickerItems.value = [];
+  }
+}
+
+async function loadDocCommentTicker() {
+  if (auth.user?.role !== "SITE") {
+    docCommentTickerCount.value = 0;
+    return;
+  }
+  try {
+    const after = getDocCommentTickerAfterIso(auth.user?.login_id ?? null);
+    const res = await api.get("/documents/comments/peer-count", {
+      params: after ? { after } : {},
+    });
+    docCommentTickerCount.value = Number(res.data?.peer_comment_count ?? 0);
+  } catch {
+    docCommentTickerCount.value = 0;
   }
 }
 
@@ -359,6 +464,9 @@ function menuItemActive(key: string, path: string) {
   if (key === "mobile") {
     return route.name === "site-mobile-ops" || route.name === "site-mobile-daily-capture";
   }
+  if (key === "opinions") {
+    return route.path.startsWith("/site/opinions");
+  }
   return isMenuActive(path);
 }
 
@@ -420,6 +528,25 @@ function menuIcon(key: string) {
   word-break: keep-all;
 }
 
+.menu-link-label {
+  min-width: 0;
+}
+
+.menu-count-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28) inset;
+}
+
 .menu-link-primary {
   font-weight: 600;
   background: rgba(255, 255, 255, 0.08);
@@ -478,14 +605,21 @@ function menuIcon(key: string) {
   background: #fff7ed;
   overflow: hidden;
   white-space: nowrap;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
 }
 
 .notice-ticker-track {
   display: inline-flex;
-  min-width: 100%;
+  width: max-content;
   gap: 36px;
-  padding: 6px 12px;
-  animation: ticker-move 18s linear infinite;
+  padding: 10px 16px;
+  will-change: transform;
+  animation: ticker-scroll linear infinite;
+  animation-duration: var(--ticker-duration, 18s);
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .notice-ticker-item {
@@ -494,9 +628,14 @@ function menuIcon(key: string) {
   animation: ticker-blink 1s step-start infinite;
 }
 
-@keyframes ticker-move {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
+/* 내용을 두 번 이어 붙인 뒤 0 → -50% 로 한 바퀴(한 세트)만큼만 이동해 끊김·긴 공백 없이 반복 */
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 @keyframes ticker-blink {

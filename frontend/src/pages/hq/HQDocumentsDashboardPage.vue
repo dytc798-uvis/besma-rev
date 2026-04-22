@@ -177,6 +177,9 @@
                         >
                           회차 미생성
                         </span>
+                        <button type="button" class="inst-detail-link" @click="openRequirementHistory(row.site_id, col.requirement_key)">
+                          이력
+                        </button>
                       </template>
                     </div>
                   </td>
@@ -184,6 +187,65 @@
                 <tr v-if="matrixRows.length === 0">
                   <td :colspan="Math.max(2, requirementColumns.length + 1)" class="empty-cell">
                     필터 조건에 맞는 현장 데이터가 없습니다.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="matrix-section">
+          <div class="matrix-head">
+            <h3 class="matrix-title">본사 점검표 (확인/개선)</h3>
+            <span class="sub">현장명: 본사</span>
+          </div>
+          <div class="matrix-wrap">
+            <table class="matrix-table">
+              <thead>
+                <tr class="matrix-group-header-row">
+                  <th class="site-col site-col-corner">현장명</th>
+                  <th v-for="item in hqChecklistItems" :key="`hq-check-col-${item.checklist_code}`" class="req-col">
+                    {{ item.title }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="site-col sticky-site"><strong>본사</strong></td>
+                  <td v-for="item in hqChecklistItems" :key="`hq-check-cell-${item.checklist_code}`" class="status-cell">
+                    <div class="matrix-cell-inner">
+                      <span class="status-pill" :class="hqChecklistStatusClass(item.status)">
+                        {{ hqChecklistStatusLabel(item.status) }}
+                      </span>
+                      <span class="sub">{{ item.period_label }}</span>
+                      <div class="cell-actions">
+                        <button
+                          v-if="item.entry_id != null && item.file_name"
+                          type="button"
+                          class="cell-btn"
+                          @click="downloadHqChecklistFile(item.entry_id)"
+                        >
+                          보기
+                        </button>
+                        <button type="button" class="cell-btn" @click="openHqChecklistUpload(item)">업로드</button>
+                        <button
+                          v-if="item.entry_id != null"
+                          type="button"
+                          class="cell-btn cell-btn-primary"
+                          @click="updateHqChecklistStatus(item.entry_id, 'confirm')"
+                        >
+                          확인
+                        </button>
+                        <button
+                          v-if="item.entry_id != null"
+                          type="button"
+                          class="cell-btn"
+                          @click="promptHqChecklistImprove(item.entry_id)"
+                        >
+                          개선요청
+                        </button>
+                      </div>
+                      <span v-if="item.improvement_note" class="sub">{{ item.improvement_note }}</span>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -305,6 +367,66 @@
         </template>
       </BaseCard>
     </div>
+    <div v-if="historyModalOpen" class="modal-backdrop" @click.self="closeRequirementHistory">
+      <BaseCard class="modal-card !w-full max-w-[920px]" title="문서 이력">
+        <p class="sub">{{ historyModalTitle }}</p>
+        <table class="comm-table">
+          <thead>
+            <tr>
+              <th>대상 주기</th>
+              <th>상태</th>
+              <th>업로드</th>
+              <th>검토</th>
+              <th>파일</th>
+              <th>액션</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in requirementHistoryItems" :key="`hist-${row.history_id}`">
+              <td>{{ row.period_label || "-" }}</td>
+              <td>{{ statusLabel(row.status) }}</td>
+              <td>{{ formatDateTime(row.uploaded_at) }}</td>
+              <td>{{ formatDateTime(row.reviewed_at) }}</td>
+              <td>{{ row.file_name || "-" }}</td>
+              <td>
+                <button
+                  v-if="row.document_id"
+                  type="button"
+                  class="stitch-btn-secondary"
+                  @click="downloadHistoryDocument(row.document_id)"
+                >
+                  파일 보기
+                </button>
+              </td>
+            </tr>
+            <tr v-if="requirementHistoryItems.length === 0">
+              <td colspan="6" class="sub">이력이 없습니다. 업로드 후 이력이 표시됩니다.</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="modal-actions">
+          <button type="button" class="stitch-btn-secondary" @click="closeRequirementHistory">닫기</button>
+        </div>
+      </BaseCard>
+    </div>
+    <div v-if="hqChecklistUploadTarget" class="modal-backdrop" @click.self="closeHqChecklistUpload">
+      <BaseCard class="modal-card !w-full max-w-[560px]" title="본사 점검표 업로드">
+        <p class="sub">{{ hqChecklistUploadTarget.title }}</p>
+        <input type="file" @change="onHqChecklistFileChange" />
+        <p v-if="hqChecklistUploadError" class="detail-error">{{ hqChecklistUploadError }}</p>
+        <div class="modal-actions">
+          <button type="button" class="stitch-btn-secondary" @click="closeHqChecklistUpload">취소</button>
+          <button
+            type="button"
+            class="stitch-btn-primary"
+            :disabled="!hqChecklistUploadFile || hqChecklistUploadSubmitting"
+            @click="submitHqChecklistUpload"
+          >
+            {{ hqChecklistUploadSubmitting ? "업로드 중..." : "업로드" }}
+          </button>
+        </div>
+      </BaseCard>
+    </div>
   </div>
 </template>
 
@@ -392,6 +514,27 @@ interface PendingSummary {
   week: number;
   month: number;
 }
+interface RequirementHistoryRow {
+  history_id: number;
+  document_id: number;
+  status: string;
+  uploaded_at: string | null;
+  reviewed_at: string | null;
+  file_name: string | null;
+  period_label: string | null;
+}
+interface HQChecklistItem {
+  checklist_code: string;
+  title: string;
+  frequency: string;
+  period_label: string;
+  status: string;
+  file_name: string | null;
+  uploaded_at: string | null;
+  checked_at: string | null;
+  improvement_note: string | null;
+  entry_id: number | null;
+}
 
 interface DocumentDetailModalData {
   id: number;
@@ -410,8 +553,7 @@ interface DocumentDetailModalData {
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
-/** 기본 period: Decision sample-hq-doc-001 (월간 기본) 승인 반영 */
-const period = ref<"all" | "day" | "week" | "month" | "quarter" | "half_year" | "year" | "event">("month");
+const period = ref<"all" | "day" | "week" | "month" | "quarter" | "half_year" | "year" | "event">("all");
 const selectedSiteId = ref<number | null>(null);
 const siteSearch = ref("");
 const EXCLUDED_REQUIREMENT_KEYWORDS = ["중대재해", "사고보고"];
@@ -463,6 +605,11 @@ const communicationReadKeys = ref<Set<string>>(new Set());
 const unreadCommunicationCount = computed(
   () => communicationItems.value.filter((row) => !communicationReadKeys.value.has(row.item_key)).length,
 );
+const hqChecklistItems = ref<HQChecklistItem[]>([]);
+const hqChecklistUploadTarget = ref<HQChecklistItem | null>(null);
+const hqChecklistUploadFile = ref<File | null>(null);
+const hqChecklistUploadSubmitting = ref(false);
+const hqChecklistUploadError = ref("");
 const displayedCommunicationItems = computed(() =>
   showUnreadOnly.value ? communicationItems.value.filter((row) => !isCommunicationRead(row.item_key)) : communicationItems.value,
 );
@@ -562,6 +709,9 @@ const detailError = ref<string>("");
 const ledgerManagedUxMessage = LEDGER_MANAGED_UX_MESSAGE;
 
 const detailLedgerBlocked = computed(() => isLedgerManagedDocumentType(detailDocument.value?.document_type));
+const historyModalOpen = ref(false);
+const historyModalTitle = ref("");
+const requirementHistoryItems = ref<RequirementHistoryRow[]>([]);
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     NOT_REQUIRED: "비대상",
@@ -586,7 +736,7 @@ function effectiveHqMatrixStatus(row: DashboardItem): string {
 
 function statusCompactLabel(status: string) {
   if (status === "APPROVED") return "승인";
-  if (status === "SUBMITTED" || status === "IN_REVIEW") return "검토대기";
+  if (status === "SUBMITTED" || status === "IN_REVIEW") return "업로드";
   if (status === "REJECTED") return "반려";
   return "미제출";
 }
@@ -778,6 +928,13 @@ async function loadCommunications() {
   communicationReadKeys.value = getReadCommunicationKeys(authLoginId.value);
 }
 
+async function loadHqChecklists() {
+  const res = await api.get("/documents/hq-checklists", {
+    params: { date: dashboardQueryDate() },
+  });
+  hqChecklistItems.value = (res.data?.items ?? []) as HQChecklistItem[];
+}
+
 async function syncFallbackSiteId(routeSiteId: number | null) {
   if (isDemoPilotSiteScopeEnabled) return;
   if (routeSiteId != null) return;
@@ -811,7 +968,7 @@ async function load() {
       });
       if (ticket !== hqDashboardLoadTicket) return;
       applyDashboardPayload(quick.data, routeSiteId);
-      await loadCommunications();
+      await Promise.all([loadCommunications(), loadHqChecklists()]);
       dashboardLoading.value = false;
       dashboardBackgroundPreparing.value = true;
       void api
@@ -832,7 +989,7 @@ async function load() {
     const res = await api.get("/documents/hq-dashboard", { params: paramsBase });
     if (ticket !== hqDashboardLoadTicket) return;
     applyDashboardPayload(res.data, routeSiteId);
-    await loadCommunications();
+    await Promise.all([loadCommunications(), loadHqChecklists()]);
     await syncFallbackSiteId(routeSiteId);
 
     const reviewSiteRaw = route.query.review_site_id;
@@ -911,6 +1068,125 @@ async function goDetail(id: number) {
     detailLoading.value = false;
   }
 }
+
+async function openRequirementHistory(siteId: number, requirementKey: string) {
+  const col = requirementColumns.value.find((c) => c.requirement_key === requirementKey);
+  if (!col) return;
+  const res = await api.get("/documents/history", {
+    params: {
+      site_id: siteId,
+      requirement_id: col.requirement_id,
+    },
+  });
+  requirementHistoryItems.value = (res.data?.items ?? []) as RequirementHistoryRow[];
+  historyModalTitle.value = `${displaySiteName(siteSummaries.value.find((s) => s.site_id === siteId)?.site_name || "-")} · ${col.title}`;
+  historyModalOpen.value = true;
+}
+
+function closeRequirementHistory() {
+  historyModalOpen.value = false;
+  historyModalTitle.value = "";
+  requirementHistoryItems.value = [];
+}
+
+async function downloadHistoryDocument(documentId: number) {
+  const res = await api.get(`/documents/${documentId}/file`, { responseType: "blob" });
+  const blob = new Blob([res.data]);
+  const contentDisposition = res.headers["content-disposition"] as string | undefined;
+  const filename = resolveFilenameFromHeader(contentDisposition, `document_${documentId}.bin`);
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
+
+function hqChecklistStatusLabel(status: string) {
+  if (status === "CONFIRMED") return "확인";
+  if (status === "IMPROVEMENT_REQUIRED") return "개선요청";
+  return "확인대기";
+}
+
+function hqChecklistStatusClass(status: string) {
+  if (status === "CONFIRMED") return "status-pill-approved";
+  if (status === "IMPROVEMENT_REQUIRED") return "status-pill-rejected";
+  return "status-pill-pending";
+}
+
+function openHqChecklistUpload(item: HQChecklistItem) {
+  hqChecklistUploadTarget.value = item;
+  hqChecklistUploadFile.value = null;
+  hqChecklistUploadSubmitting.value = false;
+  hqChecklistUploadError.value = "";
+}
+
+function closeHqChecklistUpload() {
+  hqChecklistUploadTarget.value = null;
+  hqChecklistUploadFile.value = null;
+  hqChecklistUploadSubmitting.value = false;
+  hqChecklistUploadError.value = "";
+}
+
+function onHqChecklistFileChange(event: Event) {
+  const target = event.target as HTMLInputElement;
+  hqChecklistUploadFile.value = target.files?.[0] ?? null;
+}
+
+async function submitHqChecklistUpload() {
+  if (!hqChecklistUploadTarget.value || !hqChecklistUploadFile.value) return;
+  hqChecklistUploadSubmitting.value = true;
+  hqChecklistUploadError.value = "";
+  try {
+    const form = new FormData();
+    form.append("checklist_code", hqChecklistUploadTarget.value.checklist_code);
+    form.append("work_date", dashboardQueryDate());
+    form.append("file", hqChecklistUploadFile.value);
+    await api.post("/documents/hq-checklists/upload", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    closeHqChecklistUpload();
+    await loadHqChecklists();
+  } catch (err: unknown) {
+    const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    hqChecklistUploadError.value = detail || "업로드에 실패했습니다.";
+  } finally {
+    hqChecklistUploadSubmitting.value = false;
+  }
+}
+
+async function updateHqChecklistStatus(entryId: number, action: "confirm" | "improve", note?: string) {
+  await api.post(`/documents/hq-checklists/${entryId}/status`, {
+    action,
+    note: note ?? null,
+  });
+  await loadHqChecklists();
+}
+
+async function promptHqChecklistImprove(entryId: number) {
+  const note = window.prompt("개선 요청 내용을 입력하세요.");
+  if (!note || !note.trim()) return;
+  await updateHqChecklistStatus(entryId, "improve", note.trim());
+}
+
+async function downloadHqChecklistFile(entryId: number) {
+  const res = await api.get(`/documents/hq-checklists/${entryId}/file`, { responseType: "blob" });
+  const blob = new Blob([res.data]);
+  const contentDisposition = res.headers["content-disposition"] as string | undefined;
+  const filename = resolveFilenameFromHeader(contentDisposition, `hq_checklist_${entryId}.bin`);
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+
 
 function goLedgerFromDetailModal() {
   const code = detailDocument.value?.document_type;

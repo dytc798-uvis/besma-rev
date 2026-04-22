@@ -3,7 +3,6 @@ from datetime import date, datetime
 from sqlalchemy import (
     Date,
     DateTime,
-    Enum,
     ForeignKey,
     Integer,
     String,
@@ -116,4 +115,30 @@ class DocumentComment(Base):
 
     document: Mapped["Document"] = relationship("Document", foreign_keys=[document_id])
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+
+
+class HQChecklistEntry(Base):
+    __tablename__ = "hq_checklist_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    checklist_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    checklist_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    frequency: Mapped[str] = mapped_column(String(20), nullable=False)
+    period_label: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    target_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="PENDING_CONFIRM")
+    improvement_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uploaded_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    checked_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    uploaded_by: Mapped["User"] = relationship("User", foreign_keys=[uploaded_by_user_id])
+    checked_by: Mapped["User"] = relationship("User", foreign_keys=[checked_by_user_id])
 
