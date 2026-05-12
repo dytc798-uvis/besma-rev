@@ -290,6 +290,7 @@
                     <tr>
                       <th>날짜</th>
                       <th>문서</th>
+                      <th>루프</th>
                       <th>코멘트</th>
                       <th>확인</th>
                     </tr>
@@ -307,6 +308,9 @@
                     >
                       <td>{{ formatDateTime(row.created_at) }}</td>
                       <td>{{ displaySiteName(row.site_name) }} · {{ row.title }}</td>
+                      <td class="comm-loop-cell">
+                        <span class="loop-pill">{{ row.loop_status_label || feedbackLoopLabel(row.loop_status) }}</span>
+                      </td>
                       <td class="comm-comment-cell">{{ row.comment_text }}</td>
                       <td>
                         <button
@@ -320,7 +324,7 @@
                       </td>
                     </tr>
                     <tr v-if="displayedCommunicationItems.length === 0">
-                      <td colspan="4" class="sub">표시할 소통 내역이 없습니다.</td>
+                      <td colspan="5" class="sub">표시할 소통 내역이 없습니다.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -449,6 +453,7 @@ import {
   LEDGER_MANAGED_UX_MESSAGE,
 } from "@/utils/ledgerManagedDocument";
 import { requirementFrequencyKoLabel, requirementFrequencySortOrder } from "@/utils/requirementFrequencyGroups";
+import { feedbackLoopLabelKo } from "@/utils/feedbackLoopLabels";
 
 interface SiteSummaryRow {
   site_id: number;
@@ -503,6 +508,7 @@ interface CommunicationItemRow {
   source: string;
   source_id: number;
   document_id: number;
+  instance_id?: number | null;
   title: string;
   site_id: number;
   site_name: string;
@@ -511,6 +517,8 @@ interface CommunicationItemRow {
   comment_text: string;
   created_at: string | null;
   is_read: boolean;
+  loop_status?: string;
+  loop_status_label?: string;
 }
 
 interface PendingSummary {
@@ -916,6 +924,10 @@ function applyDashboardPayload(
 
 function isCommunicationRead(itemKey: string): boolean {
   return communicationItems.value.find((row) => row.item_key === itemKey)?.is_read ?? false;
+}
+
+function feedbackLoopLabel(status: string | null | undefined) {
+  return feedbackLoopLabelKo(status);
 }
 
 async function confirmCommunication(itemKey: string) {
@@ -1554,6 +1566,20 @@ watch(
 .comm-comment-cell {
   max-width: 340px;
   white-space: pre-wrap;
+}
+
+.comm-loop-cell {
+  white-space: nowrap;
+}
+
+.loop-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
 }
 
 .link-btn {

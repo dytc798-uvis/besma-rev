@@ -24,6 +24,13 @@ from app.modules.document_submissions.service import (
     transition_instance_workflow_status,
 )
 from app.modules.documents.ledger_managed import assert_not_ledger_managed_document, assert_not_ledger_managed_document_type
+from app.modules.documents.feedback_loop_service import (
+    apply_feedback_loop_patch,
+    feedback_loop_public_dict,
+    load_feedback_loops_map,
+    sync_feedback_loop_after_hq_comment,
+    sync_feedback_loop_from_workflow,
+)
 from app.modules.documents.models import (
     DocumentCommunicationRead,
     Document,
@@ -89,6 +96,7 @@ class HQCommunicationItemResponse(BaseModel):
     source: str
     source_id: int
     document_id: int
+    instance_id: int | None = None
     title: str
     site_id: int
     site_name: str
@@ -97,6 +105,15 @@ class HQCommunicationItemResponse(BaseModel):
     comment_text: str
     created_at: datetime
     is_read: bool = False
+    loop_status: str = "NONE"
+    loop_status_label: str = "—"
+    improvement_due_date: str | None = None
+    assignee_user_id: int | None = None
+    improvement_note: str | None = None
+    improvement_requested_at: str | None = None
+    site_reuploaded_at: str | None = None
+    hq_reviewing_at: str | None = None
+    closed_at: str | None = None
 
 
 class HQCommunicationListResponse(BaseModel):
@@ -108,6 +125,7 @@ class SiteCommunicationItemResponse(BaseModel):
     source: str
     source_id: int
     document_id: int
+    instance_id: int | None = None
     title: str
     site_id: int
     site_name: str
@@ -116,10 +134,25 @@ class SiteCommunicationItemResponse(BaseModel):
     comment_text: str
     created_at: datetime
     is_read: bool = False
+    loop_status: str = "NONE"
+    loop_status_label: str = "—"
+    improvement_due_date: str | None = None
+    assignee_user_id: int | None = None
+    improvement_note: str | None = None
+    improvement_requested_at: str | None = None
+    site_reuploaded_at: str | None = None
+    hq_reviewing_at: str | None = None
+    closed_at: str | None = None
 
 
 class SiteCommunicationListResponse(BaseModel):
     items: list[SiteCommunicationItemResponse]
+
+
+class FeedbackLoopPatchBody(BaseModel):
+    improvement_due_date: date | None = Field(default=None)
+    assignee_user_id: int | None = Field(default=None)
+    improvement_note: str | None = Field(default=None, max_length=4000)
 
 
 class CommunicationReadBody(BaseModel):
@@ -270,6 +303,34 @@ def _mark_communication_reads(db: Session, *, user_id: int, item_keys: list[str]
     if to_insert:
         db.commit()
     return len(to_insert)
+
+
+def _attach_feedback_loop_fields(db: Session, entries: list[dict]) -> None:
+    if not entries:
+        return
+    doc_ids = sorted({int(row["document_id"]) for row in entries if row.get("document_id") is not None})
+    if not doc_ids:
+        return
+    id_to_instance: dict[int, int | None] = {
+        int(did): (int(iid) if iid is not None else None)
+        for (did, iid) in db.query(Document.id, Document.instance_id).filter(Document.id.in_(doc_ids)).all()
+    }
+    inst_ids = sorted({iid for iid in id_to_instance.values() if iid is not None})
+    loop_map = load_feedback_loops_map(db, inst_ids)
+    for row in entries:
+        iid = id_to_instance.get(int(row["document_id"]))
+        row["instance_id"] = iid
+        loop = loop_map.get(int(iid)) if iid is not None else None
+        payload = feedback_loop_public_dict(loop)
+        row["loop_status"] = payload["loop_status"]
+        row["loop_status_label"] = payload["loop_status_label"]
+        row["improvement_due_date"] = payload["improvement_due_date"]
+        row["assignee_user_id"] = payload["assignee_user_id"]
+        row["improvement_note"] = payload["improvement_note"]
+        row["improvement_requested_at"] = payload["improvement_requested_at"]
+        row["site_reuploaded_at"] = payload["site_reuploaded_at"]
+        row["hq_reviewing_at"] = payload["hq_reviewing_at"]
+        row["closed_at"] = payload["closed_at"]
 
 
 def _parse_year_month(year_month: str) -> tuple[int, int, date, date, str]:
@@ -1276,6 +1337,7 @@ def get_hq_communications(
     )
     for row in sliced:
         row["is_read"] = str(row.get("item_key") or "") in read_set
+    _attach_feedback_loop_fields(db, sliced)
     return {"items": sliced}
 
 
@@ -1381,6 +1443,7 @@ def get_site_communications(
     )
     for row in sliced:
         row["is_read"] = str(row.get("item_key") or "") in read_set
+    _attach_feedback_loop_fields(db, sliced)
     return {"items": sliced}
 
 
@@ -1398,6 +1461,48 @@ def mark_site_communications_read(
         item_keys=body.item_keys,
     )
     return {"ok": True, "inserted": inserted}
+
+
+@router.patch("/instances/{instance_id}/feedback-loop")
+def patch_document_feedback_loop(
+    instance_id: int,
+    body: FeedbackLoopPatchBody,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    assert_hq_safe_workspace(current_user)
+    inst = db.query(DocumentInstance).filter(DocumentInstance.id == int(instance_id)).first()
+    if inst is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instance not found")
+
+    fields_set = getattr(body, "model_fields_set", set()) or set()
+    assignee_id = body.assignee_user_id
+    if "assignee_user_id" in fields_set and assignee_id is not None:
+        assignee = db.query(User).filter(User.id == int(assignee_id)).first()
+        if assignee is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="assignee_user_id not found")
+        if assignee.role != Role.SITE or assignee.site_id is None or int(assignee.site_id) != int(inst.site_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="assignee must be a SITE user for this instance site",
+            )
+
+    due_in = "improvement_due_date" in fields_set
+    assignee_in = "assignee_user_id" in fields_set
+    note_in = "improvement_note" in fields_set
+    loop = apply_feedback_loop_patch(
+        db,
+        instance_id=int(instance_id),
+        due_date=body.improvement_due_date if due_in and body.improvement_due_date is not None else None,
+        assignee_user_id=assignee_id if assignee_in and assignee_id is not None else None,
+        note=body.improvement_note if note_in and body.improvement_note is not None else None,
+        clear_due_date=due_in and body.improvement_due_date is None,
+        clear_assignee=assignee_in and body.assignee_user_id is None,
+        clear_note=note_in and body.improvement_note is None,
+    )
+    db.commit()
+    db.refresh(loop)
+    return feedback_loop_public_dict(loop)
 
 
 @router.get("/{document_id}")
@@ -1451,6 +1556,18 @@ def add_document_comment(
         if str(exc) == "comment_text_required":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="comment_text is required")
         raise
+    inst: DocumentInstance | None = None
+    if doc.instance_id is not None:
+        inst = db.query(DocumentInstance).filter(DocumentInstance.id == doc.instance_id).first()
+    sync_feedback_loop_after_hq_comment(
+        db,
+        inst=inst,
+        comment_author_role=_public_user_role(current_user),
+        triggering_user_id=int(current_user.id),
+    )
+    if inst is not None:
+        db.add(inst)
+    db.commit()
     return DocumentCommentResponse(**row)
 
 
@@ -1708,6 +1825,13 @@ def review_document(
         )
         db.add(inst)
         db.commit()
+        sync_feedback_loop_from_workflow(
+            db,
+            inst=inst,
+            doc_status=doc.current_status,
+            triggering_user_id=int(current_user.id),
+        )
+        db.commit()
         db.refresh(doc)
         return doc
 
@@ -1731,6 +1855,13 @@ def review_document(
         )
         db.add(inst)
         db.commit()
+        sync_feedback_loop_from_workflow(
+            db,
+            inst=inst,
+            doc_status=doc.current_status,
+            triggering_user_id=int(current_user.id),
+        )
+        db.commit()
         db.refresh(doc)
         return doc
 
@@ -1752,6 +1883,13 @@ def review_document(
             to_workflow_status=inst.workflow_status,
         )
         db.add(inst)
+        db.commit()
+        sync_feedback_loop_from_workflow(
+            db,
+            inst=inst,
+            doc_status=doc.current_status,
+            triggering_user_id=int(current_user.id),
+        )
         db.commit()
         db.refresh(doc)
         return doc

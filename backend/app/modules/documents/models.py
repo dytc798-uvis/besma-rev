@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Date,
@@ -13,6 +14,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.datetime_utils import utc_now
+
+if TYPE_CHECKING:
+    from app.modules.document_generation.models import DocumentInstance
+    from app.modules.users.models import User
 
 
 class DocumentStatus(str):
@@ -129,6 +134,35 @@ class DocumentCommunicationRead(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+
+
+class DocumentInstanceFeedbackLoop(Base):
+    """
+    문서 인스턴스(주기 제출 자리) 단위로 본사↔현장 개선 루프 상태를 추적한다.
+    """
+
+    __tablename__ = "document_instance_feedback_loops"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    instance_id: Mapped[int] = mapped_column(
+        ForeignKey("document_instances.id"), unique=True, nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="NONE", index=True)
+    improvement_due_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    assignee_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    improvement_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    improvement_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    improvement_requested_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    site_reuploaded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    hq_reviewing_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    instance: Mapped["DocumentInstance"] = relationship("DocumentInstance", foreign_keys=[instance_id])
+    assignee: Mapped[User | None] = relationship("User", foreign_keys=[assignee_user_id])
 
 
 class HQChecklistEntry(Base):

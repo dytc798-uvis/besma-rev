@@ -99,6 +99,7 @@
               <tr>
                 <th>날짜</th>
                 <th>문서</th>
+                <th>루프</th>
                 <th>코멘트</th>
                 <th>확인</th>
               </tr>
@@ -111,6 +112,9 @@
               >
                 <td>{{ formatDateTimeKst(row.created_at, "—") }}</td>
                 <td>{{ row.title }}</td>
+                <td class="comm-loop-cell">
+                  <span class="loop-pill">{{ row.loop_status_label || feedbackLoopLabel(row.loop_status) }}</span>
+                </td>
                 <td class="comm-comment-cell">{{ row.comment_text }}</td>
                 <td>
                   <button
@@ -124,7 +128,7 @@
                 </td>
               </tr>
               <tr v-if="displayedCommunicationItems.length === 0">
-                <td colspan="4" class="neutral">표시할 본사-현장 소통이 없습니다.</td>
+                <td colspan="5" class="neutral">표시할 본사-현장 소통이 없습니다.</td>
               </tr>
             </tbody>
           </table>
@@ -147,6 +151,7 @@ import { fetchRiskDbOverviewOptional, type RiskDbOverviewPayload } from "@/servi
 import { BaseCard, KpiCard } from "@/components/product";
 import { formatDateTimeKst } from "@/utils/datetime";
 import type { LedgerDashboardFilter } from "@/utils/ledgerDashboardFilter";
+import { feedbackLoopLabelKo } from "@/utils/feedbackLoopLabels";
 
 interface DashboardSummary {
   total_documents: number;
@@ -169,6 +174,8 @@ interface SiteCommunicationItem {
   comment_text: string;
   created_at: string | null;
   is_read: boolean;
+  loop_status?: string;
+  loop_status_label?: string;
 }
 
 const router = useRouter();
@@ -190,6 +197,10 @@ function goOpinions() {
 
 function isCommunicationRead(itemKey: string) {
   return communicationItems.value.find((row) => row.item_key === itemKey)?.is_read ?? false;
+}
+
+function feedbackLoopLabel(status: string | null | undefined) {
+  return feedbackLoopLabelKo(status);
 }
 
 const displayedCommunicationItems = computed(() =>
@@ -402,6 +413,20 @@ onMounted(load);
 .comm-comment-cell {
   max-width: 360px;
   white-space: pre-wrap;
+}
+
+.comm-loop-cell {
+  white-space: nowrap;
+}
+
+.loop-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
 }
 
 .comm-row-unread {

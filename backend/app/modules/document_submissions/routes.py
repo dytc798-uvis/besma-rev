@@ -33,6 +33,7 @@ from app.modules.document_settings.models import DocumentRequirement
 from app.modules.documents.ledger_managed import assert_not_ledger_managed_document_type
 from app.modules.documents.models import Document, DocumentUploadHistory
 from app.modules.documents.models import DocumentStatus
+from app.modules.documents.feedback_loop_service import sync_feedback_loop_from_workflow
 from app.modules.sites.models import Site
 
 
@@ -405,6 +406,13 @@ async def upload_document_for_instance(
         db.add(doc_append)
         _record_upload_history(db, doc=doc_append, action_type=ReviewAction.ATTACH_APPEND)
         db.commit()
+        sync_feedback_loop_from_workflow(
+            db,
+            inst=inst_append,
+            doc_status=doc_append.current_status,
+            triggering_user_id=int(current_user.id),
+        )
+        db.commit()
         db.refresh(inst_append)
         db.refresh(doc_append)
         return {
@@ -626,6 +634,13 @@ async def upload_document_for_instance(
     db.add(doc)
     _record_upload_history(db, doc=doc, action_type="UPLOAD")
     db.commit()
+    sync_feedback_loop_from_workflow(
+        db,
+        inst=inst,
+        doc_status=doc.current_status,
+        triggering_user_id=int(current_user.id),
+    )
+    db.commit()
     db.refresh(inst)
     db.refresh(doc)
 
@@ -779,6 +794,13 @@ async def replace_uploaded_document_file(
     db.add(inst)
     db.add(doc)
     _record_upload_history(db, doc=doc, action_type=ReviewAction.REPLACE_UPLOAD)
+    db.commit()
+    sync_feedback_loop_from_workflow(
+        db,
+        inst=inst,
+        doc_status=doc.current_status,
+        triggering_user_id=int(current_user.id),
+    )
     db.commit()
     db.refresh(inst)
     db.refresh(doc)
