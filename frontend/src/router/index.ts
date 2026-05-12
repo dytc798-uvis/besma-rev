@@ -11,7 +11,7 @@ import HQOtherDashboard from "@/pages/dashboard/HQOtherDashboard.vue";
 import DocumentListPage from "@/pages/documents/DocumentListPage.vue";
 import DocumentDetailPage from "@/pages/documents/DocumentDetailPage.vue";
 import DocumentUploadPage from "@/pages/documents/DocumentUploadPage.vue";
-import DocumentTbmViewPage from "@/pages/documents/DocumentTbmViewPage.vue";
+import RedirectLegacyTbmViewPage from "@/pages/documents/RedirectLegacyTbmViewPage.vue";
 import ApprovalInboxPage from "@/pages/documents/ApprovalInboxPage.vue";
 import ApprovalHistoryPage from "@/pages/documents/ApprovalHistoryPage.vue";
 import OpinionListPage from "@/pages/opinions/OpinionListPage.vue";
@@ -25,8 +25,8 @@ import WorkerMobileDetailPage from "@/pages/worker/WorkerMobileDetailPage.vue";
 import SiteDailySafetyShellLayout from "@/layouts/SiteDailySafetyShellLayout.vue";
 import SiteMobileOpsPage from "@/pages/site/SiteMobileOpsPage.vue";
 import SiteMobileDailyCapturePage from "@/pages/site/SiteMobileDailyCapturePage.vue";
-import HQTbmMonitorPage from "@/pages/hq/HQTbmMonitorPage.vue";
 import HQWorkerSafetyRecordPage from "@/pages/hq/HQWorkerSafetyRecordPage.vue";
+import HQCommunicationsPage from "@/pages/hq/HQCommunicationsPage.vue";
 import HQDocumentsDashboardPage from "@/pages/hq/HQDocumentsDashboardPage.vue";
 import HQDocumentInstanceDetailPage from "@/pages/hq/HQDocumentInstanceDetailPage.vue";
 import HQDocumentExplorerPage from "@/pages/hq/HQDocumentExplorerPage.vue";
@@ -45,8 +45,7 @@ import RiskLibraryPage from "@/pages/risk/RiskLibraryPage.vue";
 import SiteDocumentsDashboardPage from "@/pages/site/SiteDocumentsDashboardPage.vue";
 import SiteNoticeBoardPage from "@/pages/site/SiteNoticeBoardPage.vue";
 import SafetyPolicyGoalsPage from "@/pages/site/SafetyPolicyGoalsPage.vue";
-import SafetyEducationPage from "@/pages/site/SafetyEducationPage.vue";
-import SafetyInspectionBoardPage from "@/pages/site/SafetyInspectionBoardPage.vue";
+import SafetyEducationInspectionCalendarPage from "@/pages/site/SafetyEducationInspectionCalendarPage.vue";
 import NonconformityPage from "@/pages/site/NonconformityPage.vue";
 import WorkerVoiceBoardPage from "@/pages/site/WorkerVoiceBoardPage.vue";
 import DynamicMenuRuntimePage from "@/pages/site/DynamicMenuRuntimePage.vue";
@@ -96,8 +95,12 @@ const routes: RouteRecordRaw[] = [
       { path: "document-explorer", name: "hq-safe-document-explorer", component: HQDocumentExplorerPage },
       { path: "notices", name: "hq-safe-notices", component: SiteNoticeBoardPage },
       { path: "safety-policy-goals", name: "hq-safe-safety-policy-goals", component: SafetyPolicyGoalsPage },
-      { path: "safety-education", name: "hq-safe-safety-education", component: SafetyEducationPage },
-      { path: "safety-inspections", name: "hq-safe-safety-inspections", component: SafetyInspectionBoardPage },
+      {
+        path: "safety-education",
+        name: "hq-safe-safety-education",
+        component: SafetyEducationInspectionCalendarPage,
+      },
+      { path: "safety-inspections", redirect: { name: "hq-safe-safety-education" } },
       { path: "nonconformities", name: "hq-safe-nonconformities", component: NonconformityPage },
       {
         path: "accidents",
@@ -133,7 +136,8 @@ const routes: RouteRecordRaw[] = [
       { path: "custom-menus/:slug", name: "hq-safe-dynamic-menu", component: DynamicMenuRuntimePage },
       { path: "documents/pending-review", name: "hq-safe-documents-pending", component: HQPendingDocumentsPage },
       { path: "documents/:id", name: "hq-safe-document-detail", component: DocumentDetailPage },
-      { path: "documents/:id/tbm-view", name: "hq-safe-document-tbm-view", component: DocumentTbmViewPage },
+      { path: "documents/:id/tbm-view", name: "hq-safe-document-tbm-view", component: RedirectLegacyTbmViewPage },
+      { path: "communications", name: "hq-safe-communications", component: HQCommunicationsPage },
       { path: "periodic-monitoring", name: "hq-safe-periodic-monitoring", component: HQPeriodicDocumentMonitoringPage },
       { path: "approvals/inbox", name: "hq-safe-approval-inbox", component: ApprovalInboxPage },
       {
@@ -141,7 +145,6 @@ const routes: RouteRecordRaw[] = [
         name: "hq-safe-approval-history",
         component: ApprovalHistoryPage,
       },
-      { path: "tbm-monitor", name: "hq-safe-tbm-monitor", component: HQTbmMonitorPage },
       {
         path: "workers/:personId/safety-record",
         name: "hq-safe-worker-safety-record",
@@ -170,8 +173,12 @@ const routes: RouteRecordRaw[] = [
       { path: "dashboard", name: "site-dashboard", component: SiteDashboard },
       { path: "notices", name: "site-notices", component: SiteNoticeBoardPage },
       { path: "safety-policy-goals", name: "site-safety-policy-goals", component: SafetyPolicyGoalsPage },
-      { path: "safety-education", name: "site-safety-education", component: SafetyEducationPage },
-      { path: "safety-inspections", name: "site-safety-inspections", component: SafetyInspectionBoardPage },
+      {
+        path: "safety-education",
+        name: "site-safety-education",
+        component: SafetyEducationInspectionCalendarPage,
+      },
+      { path: "safety-inspections", redirect: { name: "site-safety-education" } },
       { path: "nonconformities", name: "site-nonconformities", component: NonconformityPage },
       { path: "worker-voice", name: "site-worker-voice", component: WorkerVoiceBoardPage },
       { path: "custom-menus/:slug", name: "site-dynamic-menu", component: DynamicMenuRuntimePage },
@@ -180,7 +187,7 @@ const routes: RouteRecordRaw[] = [
       { path: "documents/upload", name: "site-document-upload", component: DocumentUploadPage },
       { path: "communications", name: "site-communications", component: SiteCommunicationsPage },
       { path: "documents/:id", name: "site-document-detail", component: DocumentDetailPage },
-      { path: "documents/:id/tbm-view", name: "site-document-tbm-view", component: DocumentTbmViewPage },
+      { path: "documents/:id/tbm-view", name: "site-document-tbm-view", component: RedirectLegacyTbmViewPage },
       {
         path: "mobile",
         component: SiteDailySafetyShellLayout,
@@ -206,7 +213,7 @@ const routes: RouteRecordRaw[] = [
       { path: "dashboard", name: "hq-other-dashboard", component: HQOtherDashboard },
       { path: "documents", name: "hq-other-documents", component: DocumentListPage },
       { path: "documents/:id", name: "hq-other-document-detail", component: DocumentDetailPage },
-      { path: "documents/:id/tbm-view", name: "hq-other-document-tbm-view", component: DocumentTbmViewPage },
+      { path: "documents/:id/tbm-view", name: "hq-other-document-tbm-view", component: RedirectLegacyTbmViewPage },
       { path: "opinions", name: "hq-other-opinions", component: OpinionListPage },
       { path: "opinions/:id", name: "hq-other-opinion-detail", component: OpinionDetailPage },
     ],
@@ -214,7 +221,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: "/documents/:id/tbm-view",
     name: "document-tbm-view",
-    component: DocumentTbmViewPage,
+    component: RedirectLegacyTbmViewPage,
     meta: { requiresAuth: true },
   },
   { path: "/dev/hq-test", name: "dev-hq-test", component: TestHQAdminPage, meta: { requiresAuth: true, devOnly: true, persona: "HQ_ADMIN" } },
