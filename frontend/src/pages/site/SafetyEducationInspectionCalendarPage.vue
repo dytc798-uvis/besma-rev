@@ -6,7 +6,7 @@
         <button type="button" class="secondary" @click="shiftMonth(-1)">이전 달</button>
         <span class="ym-label">{{ year }}년 {{ month }}월</span>
         <button type="button" class="secondary" @click="shiftMonth(1)">다음 달</button>
-        <button v-if="isHq" type="button" class="primary plus-btn" title="일정 추가" @click="openCreateEntry">+</button>
+        <button v-if="isHq" type="button" class="primary plus-btn" title="일정 등록" @click="openCreateEntry">+ 일정 등록</button>
         <button type="button" class="secondary" @click="reload">새로고침</button>
       </div>
     </div>
@@ -502,11 +502,11 @@ onMounted(() => {
   gap: 8px;
 }
 .plus-btn {
-  width: 30px;
   height: 30px;
-  padding: 0;
-  font-size: 18px;
-  line-height: 1;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 .ym-label {
   font-weight: 700;
