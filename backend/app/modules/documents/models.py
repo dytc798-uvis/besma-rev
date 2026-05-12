@@ -162,7 +162,7 @@ class DocumentInstanceFeedbackLoop(Base):
     )
 
     instance: Mapped["DocumentInstance"] = relationship("DocumentInstance", foreign_keys=[instance_id])
-    assignee: Mapped[User | None] = relationship("User", foreign_keys=[assignee_user_id])
+    assignee: Mapped["User | None"] = relationship("User", foreign_keys=[assignee_user_id])
 
 
 class HQChecklistEntry(Base):
