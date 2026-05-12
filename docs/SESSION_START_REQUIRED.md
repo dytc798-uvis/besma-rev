@@ -7,10 +7,11 @@
 
 1. `docs/ai_collaboration_policy.md`
 2. `docs/BESMA_SESSION_STATE.md`
+3. **운영 배포:** `docs/OPERATIONS_DEPLOY.md` — 사용자가 「배포」를 요청할 때 저장소 루트에서 실행할 명령 순서
 
 ## 필수 확인 사항
 
-1. 현재 워크스페이스가 `D:\besma-rev`인지 확인한다.
+1. 현재 워크스페이스가 실제 저장소 루트인지 확인한다(예: `C:\besma-rev\besma-rev_handoff` 또는 `D:\besma-rev` — `frontend`·`backend`·`deploy`가 같은 층에 있어야 한다).
 2. `C:\BESMA`와 혼동하지 않았는지 확인한다.
 3. 현재 프로젝트가 `FastAPI + Vue3 + SQLite` 로컬 MVP인지 확인한다.
 4. `ai_collaboration_policy.md`에서 `Instruction Validation Gate`와 `Invariant Check` 규정을 읽는다.

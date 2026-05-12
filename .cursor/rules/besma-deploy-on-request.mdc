@@ -1,0 +1,15 @@
+---
+description: 운영 배포 요청 시 docs/OPERATIONS_DEPLOY.md 절차로 deploy_all.ps1·deploy_frontend_vercel.ps1 실행
+alwaysApply: true
+---
+
+# 운영 배포 요청 시
+
+사용자가 **배포**, **운영 반영**, **프로덕션 배포**, **Vercel 배포**, **EC2 배포** 등 **운영 환경 반영**을 요청하면:
+
+1. **`docs/OPERATIONS_DEPLOY.md`** 의 **표준 배포 절차**를 따른다.
+2. 구현·결정 질문 없이 **PowerShell로 `deploy_all.ps1` → `deploy_frontend_vercel.ps1`** 를 저장소 루트에서 실행한다(사용자가 “백엔드만” 등으로 한정한 경우는 해당 단계만).
+3. `RepoRoot`는 **현재 워크스페이스 루트 절대 경로**를 쓴다. Git·Volta가 PATH에 없으면 `OPERATIONS_DEPLOY.md`에 적은 `$env:Path` 보강을 한다.
+4. 실패 시 같은 문서의 **Git push / SSH 키 ACL / Vercel 로그인** 절을 안내·실행한다.
+
+`docs/DECISION_LOG.md`의 제품 UI·KPI 결정과 충돌하지 않는 **운영 스크립트 실행**이므로 별도 [DECISION REQUIRED] 없이 진행한다.
