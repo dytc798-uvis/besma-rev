@@ -158,25 +158,29 @@
                         </button>
                       </template>
                       <template v-else>
-                        <span
+                        <button
+                          type="button"
                           class="status-pill status-pill-no-instance"
                           :class="
                             statusPillClass(effectiveHqMatrixStatus(matrixDisplayCell(row.site_id, col.requirement_key)))
                           "
                           title="이 주기에 DocumentInstance(회차)가 아직 생성되지 않았습니다. 목록이 갱신되면 회차가 생길 수 있습니다."
+                          @click="openRequirementHistory(row.site_id, col.requirement_key)"
                         >
                           {{
                             statusCompactLabel(
                               effectiveHqMatrixStatus(matrixDisplayCell(row.site_id, col.requirement_key)),
                             )
                           }}
-                        </span>
-                        <span
+                        </button>
+                        <button
+                          type="button"
                           class="no-instance-badge"
                           title="DocumentInstance(회차)가 아직 생성되지 않았습니다."
+                          @click="openRequirementHistory(row.site_id, col.requirement_key)"
                         >
                           회차 미생성
-                        </span>
+                        </button>
                         <button type="button" class="inst-detail-link" @click="openRequirementHistory(row.site_id, col.requirement_key)">
                           이력
                         </button>
@@ -1730,13 +1734,14 @@ watch(
 }
 
 .no-instance-badge {
+  border: 0;
   font-size: 10px;
   font-weight: 700;
   color: #64748b;
   background: #f1f5f9;
   border-radius: 4px;
   padding: 2px 6px;
-  cursor: help;
+  cursor: pointer;
 }
 
 .site-link {
