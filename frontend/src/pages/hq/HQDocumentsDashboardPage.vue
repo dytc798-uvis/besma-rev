@@ -736,7 +736,7 @@ function effectiveHqMatrixStatus(row: DashboardItem): string {
 
 function statusCompactLabel(status: string) {
   if (status === "APPROVED") return "승인";
-  if (status === "SUBMITTED" || status === "IN_REVIEW") return "업로드";
+  if (status === "SUBMITTED" || status === "IN_REVIEW") return "검토중";
   if (status === "REJECTED") return "반려";
   return "미제출";
 }

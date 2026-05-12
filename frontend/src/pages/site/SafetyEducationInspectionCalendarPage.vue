@@ -207,9 +207,11 @@ const pendingItems = ref<
 >([]);
 const pendingLoading = ref(false);
 
-const isHq = computed(() =>
-  ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
-);
+const isHq = computed(() => {
+  const role = auth.user?.role ?? "";
+  const uiType = auth.user?.ui_type ?? "";
+  return ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(role) || uiType === "HQ_SAFE";
+});
 const isSite = computed(() => auth.user?.role === "SITE");
 
 interface Cell {
