@@ -10,7 +10,9 @@
       </div>
     </div>
     <p class="hint">
-      삼성물산 안전인정제 스케줄표(NAVER WORKS) 기준으로 등록된 일정입니다. 날짜를 누르면 점검 제목·점검자를 확인할 수 있습니다.
+      삼성물산 안전인정제 스케줄표(NAVER WORKS) 기준 일정입니다. 셀에는 요약 제목이 표시되며,
+      <strong>파란 점은 오늘 이후 미확인 일정</strong>만 표시됩니다(오늘 전 일정은 확인된 것으로 간주).
+      날짜를 누르면 상세·점검(담당)자를 볼 수 있습니다.
     </p>
 
     <div class="weekday-row">
@@ -23,15 +25,21 @@
         class="cell"
         :class="{
           muted: !cell.inMonth,
-          has: cell.entries.length > 0,
+          has: cell.pendingEntries.length > 0,
           today: cell.isToday,
         }"
         @click="cell.inMonth && openDay(cell)"
       >
         <div class="day-num">{{ cell.day }}</div>
-        <div v-if="cell.entries.length" class="dots">
-          <span v-for="e in cell.entries.slice(0, 3)" :key="e.id" class="dot" :title="e.title" />
-          <span v-if="cell.entries.length > 3" class="more">+{{ cell.entries.length - 3 }}</span>
+        <div v-if="cell.entries.length" class="cell-summaries">
+          <div v-for="e in cell.entries.slice(0, 2)" :key="e.id" class="cell-sum-line" :title="e.title">
+            {{ e.shortTitle }}
+          </div>
+          <div v-if="cell.entries.length > 2" class="cell-sum-more">+{{ cell.entries.length - 2 }}</div>
+        </div>
+        <div v-if="cell.pendingEntries.length" class="dots">
+          <span v-for="e in cell.pendingEntries.slice(0, 3)" :key="e.id" class="dot" :title="e.title" />
+          <span v-if="cell.pendingEntries.length > 3" class="more">+{{ cell.pendingEntries.length - 3 }}</span>
         </div>
       </div>
     </div>
@@ -102,9 +110,10 @@
         <template v-else>
           <div v-for="row in dayModalRows" :key="row.id" class="entry-block">
             <div class="entry-head">
-              <strong>{{ row.title }}</strong>
+              <strong>{{ shortSafetyScheduleLabel(row.title) }}</strong>
               <span class="badge" v-if="row.has_pending">제안 대기</span>
             </div>
+            <div v-if="row.title.trim() !== shortSafetyScheduleLabel(row.title)" class="meta orig-title">{{ row.title }}</div>
             <div class="meta"><span>점검(담당)자</span> {{ row.inspector_label }}</div>
             <pre v-if="row.detail_text" class="detail-pre">{{ row.detail_text }}</pre>
             <template v-if="isSite">
@@ -135,6 +144,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { todayKst } from "@/utils/datetime";
+import { shortSafetyScheduleLabel } from "@/utils/safetyScheduleLabels";
 
 const auth = useAuthStore();
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
@@ -143,9 +153,16 @@ const now = new Date();
 const year = ref(now.getFullYear());
 const month = ref(now.getMonth() + 1);
 
-const items = ref<
-  Array<{ id: number; scheduled_date: string; title: string; inspector_label: string; has_pending_proposal: boolean }>
->([]);
+type ScheduleRow = {
+  id: number;
+  scheduled_date: string;
+  title: string;
+  shortTitle: string;
+  inspector_label: string;
+  has_pending_proposal: boolean;
+};
+
+const items = ref<ScheduleRow[]>([]);
 const loading = ref(false);
 
 const dayModal = ref(false);
@@ -196,7 +213,9 @@ interface Cell {
   day: number;
   inMonth: boolean;
   isToday: boolean;
-  entries: Array<{ id: number; title: string; has_pending_proposal?: boolean }>;
+  iso: string;
+  entries: ScheduleRow[];
+  pendingEntries: ScheduleRow[];
 }
 
 const cells = computed(() => {
@@ -205,7 +224,7 @@ const cells = computed(() => {
   const first = new Date(y, m - 1, 1);
   const startWeekday = first.getDay();
   const lastDate = new Date(y, m, 0).getDate();
-  const map = new Map<string, typeof items.value>();
+  const map = new Map<string, ScheduleRow[]>();
   for (const it of items.value) {
     const arr = map.get(it.scheduled_date) ?? [];
     arr.push(it);
@@ -216,17 +235,21 @@ const cells = computed(() => {
   const prevLast = new Date(y, m - 1, 0).getDate();
   for (let i = 0; i < pad; i++) {
     const d = prevLast - pad + i + 1;
-    out.push({ key: `p-${d}`, day: d, inMonth: false, isToday: false, entries: [] });
+    out.push({ key: `p-${d}`, day: d, inMonth: false, isToday: false, iso: "", entries: [], pendingEntries: [] });
   }
   const today = todayKst();
   for (let d = 1; d <= lastDate; d++) {
     const iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const all = map.get(iso) ?? [];
+    const pending = iso >= today ? all : [];
     out.push({
       key: `c-${d}`,
       day: d,
       inMonth: true,
       isToday: iso === today,
-      entries: map.get(iso) ?? [],
+      iso,
+      entries: all,
+      pendingEntries: pending,
     });
   }
   let nextMonthDay = 1;
@@ -236,7 +259,9 @@ const cells = computed(() => {
       day: nextMonthDay,
       inMonth: false,
       isToday: false,
+      iso: "",
       entries: [],
+      pendingEntries: [],
     });
     nextMonthDay += 1;
   }
@@ -249,7 +274,17 @@ async function loadMonth() {
     const res = await api.get("/safety-features/schedule/entries", {
       params: { year: year.value, month: month.value },
     });
-    items.value = res.data.items ?? [];
+    const list = (res.data.items ?? []) as Array<{
+      id: number;
+      scheduled_date: string;
+      title: string;
+      inspector_label: string;
+      has_pending_proposal: boolean;
+    }>;
+    items.value = list.map((it) => ({
+      ...it,
+      shortTitle: shortSafetyScheduleLabel(it.title),
+    }));
   } catch {
     items.value = [];
   } finally {
@@ -465,12 +500,32 @@ onMounted(() => {
   gap: 4px;
 }
 .cell {
-  min-height: 88px;
+  min-height: 104px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 6px;
   cursor: pointer;
   background: #fff;
+}
+.cell-summaries {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+}
+.cell-sum-line {
+  font-size: 10px;
+  line-height: 1.25;
+  color: #334155;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell-sum-more {
+  font-size: 10px;
+  color: #64748b;
 }
 .cell.muted {
   background: #f8fafc;
@@ -489,7 +544,7 @@ onMounted(() => {
   font-size: 13px;
 }
 .dots {
-  margin-top: 6px;
+  margin-top: 4px;
   display: flex;
   flex-wrap: wrap;
   gap: 3px;
@@ -633,6 +688,12 @@ onMounted(() => {
 .meta span {
   color: #94a3b8;
   margin-right: 4px;
+}
+.orig-title {
+  font-size: 11px;
+  color: #64748b;
+  white-space: pre-wrap;
+  margin-bottom: 4px;
 }
 .detail-pre {
   background: #f8fafc;

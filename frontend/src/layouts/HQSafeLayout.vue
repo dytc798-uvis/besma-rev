@@ -7,14 +7,26 @@
 
         <div class="hq-menu-group">
           <p class="hq-menu-section-label">주요업무</p>
-          <RouterLink :style="menuOrderPrimaryStyle('notices')" to="/hq-safe/notices">공지사항</RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('safety-policy-goals')" to="/hq-safe/safety-policy-goals">안전보건 방침 및 목표</RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('risk-library')" to="/hq-safe/risk-library">위험성평가 DB 조회</RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('worker-voice')" to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('nonconformities')" to="/hq-safe/nonconformities">부적합사항</RouterLink>
-          <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('document-explorer')" to="/hq-safe/document-explorer">문서 탐색</RouterLink>
+          <RouterLink :class="hqMenuEmphasisClass('notices')" :style="menuOrderPrimaryStyle('notices')" to="/hq-safe/notices">공지사항</RouterLink>
           <RouterLink
+            :class="hqMenuEmphasisClass('safety-policy-goals')"
+            :style="menuOrderPrimaryStyle('safety-policy-goals')"
+            to="/hq-safe/safety-policy-goals"
+          >
+            안전보건 방침 및 목표
+          </RouterLink>
+          <RouterLink :class="hqMenuEmphasisClass('risk-library')" :style="menuOrderPrimaryStyle('risk-library')" to="/hq-safe/risk-library">
+            위험성평가 DB 조회
+          </RouterLink>
+          <RouterLink
+            :class="hqMenuEmphasisClass('document-explorer')"
+            :style="menuOrderPrimaryStyle('document-explorer')"
+            to="/hq-safe/document-explorer"
+          >
+            문서 탐색
+          </RouterLink>
+          <RouterLink
+            :class="hqMenuEmphasisClass('documents')"
             :style="menuOrderPrimaryStyle('documents')"
             to="/hq-safe/documents"
             @click="collapseSidebar"
@@ -22,7 +34,17 @@
             문서 취합 현황
             <span v-if="unreadCommunicationCount > 0" class="hq-menu-count-badge">{{ unreadCommunicationCount }}</span>
           </RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('approvals-history')" to="/hq-safe/approvals/history">본사-현장 소통</RouterLink>
+          <RouterLink
+            :class="hqMenuEmphasisClass('approvals-history')"
+            :style="menuOrderPrimaryStyle('approvals-history')"
+            to="/hq-safe/approvals/history"
+          >
+            본사-현장 소통
+          </RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('worker-voice')" to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('safety-education')" to="/hq-safe/safety-education">안전교육 및 안전점검</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('nonconformities')" to="/hq-safe/nonconformities">부적합사항</RouterLink>
+          <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink
             v-for="m in dynamicMenus"
             :key="`hq-dyn-${m.slug}`"
@@ -37,10 +59,7 @@
           <p class="hq-menu-section-label">부가 메뉴</p>
           <RouterLink :style="menuOrderSecondaryStyle('site-search')" to="/hq-safe/site-search">현장 검색</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('opinions')" to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
-          <RouterLink :style="menuOrderSecondaryStyle('safety-education')" to="/hq-safe/safety-education">안전 교육</RouterLink>
-          <RouterLink :style="menuOrderSecondaryStyle('safety-inspections')" to="/hq-safe/safety-inspections">안전 점검</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('user-guide')" to="/hq-safe/user-guide">사용설명서</RouterLink>
-          <RouterLink :style="menuOrderSecondaryStyle('tbm-monitor')" to="/hq-safe/tbm-monitor">TBM 모니터</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('settings')" to="/hq-safe/settings">안전문서 설정관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
@@ -80,7 +99,7 @@ import { useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
 import { todayKst } from "@/utils/datetime";
-import { buildHqMenuOrderMaps } from "@/config/hqSidebarMenuGroups";
+import { buildHqMenuOrderMaps, isHqSidebarEmphasisKey } from "@/config/hqSidebarMenuGroups";
 import { getReadCommunicationKeys } from "@/utils/hqCommunicationRead";
 
 const auth = useAuthStore();
@@ -172,6 +191,10 @@ function menuOrderSecondaryStyle(key: string) {
   const order = menuOrderSecondary.value[key];
   if (!order) return undefined;
   return { order };
+}
+
+function hqMenuEmphasisClass(key: string) {
+  return { "hq-menu-link-emphasis": isHqSidebarEmphasisKey(key) };
 }
 
 function handleMenuOrderUpdated(event: Event) {
@@ -305,6 +328,15 @@ function handleLogout() {
   color: #fff;
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
+}
+
+.hq-safe-shell .layout-menu a.hq-menu-link-emphasis:not(.router-link-active) {
+  font-weight: 700;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-left: 3px solid #2563eb;
+  margin-left: 8px;
+  padding-left: 11px;
 }
 
 .hq-menu-count-badge {

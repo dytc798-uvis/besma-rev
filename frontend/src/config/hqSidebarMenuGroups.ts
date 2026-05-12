@@ -3,13 +3,25 @@
  * 라우트 경로·키 문자열은 기존 HQSafeLayout과 동일해야 한다.
  */
 
+/** 주요업무 기본 순서: 강조 메뉴(공지·방침·위평DB·문서탐색·취합·소통) → 근로자의견·안전교육(부적합 위) → 부적합·사고 */
 export const HQ_SIDEBAR_PRIMARY_KEYS = [
   "notices",
   "safety-policy-goals",
   "risk-library",
+  "document-explorer",
+  "documents",
+  "approvals-history",
   "worker-voice",
+  "safety-education",
   "nonconformities",
   "accidents",
+] as const;
+
+/** 현장 SITE `menu-link-primary`와 동일 정책: 주요 업무 강조 */
+export const HQ_SIDEBAR_EMPHASIS_KEYS = [
+  "notices",
+  "safety-policy-goals",
+  "risk-library",
   "document-explorer",
   "documents",
   "approvals-history",
@@ -18,10 +30,7 @@ export const HQ_SIDEBAR_PRIMARY_KEYS = [
 export const HQ_SIDEBAR_SECONDARY_KEYS = [
   "site-search",
   "opinions",
-  "safety-education",
-  "safety-inspections",
   "user-guide",
-  "tbm-monitor",
   "settings",
   "sites",
   "users",
@@ -30,6 +39,7 @@ export const HQ_SIDEBAR_SECONDARY_KEYS = [
 
 const PRIMARY_SET = new Set<string>(HQ_SIDEBAR_PRIMARY_KEYS);
 const SECONDARY_SET = new Set<string>(HQ_SIDEBAR_SECONDARY_KEYS);
+const EMPHASIS_SET = new Set<string>(HQ_SIDEBAR_EMPHASIS_KEYS);
 
 export function isHqSidebarPrimaryKey(key: string): boolean {
   return PRIMARY_SET.has(key) || key.startsWith("dynamic:");
@@ -37,6 +47,10 @@ export function isHqSidebarPrimaryKey(key: string): boolean {
 
 export function isHqSidebarSecondaryKey(key: string): boolean {
   return SECONDARY_SET.has(key);
+}
+
+export function isHqSidebarEmphasisKey(key: string): boolean {
+  return EMPHASIS_SET.has(key);
 }
 
 export function buildHqMenuOrderMaps(
