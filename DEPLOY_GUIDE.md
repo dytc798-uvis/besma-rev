@@ -121,8 +121,9 @@ run_frontend.bat    :: 별도 CMD 창에서
 | 화면 | URL |
 |------|-----|
 | 로그인 | /login |
-| HQ TBM 모니터 | /hq-safe/tbm-monitor |
-| 현장관리자 모바일 | /site/mobile |
+| HQ 문서 취합 현황 | /hq-safe/documents |
+| 현장 내 현장 문서 | /site/documents |
+| 현장관리자 모바일(일지·작업) | /site/mobile |
 | 근로자 모바일 | /worker/mobile |
 | 테스트 허브 (개발용) | /dev/hq-test, /dev/site-test, /dev/worker-test |
 
@@ -182,14 +183,66 @@ cd backend
 
 ---
 
-## 운영 배포 자동화 (Windows)
+## 운영 배포 (Windows) — **매번 이 순서**
 
-운영 서버(`api.besma.co.kr`)로 백엔드를 자동 배포하려면:
+**에이전트·세션 공통 요약:** `docs/OPERATIONS_DEPLOY.md` (저장소 루트에서 실행할 PowerShell 블록, 사전 조건)  
+**한 문서에 순서대로 정리됨:** `deploy/PRODUCTION_DEPLOY_RUNBOOK.md`  
+백엔드(EC2 + `deploy_backend.sh`)와 프론트(Vercel)는 **서로 다른 명령**이라, 둘 다 실행해야 화면·API가 함께 반영된다.
+
+요약:
+
+1. `main` push 후 `.\deploy\deploy_all.ps1` (키 경로가 다르면 `-SshKeyPath` 필수)
+2. `.\deploy\deploy_frontend_vercel.ps1` (또는 런북의 `-Scope`/`-Project` 예시)
+
+서버에서 `git pull`이 막히면(로컬 수정·미추적 파일) 런북 **2절** 절차로 원격 `backend/`만 정리한 뒤 다시 배포한다.
+
+---
+
+### 백엔드만 자동화할 때 (`deploy_all.ps1`)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1
 ```
 
-- 기본값: `C:\Users\win10\Downloads\besma-key.pem` 키 사용
-- 동작: 프론트 빌드(검증) -> `git push` -> 서버 `deploy_backend.sh` 실행
-- 상세 옵션/운영 명령은 `deploy/BACKEND_OPERATIONS.md` 참고
+- 기본값: RepoRoot `D:\besma-rev`, SSH 키 `%USERPROFILE%\Downloads\besma-key.pem`
+- 동작: (선택) 프론트 빌드 검증 → `git push` → 서버에서 `git pull` + `deploy_backend.sh`
+- 키가 다른 경로면: `-SshKeyPath "D:\besma-rev\besma-key.pem"` 등
+- 상세: `deploy/PRODUCTION_DEPLOY_RUNBOOK.md`, `deploy/BACKEND_OPERATIONS.md`
+
+### 프론트엔드(Vercel) 운영 배포
+
+현재 `www.besma.co.kr` 프론트는 서버 정적파일이 아니라 **Vercel**에서 서비스된다.  
+따라서 화면 변경은 백엔드 재기동만으로 반영되지 않고, **반드시** 아래 스크립트를 별도로 실행한다.
+
+루트 `.env`에 아래 값을 저장해 두면 스크립트 인자를 생략할 수 있다:
+
+```env
+VERCEL_DEPLOY_SCOPE=sangik-jungs-projects
+VERCEL_DEPLOY_PROJECT=besma-rev
+VERCEL_DEPLOY_ROOT=frontend
+VERCEL_DEPLOY_REPO_ROOT=D:\besma-rev
+```
+
+배포 명령:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_frontend_vercel.ps1
+```
+
+인자를 명시하는 예시(`.env` 없을 때):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_frontend_vercel.ps1 `
+  -RepoRoot "D:\besma-rev" -Scope "sangik-jungs-projects" -Project "besma-rev" -RootDirectory "frontend"
+```
+
+최초 로그인까지 같이 할 때:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_frontend_vercel.ps1 -RunLogin
+```
+
+참고:
+
+- 이 스크립트는 `npm --prefix frontend run build` 후 Vercel production 배포까지 수행한다.
+- Windows에서 Vercel CLI가 비ASCII 호스트명 때문에 로그인 헤더 오류를 낼 수 있어, 스크립트 내부에서 `os.hostname()`을 ASCII 값으로 패치해 우회한다.
