@@ -181,6 +181,7 @@ class SafetyScheduleEntry(Base):
     inspector_label: Mapped[str] = mapped_column(String(300), nullable=False, default="-")
     detail_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     scheduled_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    hq_acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 
 
