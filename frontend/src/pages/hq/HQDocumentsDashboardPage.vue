@@ -979,7 +979,6 @@ async function load() {
         .then((full) => {
           if (ticket !== hqDashboardLoadTicket) return;
           applyDashboardPayload(full.data, routeSiteId);
-          void loadCommunications();
         })
         .finally(() => {
           if (ticket === hqDashboardLoadTicket) {
