@@ -7,6 +7,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -114,6 +115,19 @@ class DocumentComment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 
     document: Mapped["Document"] = relationship("Document", foreign_keys=[document_id])
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+
+
+class DocumentCommunicationRead(Base):
+    __tablename__ = "document_communication_reads"
+    __table_args__ = (UniqueConstraint("user_id", "item_key", name="uq_doc_comm_read_user_item"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    item_key: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
 
 

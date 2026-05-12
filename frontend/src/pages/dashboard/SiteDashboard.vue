@@ -147,8 +147,6 @@ import { fetchRiskDbOverviewOptional, type RiskDbOverviewPayload } from "@/servi
 import { BaseCard, KpiCard } from "@/components/product";
 import { formatDateTimeKst } from "@/utils/datetime";
 import type { LedgerDashboardFilter } from "@/utils/ledgerDashboardFilter";
-import { getReadSiteCommunicationKeys, markSiteCommunicationRead } from "@/utils/siteCommunicationRead";
-import { useAuthStore } from "@/stores/auth";
 
 interface DashboardSummary {
   total_documents: number;
@@ -170,16 +168,15 @@ interface SiteCommunicationItem {
   user_role: string;
   comment_text: string;
   created_at: string | null;
+  is_read: boolean;
 }
 
 const router = useRouter();
-const auth = useAuthStore();
 const data = ref<DashboardSummary | null>(null);
 const communicationItems = ref<SiteCommunicationItem[]>([]);
 const riskDbOverview = ref<RiskDbOverviewPayload | null>(null);
 const summaryError = ref(false);
 const showUnreadOnly = ref(true);
-const communicationReadKeys = ref<Set<string>>(new Set());
 const unreadCommunicationCount = ref(0);
 
 function goSiteLedgerFilter(filter: LedgerDashboardFilter, board: "voice" | "nonconf") {
@@ -192,7 +189,7 @@ function goOpinions() {
 }
 
 function isCommunicationRead(itemKey: string) {
-  return communicationReadKeys.value.has(itemKey);
+  return communicationItems.value.find((row) => row.item_key === itemKey)?.is_read ?? false;
 }
 
 const displayedCommunicationItems = computed(() =>
@@ -202,14 +199,14 @@ const displayedCommunicationItems = computed(() =>
 );
 
 function syncReadState() {
-  const loginId = auth.user?.login_id ?? null;
-  communicationReadKeys.value = getReadSiteCommunicationKeys(loginId);
-  unreadCommunicationCount.value = communicationItems.value.filter((row) => !communicationReadKeys.value.has(row.item_key)).length;
+  unreadCommunicationCount.value = communicationItems.value.filter((row) => !row.is_read).length;
 }
 
 async function confirmAndOpenDetail(row: SiteCommunicationItem) {
-  const loginId = auth.user?.login_id ?? null;
-  markSiteCommunicationRead(loginId, row.item_key);
+  await api.post("/documents/site-communications/read", { item_keys: [row.item_key] });
+  communicationItems.value = communicationItems.value.map((item) =>
+    item.item_key === row.item_key ? { ...item, is_read: true } : item,
+  );
   syncReadState();
   await router.push({ name: "site-document-detail", params: { id: String(row.document_id) } });
 }

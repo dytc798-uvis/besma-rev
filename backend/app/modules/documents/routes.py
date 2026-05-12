@@ -25,6 +25,7 @@ from app.modules.document_submissions.service import (
 )
 from app.modules.documents.ledger_managed import assert_not_ledger_managed_document, assert_not_ledger_managed_document_type
 from app.modules.documents.models import (
+    DocumentCommunicationRead,
     Document,
     DocumentComment,
     DocumentStatus,
@@ -95,6 +96,7 @@ class HQCommunicationItemResponse(BaseModel):
     user_role: str
     comment_text: str
     created_at: datetime
+    is_read: bool = False
 
 
 class HQCommunicationListResponse(BaseModel):
@@ -113,10 +115,15 @@ class SiteCommunicationItemResponse(BaseModel):
     user_role: str
     comment_text: str
     created_at: datetime
+    is_read: bool = False
 
 
 class SiteCommunicationListResponse(BaseModel):
     items: list[SiteCommunicationItemResponse]
+
+
+class CommunicationReadBody(BaseModel):
+    item_keys: list[str] = Field(default_factory=list, max_length=200)
 
 
 class SitePeerCommentItemResponse(BaseModel):
@@ -228,6 +235,41 @@ def _build_pending_documents_summary(rows: list[Document], reference_date: date)
         if base_dt >= month_start:
             month_count += 1
     return {"day": day_count, "week": week_count, "month": month_count}
+
+
+def _communication_read_set(db: Session, *, user_id: int, item_keys: list[str]) -> set[str]:
+    if not item_keys:
+        return set()
+    rows = (
+        db.query(DocumentCommunicationRead.item_key)
+        .filter(
+            DocumentCommunicationRead.user_id == user_id,
+            DocumentCommunicationRead.item_key.in_(item_keys),
+        )
+        .all()
+    )
+    return {str(row[0]) for row in rows if row and row[0]}
+
+
+def _mark_communication_reads(db: Session, *, user_id: int, item_keys: list[str]) -> int:
+    normalized = [k.strip() for k in item_keys if isinstance(k, str) and k.strip()]
+    if not normalized:
+        return 0
+    unique_keys = sorted(set(normalized))
+    existing = _communication_read_set(db, user_id=user_id, item_keys=unique_keys)
+    now = utc_now()
+    to_insert = [k for k in unique_keys if k not in existing]
+    for key in to_insert:
+        db.add(
+            DocumentCommunicationRead(
+                user_id=user_id,
+                item_key=key,
+                read_at=now,
+            )
+        )
+    if to_insert:
+        db.commit()
+    return len(to_insert)
 
 
 def _parse_year_month(year_month: str) -> tuple[int, int, date, date, str]:
@@ -1226,7 +1268,30 @@ def get_hq_communications(
         )
 
     entries.sort(key=lambda row: row["created_at"], reverse=True)
-    return {"items": entries[:limit]}
+    sliced = entries[:limit]
+    read_set = _communication_read_set(
+        db,
+        user_id=int(current_user.id),
+        item_keys=[str(row.get("item_key") or "") for row in sliced],
+    )
+    for row in sliced:
+        row["is_read"] = str(row.get("item_key") or "") in read_set
+    return {"items": sliced}
+
+
+@router.post("/hq-communications/read")
+def mark_hq_communications_read(
+    body: CommunicationReadBody,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    assert_hq_safe_workspace(current_user)
+    inserted = _mark_communication_reads(
+        db,
+        user_id=int(current_user.id),
+        item_keys=body.item_keys,
+    )
+    return {"ok": True, "inserted": inserted}
 
 
 @router.get("/site-communications", response_model=SiteCommunicationListResponse)
@@ -1308,7 +1373,31 @@ def get_site_communications(
         )
 
     entries.sort(key=lambda row: row["created_at"], reverse=True)
-    return {"items": entries[:limit]}
+    sliced = entries[:limit]
+    read_set = _communication_read_set(
+        db,
+        user_id=int(current_user.id),
+        item_keys=[str(row.get("item_key") or "") for row in sliced],
+    )
+    for row in sliced:
+        row["is_read"] = str(row.get("item_key") or "") in read_set
+    return {"items": sliced}
+
+
+@router.post("/site-communications/read")
+def mark_site_communications_read(
+    body: CommunicationReadBody,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    if current_user.role != Role.SITE or not current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    inserted = _mark_communication_reads(
+        db,
+        user_id=int(current_user.id),
+        item_keys=body.item_keys,
+    )
+    return {"ok": True, "inserted": inserted}
 
 
 @router.get("/{document_id}")

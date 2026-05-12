@@ -100,7 +100,6 @@ import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
 import { todayKst } from "@/utils/datetime";
 import { buildHqMenuOrderMaps, isHqSidebarEmphasisKey } from "@/config/hqSidebarMenuGroups";
-import { getReadCommunicationKeys } from "@/utils/hqCommunicationRead";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -146,9 +145,8 @@ function handleCommunicationRead() {
 async function loadUnreadCommunications() {
   try {
     const res = await api.get("/documents/hq-communications", { params: { limit: 120 } });
-    const items = (res.data?.items ?? []) as Array<{ item_key?: string }>;
-    const read = getReadCommunicationKeys(auth.user?.login_id ?? null);
-    unreadCommunicationCount.value = items.filter((row) => row.item_key && !read.has(row.item_key)).length;
+    const items = (res.data?.items ?? []) as Array<{ is_read?: boolean }>;
+    unreadCommunicationCount.value = items.filter((row) => !row.is_read).length;
   } catch {
     unreadCommunicationCount.value = 0;
   }

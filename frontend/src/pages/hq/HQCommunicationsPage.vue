@@ -58,8 +58,6 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/services/api";
-import { useAuthStore } from "@/stores/auth";
-import { getReadCommunicationKeys, markCommunicationRead } from "@/utils/hqCommunicationRead";
 
 interface CommunicationItemRow {
   item_key: string;
@@ -69,18 +67,15 @@ interface CommunicationItemRow {
   user_name: string;
   comment_text: string | null;
   created_at: string;
+  is_read: boolean;
 }
 
 const router = useRouter();
-const auth = useAuthStore();
 const loading = ref(false);
 const showUnreadOnly = ref(true);
 const rows = ref<CommunicationItemRow[]>([]);
-const readKeys = ref<Set<string>>(new Set());
-
-const authLoginId = computed(() => auth.user?.login_id ?? null);
 const displayed = computed(() =>
-  showUnreadOnly.value ? rows.value.filter((row) => !readKeys.value.has(row.item_key)) : rows.value,
+  showUnreadOnly.value ? rows.value.filter((row) => !row.is_read) : rows.value,
 );
 
 function formatDate(value: string) {
@@ -92,12 +87,13 @@ function formatDate(value: string) {
 }
 
 function isRead(itemKey: string) {
-  return readKeys.value.has(itemKey);
+  return rows.value.find((row) => row.item_key === itemKey)?.is_read ?? false;
 }
 
-function confirmRead(itemKey: string) {
-  markCommunicationRead(authLoginId.value, itemKey);
-  readKeys.value = getReadCommunicationKeys(authLoginId.value);
+async function confirmRead(itemKey: string) {
+  await api.post("/documents/hq-communications/read", { item_keys: [itemKey] });
+  rows.value = rows.value.map((row) => (row.item_key === itemKey ? { ...row, is_read: true } : row));
+  window.dispatchEvent(new CustomEvent("besma-hq-communication-read", { detail: { itemKey } }));
 }
 
 function goDetail(documentId: number) {
@@ -109,7 +105,6 @@ async function loadItems() {
   try {
     const res = await api.get("/documents/hq-communications", { params: { limit: 120 } });
     rows.value = (res.data?.items ?? []) as CommunicationItemRow[];
-    readKeys.value = getReadCommunicationKeys(authLoginId.value);
   } finally {
     loading.value = false;
   }

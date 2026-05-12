@@ -443,7 +443,6 @@ import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.
 import { DEMO_PILOT_SITE_CODE, isDemoPilotSiteScopeEnabled } from "@/config/demoPilotSite";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
 import { formatDateTimeKst, todayKst } from "@/utils/datetime";
-import { getReadCommunicationKeys, markCommunicationRead } from "@/utils/hqCommunicationRead";
 import {
   hqLedgerRouteForDocumentType,
   isLedgerManagedDocumentType,
@@ -511,6 +510,7 @@ interface CommunicationItemRow {
   user_role: string;
   comment_text: string;
   created_at: string | null;
+  is_read: boolean;
 }
 
 interface PendingSummary {
@@ -605,9 +605,8 @@ const historyCollapsed = ref(false);
 const showUnreadOnly = ref(true);
 const dashboardLoading = ref(true);
 const dashboardBackgroundPreparing = ref(false);
-const communicationReadKeys = ref<Set<string>>(new Set());
 const unreadCommunicationCount = computed(
-  () => communicationItems.value.filter((row) => !communicationReadKeys.value.has(row.item_key)).length,
+  () => communicationItems.value.filter((row) => !row.is_read).length,
 );
 const hqChecklistItems = ref<HQChecklistItem[]>([]);
 const hqChecklistUploadTarget = ref<HQChecklistItem | null>(null);
@@ -615,7 +614,7 @@ const hqChecklistUploadFile = ref<File | null>(null);
 const hqChecklistUploadSubmitting = ref(false);
 const hqChecklistUploadError = ref("");
 const displayedCommunicationItems = computed(() =>
-  showUnreadOnly.value ? communicationItems.value.filter((row) => !isCommunicationRead(row.item_key)) : communicationItems.value,
+  showUnreadOnly.value ? communicationItems.value.filter((row) => !row.is_read) : communicationItems.value,
 );
 const hqKpiAggregate = computed(() => {
   let totalRequiredSum = 0;
@@ -916,20 +915,20 @@ function applyDashboardPayload(
 }
 
 function isCommunicationRead(itemKey: string): boolean {
-  return communicationReadKeys.value.has(itemKey);
+  return communicationItems.value.find((row) => row.item_key === itemKey)?.is_read ?? false;
 }
 
-function confirmCommunication(itemKey: string) {
-  markCommunicationRead(authLoginId.value, itemKey);
-  communicationReadKeys.value = getReadCommunicationKeys(authLoginId.value);
+async function confirmCommunication(itemKey: string) {
+  await api.post("/documents/hq-communications/read", { item_keys: [itemKey] });
+  communicationItems.value = communicationItems.value.map((row) =>
+    row.item_key === itemKey ? { ...row, is_read: true } : row,
+  );
+  window.dispatchEvent(new CustomEvent("besma-hq-communication-read", { detail: { itemKey } }));
 }
-
-const authLoginId = computed(() => auth.user?.login_id ?? null);
 
 async function loadCommunications() {
   const res = await api.get("/documents/hq-communications", { params: { limit: 120 } });
   communicationItems.value = (res.data?.items ?? []) as CommunicationItemRow[];
-  communicationReadKeys.value = getReadCommunicationKeys(authLoginId.value);
 }
 
 async function loadHqChecklists() {
