@@ -168,3 +168,34 @@ class WorkerVoiceComment(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class SafetyScheduleEntry(Base):
+    """삼성인정제 등 본사·현장 공유 일정(캘린더). scheduled_date는 승인된 일정 변경을 반영한다."""
+
+    __tablename__ = "safety_schedule_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    import_key: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    inspector_label: Mapped[str] = mapped_column(String(300), nullable=False, default="-")
+    detail_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scheduled_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class SafetyScheduleDateProposal(Base):
+    """현장관리자가 일정 이동을 제안하고, 본사가 승인하면 entry.scheduled_date가 확정된다."""
+
+    __tablename__ = "safety_schedule_date_proposals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    entry_id: Mapped[int] = mapped_column(ForeignKey("safety_schedule_entries.id"), nullable=False, index=True)
+    proposed_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    proposed_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)

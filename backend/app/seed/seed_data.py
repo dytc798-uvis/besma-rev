@@ -1,4 +1,8 @@
 from datetime import date, datetime, timedelta
+import hashlib
+import json
+import re
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -28,6 +32,7 @@ from app.modules.risk_library.models import (
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.modules.workers.models import Employment, Person
+from app.modules.safety_features.models import SafetyScheduleEntry
 
 
 # 우선 노출 데모 현장 (SITE002 파일럿/C18 → 1순위, SITE001 화성 기아 → 2순위). 서울/부산 데모 현장은 제거됨.
@@ -574,6 +579,85 @@ def seed_sample_daily_work_plan(db: Session) -> None:
     db.commit()
 
 
+_SCHEDULE_DUMP_DATE = re.compile(r"^\s*(\d{1,2})\s*/\s*(\d{1,2})")
+
+
+def _schedule_rows_from_samsung_dump() -> list[dict]:
+    """NAVER WORKS 달력 그리드 덤프 → 일정이 있는 칸만 행으로 변환 (연도 2026 고정)."""
+    data_path = Path(__file__).resolve().parent / "samsung_schedule_raw_dump.json"
+    if not data_path.is_file():
+        return []
+    grid = json.loads(data_path.read_text(encoding="utf-8"))
+    year = 2026
+    out: list[dict] = []
+    i = 4
+    while i + 1 < len(grid):
+        date_row = grid[i]
+        content_row = grid[i + 1]
+        if not isinstance(date_row, list) or not isinstance(content_row, list):
+            i += 1
+            continue
+        has_date = False
+        for c in range(1, min(8, len(date_row))):
+            cell = date_row[c]
+            if cell is not None and _SCHEDULE_DUMP_DATE.match(str(cell).strip()):
+                has_date = True
+                break
+        if not has_date:
+            break
+        for c in range(1, 8):
+            if c >= len(date_row):
+                continue
+            cell = date_row[c]
+            m = _SCHEDULE_DUMP_DATE.match(str(cell).strip()) if cell is not None else None
+            if not m:
+                continue
+            month, day = int(m.group(1)), int(m.group(2))
+            try:
+                d = date(year, month, day)
+            except ValueError:
+                continue
+            if c >= len(content_row):
+                continue
+            raw = content_row[c]
+            if raw is None or not str(raw).strip():
+                continue
+            text = str(raw).strip()
+            first_line = text.split("\n", 1)[0].strip()
+            title = first_line if len(first_line) <= 500 else first_line[:497] + "..."
+            digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            import_key = f"dump-{d.isoformat()}-{digest}"
+            out.append(
+                {
+                    "import_key": import_key,
+                    "scheduled_date": d,
+                    "title": title,
+                    "inspector_label": "-",
+                    "detail_text": text,
+                }
+            )
+        i += 2
+    return out
+
+
+def seed_safety_schedule_calendar(db: Session) -> None:
+    """삼성인정제 스케줄 덤프 기준 일정. import_key 기준으로 없을 때만 삽입(재실행 안전)."""
+    for row in _schedule_rows_from_samsung_dump():
+        exists = db.query(SafetyScheduleEntry).filter(SafetyScheduleEntry.import_key == row["import_key"]).first()
+        if exists:
+            continue
+        db.add(
+            SafetyScheduleEntry(
+                import_key=row["import_key"],
+                title=row["title"],
+                inspector_label=row["inspector_label"],
+                detail_text=row["detail_text"],
+                scheduled_date=row["scheduled_date"],
+            )
+        )
+    db.commit()
+
+
 def run_seed() -> None:
     init_db()
     db = SessionLocal()
@@ -586,6 +670,7 @@ def run_seed() -> None:
         reset_demo_documents(db)
         _seed_default_pipe_risks(db)
         seed_sample_daily_work_plan(db)
+        seed_safety_schedule_calendar(db)
     finally:
         db.close()
 

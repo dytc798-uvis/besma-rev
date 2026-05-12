@@ -3,11 +3,13 @@ from __future__ import annotations
 import csv
 import io
 import mimetypes
+import secrets
 from datetime import date
 from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, Response
 from openpyxl import load_workbook
 
@@ -26,6 +28,8 @@ from app.modules.safety_features.models import (
     SafetyEducationMaterial,
     SafetyEducationMaterialDeletion,
     SafetyInspectionComment,
+    SafetyScheduleDateProposal,
+    SafetyScheduleEntry,
     WorkerVoiceComment,
     WorkerVoiceItem,
     WorkerVoiceLedger,
@@ -1997,3 +2001,250 @@ def download_feature_file(file_type: str, entity_id: int, db: DbDep, current_use
         resp.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(row.file_name)}"
         return resp
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown file type")
+
+
+class _ScheduleProposalCreate(BaseModel):
+    entry_id: int = Field(..., ge=1)
+    proposed_date: date
+    comment: str | None = None
+
+
+class _ScheduleEntryCreate(BaseModel):
+    scheduled_date: date
+    title: str = Field(..., min_length=1, max_length=500)
+    inspector_label: str = Field(default="-", max_length=300)
+    detail_text: str | None = None
+
+
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    if month < 1 or month > 12 or year < 2000 or year > 2100:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid year/month")
+    from calendar import monthrange
+
+    last = monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last)
+
+
+@router.get("/schedule/entries")
+def list_safety_schedule_entries(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    year: int = Query(..., ge=2000, le=2100),
+    month: int = Query(..., ge=1, le=12),
+):
+    start, end = _month_bounds(year, month)
+    rows = (
+        db.query(SafetyScheduleEntry)
+        .filter(SafetyScheduleEntry.scheduled_date >= start, SafetyScheduleEntry.scheduled_date <= end)
+        .order_by(SafetyScheduleEntry.scheduled_date.asc(), SafetyScheduleEntry.id.asc())
+        .all()
+    )
+    pending = (
+        db.query(SafetyScheduleDateProposal.entry_id)
+        .filter(SafetyScheduleDateProposal.status == "PENDING")
+        .distinct()
+        .all()
+    )
+    pending_set = {r[0] for r in pending}
+    items = []
+    for r in rows:
+        items.append(
+            {
+                "id": r.id,
+                "scheduled_date": r.scheduled_date.isoformat(),
+                "title": r.title,
+                "inspector_label": r.inspector_label,
+                "has_pending_proposal": r.id in pending_set,
+            }
+        )
+    return {"items": items}
+
+
+@router.post("/schedule/entries", status_code=status.HTTP_201_CREATED)
+def create_safety_schedule_entry(
+    body: _ScheduleEntryCreate,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    if _role_value(current_user) not in _HQ_ROLE_VALUES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ only")
+    t = body.title.strip()
+    if not t:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="title required")
+    ins = (body.inspector_label or "-").strip() or "-"
+    detail = (body.detail_text or "").strip() or None
+    import_key = f"manual-{body.scheduled_date.isoformat()}-{secrets.token_hex(6)}"
+    row = SafetyScheduleEntry(
+        import_key=import_key,
+        title=t[:500],
+        inspector_label=ins[:300],
+        detail_text=detail,
+        scheduled_date=body.scheduled_date,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {
+        "id": row.id,
+        "scheduled_date": row.scheduled_date.isoformat(),
+        "title": row.title,
+        "inspector_label": row.inspector_label,
+        "detail_text": row.detail_text,
+    }
+
+
+@router.get("/schedule/entries/{entry_id}")
+def get_safety_schedule_entry(entry_id: int, db: DbDep, current_user: CurrentUserDep):
+    row = db.query(SafetyScheduleEntry).filter(SafetyScheduleEntry.id == entry_id).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entry not found")
+    proposals = (
+        db.query(SafetyScheduleDateProposal)
+        .filter(SafetyScheduleDateProposal.entry_id == entry_id)
+        .order_by(SafetyScheduleDateProposal.created_at.desc())
+        .all()
+    )
+    return {
+        "id": row.id,
+        "scheduled_date": row.scheduled_date.isoformat(),
+        "title": row.title,
+        "inspector_label": row.inspector_label,
+        "detail_text": row.detail_text,
+        "proposals": [
+            {
+                "id": p.id,
+                "proposed_date": p.proposed_date.isoformat(),
+                "status": p.status,
+                "comment": p.comment,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "decided_at": p.decided_at.isoformat() if p.decided_at else None,
+                "decision_note": p.decision_note,
+            }
+            for p in proposals
+        ],
+    }
+
+
+@router.post("/schedule/proposals", status_code=status.HTTP_201_CREATED)
+def create_schedule_date_proposal(
+    body: _ScheduleProposalCreate,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    if _role_value(current_user) != Role.SITE.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SITE only")
+    entry = db.query(SafetyScheduleEntry).filter(SafetyScheduleEntry.id == body.entry_id).first()
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entry not found")
+    if body.proposed_date == entry.scheduled_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="same as current date")
+    pending = (
+        db.query(SafetyScheduleDateProposal)
+        .filter(
+            SafetyScheduleDateProposal.entry_id == entry.id,
+            SafetyScheduleDateProposal.status == "PENDING",
+        )
+        .first()
+    )
+    if pending:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="pending proposal exists for this entry")
+    p = SafetyScheduleDateProposal(
+        entry_id=entry.id,
+        proposed_by_user_id=current_user.id,
+        proposed_date=body.proposed_date,
+        status="PENDING",
+        comment=(body.comment or "").strip() or None,
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return {"id": p.id, "status": p.status}
+
+
+@router.get("/schedule/proposals/pending")
+def list_pending_schedule_proposals(db: DbDep, current_user: CurrentUserDep):
+    if _role_value(current_user) not in _HQ_ROLE_VALUES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ only")
+    rows = (
+        db.query(SafetyScheduleDateProposal, SafetyScheduleEntry, User)
+        .join(SafetyScheduleEntry, SafetyScheduleEntry.id == SafetyScheduleDateProposal.entry_id)
+        .join(User, User.id == SafetyScheduleDateProposal.proposed_by_user_id)
+        .filter(SafetyScheduleDateProposal.status == "PENDING")
+        .order_by(SafetyScheduleDateProposal.created_at.asc())
+        .all()
+    )
+    out = []
+    for p, e, u in rows:
+        out.append(
+            {
+                "proposal_id": p.id,
+                "entry_id": e.id,
+                "entry_title": e.title,
+                "current_date": e.scheduled_date.isoformat(),
+                "proposed_date": p.proposed_date.isoformat(),
+                "comment": p.comment,
+                "proposed_by_name": u.name,
+                "proposed_by_login": u.login_id,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+        )
+    return {"items": out}
+
+
+@router.post("/schedule/proposals/{proposal_id}/approve")
+def approve_schedule_proposal(
+    proposal_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    decision_note: str | None = Query(None),
+):
+    if _role_value(current_user) not in _HQ_ROLE_VALUES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ only")
+    p = db.query(SafetyScheduleDateProposal).filter(SafetyScheduleDateProposal.id == proposal_id).first()
+    if p is None or p.status != "PENDING":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pending proposal not found")
+    entry = db.query(SafetyScheduleEntry).filter(SafetyScheduleEntry.id == p.entry_id).first()
+    if entry is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entry not found")
+    note = (decision_note or "").strip() or None
+    entry.scheduled_date = p.proposed_date
+    p.status = "APPROVED"
+    p.decided_at = utc_now()
+    p.decided_by_user_id = current_user.id
+    p.decision_note = note
+    others = (
+        db.query(SafetyScheduleDateProposal)
+        .filter(
+            SafetyScheduleDateProposal.entry_id == entry.id,
+            SafetyScheduleDateProposal.id != p.id,
+            SafetyScheduleDateProposal.status == "PENDING",
+        )
+        .all()
+    )
+    for o in others:
+        o.status = "REJECTED"
+        o.decided_at = utc_now()
+        o.decided_by_user_id = current_user.id
+        o.decision_note = "superseded by approved proposal"
+    db.commit()
+    return {"ok": True, "entry_id": entry.id, "new_date": entry.scheduled_date.isoformat()}
+
+
+@router.post("/schedule/proposals/{proposal_id}/reject")
+def reject_schedule_proposal(
+    proposal_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    decision_note: str | None = Query(None),
+):
+    if _role_value(current_user) not in _HQ_ROLE_VALUES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ only")
+    p = db.query(SafetyScheduleDateProposal).filter(SafetyScheduleDateProposal.id == proposal_id).first()
+    if p is None or p.status != "PENDING":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pending proposal not found")
+    p.status = "REJECTED"
+    p.decided_at = utc_now()
+    p.decided_by_user_id = current_user.id
+    p.decision_note = (decision_note or "").strip() or None
+    db.commit()
+    return {"ok": True}
