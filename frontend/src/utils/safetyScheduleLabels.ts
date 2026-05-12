@@ -1,11 +1,16 @@
+export function cleanSafetyScheduleTitle(raw: string): string {
+  return raw
+    .replace(/^\s*\d+[.,]\s*/, "")
+    .replace(/\(날짜\s*미확정\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
  * 안전인정제 캘린더 셀용 짧은 라벨 (전체 제목은 상세/툴팁).
  */
 export function shortSafetyScheduleLabel(raw: string): string {
-  const t = raw
-    .replace(/^\s*\d+[.,]\s*/, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const t = cleanSafetyScheduleTitle(raw);
   if (!t) return raw.trim();
 
   if (/SHUT\s*DOWN|셧다운/i.test(t)) return "현장 SHUT DOWN";

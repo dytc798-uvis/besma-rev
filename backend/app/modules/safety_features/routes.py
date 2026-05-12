@@ -16,7 +16,7 @@ from openpyxl import load_workbook
 from app.config.security import verify_password
 from app.config.settings import settings
 from app.core.auth import DbDep
-from app.core.datetime_utils import utc_now
+from app.core.datetime_utils import kst_today, utc_now
 from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
 from app.core.upload_processing import process_uploaded_image
@@ -2016,6 +2016,20 @@ class _ScheduleEntryCreate(BaseModel):
     detail_text: str | None = None
 
 
+class _ScheduleEntryUpdate(BaseModel):
+    scheduled_date: date
+    title: str = Field(..., min_length=1, max_length=500)
+    inspector_label: str = Field(default="-", max_length=300)
+    detail_text: str | None = None
+
+
+def _schedule_needs_hq_ack(row: SafetyScheduleEntry) -> bool:
+    """오늘(KST) 이전 일정은 모두 확인된 것으로 본다. 오늘·이후는 본사 확인 시각이 없으면 미확인."""
+    if row.scheduled_date < kst_today():
+        return False
+    return row.hq_acknowledged_at is None
+
+
 def _month_bounds(year: int, month: int) -> tuple[date, date]:
     if month < 1 or month > 12 or year < 2000 or year > 2100:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid year/month")
@@ -2055,6 +2069,7 @@ def list_safety_schedule_entries(
                 "title": r.title,
                 "inspector_label": r.inspector_label,
                 "has_pending_proposal": r.id in pending_set,
+                "needs_hq_acknowledgement": _schedule_needs_hq_ack(r),
             }
         )
     return {"items": items}
@@ -2093,6 +2108,37 @@ def create_safety_schedule_entry(
     }
 
 
+@router.put("/schedule/entries/{entry_id}")
+def update_safety_schedule_entry(
+    entry_id: int,
+    body: _ScheduleEntryUpdate,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    if _role_value(current_user) not in _HQ_ROLE_VALUES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ only")
+    row = db.query(SafetyScheduleEntry).filter(SafetyScheduleEntry.id == entry_id).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="entry not found")
+    t = body.title.strip()
+    if not t:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="title required")
+    row.scheduled_date = body.scheduled_date
+    row.title = t[:500]
+    row.inspector_label = ((body.inspector_label or "-").strip() or "-")[:300]
+    row.detail_text = (body.detail_text or "").strip() or None
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {
+        "id": row.id,
+        "scheduled_date": row.scheduled_date.isoformat(),
+        "title": row.title,
+        "inspector_label": row.inspector_label,
+        "detail_text": row.detail_text,
+    }
+
+
 @router.get("/schedule/entries/{entry_id}")
 def get_safety_schedule_entry(entry_id: int, db: DbDep, current_user: CurrentUserDep):
     row = db.query(SafetyScheduleEntry).filter(SafetyScheduleEntry.id == entry_id).first()
@@ -2110,6 +2156,8 @@ def get_safety_schedule_entry(entry_id: int, db: DbDep, current_user: CurrentUse
         "title": row.title,
         "inspector_label": row.inspector_label,
         "detail_text": row.detail_text,
+        "hq_acknowledged_at": row.hq_acknowledged_at.isoformat() if row.hq_acknowledged_at else None,
+        "needs_hq_acknowledgement": _schedule_needs_hq_ack(row),
         "proposals": [
             {
                 "id": p.id,

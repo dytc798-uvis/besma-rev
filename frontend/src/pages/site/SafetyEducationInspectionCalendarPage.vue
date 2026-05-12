@@ -6,6 +6,7 @@
         <button type="button" class="secondary" @click="shiftMonth(-1)">이전 달</button>
         <span class="ym-label">{{ year }}년 {{ month }}월</span>
         <button type="button" class="secondary" @click="shiftMonth(1)">다음 달</button>
+        <button v-if="isHq" type="button" class="primary plus-btn" title="일정 추가" @click="openCreateEntry">+</button>
         <button type="button" class="secondary" @click="reload">새로고침</button>
       </div>
     </div>
@@ -75,34 +76,6 @@
       <p v-else class="muted">대기 중인 제안이 없습니다.</p>
     </section>
 
-    <section v-if="isHq" class="manual-section">
-      <h3>일정 수동 등록</h3>
-      <p class="muted small">스케줄표에 없는 날짜·항목을 추가합니다. 저장 후 해당 월로 이동해 캘린더를 확인하세요.</p>
-      <div class="manual-form">
-        <label class="mf-row">
-          <span>일자</span>
-          <input v-model="manualDate" type="date" class="date-inp" />
-        </label>
-        <label class="mf-row">
-          <span>제목</span>
-          <input v-model="manualTitle" type="text" class="text-inp wide" placeholder="예: 특별 점검" />
-        </label>
-        <label class="mf-row">
-          <span>점검(담당)자</span>
-          <input v-model="manualInspector" type="text" class="text-inp" placeholder="미입력 시 —" />
-        </label>
-        <label class="mf-row mf-top">
-          <span>상세</span>
-          <textarea v-model="manualDetail" class="detail-ta" rows="3" placeholder="선택" />
-        </label>
-        <div class="mf-actions">
-          <button type="button" class="primary sm" :disabled="!manualDate || !manualTitle.trim() || manualSaving" @click="submitManual">
-            {{ manualSaving ? "저장 중…" : "등록" }}
-          </button>
-        </div>
-      </div>
-    </section>
-
     <div v-if="dayModal" class="modal-backdrop" @click.self="closeDay">
       <div class="modal-box wide">
         <h4 class="modal-title">{{ selectedIso }} 일정</h4>
@@ -113,9 +86,40 @@
               <strong>{{ shortSafetyScheduleLabel(row.title) }}</strong>
               <span class="badge" v-if="row.has_pending">제안 대기</span>
             </div>
-            <div v-if="row.title.trim() !== shortSafetyScheduleLabel(row.title)" class="meta orig-title">{{ row.title }}</div>
-            <div class="meta"><span>점검(담당)자</span> {{ row.inspector_label }}</div>
-            <pre v-if="row.detail_text" class="detail-pre">{{ row.detail_text }}</pre>
+            <template v-if="isHq">
+              <div class="inline-edit-grid">
+                <label>
+                  <span>일자</span>
+                  <input v-model="row.edit_date" type="date" class="date-inp" />
+                </label>
+                <label>
+                  <span>제목</span>
+                  <input v-model="row.edit_title" type="text" class="text-inp wide" placeholder="예: 안전실 점검" />
+                </label>
+                <label>
+                  <span>점검(담당)자</span>
+                  <input v-model="row.edit_inspector" type="text" class="text-inp" />
+                </label>
+                <label>
+                  <span>상세</span>
+                  <textarea v-model="row.edit_detail" class="detail-ta" rows="3" />
+                </label>
+              </div>
+              <div class="entry-actions">
+                <button
+                  type="button"
+                  class="primary sm"
+                  :disabled="!row.edit_date || !row.edit_title.trim() || savingEntryId === row.id"
+                  @click="saveEntry(row)"
+                >
+                  {{ savingEntryId === row.id ? "저장 중…" : "저장" }}
+                </button>
+              </div>
+            </template>
+            <template v-else>
+              <div class="meta"><span>점검(담당)자</span> {{ row.inspector_label }}</div>
+              <pre v-if="row.detail_text" class="detail-pre">{{ row.detail_text }}</pre>
+            </template>
             <template v-if="isSite">
               <button type="button" class="secondary sm" @click="togglePropose(row)">의견 제시 (일정 변경)</button>
               <div v-if="proposeEntryId === row.id" class="propose-box">
@@ -144,7 +148,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { todayKst } from "@/utils/datetime";
-import { shortSafetyScheduleLabel } from "@/utils/safetyScheduleLabels";
+import { cleanSafetyScheduleTitle, shortSafetyScheduleLabel } from "@/utils/safetyScheduleLabels";
 
 const auth = useAuthStore();
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
@@ -171,12 +175,18 @@ const dayModalRows = ref<
   Array<{
     id: number;
     title: string;
+    scheduled_date: string;
     inspector_label: string;
     detail_text: string | null;
     has_pending: boolean;
+    edit_date: string;
+    edit_title: string;
+    edit_inspector: string;
+    edit_detail: string;
   }>
 >([]);
 const dayDetailLoading = ref(false);
+const savingEntryId = ref<number | null>(null);
 
 const proposeEntryId = ref<number | null>(null);
 const proposeDate = ref("");
@@ -196,12 +206,6 @@ const pendingItems = ref<
   }>
 >([]);
 const pendingLoading = ref(false);
-
-const manualDate = ref("");
-const manualTitle = ref("");
-const manualInspector = ref("");
-const manualDetail = ref("");
-const manualSaving = ref(false);
 
 const isHq = computed(() =>
   ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
@@ -325,6 +329,27 @@ function reload() {
   void loadPending();
 }
 
+function openCreateEntry() {
+  const base = `${year.value}-${String(month.value).padStart(2, "0")}-01`;
+  dayModal.value = true;
+  selectedIso.value = "신규 일정";
+  dayDetailLoading.value = false;
+  dayModalRows.value = [
+    {
+      id: -1,
+      title: "",
+      scheduled_date: base,
+      inspector_label: "-",
+      detail_text: null,
+      has_pending: false,
+      edit_date: base,
+      edit_title: "",
+      edit_inspector: "-",
+      edit_detail: "",
+    },
+  ];
+}
+
 async function openDay(cell: Cell) {
   if (!cell.inMonth) return;
   const y = year.value;
@@ -346,9 +371,14 @@ async function openDay(cell: Cell) {
       rows.push({
         id: res.data.id,
         title: res.data.title,
+        scheduled_date: res.data.scheduled_date,
         inspector_label: res.data.inspector_label,
         detail_text: res.data.detail_text,
         has_pending: pend,
+        edit_date: res.data.scheduled_date,
+        edit_title: cleanSafetyScheduleTitle(res.data.title),
+        edit_inspector: res.data.inspector_label,
+        edit_detail: res.data.detail_text ?? "",
       });
     }
     dayModalRows.value = rows;
@@ -413,31 +443,34 @@ async function reject(proposalId: number) {
   }
 }
 
-async function submitManual() {
-  if (!manualDate.value || !manualTitle.value.trim()) return;
-  manualSaving.value = true;
+async function saveEntry(row: (typeof dayModalRows.value)[number]) {
+  if (!row.edit_date || !row.edit_title.trim()) return;
+  const payload = {
+    scheduled_date: row.edit_date,
+    title: cleanSafetyScheduleTitle(row.edit_title.trim()),
+    inspector_label: row.edit_inspector.trim() || "-",
+    detail_text: row.edit_detail.trim() || null,
+  };
+  savingEntryId.value = row.id;
   try {
-    await api.post("/safety-features/schedule/entries", {
-      scheduled_date: manualDate.value,
-      title: manualTitle.value.trim(),
-      inspector_label: manualInspector.value.trim() || "-",
-      detail_text: manualDetail.value.trim() || null,
-    });
-    const [y, m] = manualDate.value.split("-").map(Number);
+    if (row.id < 0) {
+      await api.post("/safety-features/schedule/entries", payload);
+    } else {
+      await api.put(`/safety-features/schedule/entries/${row.id}`, payload);
+    }
+    const [y, m] = row.edit_date.split("-").map(Number);
     if (y && m) {
       year.value = y;
       month.value = m;
     }
-    manualTitle.value = "";
-    manualInspector.value = "";
-    manualDetail.value = "";
     await loadMonth();
-    window.alert("등록되었습니다.");
+    closeDay();
+    window.alert("저장되었습니다.");
   } catch (e: unknown) {
     const ax = e as { response?: { data?: { detail?: string } } };
-    window.alert(ax.response?.data?.detail ?? "등록에 실패했습니다.");
+    window.alert(ax.response?.data?.detail ?? "저장에 실패했습니다.");
   } finally {
-    manualSaving.value = false;
+    savingEntryId.value = null;
   }
 }
 
@@ -467,6 +500,13 @@ onMounted(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+.plus-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
 }
 .ym-label {
   font-weight: 700;
@@ -672,6 +712,25 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
+}
+.inline-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.inline-edit-grid label {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #475569;
+}
+.entry-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 .badge {
   background: #fde68a;
