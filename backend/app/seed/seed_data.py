@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config.security import get_password_hash
+from app.seed.demo_login_users import SITE05_DEMO_PASSWORD
 from app.core.datetime_utils import utc_now
 from app.core.database import SessionLocal, init_db
 from app.core.enums import Role, UIType
@@ -191,6 +192,14 @@ def seed_users(db: Session) -> None:
             site_id=site2_for_assignment.id if site2_for_assignment else None,
         ),
         dict(
+            name="민경준",
+            login_id="site05",
+            department="현장",
+            role=Role.SITE,
+            ui_type=UIType.SITE,
+            site_id=site2_for_assignment.id if site2_for_assignment else None,
+        ),
+        dict(
             name="본사타부서1",
             login_id="hqother1",
             department="경영지원",
@@ -221,6 +230,7 @@ def seed_users(db: Session) -> None:
 
     for u in desired:
         existing = db.query(User).filter(User.login_id == u["login_id"]).first()
+        user_password_plain = SITE05_DEMO_PASSWORD if u["login_id"] == "site05" else password_plain
         if existing:
             existing.name = u["name"]
             existing.department = u["department"]
@@ -229,19 +239,23 @@ def seed_users(db: Session) -> None:
             existing.site_id = u["site_id"]
             existing.person_id = u.get("person_id")
             existing.is_active = True
+            # site05: align with ensure_demo_login_users — known demo password + immediate login (no forced change).
+            if u["login_id"] == "site05":
+                existing.password_hash = get_password_hash(SITE05_DEMO_PASSWORD)
+                existing.must_change_password = False
         else:
             db.add(
                 User(
                     name=u["name"],
                     login_id=u["login_id"],
-                    password_hash=get_password_hash(password_plain),
+                    password_hash=get_password_hash(user_password_plain),
                     department=u["department"],
                     role=u["role"],
                     ui_type=u["ui_type"],
                     site_id=u["site_id"],
                     person_id=u.get("person_id"),
                     is_active=True,
-                    must_change_password=True,
+                    must_change_password=False if u["login_id"] == "site05" else True,
                 )
             )
     db.commit()
