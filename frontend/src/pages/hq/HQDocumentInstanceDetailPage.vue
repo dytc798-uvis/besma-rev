@@ -7,31 +7,34 @@
     <p v-if="loadError" class="detail-error-banner">{{ loadError }}</p>
     <p v-else-if="loading" class="sub">불러오는 중...</p>
 
-    <template v-else-if="currentRow">
+    <template v-else-if="effectiveRow">
+      <p v-if="historySelectionActive" class="history-selection-banner">
+        회차 히스토리에서 다른 날짜·회차를 선택한 상태입니다. 아래 파일·검토·코멘트는 <strong>선택한 회차</strong> 기준입니다.
+      </p>
       <BaseCard class="main-panel !p-[22px] inst-detail-header-card">
         <div class="inst-detail-header">
           <div>
-            <h1 class="inst-detail-title">{{ currentRow.document_name }}</h1>
-            <p class="sub m-0">{{ displaySiteName(currentRow.site_name) }}</p>
+            <h1 class="inst-detail-title">{{ effectiveRow.document_name }}</h1>
+            <p class="sub m-0">{{ displaySiteName(effectiveRow.site_name) }}</p>
           </div>
-          <span class="status-badge-lg" :class="headerBadgeClass(currentRow)">{{ headerStatusLabel(currentRow) }}</span>
+          <span class="status-badge-lg" :class="headerBadgeClass(effectiveRow)">{{ headerStatusLabel(effectiveRow) }}</span>
         </div>
         <dl class="inst-meta-grid">
-          <div><dt>주기 기준</dt><dd>{{ currentRow.period_basis }}</dd></div>
-          <div><dt>회차</dt><dd>{{ currentRow.period_label }}</dd></div>
-          <div><dt>문서 코드</dt><dd>{{ currentRow.document_type_code }}</dd></div>
+          <div><dt>주기 기준</dt><dd>{{ effectiveRow.period_basis }}</dd></div>
+          <div><dt>회차</dt><dd>{{ effectiveRow.period_label }}</dd></div>
+          <div><dt>문서 코드</dt><dd>{{ effectiveRow.document_type_code }}</dd></div>
         </dl>
       </BaseCard>
 
-      <BaseCard class="main-panel !p-[22px] mt-4" title="현재 제출본">
-        <template v-if="!currentRow.document_id">
+      <BaseCard class="main-panel !p-[22px] mt-4" title="선택 회차 제출본">
+        <template v-if="!effectiveRow.document_id">
           <p class="sub m-0">연결된 제출 문서가 없습니다.</p>
         </template>
         <template v-else>
           <dl class="inst-meta-grid">
-            <div><dt>파일명</dt><dd>{{ currentRow.current_file_name || "—" }}</dd></div>
-            <div><dt>업로드 시각</dt><dd>{{ formatDateTime(currentRow.submitted_at) }}</dd></div>
-            <div><dt>업로더</dt><dd>{{ currentRow.uploaded_by_name || "—" }}</dd></div>
+            <div><dt>파일명</dt><dd>{{ effectiveRow.current_file_name || "—" }}</dd></div>
+            <div><dt>업로드 시각</dt><dd>{{ formatDateTime(effectiveRow.submitted_at) }}</dd></div>
+            <div><dt>업로더</dt><dd>{{ effectiveRow.uploaded_by_name || "—" }}</dd></div>
           </dl>
           <div class="inst-actions-row">
             <button
@@ -57,12 +60,12 @@
         </template>
         <template v-else>
           <dl class="inst-meta-grid">
-            <div><dt>현재 상태</dt><dd>{{ workflowUiLabel(currentRow.workflow_status, currentRow.is_missing) }}</dd></div>
+            <div><dt>현재 상태</dt><dd>{{ workflowUiLabel(effectiveRow.workflow_status, effectiveRow.is_missing) }}</dd></div>
             <div><dt>검토자</dt><dd>—</dd></div>
-            <div><dt>검토 시각</dt><dd>{{ formatDateTime(currentRow.reviewed_at) }}</dd></div>
-            <div class="span-2"><dt>코멘트</dt><dd>{{ currentRow.review_note || "—" }}</dd></div>
+            <div><dt>검토 시각</dt><dd>{{ formatDateTime(effectiveRow.reviewed_at) }}</dd></div>
+            <div class="span-2"><dt>코멘트</dt><dd>{{ effectiveRow.review_note || "—" }}</dd></div>
           </dl>
-          <div v-if="currentRow.document_id" class="review-form">
+          <div v-if="effectiveRow.document_id" class="review-form">
             <label class="review-label">검토 의견 (승인 시 선택, 반려 시 필수)</label>
             <textarea v-model="reviewComment" class="review-textarea" rows="3" placeholder="승인 코멘트는 선택 입력, 반려는 사유 필수" />
             <p v-if="reviewError" class="detail-error-banner">{{ reviewError }}</p>
@@ -90,10 +93,13 @@
       </BaseCard>
 
       <BaseCard class="main-panel !p-[22px] mt-4" title="회차 히스토리">
-        <p class="sub m-0 mb-2">행을 선택하면 아래 코멘트가 해당 회차 제출 문서 기준으로 바뀝니다. 「파일 보기」로 당시 제출본을 엽니다.</p>
+        <p class="sub m-0 mb-2">
+          행을 클릭하면 위·아래(제출본·검토·코멘트)가 해당 회차 기준으로 바뀝니다. 표 안에서 스크롤하여 다른 날짜를 확인할 수 있습니다. HWP 등은
+          「다운로드」를 사용하세요.
+        </p>
         <p v-if="historyLoading" class="sub m-0 mb-2">히스토리를 불러오는 중...</p>
         <p v-else-if="historyLoadError" class="detail-error-banner m-0 mb-2">{{ historyLoadError }}</p>
-        <div class="stitch-table-shell">
+        <div class="stitch-table-shell history-inst-table-scroll">
           <table class="stitch-table">
             <thead>
               <tr>
@@ -113,7 +119,7 @@
                 role="button"
                 tabindex="0"
                 class="history-inst-row"
-                :class="{ 'history-inst-row-selected': selectedHistoryDocumentId === r.document_id }"
+                :class="{ 'history-inst-row-selected': selectedHistoryInstanceId === r.instance_id }"
                 @click="selectHistoryRow(r)"
                 @keydown.enter.prevent="selectHistoryRow(r)"
               >
@@ -123,16 +129,24 @@
                 <td>{{ workflowUiLabel(r.workflow_status, r.is_missing) }}</td>
                 <td>{{ r.reupload_count }}</td>
                 <td class="cell-note">{{ r.review_note || "—" }}</td>
-                <td>
+                <td class="history-doc-actions">
                   <button
                     v-if="r.document_id"
                     type="button"
                     class="stitch-btn-secondary"
                     @click.stop="openPreviewForHistoryRow(r)"
                   >
-                    파일 보기
+                    미리보기
                   </button>
-                  <span v-else class="sub">—</span>
+                  <button
+                    v-if="r.document_id"
+                    type="button"
+                    class="stitch-btn-primary"
+                    @click.stop="downloadHistoryRowFile(r)"
+                  >
+                    다운로드
+                  </button>
+                  <span v-if="!r.document_id" class="sub">—</span>
                 </td>
               </tr>
               <tr v-if="!historyLoading && !historyLoadError && historyItems.length === 0">
@@ -143,11 +157,11 @@
         </div>
       </BaseCard>
 
-      <BaseCard v-if="currentRow && commentsDocumentId && !isLedgerManagedInstance" class="main-panel !p-[22px] mt-4">
+      <BaseCard v-if="effectiveRow && commentsDocumentId && !isLedgerManagedInstance" class="main-panel !p-[22px] mt-4">
         <DocumentCommentsPanel
           :document-id="commentsDocumentId"
-          :document-type-code="currentRow.document_type_code"
-          :title="selectedHistoryDocumentId != null ? '선택 회차 문서 코멘트' : '현재 회차 문서 코멘트'"
+          :document-type-code="effectiveRow.document_type_code"
+          :title="historySelectionActive ? '선택 회차 문서 코멘트' : '현재 회차 문서 코멘트'"
         />
       </BaseCard>
     </template>
@@ -222,7 +236,7 @@ const loadError = ref("");
 const historyLoading = ref(false);
 const historyLoadError = ref("");
 const historyItems = ref<HistoryRow[]>([]);
-const selectedHistoryDocumentId = ref<number | null>(null);
+const selectedHistoryInstanceId = ref<number | null>(null);
 const currentRow = ref<HistoryRow | null>(null);
 const documentRecord = ref<DocumentRecord | null>(null);
 const reviewComment = ref("");
@@ -246,24 +260,39 @@ const queryDocType = computed(() => {
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 });
 
+/** URL로 연 인스턴스 또는 히스토리 표에서 선택한 회차 */
+const effectiveRow = computed((): HistoryRow | null => {
+  if (!currentRow.value) return null;
+  const selInst = selectedHistoryInstanceId.value;
+  if (selInst == null) return currentRow.value;
+  return historyItems.value.find((r) => r.instance_id === selInst) ?? currentRow.value;
+});
+
+const historySelectionActive = computed(
+  () =>
+    selectedHistoryInstanceId.value != null &&
+    currentRow.value != null &&
+    selectedHistoryInstanceId.value !== currentRow.value.instance_id,
+);
+
 const canPreviewFile = computed(() =>
-  Boolean(currentRow.value?.document_id && canPreviewInBrowser(currentRow.value?.current_file_name)),
+  Boolean(effectiveRow.value?.document_id && canPreviewInBrowser(effectiveRow.value?.current_file_name)),
 );
 
 const canApplyReview = computed(() => {
   const st = documentRecord.value?.current_status;
   return Boolean(
-    currentRow.value?.document_id &&
+    effectiveRow.value?.document_id &&
       st &&
       (st === "SUBMITTED" || st === "IN_REVIEW" || st === "REJECTED") &&
-      !isLedgerManagedDocumentType(currentRow.value?.document_type_code),
+      !isLedgerManagedDocumentType(effectiveRow.value?.document_type_code),
   );
 });
 
-const isLedgerManagedInstance = computed(() => isLedgerManagedDocumentType(currentRow.value?.document_type_code));
+const isLedgerManagedInstance = computed(() => isLedgerManagedDocumentType(effectiveRow.value?.document_type_code));
 const ledgerManagedUxMessage = LEDGER_MANAGED_UX_MESSAGE;
 
-const commentsDocumentId = computed(() => selectedHistoryDocumentId.value ?? currentRow.value?.document_id ?? null);
+const commentsDocumentId = computed(() => effectiveRow.value?.document_id ?? null);
 
 function displaySiteName(siteName: string) {
   if (siteName.includes("청라C18") || siteName.includes("C18BL")) {
@@ -308,9 +337,9 @@ function goBack() {
 }
 
 function goLedgerFromInstancePage() {
-  const code = currentRow.value?.document_type_code;
+  const code = effectiveRow.value?.document_type_code;
   const name = hqLedgerRouteForDocumentType(code || null);
-  const sid = currentRow.value?.site_id ?? querySiteId.value;
+  const sid = effectiveRow.value?.site_id ?? querySiteId.value;
   if (!name) return;
   void router.push({ name, query: sid != null ? { site_id: String(sid) } : {} });
 }
@@ -338,7 +367,7 @@ async function loadAll() {
   historyLoadError.value = "";
   currentRow.value = null;
   historyItems.value = [];
-  selectedHistoryDocumentId.value = null;
+  selectedHistoryInstanceId.value = null;
   documentRecord.value = null;
 
   const id = instanceIdNum.value;
@@ -390,7 +419,7 @@ async function loadAll() {
 
 async function submitReview(action: "approve" | "reject") {
   if (isLedgerManagedInstance.value) return;
-  const docId = currentRow.value?.document_id;
+  const docId = effectiveRow.value?.document_id;
   if (!docId || !canApplyReview.value) return;
   reviewError.value = "";
   const comment =
@@ -420,14 +449,75 @@ async function submitReview(action: "approve" | "reject") {
 }
 
 function selectHistoryRow(r: HistoryRow) {
-  selectedHistoryDocumentId.value = r.document_id ?? null;
+  selectedHistoryInstanceId.value = r.instance_id;
+}
+
+function resolveFilenameFromHeader(headerValue: string | undefined, fallback: string) {
+  if (!headerValue) return fallback;
+  const matchUtf = headerValue.match(/filename\*=UTF-8''([^;]+)/i);
+  if (matchUtf?.[1]) {
+    try {
+      return decodeURIComponent(matchUtf[1]);
+    } catch {
+      return fallback;
+    }
+  }
+  const matchPlain = headerValue.match(/filename=\"?([^\";]+)\"?/i);
+  return matchPlain?.[1] ?? fallback;
+}
+
+async function triggerBlobDownload(url: string, fallbackFilename: string) {
+  const res = await api.get(url, {
+    responseType: "blob",
+    params: { disposition: "attachment" },
+  });
+  const ct = String(res.headers["content-type"] || "").toLowerCase();
+  if (ct.includes("application/json")) {
+    const text = await (res.data as Blob).text();
+    let msg = "파일을 받아오지 못했습니다.";
+    try {
+      const j = JSON.parse(text) as { detail?: unknown };
+      if (j.detail != null) msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+    } catch {
+      /* ignore */
+    }
+    window.alert(msg);
+    return;
+  }
+  const blob = res.data as Blob;
+  const contentDisposition = res.headers["content-disposition"] as string | undefined;
+  const filename = resolveFilenameFromHeader(contentDisposition, fallbackFilename);
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+async function downloadHistoryRowFile(r: HistoryRow) {
+  if (!r.document_id) return;
+  try {
+    await triggerBlobDownload(
+      `/documents/${r.document_id}/file`,
+      r.current_file_name || `document_${r.document_id}.bin`,
+    );
+  } catch {
+    window.alert("파일 다운로드에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+  }
 }
 
 async function openPreviewForHistoryRow(r: HistoryRow) {
   const docId = r.document_id;
   const name = r.current_file_name;
   if (!docId) return;
-  await openPreviewForDocument(docId, name);
+  try {
+    await openPreviewForDocument(docId, name);
+  } catch {
+    window.alert("파일을 열지 못했습니다. 다운로드 버튼으로 저장해 보세요.");
+  }
 }
 
 async function openPreviewForDocument(docId: number, name: string | null | undefined) {
@@ -435,6 +525,19 @@ async function openPreviewForDocument(docId: number, name: string | null | undef
     params: { disposition: "inline" },
     responseType: "blob",
   });
+  const ctHead = String(res.headers["content-type"] || "").toLowerCase();
+  if (ctHead.includes("application/json")) {
+    const text = await (res.data as Blob).text();
+    let msg = "파일을 불러오지 못했습니다.";
+    try {
+      const j = JSON.parse(text) as { detail?: unknown };
+      if (j.detail != null) msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+    } catch {
+      /* ignore */
+    }
+    window.alert(msg);
+    return;
+  }
   const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
   const blob = new Blob([res.data], { type: contentType });
   const url = window.URL.createObjectURL(blob);
@@ -450,13 +553,19 @@ async function openPreviewForDocument(docId: number, name: string | null | undef
     previewOpen.value = true;
     return;
   }
-  window.open(url, "_blank", "noopener");
-  setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+  const fallback = name?.trim() || `document_${docId}.bin`;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fallback;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1500);
 }
 
 async function openPreview() {
-  const docId = currentRow.value?.document_id;
-  const name = currentRow.value?.current_file_name;
+  const docId = effectiveRow.value?.document_id;
+  const name = effectiveRow.value?.current_file_name;
   if (!docId || !canPreviewInBrowser(name)) return;
   await openPreviewForDocument(docId, name);
 }
@@ -471,22 +580,21 @@ function closePreview() {
 }
 
 async function downloadFile() {
-  const docId = currentRow.value?.document_id;
-  if (!docId) return;
-  const res = await api.get(`/documents/${docId}/file`, {
-    params: { disposition: "attachment" },
-    responseType: "blob",
-  });
-  const blob = new Blob([res.data]);
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = currentRow.value?.current_file_name || "document.bin";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
+  const row = effectiveRow.value;
+  if (!row?.document_id) return;
+  try {
+    await triggerBlobDownload(`/documents/${row.document_id}/file`, row.current_file_name || "document.bin");
+  } catch {
+    window.alert("파일 다운로드에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+  }
 }
+
+watch(
+  () => effectiveRow.value?.document_id,
+  (docId) => {
+    if (docId) void loadDocumentMeta(docId);
+  },
+);
 
 onMounted(loadAll);
 
@@ -643,6 +751,30 @@ watch(
 }
 .history-inst-row-selected {
   background: #e0e7ff;
+}
+
+.history-inst-table-scroll {
+  max-height: min(55vh, 520px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.history-selection-banner {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.history-doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 
 .mt-4 {

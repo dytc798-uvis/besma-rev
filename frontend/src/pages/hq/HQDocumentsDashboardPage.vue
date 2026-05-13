@@ -376,42 +376,64 @@
       </BaseCard>
     </div>
     <div v-if="historyModalOpen" class="modal-backdrop" @click.self="closeRequirementHistory">
-      <BaseCard class="modal-card !w-full max-w-[920px]" title="문서 이력">
+      <BaseCard class="modal-card modal-card--wide history-modal-card" title="문서 이력">
         <p class="sub">{{ historyModalTitle }}</p>
-        <table class="comm-table">
-          <thead>
-            <tr>
-              <th>대상 주기</th>
-              <th>상태</th>
-              <th>업로드</th>
-              <th>검토</th>
-              <th>파일</th>
-              <th>액션</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in requirementHistoryItems" :key="`hist-${row.history_id}`">
-              <td>{{ row.period_label || "-" }}</td>
-              <td>{{ statusLabel(row.status) }}</td>
-              <td>{{ formatDateTime(row.uploaded_at) }}</td>
-              <td>{{ formatDateTime(row.reviewed_at) }}</td>
-              <td>{{ row.file_name || "-" }}</td>
-              <td>
-                <button
-                  v-if="row.document_id"
-                  type="button"
-                  class="stitch-btn-secondary"
-                  @click="downloadHistoryDocument(row.document_id)"
-                >
-                  파일 보기
-                </button>
-              </td>
-            </tr>
-            <tr v-if="requirementHistoryItems.length === 0">
-              <td colspan="6" class="sub">이력이 없습니다. 업로드 후 이력이 표시됩니다.</td>
-            </tr>
-          </tbody>
-        </table>
+        <p class="sub history-modal-hint">행을 선택하면 해당 제출 건의 코멘트가 아래에 표시됩니다. 다운로드는 선택한 날짜·회차에 올라온 파일 그대로 받습니다.</p>
+        <div class="history-modal-table-wrap">
+          <table class="comm-table history-modal-table">
+            <thead>
+              <tr>
+                <th>대상 주기</th>
+                <th>상태</th>
+                <th>업로드</th>
+                <th>검토</th>
+                <th>파일</th>
+                <th>액션</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in requirementHistoryItems"
+                :key="`hist-${row.history_id}`"
+                role="button"
+                tabindex="0"
+                class="history-modal-row"
+                :class="{ 'history-modal-row-selected': historySelectedHistoryId === row.history_id }"
+                @click="selectHistoryModalRow(row)"
+                @keydown.enter.prevent="selectHistoryModalRow(row)"
+              >
+                <td>{{ row.period_label || "-" }}</td>
+                <td>{{ statusLabel(row.status) }}</td>
+                <td>{{ formatDateTime(row.uploaded_at) }}</td>
+                <td>{{ formatDateTime(row.reviewed_at) }}</td>
+                <td class="history-modal-filename">{{ row.file_name || "-" }}</td>
+                <td>
+                  <button
+                    v-if="row.file_download_url || row.document_id"
+                    type="button"
+                    class="stitch-btn-secondary"
+                    :disabled="row.history_file_available === false"
+                    @click.stop="downloadHistoryDocument(row)"
+                  >
+                    파일 다운로드
+                  </button>
+                  <span v-else class="sub">—</span>
+                </td>
+              </tr>
+              <tr v-if="requirementHistoryItems.length === 0">
+                <td colspan="6" class="sub">이력이 없습니다. 업로드 후 이력이 표시됩니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="historySelectedDocumentId" class="history-modal-comments">
+          <DocumentCommentsPanel
+            :document-id="historySelectedDocumentId"
+            :document-type-code="historyModalDocumentTypeCode ?? undefined"
+            title="선택한 주기·회차 문서 코멘트"
+          />
+        </div>
+        <p v-else class="sub history-modal-comments-hint">코멘트를 보려면 위 표에서 해당 행을 한 번 클릭해 선택하세요.</p>
         <div class="modal-actions">
           <button type="button" class="stitch-btn-secondary" @click="closeRequirementHistory">닫기</button>
         </div>
@@ -534,6 +556,9 @@ interface RequirementHistoryRow {
   reviewed_at: string | null;
   file_name: string | null;
   period_label: string | null;
+  /** 해당 업로드 시점 파일 (없으면 null) */
+  file_download_url?: string | null;
+  history_file_available?: boolean;
 }
 interface HQChecklistItem {
   checklist_code: string;
@@ -723,6 +748,9 @@ const detailLedgerBlocked = computed(() => isLedgerManagedDocumentType(detailDoc
 const historyModalOpen = ref(false);
 const historyModalTitle = ref("");
 const requirementHistoryItems = ref<RequirementHistoryRow[]>([]);
+const historySelectedHistoryId = ref<number | null>(null);
+const historySelectedDocumentId = ref<number | null>(null);
+const historyModalDocumentTypeCode = ref<string | null>(null);
 function statusLabel(status: string) {
   const map: Record<string, string> = {
     NOT_REQUIRED: "비대상",
@@ -1086,6 +1114,9 @@ async function goDetail(id: number) {
 async function openRequirementHistory(siteId: number, requirementKey: string) {
   const col = requirementColumns.value.find((c) => c.requirement_key === requirementKey);
   if (!col) return;
+  historyModalDocumentTypeCode.value = col.document_type_code ?? null;
+  historySelectedHistoryId.value = null;
+  historySelectedDocumentId.value = null;
   const res = await api.get("/documents/history", {
     params: {
       site_id: siteId,
@@ -1095,27 +1126,77 @@ async function openRequirementHistory(siteId: number, requirementKey: string) {
   requirementHistoryItems.value = (res.data?.items ?? []) as RequirementHistoryRow[];
   historyModalTitle.value = `${displaySiteName(siteSummaries.value.find((s) => s.site_id === siteId)?.site_name || "-")} · ${col.title}`;
   historyModalOpen.value = true;
+  const firstWithDoc = requirementHistoryItems.value.find((r) => r.document_id);
+  if (firstWithDoc) {
+    historySelectedHistoryId.value = firstWithDoc.history_id;
+    historySelectedDocumentId.value = firstWithDoc.document_id;
+  }
 }
 
 function closeRequirementHistory() {
   historyModalOpen.value = false;
   historyModalTitle.value = "";
   requirementHistoryItems.value = [];
+  historySelectedHistoryId.value = null;
+  historySelectedDocumentId.value = null;
+  historyModalDocumentTypeCode.value = null;
 }
 
-async function downloadHistoryDocument(documentId: number) {
-  const res = await api.get(`/documents/${documentId}/file`, { responseType: "blob" });
-  const blob = new Blob([res.data]);
+function selectHistoryModalRow(row: RequirementHistoryRow) {
+  historySelectedHistoryId.value = row.history_id;
+  historySelectedDocumentId.value = row.document_id ?? null;
+}
+
+async function triggerBlobFileDownload(
+  url: string,
+  fallbackFilename: string,
+  extraParams?: Record<string, string>,
+) {
+  const res = await api.get(url, {
+    responseType: "blob",
+    params: { disposition: "attachment", ...extraParams },
+  });
+  const ct = String(res.headers["content-type"] || "").toLowerCase();
+  if (ct.includes("application/json")) {
+    const text = await (res.data as Blob).text();
+    let msg = "파일을 받아오지 못했습니다.";
+    try {
+      const j = JSON.parse(text) as { detail?: unknown };
+      if (j.detail != null) {
+        msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      }
+    } catch {
+      /* ignore */
+    }
+    window.alert(msg);
+    return;
+  }
+  const blob = res.data as Blob;
   const contentDisposition = res.headers["content-disposition"] as string | undefined;
-  const filename = resolveFilenameFromHeader(contentDisposition, `document_${documentId}.bin`);
-  const url = window.URL.createObjectURL(blob);
+  const filename = resolveFilenameFromHeader(contentDisposition, fallbackFilename);
+  const objectUrl = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.href = url;
+  link.href = objectUrl;
   link.download = filename;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+async function downloadHistoryDocument(row: RequirementHistoryRow) {
+  const fallback = row.file_name || `document_${row.document_id}.bin`;
+  try {
+    if (row.file_download_url) {
+      await triggerBlobFileDownload(row.file_download_url, fallback);
+      return;
+    }
+    if (row.document_id) {
+      await triggerBlobFileDownload(`/documents/${row.document_id}/file`, fallback);
+    }
+  } catch {
+    window.alert("파일 다운로드에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.");
+  }
 }
 
 
@@ -1237,23 +1318,10 @@ async function downloadDetailFile() {
   if (!detailDocument.value || detailLedgerBlocked.value) return;
   detailDownloadLoading.value = true;
   try {
-    const res = await api.get(`/documents/${detailDocument.value.id}/file`, {
-      responseType: "blob",
-    });
-    const blob = new Blob([res.data]);
-    const contentDisposition = res.headers["content-disposition"] as string | undefined;
-    const filename = resolveFilenameFromHeader(
-      contentDisposition,
-      `${detailDocument.value.document_no || "document"}.bin`,
-    );
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    const fallback = `${detailDocument.value.document_no || "document"}.bin`;
+    await triggerBlobFileDownload(`/documents/${detailDocument.value.id}/file`, fallback);
+  } catch {
+    window.alert("파일 다운로드에 실패했습니다. 잠시 후 다시 시도해 주세요.");
   } finally {
     detailDownloadLoading.value = false;
   }
@@ -1890,14 +1958,79 @@ watch(
   inset: 0;
   background: rgba(15, 23, 42, 0.45);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding: 28px 16px 48px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   z-index: 50;
 }
 
 .modal-card {
   width: min(440px, 92vw);
   padding: 22px;
+  flex-shrink: 0;
+}
+
+.modal-card--wide {
+  width: min(920px, 96vw);
+}
+
+.history-modal-card {
+  max-width: 960px;
+}
+
+.history-modal-hint {
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
+.history-modal-table-wrap {
+  max-height: min(52vh, 420px);
+  overflow: auto;
+  margin: 0 0 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.history-modal-table {
+  margin: 0;
+}
+
+.history-modal-table th,
+.history-modal-table td {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.history-modal-filename {
+  max-width: 200px;
+  word-break: break-all;
+  font-size: 12px;
+}
+
+.history-modal-row {
+  cursor: pointer;
+}
+
+.history-modal-row:hover {
+  background: #f8fafc;
+}
+
+.history-modal-row-selected {
+  background: #e0e7ff;
+}
+
+.history-modal-comments {
+  margin-top: 8px;
+  max-height: min(40vh, 360px);
+  overflow: auto;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.history-modal-comments-hint {
+  margin: 8px 0 0;
 }
 
 .modal-title {
