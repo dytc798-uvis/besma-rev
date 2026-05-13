@@ -25,7 +25,11 @@ SITE_DEMO_USERS: list[tuple[str, str]] = [
     ("양규성", "site01"),
     ("박명식", "site02"),
     ("박규철", "site03"),
+    ("민경준", "site05"),
 ]
+
+# 온보딩용 현장 계정 — 다른 데모 현장 계정과 달리 기본 비밀번호를 유지한다.
+SITE05_DEMO_PASSWORD = "Temp@1234"
 
 
 def _canonical_demo_login_ids() -> set[str]:
@@ -223,6 +227,7 @@ def ensure_demo_login_users(
         )
 
     for name, login_id in SITE_DEMO_USERS:
+        site_password = SITE05_DEMO_PASSWORD if login_id == "site05" else password
         results.append(
             _upsert_demo_user(
                 db,
@@ -230,7 +235,7 @@ def ensure_demo_login_users(
                 login_id=login_id,
                 role=Role.SITE,
                 ui_type=UIType.SITE,
-                password=password,
+                password=site_password,
                 site_id=site_for_site_users.id,
                 department="현장",
             )

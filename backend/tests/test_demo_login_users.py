@@ -9,7 +9,7 @@ from app.core.database import Base
 from app.core.enums import Role, UIType
 from app.modules.sites.models import Site
 from app.modules.users.models import User
-from app.seed.demo_login_users import ensure_demo_login_users
+from app.seed.demo_login_users import SITE05_DEMO_PASSWORD, ensure_demo_login_users
 
 
 def _setup_db():
@@ -36,13 +36,13 @@ def test_ensure_demo_login_users_is_idempotent_and_links_site_users():
     assert first.site_code == "SITE002"
     assert second.site_id == first.site_id
     assert db.query(User).filter(User.login_id.in_(["hq01", "hq02", "hq03", "hq04", "hq05"])).count() == 5
-    assert db.query(User).filter(User.login_id.in_(["site01", "site02", "site03"])).count() == 3
+    assert db.query(User).filter(User.login_id.in_(["site01", "site02", "site03", "site05"])).count() == 4
 
     site_users = db.query(User).filter(User.role == Role.SITE).all()
-    assert len([user for user in site_users if user.login_id in {"site01", "site02", "site03"}]) == 3
-    assert all(user.site_id == first.site_id for user in site_users if user.login_id in {"site01", "site02", "site03"})
+    assert len([user for user in site_users if user.login_id in {"site01", "site02", "site03", "site05"}]) == 4
+    assert all(user.site_id == first.site_id for user in site_users if user.login_id in {"site01", "site02", "site03", "site05"})
     assert all(user.is_active for user in db.query(User).all())
-    assert all(user.must_change_password is False for user in db.query(User).all() if user.login_id in {"hq01", "hq02", "hq03", "hq04", "hq05", "site01", "site02", "site03"})
+    assert all(user.must_change_password is False for user in db.query(User).all() if user.login_id in {"hq01", "hq02", "hq03", "hq04", "hq05", "site01", "site02", "site03", "site05"})
     assert db.query(Site).count() == 1
     assert all(item.verified_password for item in second.users)
     hq01 = db.query(User).filter(User.login_id == "hq01").first()
@@ -54,6 +54,10 @@ def test_ensure_demo_login_users_is_idempotent_and_links_site_users():
     by_login = {user.login_id: user.name for user in db.query(User).all()}
     assert by_login["site01"] == "양규성"
     assert by_login["site03"] == "박규철"
+    assert by_login["site05"] == "민경준"
+    site05 = db.query(User).filter(User.login_id == "site05").first()
+    assert site05 is not None
+    assert verify_password(SITE05_DEMO_PASSWORD, site05.password_hash)
 
 
 def test_demo_login_users_replaces_legacy_hq01_to_hq03_and_case_collisions():
