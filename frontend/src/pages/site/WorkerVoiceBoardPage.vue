@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1 class="page-title">근로자의견청취 관리대장</h1>
-        <p class="page-sub">현재 대장을 기준으로 row를 누적 관리하고, 엑셀 업로드는 초기 가져오기 용도로만 사용합니다.</p>
+        <p class="page-sub">현재 대장을 기준으로 의견 목록을 관리하고, 엑셀 업로드는 초기 가져오기 용도로만 사용합니다.</p>
       </div>
       <button class="stitch-btn-secondary" type="button" @click="load">새로고침</button>
     </div>
@@ -16,7 +16,7 @@
           <span class="summary-meta">{{ currentLedger?.ledger ? sourceLabel(currentLedger.ledger.source_type) : "수기 관리 준비됨" }}</span>
         </article>
         <article class="summary-card">
-          <span class="summary-label">row 수</span>
+          <span class="summary-label">의견 건수</span>
           <strong>{{ siteItems.length }}</strong>
           <span class="summary-meta">현장 의견 누적 관리 기준</span>
         </article>
@@ -104,7 +104,7 @@
       <section class="panel">
         <div class="panel-head">
           <div>
-            <h2 class="panel-title">누적 row 관리</h2>
+            <h2 class="panel-title">의견 목록</h2>
             <p class="panel-sub">저장하면 현재 대장과 목록이 즉시 다시 조회됩니다.</p>
           </div>
         </div>
@@ -116,7 +116,7 @@
                 <th>No</th>
                 <th>근로자</th>
                 <th>의견</th>
-                <th>조치 전/후</th>
+                <th>조치 전(문제상황) / 조치 후(조치결과)</th>
                 <th>담당</th>
                 <th>사진</th>
                 <th>운영 처리 (접수·조치·현장메모)</th>
@@ -216,10 +216,10 @@
                 </tr>
               </template>
               <tr v-if="siteItems.length === 0">
-                <td colspan="9" class="empty-cell">등록된 의견 row가 없습니다.</td>
+                <td colspan="9" class="empty-cell">등록된 의견 항목이 없습니다.</td>
               </tr>
               <tr v-else-if="displaySiteItems.length === 0">
-                <td colspan="9" class="empty-cell">이 필터에 해당하는 row가 없습니다.</td>
+                <td colspan="9" class="empty-cell">이 필터에 해당하는 의견 항목이 없습니다.</td>
               </tr>
             </tbody>
           </table>
@@ -230,7 +230,7 @@
     <section v-else class="panel">
       <div class="panel-head">
         <div>
-          <h2 class="panel-title">전체 의견 row</h2>
+          <h2 class="panel-title">전체 의견 목록</h2>
           <p class="panel-sub">본사는 위험성평가 DB 등록 요청에 대한 승인·반려와 포상 후보만 처리합니다. 접수·조치는 현장 전용입니다.</p>
         </div>
       </div>
@@ -405,7 +405,7 @@ watch(
 
 const dashboardFilterBannerText = computed(() => {
   const f = dashboardListFilter.value;
-  return f ? `대시보드 필터: ${ledgerFilterDescription(f)} (목록에 맞는 row만 표시)` : "";
+  return f ? `대시보드 필터: ${ledgerFilterDescription(f)} (목록에 맞는 항목만 표시)` : "";
 });
 
 const items = ref<WorkerVoiceItemRow[]>([]);
@@ -471,10 +471,17 @@ function draftFromItem(item: WorkerVoiceItemRow): DraftRow {
     worker_phone_number: item.worker_phone_number || "",
     opinion_kind: item.opinion_kind || "",
     opinion_text: item.opinion_text || "",
-    action_before: item.action_before || "",
-    action_after: item.action_after || "",
+    action_before: normalizeActionText(item.action_before, item.row_no),
+    action_after: normalizeActionText(item.action_after, item.row_no),
     action_owner: item.action_owner || "",
   };
+}
+
+function normalizeActionText(value: string | null | undefined, rowNo: number) {
+  const text = (value || "").trim();
+  // 엑셀 파싱 잔여값(행번호만 들어온 경우)을 숨겨 혼선을 줄인다.
+  if (text && text === String(rowNo)) return "";
+  return text;
 }
 
 function syncDrafts(list: WorkerVoiceItemRow[]) {

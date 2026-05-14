@@ -950,11 +950,18 @@ def get_site_badge_counts(
 ):
     if current_user.role != Role.SITE or not current_user.site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    # SiteDocumentsDashboardPage는 `GET /documents/requirements/status?period=all` 과 동일 스코프로
+    # 미완료를 본다. 배지가 `period=day`(일간·수시 등만)이면 월간/분기/반기/연간 요구가 집계에서 빠져 숫자가 어긋난다.
+    site = db.query(Site).filter(Site.id == int(current_user.site_id)).first()
+    if site is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+    completion_upload_enabled, _, _ = _compute_completion_window(site, date_value)
     items = get_site_requirement_status(
         db,
         site_id=current_user.site_id,
-        period="day",
+        period="all",
         target_date=date_value,
+        completion_upload_enabled=completion_upload_enabled,
     )
     summary = _compute_summary(items)
     return {

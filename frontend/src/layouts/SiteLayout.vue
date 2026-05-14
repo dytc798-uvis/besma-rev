@@ -52,8 +52,7 @@
           {{ m.title }}
         </RouterLink>
         <p class="site-menu-section-label">기타 메뉴</p>
-        <RouterLink :class="menuLinkClass('safety-education', '/site/safety-education')" :style="menuOrderStyle('safety-education')" to="/site/safety-education">안전 교육</RouterLink>
-        <RouterLink :class="menuLinkClass('safety-inspections', '/site/safety-inspections')" :style="menuOrderStyle('safety-inspections')" to="/site/safety-inspections">안전 점검</RouterLink>
+        <RouterLink :class="menuLinkClass('safety-education', '/site/safety-education')" :style="menuOrderStyle('safety-education')" to="/site/safety-education">안전교육 및 안전점검</RouterLink>
         <RouterLink :class="menuLinkClass('mobile', '/site/mobile')" :style="menuOrderStyle('mobile')" to="/site/mobile">
           일일안전회의(일일위험성평가)
         </RouterLink>
@@ -98,6 +97,13 @@
         >
           안전보건 방침·목표
         </RouterLink>
+        <RouterLink
+          :class="menuLinkClass('safety-education', '/site/safety-education')"
+          to="/site/safety-education"
+          @click="closeMobileDrawer"
+        >
+          안전교육 및 안전점검
+        </RouterLink>
         <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" to="/site/worker-voice" @click="closeMobileDrawer">
           근로자의견청취
         </RouterLink>
@@ -107,6 +113,15 @@
           @click="closeMobileDrawer"
         >
           부적합사항
+        </RouterLink>
+        <RouterLink
+          :class="menuLinkClass('document-explorer', '/site/document-explorer')"
+          :style="menuOrderStyle('document-explorer')"
+          to="/site/document-explorer"
+          @click="closeMobileDrawer"
+        >
+          <span class="menu-icon" v-if="menuIcon('document-explorer')">{{ menuIcon("document-explorer") }}</span>
+          문서 탐색
         </RouterLink>
         <RouterLink :class="menuLinkClass('risk-library', '/site/risk-library')" to="/site/risk-library" @click="closeMobileDrawer">
           위험성평가 DB
@@ -204,7 +219,6 @@ const SITE_FIXED_MENU_KEYS = [
   "nonconformities",
   "document-explorer",
   "safety-education",
-  "safety-inspections",
   "mobile",
   "mobile-site-search",
   "documents",
@@ -466,6 +480,9 @@ function menuItemActive(key: string, path: string) {
   }
   if (key === "opinions") {
     return route.path.startsWith("/site/opinions");
+  }
+  if (key === "safety-education") {
+    return route.path === "/site/safety-education" || route.path === "/site/safety-inspections";
   }
   return isMenuActive(path);
 }

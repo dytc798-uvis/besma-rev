@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1 class="page-title">부적합사항 관리대장</h1>
-        <p class="page-sub">현장 row를 누적 관리하고, 업로드 파일은 초기 적재 또는 참고 이력으로만 유지합니다.</p>
+        <p class="page-sub">부적합 사항을 목록으로 관리합니다. 업로드 파일은 초기 적재 또는 참고 이력으로만 유지합니다.</p>
       </div>
       <button class="stitch-btn-secondary" type="button" @click="load">새로고침</button>
     </div>
@@ -16,7 +16,7 @@
           <span class="summary-meta">{{ currentLedger?.ledger ? sourceLabel(currentLedger.ledger.source_type) : "수기 관리 준비됨" }}</span>
         </article>
         <article class="summary-card">
-          <span class="summary-label">누적 row</span>
+          <span class="summary-label">부적합 건수</span>
           <strong>{{ currentItems.length }}</strong>
           <span class="summary-meta">현재 조치 관리 기준</span>
         </article>
@@ -99,8 +99,8 @@
       <section class="panel">
         <div class="panel-head">
           <div>
-            <h2 class="panel-title">누적 row 관리</h2>
-            <p class="panel-sub">저장 후 현재 목록이 즉시 다시 조회됩니다.</p>
+            <h2 class="panel-title">부적합 목록</h2>
+            <p class="panel-sub">입력/저장 후 목록이 즉시 다시 조회됩니다.</p>
           </div>
         </div>
         <p v-if="dashboardListFilter" class="dashboard-filter-banner">{{ dashboardFilterBannerText }}</p>
@@ -110,7 +110,7 @@
               <tr>
                 <th>No</th>
                 <th>부적합 내용</th>
-                <th>조치 전/후</th>
+                <th>조치 전(문제상황) / 조치 후(조치결과)</th>
                 <th>담당</th>
                 <th>기한/완료</th>
                 <th>사진</th>
@@ -192,10 +192,10 @@
                 </td>
               </tr>
               <tr v-if="currentItems.length === 0">
-                <td colspan="9" class="empty-cell">등록된 row가 없습니다.</td>
+                <td colspan="9" class="empty-cell">등록된 부적합 항목이 없습니다.</td>
               </tr>
               <tr v-else-if="displayNcSiteItems.length === 0">
-                <td colspan="9" class="empty-cell">이 필터에 해당하는 row가 없습니다.</td>
+                <td colspan="9" class="empty-cell">이 필터에 해당하는 부적합 항목이 없습니다.</td>
               </tr>
             </tbody>
           </table>
@@ -238,7 +238,7 @@
     <section v-if="!isSite" class="panel">
       <div class="panel-head">
         <div>
-          <h2 class="panel-title">전체 부적합 row</h2>
+          <h2 class="panel-title">전체 부적합 목록</h2>
           <p class="panel-sub">본사는 DB 등록 요청에 대한 승인·반려와 포상 후보만 처리합니다.</p>
         </div>
       </div>
@@ -291,10 +291,10 @@
               </td>
             </tr>
             <tr v-if="hqRowItems.length === 0">
-              <td colspan="6" class="empty-cell">등록된 row가 없습니다.</td>
+              <td colspan="6" class="empty-cell">등록된 부적합 항목이 없습니다.</td>
             </tr>
             <tr v-else-if="displayNcHqItems.length === 0">
-              <td colspan="6" class="empty-cell">이 필터에 해당하는 row가 없습니다.</td>
+              <td colspan="6" class="empty-cell">이 필터에 해당하는 부적합 항목이 없습니다.</td>
             </tr>
           </tbody>
         </table>
@@ -443,12 +443,19 @@ function emptyDraft(): DraftItem {
 function draftFromItem(item: NonconformityItemRow): DraftItem {
   return {
     issue_text: item.issue_text || "",
-    action_before: item.action_before || "",
-    action_after: item.action_after || "",
+    action_before: normalizeActionText(item.action_before, item.row_no),
+    action_after: normalizeActionText(item.action_after, item.row_no),
     action_due_date: item.action_due_date || "",
     completed_at: item.completed_at || "",
     action_owner: item.action_owner || "",
   };
+}
+
+function normalizeActionText(value: string | null | undefined, rowNo: number) {
+  const text = (value || "").trim();
+  // 엑셀 파싱 잔여값(행번호만 들어온 경우)을 숨겨 혼선을 줄인다.
+  if (text && text === String(rowNo)) return "";
+  return text;
 }
 
 function syncDrafts(items: NonconformityItemRow[]) {

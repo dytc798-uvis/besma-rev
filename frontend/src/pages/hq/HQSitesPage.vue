@@ -86,7 +86,6 @@
 
         <div class="ops-tabs">
           <button class="secondary" :class="{ active: activeOpsTab === 'documents' }" @click="activeOpsTab = 'documents'">최근 문서</button>
-          <button class="secondary" :class="{ active: activeOpsTab === 'tbm' }" @click="activeOpsTab = 'tbm'">최근 TBM</button>
           <button class="secondary" :class="{ active: activeOpsTab === 'others' }" @click="activeOpsTab = 'others'">최근 이슈/피드백/교육</button>
         </div>
 
@@ -108,13 +107,6 @@
           </table>
         </div>
 
-        <div class="info-block" v-if="activeOpsTab === 'tbm'">
-          <div class="block-title">최근 TBM</div>
-          <div class="status-line"><span>최근 배포일:</span><strong>{{ latestDistribution?.target_date || "데이터 없음" }}</strong></div>
-          <div class="status-line"><span>TBM 시작:</span><strong>{{ tbmStatusLabel }}</strong></div>
-          <div class="status-line"><span>서명 진행:</span><strong>{{ signatureCompletionLabel }}</strong></div>
-        </div>
-
         <div class="info-block" v-if="activeOpsTab === 'others'">
           <div class="block-title">최근 이슈/피드백/교육</div>
           <div class="status-line"><span>최근 피드백:</span><strong>{{ latestFeedbackLabel }}</strong></div>
@@ -126,7 +118,6 @@
           <button class="secondary" @click="goDocuments">문서 보기</button>
           <button class="secondary" :disabled="!latestRejectedItem?.latest_document_id" @click="goRejectedDetail">재업로드 필요 문서 보기</button>
           <button class="secondary" disabled title="연결된 근로자 전용 페이지가 없습니다.">근로자 보기</button>
-          <button class="secondary" @click="goTbm">TBM 보기</button>
         </div>
       </div>
     </section>
@@ -211,7 +202,7 @@ const loadingDetail = ref(false);
 const keyword = ref("");
 const statusFilter = ref<"ALL" | "IN_PROGRESS" | "STOPPED" | "COMPLETED" | "UNKNOWN">("ALL");
 const selectedSiteId = ref<number | null>(null);
-const activeOpsTab = ref<"documents" | "tbm" | "others">("documents");
+const activeOpsTab = ref<"documents" | "others">("documents");
 
 const siteSummaryMap = ref<Record<number, DashboardSiteSummary>>({});
 const dashboardItems = ref<DashboardItem[]>([]);
@@ -261,13 +252,6 @@ const todayWorkerCountLabel = computed(() => {
 });
 const notSubmittedLabel = computed(() => `${selectedSummary.value?.not_submitted_count ?? 0}건`);
 const rejectedNeedCountLabel = computed(() => `${selectedSummary.value?.rejected_count ?? 0}건`);
-const tbmStatusLabel = computed(() => {
-  if (!latestDistribution.value) return "데이터 없음";
-  if (latestDistribution.value.is_tbm_active) {
-    return `진행 중 (${formatDateTime(latestDistribution.value.tbm_started_at)})`;
-  }
-  return "미시작";
-});
 const signatureCompletionLabel = computed(() => {
   const total = distributionWorkers.value.length;
   if (total === 0) return "데이터 없음";
@@ -404,10 +388,6 @@ function goRejectedDetail() {
     name: "hq-safe-document-detail",
     params: { id: latestRejectedItem.value.latest_document_id },
   });
-}
-
-function goTbm() {
-  router.push({ name: "hq-safe-tbm-monitor" });
 }
 
 onMounted(loadSites);

@@ -18,6 +18,18 @@ def _is_opinion_admin(role: Role | str | None) -> bool:
     return value in {Role.HQ_SAFE_ADMIN.value, Role.SUPER_ADMIN.value}
 
 
+def _can_review_opinion(role: Role | str | None) -> bool:
+    if role is None:
+        return False
+    value = role.value if isinstance(role, Role) else str(role)
+    return value in {
+        Role.HQ_SAFE.value,
+        Role.HQ_OTHER.value,
+        Role.HQ_SAFE_ADMIN.value,
+        Role.SUPER_ADMIN.value,
+    }
+
+
 @router.get("", response_model=list[OpinionOut])
 def list_opinions(
     db: DbDep,
@@ -74,11 +86,17 @@ def create_opinion(
     if not site_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="site_id is required")
 
+    reporter_name = (
+        (getattr(current_user, "name", None) or "").strip()
+        or (getattr(current_user, "login_id", None) or "").strip()
+        or "사용자"
+    )
+
     opinion = Opinion(
         site_id=site_id,
         category=body.category,
         content=body.content,
-        reporter_type=body.reporter_type,
+        reporter_type=reporter_name,
         status=OpinionStatus.RECEIVED,
         created_by_user_id=int(current_user.id),
     )
@@ -101,6 +119,8 @@ def update_opinion(
 
     if current_user.role == Role.SITE and current_user.site_id != opinion.site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    if not _can_review_opinion(current_user.role):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only HQ users can review opinions")
 
     if body.status:
         opinion.status = body.status

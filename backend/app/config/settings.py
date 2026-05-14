@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     test_gps_radius_m: int = Field(default=5, validation_alias="BESMA_TEST_GPS_RADIUS_M")
 
     backend_host: str = "127.0.0.1"
-    backend_port: int = 8000
+    backend_port: int = 8001
 
     sqlite_path: Path = BASE_DIR / "database" / "besma.db"
 

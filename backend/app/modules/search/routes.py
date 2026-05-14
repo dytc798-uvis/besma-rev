@@ -13,6 +13,7 @@ SEARCH_ALLOWED_ROLES = {
     Role.SUPER_ADMIN.value,
     Role.HQ_SAFE_ADMIN.value,
     Role.HQ_SAFE.value,
+    Role.ACCIDENT_ADMIN.value,
     Role.SITE.value,
     Role.HQ_OTHER.value,
 }

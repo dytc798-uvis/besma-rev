@@ -7,7 +7,7 @@ class OpinionCreate(BaseModel):
     site_id: int | None = None
     category: str
     content: str
-    reporter_type: str
+    reporter_type: str | None = None
 
 
 class OpinionUpdate(BaseModel):

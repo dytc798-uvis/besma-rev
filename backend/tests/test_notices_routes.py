@@ -87,3 +87,10 @@ def test_notices_create_list_and_comment(tmp_path: Path):
     assert detail_res.status_code == 200
     assert len(detail_res.json()["comments"]) == 1
     assert detail_res.json()["comments"][0]["body"] == "확인했습니다."
+
+    latest_res = client.get("/notices/latest", params={"limit": 3})
+    assert latest_res.status_code == 200
+    items = latest_res.json()["items"]
+    assert len(items) == 1
+    assert items[0]["id"] == notice_id
+    assert items[0]["title"] == "공지 제목"

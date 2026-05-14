@@ -5,7 +5,7 @@
         <div class="flex w-full flex-wrap items-start justify-between gap-4">
           <div>
             <h2 class="m-0 text-[17px] font-bold text-slate-900">주기 기반 문서 모니터링</h2>
-            <p class="sub">TBM은 일별 누적 운영데이터를 월간 집계로 표현하고, 클릭 시 일별 drill-down을 제공합니다.</p>
+            <p class="sub">일일 작업·배포·서명 누적 데이터를 월간으로 집계합니다. 셀을 클릭하면 일별 상세를 확인할 수 있습니다.</p>
           </div>
         </div>
       </template>
@@ -65,11 +65,11 @@
     </BaseCard>
 
     <div v-if="dailyModalOpen" class="modal-backdrop" @click.self="closeDailyModal">
-      <BaseCard class="modal-card !w-full max-w-[920px]" title="TBM 일별 상세">
+      <BaseCard class="modal-card !w-full max-w-[920px]" title="일별 상세">
         <template #head>
           <div class="modal-head">
             <div>
-              <div class="modal-title">TBM 월간 {{ dailyData?.year_month }} · {{ dailyData?.site_name }}</div>
+              <div class="modal-title">{{ dailyData?.year_month }} · {{ dailyData?.site_name }}</div>
               <div class="modal-sub">
                 생성 {{ dailyData?.summary.generated_days }}일 / 완료 {{ dailyData?.summary.completed_days }}일 / 누락
                 {{ dailyData?.summary.missing_days }}일

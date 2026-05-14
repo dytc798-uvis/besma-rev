@@ -2,7 +2,7 @@
   <div class="card">
     <div class="card-title">HQ_ADMIN 테스트 허브</div>
     <p style="margin-top: 0; color: #6b7280; font-size: 13px">
-      TBM 요약/결재 화면 진입을 빠르게 점검하는 테스트 전용 도구입니다.
+      문서취합·문서 상세 진입을 빠르게 점검하는 테스트 전용 도구입니다.
     </p>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
       <label class="form-field">
@@ -16,8 +16,8 @@
     </div>
     <div class="toolbar" style="margin-top: 10px">
       <div class="toolbar-actions">
-        <button class="primary" @click="fetchTbmSummary">TBM Summary 조회</button>
-        <button class="primary" @click="goTbmView">TBM View 이동</button>
+        <button class="primary" @click="fetchTbmSummary">문서 요약 API 조회</button>
+        <button class="primary" @click="goDocumentDetail">문서 상세 이동</button>
         <button class="primary" @click="goApprovalInbox">결재함 이동</button>
         <button class="primary" @click="goDocumentList">문서목록 이동</button>
       </div>
@@ -46,9 +46,9 @@ async function fetchTbmSummary() {
   setResult(res.data);
 }
 
-function goTbmView() {
+function goDocumentDetail() {
   if (!documentId.value) return;
-  router.push({ name: "hq-safe-document-tbm-view", params: { id: documentId.value } });
+  router.push({ name: "hq-safe-document-detail", params: { id: String(documentId.value) } });
 }
 
 function goApprovalInbox() {

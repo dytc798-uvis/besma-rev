@@ -13,12 +13,18 @@ function resolveApiBaseUrl() {
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     // 운영 도메인에서 API는 api.besma.co.kr를 우선 사용한다.
-    if (host === "besma.co.kr" || host === "www.besma.co.kr") {
+    // 서브도메인·Vercel 프리뷰 등도 동일 백엔드를 쓴다(CORS allow_origin_regex와 맞춤).
+    if (
+      host === "besma.co.kr" ||
+      host === "www.besma.co.kr" ||
+      host.endsWith(".besma.co.kr") ||
+      host.endsWith(".vercel.app")
+    ) {
       return `${window.location.protocol}//api.besma.co.kr`;
     }
-    return `${window.location.protocol}//${host}:8000`;
+    return `${window.location.protocol}//${host}:8001`;
   }
-  return "http://127.0.0.1:8000";
+  return "http://127.0.0.1:8001";
 }
 
 export const api = axios.create({

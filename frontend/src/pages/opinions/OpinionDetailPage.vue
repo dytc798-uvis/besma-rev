@@ -27,7 +27,7 @@
       </div>
     </div>
 
-    <div style="margin-top: 16px">
+    <div style="margin-top: 16px" v-if="canReview">
       <h3 style="font-size: 14px; margin-bottom: 8px">상태 / 조치 업데이트</h3>
       <form class="form-grid" @submit.prevent="update">
         <div class="form-field">
@@ -47,6 +47,9 @@
           <button type="submit" class="primary">저장</button>
         </div>
       </form>
+    </div>
+    <div v-else style="margin-top: 16px" class="review-readonly-note">
+      본사에서 검토/조치 상태를 업데이트합니다. 조치 완료 시 이 화면에서 결과를 확인할 수 있습니다.
     </div>
   </div>
 </template>
@@ -77,6 +80,10 @@ const opinion = ref<OpinionDetail | null>(null);
 const deleting = ref(false);
 const status = ref("RECEIVED");
 const actionResult = ref("");
+const canReview = computed(() => {
+  const role = auth.user?.role ?? "";
+  return role === "HQ_SAFE" || role === "HQ_OTHER" || role === "HQ_SAFE_ADMIN" || role === "SUPER_ADMIN";
+});
 
 const canDelete = computed(() => {
   const o = opinion.value;
@@ -120,7 +127,7 @@ async function load() {
 }
 
 async function update() {
-  if (!opinion.value) return;
+  if (!opinion.value || !canReview.value) return;
   await api.put(`/opinions/${opinion.value.id}`, {
     status: status.value,
     action_result: actionResult.value,
@@ -138,5 +145,13 @@ onMounted(load);
 }
 .danger-btn:hover:not(:disabled) {
   background: #fef2f2;
+}
+.review-readonly-note {
+  font-size: 12px;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
 }
 </style>

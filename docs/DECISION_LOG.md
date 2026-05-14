@@ -1191,6 +1191,34 @@
 
 ---
 
+### [DECISION-084]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-05-12 |
+| **Title** | 제품 내비게이션에서 TBM 전용 UI를 제거하고 문서취합을 중심 축으로 둔다 |
+| **Context** | 오너 지시: TBM 관련 화면·메뉴를 중단하고, 현장·본사 모두 문서취합(제출·검토) 흐름으로 통일한다. |
+| **Options** | A. TBM 전용 라우트·메뉴·카피 제거(구 URL은 문서 상세로 리다이렉트) / B. 메뉴만 숨기고 페이지 유지 / C. 유지 |
+| **Decision** | **A** |
+| **Reason** | 현장 데모·운영 허브를 문서취합으로 고정; 북마크된 `*/tbm-view` URL은 깨지지 않도록 동일 문서 상세로 유도한다. |
+| **Impact Scope** | `frontend/src/router/index.ts`, `HQSafeLayout.vue`, `SiteMobileDailyCapturePage.vue`, `siteHomeRoute.ts`, `HQSitesPage.vue`, `SiteMobileOpsPage.vue`(TBM 패널 제거), `DocumentDetailPage.vue`, `RedirectLegacyTbmViewPage.vue`(신규), `hqSidebarMenuGroups.ts`, `HQDocumentSettingsPage.vue` 고정 메뉴 라벨, 기타 TBM 내비 문자열 |
+
+---
+
+### [DECISION-085]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-05-12 |
+| **Title** | 안전 교육·안전 점검 메뉴를 통합하고 월 캘린더·본사 승인 일정 변경으로 운영한다 |
+| **Context** | 오너 지시: 메뉴명을 「안전교육 및 안전점검」으로 통일하고, 삼성인정제 스케줄표 기반 월별 일정을 캘린더로 표시한다. 현장은 날짜별 상세·의견(일정 변경 제안), 본사는 승인 시 해당 일로 확정한다. |
+| **Options** | A. 단일 메뉴·캘린더·제안/승인 API 연동 / B. 메뉴만 통합하고 기존 게시판 유지 / C. 분리 유지 |
+| **Decision** | **A** |
+| **Reason** | 운영 단일 진입점과 일정 변경 감사 추적을 동시에 만족한다. 구 `/safety-inspections` URL은 `/safety-education`으로 리다이렉트한다. |
+| **Impact Scope** | `SafetyEducationInspectionCalendarPage.vue`, `router/index.ts`, `SiteLayout.vue`, `HQSafeLayout.vue`, `hqSidebarMenuGroups.ts`, `HQDocumentSettingsPage.vue`, `backend/app/modules/safety_features`(일정 엔트리·제안·시드 JSON) |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -1247,3 +1275,5 @@
 | 2026-04-17 | Decision 072 추가 — 티커 최근 3건·열람 제외(상세 조회 자동)·티커 바 두께 |
 | 2026-04-17 | Decision 077 추가 — 문서 코멘트 티커는 클릭/진입으로 소거하지 않고 `내 현장 문서`의 확인 버튼으로만 소거 |
 | 2026-04-20 | Decision 078 추가 — 사고 후속조치 항목은 자동 연동 없이 수동 체크로만 운영 |
+| 2026-05-12 | Decision 084 추가 — TBM 전용 UI 제거, 문서취합 중심([DECISION-084]) |
+| 2026-05-12 | Decision 085 추가 — 안전교육·안전점검 메뉴 통합 및 캘린더·일정 변경 승인 흐름([DECISION-085]) |

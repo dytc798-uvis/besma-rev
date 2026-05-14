@@ -102,15 +102,12 @@ async def upload_policy_goal_document(
     current_user: CurrentUserDep,
     scope: str = Form(...),
     kind: str = Form(...),
-    title: str = Form(...),
+    title: str | None = Form(None),
     site_id: int | None = Form(None),
     file: UploadFile = File(...),
 ):
     normalized_scope = _normalize_scope(scope)
     normalized_kind = _normalize_kind(kind)
-    clean_title = (title or "").strip()
-    if not clean_title:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="title is required")
 
     hq_ok = _is_hq_uploader(current_user.role)
     site_ok = _role_value(current_user.role) == Role.SITE.value
@@ -146,6 +143,17 @@ async def upload_policy_goal_document(
     source_name = file.filename or "upload.bin"
     ext = Path(source_name).suffix or ".bin"
     content = await file.read()
+
+    raw_title = (title or "").strip()
+    stem = Path(source_name).stem.strip()
+    if raw_title:
+        clean_title = raw_title
+    elif stem:
+        clean_title = stem
+    else:
+        clean_title = "안전보건 방침" if normalized_kind == "POLICY" else "안전보건 목표"
+    if len(clean_title) > 200:
+        clean_title = clean_title[:200]
     if len(content) > settings.document_upload_max_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,

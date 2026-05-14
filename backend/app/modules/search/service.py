@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import exists, func, or_
 from sqlalchemy.orm import Session
 
 from app.modules.risk_library.models import (
@@ -139,6 +140,84 @@ def _collect_fields(row: RiskLibraryItemRevision) -> dict[str, str]:
     }
 
 
+def _active_revision_query(db: Session):
+    return (
+        db.query(RiskLibraryItemRevision)
+        .join(RiskLibraryItem, RiskLibraryItem.id == RiskLibraryItemRevision.item_id)
+        .filter(
+            RiskLibraryItemRevision.is_current.is_(True),
+            RiskLibraryItem.is_active.is_(True),
+        )
+    )
+
+
+def _apply_unit_work_risk_type_sql(
+    query_obj,
+    *,
+    unit_work_filter: str,
+    risk_type_filter: str,
+):
+    """Python `in` on lowercased concat — SQLite instr + lower 로 동일 의미."""
+    if unit_work_filter:
+        unit_concat = func.lower(
+            func.concat_ws(
+                " ",
+                func.coalesce(RiskLibraryItemRevision.unit_work, ""),
+                RiskLibraryItemRevision.work_category,
+                RiskLibraryItemRevision.trade_type,
+            )
+        )
+        query_obj = query_obj.filter(func.instr(unit_concat, unit_work_filter) > 0)
+    if risk_type_filter:
+        risk_concat = func.lower(
+            func.concat_ws(
+                " ",
+                RiskLibraryItemRevision.risk_factor,
+                RiskLibraryItemRevision.countermeasure,
+            )
+        )
+        query_obj = query_obj.filter(func.instr(risk_concat, risk_type_filter) > 0)
+    return query_obj
+
+
+def _revision_row_matches_expanded_pattern(pattern: str):
+    """토큰(소문자)이 본문·키워드에 부분 문자열로 들어가는 행만 후보로 남긴다."""
+    if not pattern:
+        return None
+    kw = exists().where(
+        RiskLibraryKeyword.risk_revision_id == RiskLibraryItemRevision.id,
+        func.instr(func.lower(RiskLibraryKeyword.keyword), pattern) > 0,
+    )
+    text_cols = (
+        RiskLibraryItemRevision.unit_work,
+        RiskLibraryItemRevision.work_category,
+        RiskLibraryItemRevision.trade_type,
+        RiskLibraryItemRevision.process,
+        RiskLibraryItemRevision.risk_factor,
+        RiskLibraryItemRevision.risk_cause,
+        RiskLibraryItemRevision.countermeasure,
+        RiskLibraryItemRevision.note,
+        RiskLibraryItemRevision.source_file,
+        RiskLibraryItemRevision.source_sheet,
+        RiskLibraryItemRevision.source_page_or_section,
+    )
+    col_hits = [
+        func.instr(func.lower(func.coalesce(c, "")), pattern) > 0 for c in text_cols
+    ]
+    return or_(kw, *col_hits)
+
+
+def _apply_token_sql_prefilter(query_obj, tokens: list[str]):
+    expanded: set[str] = set()
+    for t in tokens:
+        expanded.update(_expand_token(t))
+    expanded.discard("")
+    if not expanded:
+        return query_obj
+    ors = [_revision_row_matches_expanded_pattern(p) for p in expanded]
+    return query_obj.filter(or_(*ors))
+
+
 def search_risk_library(
     db: Session,
     *,
@@ -152,16 +231,64 @@ def search_risk_library(
     normalized_query = normalize_query(query)
     tokens = tokenize_query(normalized_query)
     resolved_mode = classify_search_mode(query, mode)
+    unit_work_filter = normalize_query(unit_work or "")
+    risk_type_filter = normalize_query(risk_type or "")
+    lim = max(1, int(limit))
+    off = max(0, int(offset))
 
-    base_rows = (
-        db.query(RiskLibraryItemRevision)
-        .join(RiskLibraryItem, RiskLibraryItem.id == RiskLibraryItemRevision.item_id)
-        .filter(
-            RiskLibraryItemRevision.is_current.is_(True),
-            RiskLibraryItem.is_active.is_(True),
+    # 검색어 없음: 전량 .all() 금지 — DB count/offset/limit 만 사용 (list_risk_library 와 유사).
+    if not tokens:
+        q = _active_revision_query(db)
+        q = _apply_unit_work_risk_type_sql(
+            q, unit_work_filter=unit_work_filter, risk_type_filter=risk_type_filter
         )
-        .all()
+        total = int(q.count())
+        rows = (
+            q.order_by(RiskLibraryItemRevision.risk_r.desc(), RiskLibraryItemRevision.id.asc())
+            .offset(off)
+            .limit(lim)
+            .all()
+        )
+        results = [
+            {
+                "risk_revision_id": row.id,
+                "risk_item_id": row.item_id,
+                "unit_work": row.unit_work,
+                "work_category": row.work_category,
+                "trade_type": row.trade_type,
+                "process": row.process,
+                "risk_factor": row.risk_factor,
+                "counterplan": row.countermeasure,
+                "risk_f": row.risk_f,
+                "risk_s": row.risk_s,
+                "risk_r": row.risk_r,
+                "note": row.note,
+                "source_file": row.source_file,
+                "source_sheet": row.source_sheet,
+                "source_row": row.source_row,
+                "source_page_or_section": row.source_page_or_section,
+                "score": 0.0,
+                "matched_tokens": [],
+                "matched_fields": [],
+            }
+            for row in rows
+        ]
+        return {
+            "mode": resolved_mode,
+            "normalized_query": normalized_query,
+            "tokens": tokens,
+            "total": total,
+            "limit": lim,
+            "offset": off,
+            "results": results,
+        }
+
+    q = _active_revision_query(db)
+    q = _apply_unit_work_risk_type_sql(
+        q, unit_work_filter=unit_work_filter, risk_type_filter=risk_type_filter
     )
+    q = _apply_token_sql_prefilter(q, tokens)
+    base_rows = q.all()
 
     row_ids = [r.id for r in base_rows]
     keywords_by_revision: dict[int, set[str]] = {row_id: set() for row_id in row_ids}
@@ -174,26 +301,9 @@ def search_risk_library(
         for kw_row in keyword_rows:
             keywords_by_revision[int(kw_row.risk_revision_id)].add((kw_row.keyword or "").lower())
 
-    unit_work_filter = normalize_query(unit_work or "")
-    risk_type_filter = normalize_query(risk_type or "")
-
     scored: list[_ScoredResult] = []
     for row in base_rows:
         fields = _collect_fields(row)
-
-        if unit_work_filter:
-            unit_blob = " ".join([fields["unit_work"], fields["work_category"], fields["trade_type"]]).lower()
-            if unit_work_filter not in unit_blob:
-                continue
-        if risk_type_filter:
-            risk_blob = " ".join([fields["risk_factor"], fields["counterplan"]]).lower()
-            if risk_type_filter not in risk_blob:
-                continue
-
-        if not tokens and not normalized_query:
-            # 빈 질의는 목록 조회로 간주
-            scored.append(_ScoredResult(row=row, score=0.0, matched_tokens=[], matched_fields=[]))
-            continue
 
         score_total = 0.0
         matched_tokens: set[str] = set()
@@ -254,7 +364,7 @@ def search_risk_library(
         deduped.append(item)
 
     total = len(deduped)
-    paged = deduped[max(0, offset) : max(0, offset) + max(1, limit)]
+    paged = deduped[off : off + lim]
 
     results = []
     for item in paged:
@@ -288,7 +398,7 @@ def search_risk_library(
         "normalized_query": normalized_query,
         "tokens": tokens,
         "total": total,
-        "limit": max(1, int(limit)),
-        "offset": max(0, int(offset)),
+        "limit": lim,
+        "offset": off,
         "results": results,
     }

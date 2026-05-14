@@ -21,7 +21,7 @@
       <thead>
         <tr>
           <th>ID</th>
-          <th>이름</th>
+          <th>제안자</th>
           <th>아이디어</th>
           <th>상태</th>
           <th style="width: 88px">삭제</th>
@@ -59,10 +59,6 @@
     <div v-if="showNew" style="margin-top: 16px">
       <h3 style="font-size: 14px; margin-bottom: 8px">운영 아이디어 등록</h3>
       <form class="form-grid" @submit.prevent="createOpinion">
-        <div class="form-field">
-          <label>이름</label>
-          <input v-model="newReporterType" type="text" placeholder="자유 입력" required />
-        </div>
         <div class="form-field" style="grid-column: span 2">
           <label>아이디어</label>
           <textarea v-model="newContent" rows="3" placeholder="운영 개선 아이디어를 입력하세요" required />
@@ -97,7 +93,6 @@ const statusFilter = ref("");
 const keyword = ref("");
 const showNew = ref(false);
 const newCategory = ref("운영 아이디어");
-const newReporterType = ref("현장");
 const newContent = ref("");
 const errorMessage = ref("");
 const deletingId = ref<number | null>(null);
@@ -180,11 +175,9 @@ async function createOpinion() {
       site_id: null,
       category: newCategory.value,
       content: newContent.value,
-      reporter_type: newReporterType.value,
     });
     showNew.value = false;
     newCategory.value = "운영 아이디어";
-    newReporterType.value = "현장";
     newContent.value = "";
     await load();
   } catch (error: unknown) {

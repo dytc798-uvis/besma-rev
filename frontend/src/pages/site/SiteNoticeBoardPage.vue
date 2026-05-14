@@ -76,6 +76,7 @@ import { BaseCard } from "@/components/product";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst } from "@/utils/datetime";
+import { markNoticeSeenForTicker } from "@/utils/noticeTickerRead";
 
 interface NoticeItem {
   id: number;
@@ -147,6 +148,7 @@ async function loadNotices() {
 async function loadNoticeDetail(id: number) {
   const res = await api.get(`/notices/${id}`);
   comments.value = res.data.comments ?? [];
+  markNoticeSeenForTicker(auth.user?.login_id ?? null, id);
 }
 
 async function selectNotice(id: number) {

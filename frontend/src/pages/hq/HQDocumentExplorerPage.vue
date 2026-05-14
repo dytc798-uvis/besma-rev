@@ -3,8 +3,8 @@
     <section class="hero-panel">
       <div class="hero-copy">
         <h1 class="page-title">문서 탐색</h1>
-        <p class="page-subtitle">PDF 문서만 탐색합니다.</p>
-        <p class="page-note">검색은 PDF 파일명과 경로 기준으로만 동작합니다.</p>
+        <p class="page-subtitle">기준·표준 양식(docs/base)과 현장 제출본(문서취합 저장소)은 업로드된 파일 형식을 모두 목록에 표시합니다. (실행 파일 등은 제외)</p>
+        <p class="page-note">검색은 파일명과 상대 경로 문자열 기준입니다. (실행 파일 등은 제외)</p>
       </div>
       <button type="button" class="law-registry-link" @click="openLawRegistry">법규등록부</button>
     </section>
@@ -97,9 +97,14 @@
               <span class="search-icon" aria-hidden="true">⌕</span>
               <input
                 v-model="searchText"
-                type="text"
+                type="search"
                 class="search-input"
                 placeholder="파일명, 경로로 검색"
+                autocomplete="off"
+                autocorrect="off"
+                spellcheck="false"
+                :readonly="searchFieldAutofillGuard"
+                @focus="searchFieldAutofillGuard = false"
               />
             </div>
           </FilterBar>
@@ -222,8 +227,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import type { AxiosError } from "axios";
+import { useRoute } from "vue-router";
 import { BaseCard, FilterBar, KpiCard } from "@/components/product";
 import { api } from "@/services/api";
 import { formatDateKst, toDate } from "@/utils/datetime";
@@ -286,6 +292,11 @@ const dateRangeOptions = [
 ] as const;
 
 const tagOptions = ["#실파일", "#경로검색", "#MVP"];
+
+const route = useRoute();
+
+/** 모바일 브라우저가 첫 텍스트 필드에 로그인 ID 등을 자동완성하면 검색 API만 타고 목록이 비는 경우를 줄인다. */
+const searchFieldAutofillGuard = ref(true);
 
 const loading = ref(false);
 const error = ref("");
@@ -355,14 +366,54 @@ watch([activeTab, selectedDocTypes, selectedSite, selectedDateRange, selectedTag
   currentPage.value = 1;
 });
 
+function resetExplorerUiState() {
+  searchText.value = "";
+  searchResults.value = [];
+  lawResults.value = [];
+  lawResultsTotal.value = 0;
+  lawError.value = "";
+  showAllLawResults.value = false;
+  activeTab.value = "all";
+  selectedDocTypes.value = ["field", "template", "reference"];
+  selectedSite.value = "";
+  selectedDateRange.value = "";
+  selectedTags.value = [];
+  currentPage.value = 1;
+  searchFieldAutofillGuard.value = true;
+}
+
+let searchAutofillUnlockTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(
+  () => route.name,
+  (name) => {
+    if (name !== "site-document-explorer" && name !== "hq-safe-document-explorer") {
+      return;
+    }
+    resetExplorerUiState();
+    void loadAllDocuments();
+    if (searchAutofillUnlockTimer) {
+      clearTimeout(searchAutofillUnlockTimer);
+    }
+    searchAutofillUnlockTimer = setTimeout(() => {
+      searchFieldAutofillGuard.value = false;
+      searchAutofillUnlockTimer = null;
+    }, 400);
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  if (searchAutofillUnlockTimer) {
+    clearTimeout(searchAutofillUnlockTimer);
+    searchAutofillUnlockTimer = null;
+  }
+});
+
 watch(searchText, async () => {
   currentPage.value = 1;
   showAllLawResults.value = false;
   await loadSearchResults();
-});
-
-onMounted(async () => {
-  await loadAllDocuments();
 });
 
 async function loadAllDocuments() {

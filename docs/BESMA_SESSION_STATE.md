@@ -7,7 +7,7 @@
 ## 1. 현재 기준 프로젝트
 
 - 프로젝트명: BESMA 로컬 MVP
-- 워크스페이스 절대경로: `D:\besma-rev`
+- 워크스페이스 절대경로: `D:\besma-rev` (다른 머신에서는 `C:\besma-rev\besma-rev_handoff` 등 실제 경로로 대체)
 - 프로젝트 유형: `FastAPI + Vue 3 + TypeScript + Vite + SQLite`
 - 실행 포트
   - backend: `127.0.0.1:8001`
@@ -51,6 +51,17 @@
 ## 4. 최근 작업 이력
 
 아래 형식으로 최신 작업을 위에 추가한다.
+
+### 2026-05-12
+
+- 작업자: Cursor Agent
+- 작업 목적: 현장 데모 전 로컬 점검·API 포트 정합·문서화
+- 수행 내용
+  - `frontend/src/services/api.ts` 로컬 기본 API 포트 **8001**로 수정 (`dev_start.bat`·README와 일치)
+  - `README` 샘플 계정·API 주소(6b) 보강, `backend/app/config/settings.py` `backend_port` 기본 8001
+  - 로컬 시드·빌드·브라우저 스냅샷 기반 스모크; 정리 문서 `docs/FIELD_READINESS_2026-05-12.md` 추가
+- 다음 권장: 현장 PC에서 스크린샷 재수집, 사고·동적메뉴 등 고위험 경로 별도 브랜치 검증
+- 2026-05-12(후속): 오너 지시로 TBM 전용 UI 제거·문서취합 중심([DECISION-084]) — `siteHomeRoute` 데스크톱 기본을 `/site/documents`로 변경
 
 ### 2026-03-20
 

@@ -9,7 +9,7 @@ from app.core.database import Base
 from app.core.enums import Role, UIType
 from app.modules.sites.models import Site
 from app.modules.users.models import User
-from app.seed.demo_login_users import SITE05_DEMO_PASSWORD, ensure_demo_login_users
+from app.seed.demo_login_users import DEMO_DEFAULT_PASSWORD, ensure_demo_login_users
 
 
 def _setup_db():
@@ -30,34 +30,38 @@ def _setup_db():
 def test_ensure_demo_login_users_is_idempotent_and_links_site_users():
     db = _setup_db()
 
-    first = ensure_demo_login_users(db, password="temp@12", site_code="SITE002")
-    second = ensure_demo_login_users(db, password="temp@12", site_code="SITE002")
+    first = ensure_demo_login_users(db, password=DEMO_DEFAULT_PASSWORD, site_code="SITE002")
+    second = ensure_demo_login_users(db, password=DEMO_DEFAULT_PASSWORD, site_code="SITE002")
 
     assert first.site_code == "SITE002"
     assert second.site_id == first.site_id
     assert db.query(User).filter(User.login_id.in_(["hq01", "hq02", "hq03", "hq04", "hq05"])).count() == 5
-    assert db.query(User).filter(User.login_id.in_(["site01", "site02", "site03", "site05"])).count() == 4
+    assert db.query(User).filter(User.login_id.in_(["site01", "site02", "site03", "site04", "site05"])).count() == 5
 
     site_users = db.query(User).filter(User.role == Role.SITE).all()
-    assert len([user for user in site_users if user.login_id in {"site01", "site02", "site03", "site05"}]) == 4
-    assert all(user.site_id == first.site_id for user in site_users if user.login_id in {"site01", "site02", "site03", "site05"})
+    assert len([user for user in site_users if user.login_id in {"site01", "site02", "site03", "site04", "site05"}]) == 5
+    assert all(user.site_id == first.site_id for user in site_users if user.login_id in {"site01", "site02", "site03", "site04", "site05"})
     assert all(user.is_active for user in db.query(User).all())
-    assert all(user.must_change_password is False for user in db.query(User).all() if user.login_id in {"hq01", "hq02", "hq03", "hq04", "hq05", "site01", "site02", "site03", "site05"})
+    assert all(user.must_change_password is False for user in db.query(User).all() if user.login_id in {"hq01", "hq02", "hq03", "hq04", "hq05", "site01", "site02", "site03", "site04", "site05"})
     assert db.query(Site).count() == 1
     assert all(item.verified_password for item in second.users)
     hq01 = db.query(User).filter(User.login_id == "hq01").first()
     assert hq01 is not None
-    assert verify_password("1234", hq01.password_hash)
+    assert verify_password(DEMO_DEFAULT_PASSWORD, hq01.password_hash)
     hq02 = db.query(User).filter(User.login_id == "hq02").first()
     assert hq02 is not None
-    assert verify_password("temp@12", hq02.password_hash)
+    assert verify_password(DEMO_DEFAULT_PASSWORD, hq02.password_hash)
     by_login = {user.login_id: user.name for user in db.query(User).all()}
     assert by_login["site01"] == "양규성"
     assert by_login["site03"] == "박규철"
+    assert by_login["site04"] == "이상현"
     assert by_login["site05"] == "민경준"
     site05 = db.query(User).filter(User.login_id == "site05").first()
     assert site05 is not None
-    assert verify_password(SITE05_DEMO_PASSWORD, site05.password_hash)
+    assert verify_password(DEMO_DEFAULT_PASSWORD, site05.password_hash)
+    site04 = db.query(User).filter(User.login_id == "site04").first()
+    assert site04 is not None
+    assert verify_password(DEMO_DEFAULT_PASSWORD, site04.password_hash)
 
 
 def test_demo_login_users_replaces_legacy_hq01_to_hq03_and_case_collisions():
@@ -89,7 +93,7 @@ def test_demo_login_users_replaces_legacy_hq01_to_hq03_and_case_collisions():
     )
     db.commit()
 
-    ensure_demo_login_users(db, password="temp@12", site_code="SITE002")
+    ensure_demo_login_users(db, password=DEMO_DEFAULT_PASSWORD, site_code="SITE002")
 
     assert db.query(User).filter(User.login_id == "HQ01").count() == 0
     u1 = db.query(User).filter(User.login_id == "hq01").first()

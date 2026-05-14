@@ -44,7 +44,7 @@
           <div class="detail-item"><span>기능인등급/안전점수</span><strong>{{ skillAndScoreLabel }}</strong></div>
           <div class="detail-item"><span>오늘 작업</span><strong>{{ todayWorkLabel }}</strong></div>
           <div class="detail-item"><span>출역 여부</span><strong>{{ attendanceLabel }}</strong></div>
-          <div class="detail-item"><span>TBM 서명 여부</span><strong>{{ tbmSignLabel }}</strong></div>
+          <div class="detail-item"><span>배포·일일문서 서명</span><strong>{{ tbmSignLabel }}</strong></div>
         </div>
 
         <div v-if="selectedUser" class="user-pw-reset">

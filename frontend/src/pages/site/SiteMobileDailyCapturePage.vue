@@ -1,7 +1,7 @@
 <template>
   <div class="capture-page">
     <div class="hero">
-      <h1>TBM · 일일안전회의 사진</h1>
+      <h1>일일안전회의 일지·사진 (문서 제출)</h1>
       <p class="lead">
         현장 사진을 먼저 저장해 두었다가, 같은 날 PDF 일지를 올리면 <strong>일지 뒤에</strong> 자동으로 붙습니다. 순서는 자유롭습니다.
         임시 사진은 이 브라우저(기기)에만 저장되며, 다른 기기와 공유되지 않습니다.
@@ -17,19 +17,8 @@
       </div>
 
       <div class="card">
-        <div class="seg">
-          <button type="button" :class="{ on: docCode === 'DAILY_TBM' }" @click="docCode = 'DAILY_TBM'">TBM</button>
-          <button
-            type="button"
-            :class="{ on: docCode === 'DAILY_SAFETY_MEETING_LOG' }"
-            @click="docCode = 'DAILY_SAFETY_MEETING_LOG'"
-          >
-            일일안전회의 일지
-          </button>
-        </div>
-
         <p class="hint">
-          {{ docTitle }} · 임시 사진 {{ draftPhotos.length }}장
+          일일안전회의 일지 · 임시 사진 {{ draftPhotos.length }}장
           <span v-if="!requirementRow">(요구사항이 없으면 업로드할 수 없습니다)</span>
         </p>
 
@@ -108,13 +97,12 @@ type StatusItem = {
 const auth = useAuthStore();
 const siteId = computed(() => auth.effectiveSiteId ?? auth.user?.site_id ?? null);
 const workDate = ref(todayKst());
-const docCode = ref<"DAILY_TBM" | "DAILY_SAFETY_MEETING_LOG">("DAILY_TBM");
+/** 문서취합 축: 일일안전회의 일지만 처리 (TBM 전용 분기 제거) */
+const DOC_TYPE_CODE = "DAILY_SAFETY_MEETING_LOG" as const;
 const items = ref<StatusItem[]>([]);
-const draftPhotos = ref(listDraftPhotos(0, workDate.value, docCode.value));
+const draftPhotos = ref(listDraftPhotos(0, workDate.value, DOC_TYPE_CODE));
 
-const requirementRow = computed(() => items.value.find((r) => r.document_type_code === docCode.value) ?? null);
-
-const docTitle = computed(() => (docCode.value === "DAILY_TBM" ? "TBM" : "일일안전회의 일지"));
+const requirementRow = computed(() => items.value.find((r) => r.document_type_code === DOC_TYPE_CODE) ?? null);
 
 const logPdf = ref<File | null>(null);
 const uploadMessage = ref("");
@@ -131,7 +119,7 @@ const canUploadLog = computed(
     !!siteId.value &&
     !!requirementRow.value &&
     !!logPdf.value &&
-    requirementRow.value.document_type_code === docCode.value,
+    requirementRow.value.document_type_code === DOC_TYPE_CODE,
 );
 
 const canAppend = computed(
@@ -147,7 +135,7 @@ function refreshDraftList() {
     draftPhotos.value = [];
     return;
   }
-  draftPhotos.value = listDraftPhotos(siteId.value, workDate.value, docCode.value);
+  draftPhotos.value = listDraftPhotos(siteId.value, workDate.value, DOC_TYPE_CODE);
 }
 
 async function loadStatus() {
@@ -165,7 +153,7 @@ async function loadStatus() {
   refreshDraftList();
 }
 
-watch([siteId, workDate, docCode], () => {
+watch([siteId, workDate], () => {
   void loadStatus();
   refreshDraftList();
 });
@@ -177,20 +165,20 @@ async function onPickPhotos(e: Event) {
   const input = e.target as HTMLInputElement;
   const files = input.files;
   if (!files?.length || !siteId.value) return;
-  await addDraftPhotosFromFiles(siteId.value, workDate.value, docCode.value, files);
+  await addDraftPhotosFromFiles(siteId.value, workDate.value, DOC_TYPE_CODE, files);
   input.value = "";
   refreshDraftList();
 }
 
 function clearDraft() {
   if (!siteId.value) return;
-  clearDraftPhotos(siteId.value, workDate.value, docCode.value);
+  clearDraftPhotos(siteId.value, workDate.value, DOC_TYPE_CODE);
   refreshDraftList();
 }
 
 function removeOne(id: string) {
   if (!siteId.value) return;
-  removeDraftPhoto(siteId.value, workDate.value, docCode.value, id);
+  removeDraftPhoto(siteId.value, workDate.value, DOC_TYPE_CODE, id);
   refreshDraftList();
 }
 
@@ -215,16 +203,16 @@ async function submitLogWithDraft() {
     const form = new FormData();
     form.append("site_id", String(siteId.value));
     form.append("requirement_id", String(requirementRow.value.requirement_id));
-    form.append("document_type_code", docCode.value);
+    form.append("document_type_code", DOC_TYPE_CODE);
     form.append("work_date", workDate.value);
     form.append("file", logPdf.value);
-    const shots = listDraftPhotos(siteId.value, workDate.value, docCode.value);
+    const shots = listDraftPhotos(siteId.value, workDate.value, DOC_TYPE_CODE);
     for (const p of shots) {
       const blob = dataUrlToBlob(p.dataUrl);
       form.append("append_files", blob, p.name || "attach.jpg");
     }
     await api.post("/document-submissions/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
-    clearDraftPhotos(siteId.value, workDate.value, docCode.value);
+    clearDraftPhotos(siteId.value, workDate.value, DOC_TYPE_CODE);
     logPdf.value = null;
     refreshDraftList();
     uploadMessage.value = "업로드되었습니다.";

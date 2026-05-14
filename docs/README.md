@@ -88,6 +88,24 @@ backend 기준:
 - `stop_local_mvp.bat`
   - 위 두 창을 종료
 
+## 5-1. 운영 프론트 배포(Vercel)
+
+운영 프론트(`www.besma.co.kr`)는 Vercel로 서비스된다.
+
+- 설정 위치: 루트 `.env`
+- 사용 키:
+  - `VERCEL_DEPLOY_SCOPE`
+  - `VERCEL_DEPLOY_PROJECT`
+  - `VERCEL_DEPLOY_ROOT`
+  - `VERCEL_DEPLOY_REPO_ROOT`
+- 실행:
+  - `powershell -ExecutionPolicy Bypass -File .\deploy\deploy_frontend_vercel.ps1`
+  - 최초 로그인 필요 시: `powershell -ExecutionPolicy Bypass -File .\deploy\deploy_frontend_vercel.ps1 -RunLogin`
+
+참고:
+- Windows에서 Vercel CLI 로그인 시 비ASCII 호스트명 때문에 `is not a legal HTTP header value` 오류가 날 수 있다.
+- `deploy/deploy_frontend_vercel.ps1`가 이 문제를 자동 우회한다.
+
 ## 6. 테스트 Persona 모드
 
 로컬 테스트에서만 고정 로그인 + 페르소나 UI 분기를 사용하려면 아래를 설정한다.

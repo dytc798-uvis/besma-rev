@@ -41,6 +41,8 @@
         </label>
       </div>
 
+      <p v-if="apiError" class="api-error" role="alert">{{ apiError }}</p>
+
       <div class="actions">
         <span>총 {{ total }}건</span>
         <button class="btn secondary" :disabled="loading || rows.length === 0" @click="printCurrentSearch">
@@ -174,6 +176,7 @@ const riskTypeFilter = ref("");
 const activeMode = ref<RiskSearchMode>("quick");
 
 const loading = ref(false);
+const apiError = ref<string | null>(null);
 const total = ref(0);
 const offset = ref(0);
 const rows = ref<RiskLibraryItem[]>([]);
@@ -241,6 +244,7 @@ function renderSourceLabel(row: RiskLibraryItem): string {
 async function fetchNow(mode: RiskSearchMode = activeMode.value) {
   activeMode.value = mode;
   loading.value = true;
+  apiError.value = null;
   try {
     const data = await fetchRiskLibrary(buildQuery());
     total.value = data.total;
@@ -249,6 +253,25 @@ async function fetchNow(mode: RiskSearchMode = activeMode.value) {
       const latest = data.results.find((x) => x.risk_revision_id === selectedRow.value?.risk_revision_id);
       selectedRow.value = latest ?? null;
     }
+  } catch (e: unknown) {
+    const ax = e as { response?: { status?: number; data?: { detail?: unknown } } };
+    const st = ax.response?.status;
+    const detail = ax.response?.data?.detail;
+    const msg =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d) => (typeof d === "object" && d && "msg" in d ? String((d as { msg: string }).msg) : "")).filter(Boolean).join(" ")
+          : "";
+    if (st === 403) {
+      apiError.value = "위험성평가 DB 조회 권한이 없습니다. 본사/현장 안전 역할 계정으로 다시 로그인해 주세요.";
+    } else if (st) {
+      apiError.value = msg ? `조회 실패 (${st}): ${msg}` : `조회 실패 (HTTP ${st}).`;
+    } else {
+      apiError.value = "서버에 연결할 수 없습니다. API 주소(VITE_API_BASE_URL)와 백엔드 실행 여부를 확인해 주세요.";
+    }
+    total.value = 0;
+    rows.value = [];
   } finally {
     loading.value = false;
   }
@@ -302,6 +325,7 @@ function isExpanded(revisionId: number): boolean {
 
 async function printCurrentSearch() {
   loading.value = true;
+  apiError.value = null;
   try {
     const data = await fetchRiskLibrary({
       ...buildQuery(),
@@ -309,6 +333,8 @@ async function printCurrentSearch() {
       limit: 1000,
     });
     printRows.value = data.results;
+  } catch {
+    apiError.value = "인쇄용 목록을 불러오지 못했습니다.";
   } finally {
     loading.value = false;
   }
@@ -459,6 +485,15 @@ onMounted(() => {
 .empty {
   text-align: center;
   color: #6b7280;
+}
+.api-error {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 13px;
 }
 .print-only {
   display: none;

@@ -86,7 +86,8 @@
 |------|------|
 | **백엔드** | `deploy/deploy_all.ps1` — 프론트 로컬 빌드 검증 → `git push` → SSH로 `git pull` + `deploy/deploy_backend.sh` + `systemctl restart besma-backend`. 키·호스트는 `deploy/BACKEND_OPERATIONS.md` 참고. |
 | **스크립트 주의** | Windows에서 원격 bash로 넘길 때 **CRLF 제거** 후 `bash -s`로 파이프 (`deploy_all.ps1` 반영됨). |
-| **프론트엔드** | 이 저장소 기본 배포는 **API(8001)만 서버 systemd**. 정적 UI는 **별도 호스팅**(예: Vercel, nginx `dist/`)에서 `npm run build` 결과물을 배포해야 브라우저에 최신 UI가 반영된다. |
+| **프론트엔드** | 이 저장소 기본 배포는 **API(8001)만 서버 systemd**. 정적 UI는 **별도 호스팅**(현재 `www.besma.co.kr` = Vercel)에서 배포해야 브라우저에 최신 UI가 반영된다. |
+| **Vercel 배포** | `deploy/deploy_frontend_vercel.ps1` 사용. 설정값은 루트 `.env`의 `VERCEL_DEPLOY_SCOPE`, `VERCEL_DEPLOY_PROJECT`, `VERCEL_DEPLOY_ROOT`, `VERCEL_DEPLOY_REPO_ROOT`를 읽는다. Windows 비ASCII 호스트명 로그인 오류는 스크립트 내부 패치로 우회한다. |
 
 ---
 

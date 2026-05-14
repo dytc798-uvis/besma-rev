@@ -25,11 +25,11 @@ SITE_DEMO_USERS: list[tuple[str, str]] = [
     ("양규성", "site01"),
     ("박명식", "site02"),
     ("박규철", "site03"),
+    ("이상현", "site04"),
     ("민경준", "site05"),
 ]
 
-# 온보딩용 현장 계정 — 다른 데모 현장 계정과 달리 기본 비밀번호를 유지한다.
-SITE05_DEMO_PASSWORD = "Temp@1234"
+DEMO_DEFAULT_PASSWORD = "1111"
 
 
 def _canonical_demo_login_ids() -> set[str]:
@@ -190,7 +190,7 @@ def _upsert_demo_user(
 def ensure_demo_login_users(
     db: Session,
     *,
-    password: str = "temp@12",
+    password: str = DEMO_DEFAULT_PASSWORD,
     site_code: str = "SITE002",
 ) -> DemoUserProvisionResult:
     site, created_site = ensure_demo_site(db, site_code=site_code)
@@ -211,7 +211,6 @@ def ensure_demo_login_users(
 
     results: list[DemoUserResult] = []
     for name, login_id in HQ_DEMO_USERS:
-        user_password = "1234" if login_id == "hq01" else password
         role = Role.ACCIDENT_ADMIN if login_id == "hq01" else Role.HQ_SAFE
         results.append(
             _upsert_demo_user(
@@ -220,14 +219,13 @@ def ensure_demo_login_users(
                 login_id=login_id,
                 role=role,
                 ui_type=UIType.HQ_SAFE,
-                password=user_password,
+                password=password,
                 site_id=None,
                 department="안전보건실",
             )
         )
 
     for name, login_id in SITE_DEMO_USERS:
-        site_password = SITE05_DEMO_PASSWORD if login_id == "site05" else password
         results.append(
             _upsert_demo_user(
                 db,
@@ -235,7 +233,7 @@ def ensure_demo_login_users(
                 login_id=login_id,
                 role=Role.SITE,
                 ui_type=UIType.SITE,
-                password=site_password,
+                password=password,
                 site_id=site_for_site_users.id,
                 department="현장",
             )

@@ -22,7 +22,8 @@
 
 2. **Git**  
    PATH에 `git`이 잡혀 있어야 한다.  
-   `main`에 올릴 커밋이 있으면 **먼저 push**한다 (`deploy_all.ps1`는 기본적으로 push 포함).
+   `main`에 올릴 커밋이 있으면 **먼저 push**한다 (`deploy_all.ps1`는 기본적으로 push 포함).  
+   **로컬에만 있는 수정(미커밋)** 은 EC2 `git pull`로는 절대 반영되지 않는다. `deploy_all.ps1`는 기본적으로 **작업 트리가 깨끗하지 않으면 중단**한다(재발 방지). 우회 시 `-AllowDirtyWorkingTree`.
 
 3. **SSH 키**  
    - 권장 위치: `.secrets\besma-key.pem`  
@@ -70,10 +71,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1 `
   -RepoRoot "C:\besma-rev\besma-rev_handoff"
 ```
 
-- 이미 `git push`를 했다면: `-SkipPush` 추가.  
-- 로컬 프론트 빌드 검증을 건너뛰려면: `-SkipFrontendBuild`.
+- `-RepoRoot`를 생략하면 **`deploy` 폴더가 들어 있는 저장소 루트**로 자동 설정된다(다른 드라이브 `D:\besma-rev`에 잘못 배포하는 실수 방지).  
+- 이미 `git push`를 했다면: `-SkipPush` 추가(이때 **로컬이 origin보다 앞서 있으면 스크립트가 실패**한다; push 후 다시 실행하거나 `-AllowSkipPushUnpushed`로만 우회).  
+- 로컬 프론트 빌드 검증을 건너뛰려면: `-SkipFrontendBuild`.  
+- 작업 트리에 미커밋이 있어도 백엔드만 올리려면(비권장): `-AllowDirtyWorkingTree`.
 
-**성공 판정:** 로그에 `[deploy] OK: besma-backend is up`, 원격 `curl …/health` → `{"status":"ok"}`.
+**성공 판정:** 로그에 `[deploy] OK: besma-backend is up`, 원격 `curl …/health` → `{"status":"ok"}`. 로그에 **`[deploy] Remote HEAD after pull:`** 와 **커밋 한 줄**이 나오면 서버가 실제로 당긴 SHA를 확인할 수 있다.
+
+### 배포했는데 변경이 안 보일 때 (원인 패턴)
+
+| 증상 | 흔한 원인 |
+|------|-----------|
+| API/백엔드만 예전 동작 | 수정이 **커밋·push 안 됨** 또는 `-SkipPush`인데 로컬이 origin보다 앞섬. EC2는 **원격 Git**만 당김. |
+| 프론트만 예전 화면 | `deploy_frontend_vercel.ps1`를 **안 돌림**(백엔드 스크립트만 실행). 또는 Vercel **다른 프로젝트/스코프**로 링크됨. |
+| 로컬에선 보이는데 운영엔 없음 | **미커밋 변경**만 로컬에 있음 → 백엔드는 반영 불가. 프론트는 디스크 업로드라 올라갈 수 있으나, 스크립트는 기본 **깨끗한 트리**를 요구한다. |
+| 다른 PC의 클론이 배포됨 | 예전 기본값 `D:\besma-rev` 등 **다른 RepoRoot**로 스크립트 실행. 지금은 `-RepoRoot` 생략 시 스크립트 위치 기준으로 잡힌다. |
 
 ### 2) 프론트엔드 (Vercel)
 
@@ -84,6 +96,8 @@ $env:Path = "C:\Program Files\Git\cmd;C:\Program Files\Volta;" + [System.Environ
 powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_frontend_vercel.ps1 `
   -RepoRoot "C:\besma-rev\besma-rev_handoff"
 ```
+
+- 미커밋이 있으면 기본적으로 **중단**한다. 로컬만의 실험 배포가 필요하면 `-AllowDirtyWorkingTree`.
 
 **성공 판정:** 출력에 `readyState":"READY"`, `Aliased: https://www.besma.co.kr` 유사 메시지.
 

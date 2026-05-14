@@ -52,7 +52,7 @@ def list_notices(
 def list_latest_notice_titles(
     db: DbDep,
     current_user: CurrentUserDep,
-    limit: int = Query(default=2, ge=1, le=5),
+    limit: int = Query(default=3, ge=1, le=10),
 ):
     rows = db.query(Notice).order_by(Notice.created_at.desc(), Notice.id.desc()).limit(limit).all()
     return {

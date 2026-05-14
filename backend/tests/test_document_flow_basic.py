@@ -182,6 +182,13 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert comm_res.status_code == 200
     comm_items = comm_res.json()["items"]
     assert any(item["document_id"] == first_document_id for item in comm_items)
+    # 본사-현장 소통: 본인이 쓴 코멘트·본인이 처리한 승인/반려 코멘트는 제외(상대방 소통만)
+    doc_comm_items = [i for i in comm_items if i["document_id"] == first_document_id]
+    doc_comments = [i for i in doc_comm_items if i["source"] == "comment"]
+    doc_approvals = [i for i in doc_comm_items if i["source"] == "approval"]
+    assert len(doc_comments) == 1
+    assert doc_comments[0]["comment_text"] == "현장 확인 요청 사항 메모"
+    assert doc_approvals == []
 
     current_user["value"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_doc_manager")
     site_comment_list_res = client.get(f"/documents/{first_document_id}/comments")

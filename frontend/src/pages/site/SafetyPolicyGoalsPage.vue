@@ -1,13 +1,9 @@
 <template>
   <div class="policy-page">
-    <BaseCard :title="pageTitle">
+    <BaseCard class="policy-root">
       <template #actions>
         <button type="button" class="secondary" @click="refresh">새로고침</button>
       </template>
-
-      <p v-if="isSiteUi" class="scope-note">
-        기본 화면은 <strong>현장</strong>에 등록된 방침(왼쪽)과 목표(오른쪽)입니다. 아래에서 제목·파일을 올려 등록할 수 있습니다. PDF·PNG·JPEG·WEBP 등 브라우저에서 볼 수 있는 형식을 권장합니다.
-      </p>
 
       <div v-if="isSiteUi" class="hq-access-row">
         <button type="button" class="hq-modal-trigger" @click="openHqModal">본사 방침·목표 보기</button>
@@ -264,8 +260,6 @@ const isSiteUi = computed(() => auth.user?.ui_type === "SITE");
 const isHqUi = computed(() => auth.user?.ui_type === "HQ_SAFE");
 
 const siteId = computed(() => auth.effectiveSiteId ?? auth.user?.site_id ?? null);
-
-const pageTitle = computed(() => (isSiteUi.value ? "안전보건 방침 및 목표 (현장)" : "안전보건 방침 및 목표"));
 
 const hqCanViewSiteScope = computed(() => isHqUi.value && siteId.value != null);
 
@@ -574,15 +568,41 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.scope-note {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: #475569;
-  line-height: 1.5;
+.policy-page {
+  height: calc(100dvh - 6.5rem);
+  max-height: calc(100dvh - 6.5rem);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.policy-page :deep(.policy-root) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+  height: 100%;
+}
+
+.policy-page :deep(.policy-root > header) {
+  flex-shrink: 0;
+}
+
+.policy-page :deep(.policy-root .body) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+  gap: 0;
 }
 
 .hq-access-row {
-  margin-bottom: 14px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .hq-modal-trigger {
@@ -602,7 +622,8 @@ onBeforeUnmount(() => {
 .view-toggle {
   display: flex;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 .view-toggle .active {
   background: #0f172a;
@@ -610,26 +631,31 @@ onBeforeUnmount(() => {
 }
 
 .loading-bar {
-  margin-bottom: 10px;
-  font-size: 13px;
+  margin-bottom: 6px;
+  font-size: 12px;
   color: #64748b;
+  flex-shrink: 0;
 }
 
 .panel-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
   align-items: stretch;
+  flex: 1;
+  min-height: 0;
 }
 
 .panel-card {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-height: 0;
+  overflow: hidden;
 }
 
 .panel-card.flat {
@@ -638,32 +664,38 @@ onBeforeUnmount(() => {
 
 .panel-card h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  flex-shrink: 0;
 }
 
 .title {
   font-weight: 700;
   margin: 0;
+  font-size: 14px;
+  line-height: 1.3;
+  flex-shrink: 0;
 }
 
 .meta {
   margin: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
+  flex-shrink: 0;
 }
 
 .file-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .preview-pane {
   flex: 1;
-  min-height: 52vh;
+  min-height: 440px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #f1f5f9;
@@ -679,7 +711,7 @@ onBeforeUnmount(() => {
 .preview-frame {
   width: 100%;
   flex: 1;
-  min-height: 480px;
+  min-height: 0;
   border: 0;
   background: #fff;
 }
@@ -687,7 +719,8 @@ onBeforeUnmount(() => {
 .preview-image {
   width: 100%;
   flex: 1;
-  min-height: 280px;
+  min-height: 0;
+  max-height: 100%;
   object-fit: contain;
   display: block;
   background: #fff;
@@ -703,10 +736,11 @@ onBeforeUnmount(() => {
 }
 
 .upload-box {
-  margin-top: 8px;
+  margin-top: 4px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .upload-label {
@@ -716,9 +750,11 @@ onBeforeUnmount(() => {
 }
 
 .upload-message {
-  margin-top: 12px;
+  margin-top: 8px;
   color: #b91c1c;
   font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .modal-backdrop {
@@ -812,14 +848,13 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 920px) {
+  .policy-page {
+    height: calc(100dvh - 5.5rem);
+    max-height: calc(100dvh - 5.5rem);
+  }
   .panel-grid {
     grid-template-columns: 1fr;
-  }
-  .preview-pane {
-    min-height: 42vh;
-  }
-  .preview-frame {
-    min-height: 360px;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 </style>

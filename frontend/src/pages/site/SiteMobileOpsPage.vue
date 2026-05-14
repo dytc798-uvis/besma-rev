@@ -81,16 +81,6 @@
           :has-adopted-items="hasAdoptedItems"
           @distribution-created="onDistributionCreated"
         />
-
-        <SiteTbmOpsPanel
-          :distribution-id="currentDistributionId"
-          :distribution="currentDistribution"
-          :recent-distributions="recentDistributions"
-          :site-id="effectiveSiteId"
-          @select-distribution="onSelectDistribution"
-          @refresh-distribution="refreshDistribution"
-          @tbm-started="refreshDistribution"
-        />
       </template>
     </div>
   </div>
@@ -106,7 +96,6 @@ import { todayKst } from "@/utils/datetime";
 import SitePlanCreateCard from "@/components/site/SitePlanCreateCard.vue";
 import SitePlanItemsEditor from "@/components/site/SitePlanItemsEditor.vue";
 import SiteDistributionCreateCard from "@/components/site/SiteDistributionCreateCard.vue";
-import SiteTbmOpsPanel from "@/components/site/SiteTbmOpsPanel.vue";
 
 interface PlanItem {
   id: number;

@@ -54,7 +54,7 @@ scripts\dev_start.bat
 
 ### 6. 샘플 계정
 
-모든 계정의 초기 비밀번호는 **P@ssw0rd!** 입니다.
+**새로 `python -m app.seed.seed_data`로 만든 DB** 기준으로, 아래 계정의 초기 비밀번호는 **P@ssw0rd!** 입니다.
 
 - HQ 안전 관리자
   - `hqsafe1`
@@ -64,6 +64,14 @@ scripts\dev_start.bat
   - `site02`
 - 본사 타부서
   - `hqother1`
+
+> **기존 `database/besma.db`를 그대로 쓰는 경우:** `seed_data`는 이미 있는 사용자의 비밀번호 해시를 바꾸지 않습니다. 예전에 `create_demo_login_users.py` 등으로 넣은 계정이 있으면 비밀번호가 다를 수 있습니다. 현장 데모 전에는 **DB 백업 후 DB 삭제·재시드** 또는 알려진 비밀번호로 로그인해 확인하세요.
+
+### 6b. API 주소(프론트 ↔ 백엔드)
+
+- 로컬에서 `scripts/start_backend.bat` 또는 README대로 백엔드를 **8001**에 띄웁니다.
+- `VITE_API_BASE_URL`을 쓰지 않을 때 프론트는 같은 호스트의 **8001**로 API를 호출합니다(구버전 8000 고정 불일치는 제거됨).
+- 운영·스테이징은 `frontend` 빌드 시 `VITE_API_BASE_URL`(예: `https://api.besma.co.kr`)을 반드시 설정하세요.
 
 ### 7. 주요 기능 (현재 구현 상태)
 

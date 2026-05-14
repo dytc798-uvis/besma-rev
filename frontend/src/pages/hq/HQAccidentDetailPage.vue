@@ -36,6 +36,35 @@
       </section>
 
       <section class="sec">
+        <h3 class="sec-title">후속조치 수동 체크리스트</h3>
+        <p class="muted">
+          자동 연동 없이 수동 체크만 관리합니다. (현재 브라우저에만 저장)
+        </p>
+        <div class="manual-checklist">
+          <label v-for="item in followupChecklistItems" :key="item.key" class="manual-check-item">
+            <input
+              :checked="followupChecklist[item.key]"
+              type="checkbox"
+              @change="toggleFollowupChecklist(item.key, ($event.target as HTMLInputElement).checked)"
+            />
+            <span>{{ item.label }}</span>
+          </label>
+        </div>
+        <div class="field full-row">
+          <label>수동 체크 메모</label>
+          <textarea
+            :value="followupChecklistMemo"
+            class="input"
+            rows="3"
+            @input="updateFollowupChecklistMemo(($event.target as HTMLTextAreaElement).value)"
+          />
+        </div>
+        <div class="actions">
+          <button type="button" class="secondary" @click="resetFollowupChecklist">수동 체크 초기화</button>
+        </div>
+      </section>
+
+      <section class="sec">
         <h3 class="sec-title">사고정보 수정</h3>
         <form class="form-grid" @submit.prevent="saveDetail">
           <div class="field">
@@ -187,6 +216,28 @@ const nasOpening = ref(false);
 const errorMessage = ref("");
 const uploadFile = ref<File | null>(null);
 const syncingForm = ref(false);
+const followupChecklistMemo = ref("");
+const followupChecklistItems = [
+  { key: "initial_registration", label: "최초사고보고에 의한 사고 등록" },
+  { key: "report_within_3_days", label: "3일 내 사고보고서 제출" },
+  { key: "education_log_within_5_days", label: "5일 내 교육일지" },
+  { key: "risk_assessment_submission", label: "수시 위험성평가 제출" },
+  { key: "fit_for_work_opinion", label: "근로가능 소견서" },
+  { key: "industrial_accident_report", label: "산업재해조사표 신고" },
+  { key: "medical_benefit_application", label: "요양급여 신청" },
+] as const;
+type FollowupChecklistKey = (typeof followupChecklistItems)[number]["key"];
+type FollowupChecklistState = Record<FollowupChecklistKey, boolean>;
+
+const followupChecklist = reactive<FollowupChecklistState>({
+  initial_registration: false,
+  report_within_3_days: false,
+  education_log_within_5_days: false,
+  risk_assessment_submission: false,
+  fit_for_work_opinion: false,
+  industrial_accident_report: false,
+  medical_benefit_application: false,
+});
 
 const form = reactive<AccidentUpdatePayload>({
   site_standard_name: "",
@@ -208,6 +259,7 @@ const form = reactive<AccidentUpdatePayload>({
 });
 
 const accidentId = computed(() => Number(route.params.id));
+const followupChecklistStorageKey = computed(() => `besma:accident-followup:${accidentId.value}`);
 const displayNasPath = computed(() => {
   if (!detail.value) return "";
   return toDisplayedAccidentNasPath(detail.value.nas_folder_path, detail.value.accident_id);
@@ -232,6 +284,58 @@ const parseWarningMessage = computed(() => {
   }
   return "";
 });
+
+function persistFollowupChecklist() {
+  const key = followupChecklistStorageKey.value;
+  if (!Number.isFinite(accidentId.value) || accidentId.value <= 0) return;
+  const payload = {
+    checks: { ...followupChecklist },
+    memo: followupChecklistMemo.value,
+  };
+  window.localStorage.setItem(key, JSON.stringify(payload));
+}
+
+function resetFollowupChecklistState() {
+  for (const item of followupChecklistItems) {
+    followupChecklist[item.key] = false;
+  }
+  followupChecklistMemo.value = "";
+}
+
+function loadFollowupChecklist() {
+  resetFollowupChecklistState();
+  const key = followupChecklistStorageKey.value;
+  if (!Number.isFinite(accidentId.value) || accidentId.value <= 0) return;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw) as {
+      checks?: Partial<Record<FollowupChecklistKey, boolean>>;
+      memo?: string;
+    };
+    for (const item of followupChecklistItems) {
+      followupChecklist[item.key] = Boolean(parsed?.checks?.[item.key]);
+    }
+    followupChecklistMemo.value = parsed.memo || "";
+  } catch {
+    resetFollowupChecklistState();
+  }
+}
+
+function toggleFollowupChecklist(key: FollowupChecklistKey, checked: boolean) {
+  followupChecklist[key] = checked;
+  persistFollowupChecklist();
+}
+
+function updateFollowupChecklistMemo(value: string) {
+  followupChecklistMemo.value = value;
+  persistFollowupChecklist();
+}
+
+function resetFollowupChecklist() {
+  resetFollowupChecklistState();
+  window.localStorage.removeItem(followupChecklistStorageKey.value);
+}
 
 function formatDt(value: string) {
   try {
@@ -389,12 +493,14 @@ function printReport() {
 }
 
 onMounted(() => {
+  loadFollowupChecklist();
   void loadAll();
 });
 
 watch(
   () => route.params.id,
   () => {
+    loadFollowupChecklist();
     void loadAll();
   },
 );
@@ -516,6 +622,22 @@ watch(
 .compare-block {
   display: grid;
   gap: 12px;
+}
+.manual-checklist {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+.manual-check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.manual-check-item input {
+  width: 16px;
+  height: 16px;
 }
 .compare-label {
   display: inline-block;

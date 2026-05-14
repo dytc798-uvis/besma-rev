@@ -1,7 +1,7 @@
 <template>
   <div class="daily-safety-shell">
     <nav v-if="showHubTabs" class="hub-tabs" aria-label="일일안전회의(일일위험성평가) 구역">
-      <RouterLink class="hub-tab" :to="{ name: 'site-mobile-ops' }">작업계획·TBM·위험성평가</RouterLink>
+      <RouterLink class="hub-tab" :to="{ name: 'site-mobile-ops' }">작업계획·위험성평가</RouterLink>
       <RouterLink class="hub-tab" :to="{ name: 'site-mobile-daily-capture' }">일지·사진·문서</RouterLink>
     </nav>
     <RouterView />

@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config.security import get_password_hash
-from app.seed.demo_login_users import SITE05_DEMO_PASSWORD
+from app.seed.demo_login_users import DEMO_DEFAULT_PASSWORD
 from app.core.datetime_utils import utc_now
 from app.core.database import SessionLocal, init_db
 from app.core.enums import Role, UIType
@@ -123,7 +123,9 @@ def seed_users(db: Session) -> None:
     )
     site2_for_assignment = preferred_c18_site or site2
 
-    password_plain = "P@ssw0rd!"
+    password_plain = DEMO_DEFAULT_PASSWORD
+    # demo 계정 비밀번호는 운영/로컬 모두 동일하게 유지한다.
+    demo_site_immediate_login_ids = {"site01", "site02", "site03", "site04", "site05"}
 
     # 기존 DB를 재사용하는 경우에도 로그인 가능하도록 "샘플 계정은 upsert" 한다.
     # (MVP에서 마이그레이션 체계가 없기 때문에, 이전 해시 포맷이 남아 500이 나지 않도록 보정)
@@ -192,6 +194,22 @@ def seed_users(db: Session) -> None:
             site_id=site2_for_assignment.id if site2_for_assignment else None,
         ),
         dict(
+            name="박규철",
+            login_id="site03",
+            department="현장",
+            role=Role.SITE,
+            ui_type=UIType.SITE,
+            site_id=site2_for_assignment.id if site2_for_assignment else None,
+        ),
+        dict(
+            name="이상현",
+            login_id="site04",
+            department="현장",
+            role=Role.SITE,
+            ui_type=UIType.SITE,
+            site_id=site2_for_assignment.id if site2_for_assignment else None,
+        ),
+        dict(
             name="민경준",
             login_id="site05",
             department="현장",
@@ -230,7 +248,7 @@ def seed_users(db: Session) -> None:
 
     for u in desired:
         existing = db.query(User).filter(User.login_id == u["login_id"]).first()
-        user_password_plain = SITE05_DEMO_PASSWORD if u["login_id"] == "site05" else password_plain
+        user_password_plain = password_plain
         if existing:
             existing.name = u["name"]
             existing.department = u["department"]
@@ -239,9 +257,8 @@ def seed_users(db: Session) -> None:
             existing.site_id = u["site_id"]
             existing.person_id = u.get("person_id")
             existing.is_active = True
-            # site05: align with ensure_demo_login_users — known demo password + immediate login (no forced change).
-            if u["login_id"] == "site05":
-                existing.password_hash = get_password_hash(SITE05_DEMO_PASSWORD)
+            if u["login_id"] in demo_site_immediate_login_ids:
+                existing.password_hash = get_password_hash(user_password_plain)
                 existing.must_change_password = False
         else:
             db.add(
@@ -255,7 +272,7 @@ def seed_users(db: Session) -> None:
                     site_id=u["site_id"],
                     person_id=u.get("person_id"),
                     is_active=True,
-                    must_change_password=False if u["login_id"] == "site05" else True,
+                    must_change_password=False if u["login_id"] in demo_site_immediate_login_ids else True,
                 )
             )
     db.commit()
@@ -825,7 +842,7 @@ def seed_document_requirements(db: Session) -> None:
         ("SUPERVISOR_CHECKLIST", "관리감독자 점검표", "DAILY", "일 1회 업로드 (점검 완료 후)", "INSPECTION"),
         ("SITE_MANAGER_CHECKLIST", "현장소장 점검표", "DAILY", "일 1회 업로드 (점검 완료 후)", "INSPECTION"),
         ("SAFETY_MANAGER_DAILY_LOG", "안전관리자 업무일지", "DAILY", "일 1회 업로드 (업무 종료 후)", "INSPECTION"),
-        ("EMERGENCY_DRILL_REPORT", "비상사태훈련보고서", "ADHOC", "비상훈련 실시 후 작성", "ACCIDENT"),
+        ("EMERGENCY_DRILL_REPORT", "비상사태훈련보고서", "HALF_YEARLY", "반기 1회 (상·하반기)", "ACCIDENT"),
         ("REGULAR_EDUCATION", "정기교육", "MONTHLY", "월 1회 교육 후 작성", "DAILY_DOC"),
         ("SPECIAL_EDUCATION", "특별교육", "ADHOC", "특별교육 실시 후 작성", "DAILY_DOC"),
         ("MSDS_EDUCATION", "MSDS교육", "MONTHLY", "월 1회 또는 물질변경 시 작성", "DAILY_DOC"),

@@ -8,7 +8,7 @@
     <div class="doc-comments-head">
       <div>
         <h3 class="doc-comments-title">{{ title }}</h3>
-        <p class="doc-comments-sub">승인/반려와 별개로 SITE/HQ가 자유롭게 메모를 누적합니다.</p>
+        <p class="doc-comments-sub">현장/본사 메모와 본사 승인·반려 코멘트를 시간순으로 함께 표시합니다.</p>
       </div>
       <span v-if="comments.length" class="doc-comments-count">{{ comments.length }}건</span>
     </div>
@@ -18,11 +18,19 @@
 
     <div v-else class="doc-comments-list">
       <p v-if="deleteError" class="doc-comments-error doc-comments-delete-err">{{ deleteError }}</p>
-      <article v-for="item in comments" :key="item.id" class="doc-comment-item">
+      <article
+        v-for="item in comments"
+        :key="`${item.source ?? 'comment'}-${item.id}`"
+        class="doc-comment-item"
+        :class="{ 'doc-comment-item-approval': item.source === 'approval' }"
+      >
         <div class="doc-comment-meta">
           <div class="doc-comment-meta-main">
             <strong>{{ item.user_name }}</strong>
             <span class="doc-comment-role" :class="item.user_role === 'SITE' ? 'role-site' : 'role-hq'">{{ item.user_role }}</span>
+            <span v-if="item.source === 'approval'" class="doc-comment-role role-review">{{
+              item.review_action === "REJECT" ? "반려" : "승인"
+            }}</span>
             <span>{{ formatDateTime(item.created_at) }}</span>
           </div>
           <button
@@ -75,6 +83,10 @@ interface DocumentCommentItem {
   user_role: "SITE" | "HQ";
   comment_text: string;
   created_at: string;
+  source?: string;
+  review_action?: string | null;
+  file_context_label?: string | null;
+  deletable?: boolean;
 }
 
 const props = withDefaults(
@@ -106,6 +118,8 @@ const auth = useAuthStore();
 const canSubmit = computed(() => Boolean(props.documentId && draft.value.trim()));
 
 function canDeleteComment(item: DocumentCommentItem): boolean {
+  if (item.source === "approval" || item.deletable === false) return false;
+  if (item.id <= 0) return false;
   const user = auth.user;
   if (!user) return false;
   if ((user.login_id || "").trim().toLowerCase() === "hq01") return true;
@@ -162,6 +176,7 @@ async function submitComment() {
 
 async function confirmDelete(item: DocumentCommentItem) {
   if (!props.documentId) return;
+  if (item.source === "approval" || item.id <= 0) return;
   if (!window.confirm("정말 삭제할까요?")) return;
   deletingId.value = item.id;
   deleteError.value = "";
@@ -291,6 +306,16 @@ watch(
 .role-hq {
   background: #dbeafe;
   color: #1d4ed8;
+}
+
+.role-review {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.doc-comment-item-approval {
+  border-color: #fcd34d;
+  background: #fffbeb;
 }
 
 .doc-comment-text {

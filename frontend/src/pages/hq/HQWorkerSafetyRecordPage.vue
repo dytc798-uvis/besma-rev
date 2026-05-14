@@ -5,7 +5,7 @@
         <input v-model.number="personIdInput" type="number" min="1" placeholder="person_id 입력" />
       </div>
       <div class="toolbar-actions">
-        <button class="secondary" @click="goBack">TBM 모니터</button>
+        <button class="secondary" @click="goBack">문서 취합 현황</button>
         <button class="primary" :disabled="loading || !personIdInput" @click="loadRecord">개인 증빙 조회</button>
       </div>
     </div>
@@ -174,7 +174,7 @@ async function loadRecord() {
 }
 
 function goBack() {
-  router.push({ name: "hq-safe-tbm-monitor" });
+  router.push({ name: "hq-safe-documents" });
 }
 
 watch(

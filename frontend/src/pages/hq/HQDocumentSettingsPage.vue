@@ -296,8 +296,7 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
   SITE: [
     { key: "notices", label: "공지사항" },
     { key: "safety-policy-goals", label: "안전보건 방침 및 목표" },
-    { key: "safety-education", label: "안전 교육" },
-    { key: "safety-inspections", label: "안전 점검" },
+    { key: "safety-education", label: "안전교육 및 안전점검" },
     { key: "nonconformities", label: "부적합사항" },
     { key: "worker-voice", label: "근로자의견청취" },
     { key: "mobile", label: "일일안전회의(일일위험성평가)" },
@@ -311,7 +310,6 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
     { key: "user-guide", label: "사용설명서" },
   ],
   HQ_SAFE: [
-    { key: "tbm-monitor", label: "TBM 모니터" },
     { key: "risk-library", label: "위험성평가 DB 조회" },
     { key: "site-search", label: "현장 검색" },
     { key: "document-explorer", label: "문서 탐색" },
@@ -321,8 +319,7 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
     { key: "opinions", label: "운영 아이디어 제안" },
     { key: "notices", label: "공지사항" },
     { key: "safety-policy-goals", label: "안전보건 방침 및 목표" },
-    { key: "safety-education", label: "안전 교육" },
-    { key: "safety-inspections", label: "안전 점검" },
+    { key: "safety-education", label: "안전교육 및 안전점검" },
     { key: "nonconformities", label: "부적합사항" },
     { key: "worker-voice", label: "근로자의견청취" },
     { key: "sites", label: "현장 관리" },
