@@ -101,7 +101,8 @@ $remoteParts.Add('echo "[deploy] Remote HEAD after pull: $(git rev-parse HEAD)"'
 $remoteParts.Add("git log -1 --oneline")
 $remoteParts.Add("chmod +x ./deploy/deploy_backend.sh")
 $remoteParts.Add($backendDeployCmd)
-$unix = (($remoteParts | ForEach-Object { $_.TrimEnd([char]13) }) -join "`n") + "`n"
+# Strip every CR: Windows CRLF in literals or join quirks can yield a standalone `\r` line bash treats as a command.
+$unix = [regex]::Replace((($remoteParts | ForEach-Object { $_.TrimEnd([char]13) }) -join "`n"), "`r+", "") + "`n"
 
 Exec-Step "Git preflight (branch, SHA, fetch, clean tree, push policy)" {
   $currentBranch = (git -C $RepoRoot branch --show-current).Trim()
@@ -152,8 +153,7 @@ if (-not $SkipPush) {
 }
 
 Exec-Step "Deploy backend on remote server" {
-  # Normalize any stray CR before piping to ssh (Windows editors / CRLF).
-  $unixRemote = $unix.Replace("`r`n", "`n").Replace("`r", "").TrimEnd() + "`n"
+  $unixRemote = ([regex]::Replace($unix.TrimEnd(), "`r+", "")).TrimEnd() + "`n"
   $unixRemote | & ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "bash -s"
   if ($LASTEXITCODE -ne 0) {
     throw "Remote deploy failed (ssh exit $LASTEXITCODE). Check EC2 git pull / merge and deploy_backend.sh logs above."
@@ -169,7 +169,7 @@ curl -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8001/notices | head 
 curl -fsS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8001/safety-policy-goals/view?scope=HQ" | head -n 1
 curl -fsS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8001/dynamic-menus/sidebar?ui_type=HQ_SAFE" | head -n 1
 '@
-  $unixVerify = ($remoteVerify -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd()
+  $unixVerify = ([regex]::Replace(($remoteVerify -replace "`r`n", "`n" -replace "`r", "").TrimEnd(), "`r+", "")).TrimEnd() + "`n"
   $unixVerify | & ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "bash -s"
   if ($LASTEXITCODE -ne 0) {
     throw "Remote verification ssh failed (exit $LASTEXITCODE)."
