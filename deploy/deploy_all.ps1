@@ -74,6 +74,8 @@ if ([string]::IsNullOrWhiteSpace($SshKeyPath)) {
   throw "SSH key not found: $SshKeyPath"
 }
 
+# deploy_backend.sh already loops on HEALTH_URL; avoid a duplicate trailing curl in this here-string
+# (PowerShell/SSH edge cases caused libcurl exit 3 "Malformed URL" on some runs).
 $backendDeployCmd = if ($RunMigrations) { "RUN_MIGRATIONS=1 ./deploy/deploy_backend.sh" } else { "./deploy/deploy_backend.sh" }
 $cleanUntrackedVersions = if ($RemoteGitCleanUntracked) {
   @"
@@ -90,7 +92,6 @@ echo "[deploy] Remote HEAD after pull: `$(git rev-parse HEAD)"
 git log -1 --oneline
 chmod +x ./deploy/deploy_backend.sh
 $backendDeployCmd
-curl -fsS 'http://127.0.0.1:8001/health'
 "@
 
 Exec-Step "Git preflight (branch, SHA, fetch, clean tree, push policy)" {
@@ -151,13 +152,13 @@ Exec-Step "Deploy backend on remote server" {
 }
 
 Exec-Step "Verify API endpoints on remote" {
-  # Single-quoted here-string: PowerShell must not parse `&` or `?` inside remote URLs (curl exit 3 / malformed URL).
+  # Literal here-string so PowerShell does not treat `&` or `?` as syntax; bash gets plain ASCII URLs.
   $remoteVerify = @'
 set -e
-curl -fsS 'http://127.0.0.1:8001/health' >/dev/null
-curl -fsS -o /dev/null -w "%{http_code}\n" 'http://127.0.0.1:8001/notices' | head -n 1
-curl -fsS -o /dev/null -w "%{http_code}\n" 'http://127.0.0.1:8001/safety-policy-goals/view?scope=HQ' | head -n 1
-curl -fsS -o /dev/null -w "%{http_code}\n" 'http://127.0.0.1:8001/dynamic-menus/sidebar?ui_type=HQ_SAFE' | head -n 1
+curl -fsS http://127.0.0.1:8001/health >/dev/null
+curl -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8001/notices | head -n 1
+curl -fsS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8001/safety-policy-goals/view?scope=HQ" | head -n 1
+curl -fsS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8001/dynamic-menus/sidebar?ui_type=HQ_SAFE" | head -n 1
 '@
   $unixVerify = ($remoteVerify -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd()
   $unixVerify | & ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "bash -s"
