@@ -374,74 +374,89 @@
 
   <div v-if="historyTarget" class="modal-backdrop" @click.self="closeHistory">
     <div class="modal-card history-card">
-      <div class="card-title">문서 이력 - {{ historyTarget.title }}</div>
-      <p class="history-note">현재 주기: {{ historyTarget.current_period_label || frequencyLabel(historyTarget.frequency) }}</p>
-      <table class="basic-table">
-        <thead>
-          <tr>
-            <th>대상 주기</th>
-            <th>상태</th>
-            <th>업로드</th>
-            <th>검토</th>
-            <th>파일</th>
-            <th>코멘트</th>
-            <th>액션</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="row in historyItems"
-            :key="row.history_id ?? `doc-${row.document_id}`"
-            role="button"
-            tabindex="0"
-            class="history-row"
-            :class="{
-              'history-current-row': isCurrentCycleHistory(row),
-              'history-row-selected': historyFocusedDocumentId === row.document_id,
-            }"
-            @click="selectHistoryRow(row)"
-            @keydown.enter.prevent="selectHistoryRow(row)"
-          >
-            <td>
-              <div>{{ row.period_label || "-" }}</div>
-              <div v-if="isCurrentCycleHistory(row)" class="history-current-label">현재 대상</div>
-            </td>
-            <td>
-              <span class="badge" :class="statusClass(row.status)">
-                {{ historyStatusLabel(row.status) }}
-              </span>
-            </td>
-            <td>{{ formatDateTime(row.uploaded_at) }}</td>
-            <td>{{ row.reviewed_at ? formatDateTime(row.reviewed_at) : "-" }}</td>
-            <td>{{ row.file_name || "파일 없음" }}</td>
-            <td class="note-cell">
-              <span v-if="row.status === 'REJECTED'" class="inline-alert">{{ row.review_note || "코멘트 없음" }}</span>
-              <span v-else>{{ row.review_note || "-" }}</span>
-            </td>
-            <td class="actions">
-              <button
-                v-if="row.history_file_available || row.document_id"
-                type="button"
-                class="secondary"
-                @click.stop="openHistoryRowFile(row)"
+      <div class="history-modal-inner">
+        <div class="card-title">문서 이력 - {{ historyTarget.title }}</div>
+        <p class="history-note">현재 주기: {{ historyTarget.current_period_label || frequencyLabel(historyTarget.frequency) }}</p>
+        <div class="history-modal-body">
+          <table class="basic-table history-table">
+            <colgroup>
+              <col class="history-col-period" />
+              <col class="history-col-status" />
+              <col class="history-col-dt" />
+              <col class="history-col-dt" />
+              <col class="history-col-file" />
+              <col class="history-col-comment" />
+              <col class="history-col-actions" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>대상 주기</th>
+                <th>상태</th>
+                <th>업로드</th>
+                <th>검토</th>
+                <th>파일</th>
+                <th>코멘트</th>
+                <th class="history-th-actions">액션</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in historyItems"
+                :key="row.history_id ?? `doc-${row.document_id}`"
+                role="button"
+                tabindex="0"
+                class="history-row"
+                :class="{
+                  'history-current-row': isCurrentCycleHistory(row),
+                  'history-row-selected': historyFocusedDocumentId === row.document_id,
+                }"
+                @click="selectHistoryRow(row)"
+                @keydown.enter.prevent="selectHistoryRow(row)"
               >
-                파일 보기
-              </button>
-            </td>
-          </tr>
-          <tr v-if="historyItems.length === 0">
-            <td colspan="7" class="empty-cell">이력이 없습니다.</td>
-          </tr>
-        </tbody>
-      </table>
-      <DocumentCommentsPanel
-        v-if="historyCommentDocumentId && historyTarget && !isLedgerManagedRequirement(historyTarget)"
-        :document-id="historyCommentDocumentId"
-        :document-type-code="historyTarget.document_type_code"
-        :title="historyFocusedDocumentId != null ? '선택 회차 문서 코멘트' : '현재 문서 코멘트'"
-      />
-      <div class="modal-actions">
-        <button class="secondary" @click="closeHistory">닫기</button>
+                <td>
+                  <div>{{ row.period_label || "-" }}</div>
+                  <div v-if="isCurrentCycleHistory(row)" class="history-current-label">현재 대상</div>
+                </td>
+                <td>
+                  <span class="badge" :class="statusClass(row.status)">
+                    {{ historyStatusLabel(row.status) }}
+                  </span>
+                </td>
+                <td class="history-cell-nowrap">{{ formatDateTime(row.uploaded_at) }}</td>
+                <td class="history-cell-nowrap">{{ row.reviewed_at ? formatDateTime(row.reviewed_at) : "-" }}</td>
+                <td class="history-filename-cell" :title="row.file_name || undefined">
+                  <span class="history-filename">{{ row.file_name || "파일 없음" }}</span>
+                </td>
+                <td class="note-cell history-comment-cell">
+                  <span v-if="row.status === 'REJECTED'" class="inline-alert">{{ row.review_note || "코멘트 없음" }}</span>
+                  <span v-else>{{ row.review_note || "-" }}</span>
+                </td>
+                <td class="actions history-actions">
+                  <button
+                    v-if="row.history_file_available || row.document_id"
+                    type="button"
+                    class="secondary history-action-btn"
+                    @click.stop="openHistoryRowFile(row)"
+                  >
+                    파일 보기
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="historyItems.length === 0">
+                <td colspan="7" class="empty-cell">이력이 없습니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <DocumentCommentsPanel
+          v-if="historyCommentDocumentId && historyTarget && !isLedgerManagedRequirement(historyTarget)"
+          :document-id="historyCommentDocumentId"
+          :document-type-code="historyTarget.document_type_code"
+          :title="historyFocusedDocumentId != null ? '선택 회차 문서 코멘트' : '현재 문서 코멘트'"
+        />
+        <div class="modal-actions">
+          <button class="secondary" @click="closeHistory">닫기</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1042,7 +1057,72 @@ watch(
 .secondary.danger { border-color: #ef4444; color: #b91c1c; background: #fef2f2; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.4); display: flex; align-items: center; justify-content: center; z-index: 40; }
 .modal-card { width: 440px; background: #fff; border-radius: 8px; padding: 16px; }
-.history-card { width: min(1120px, calc(100vw - 32px)); max-height: 80vh; overflow: auto; }
+.history-card {
+  width: min(96vw, 900px);
+  max-width: min(96vw, 900px);
+  max-height: min(90vh, 900px);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.history-modal-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.history-modal-body {
+  max-height: min(58vh, 480px);
+  overflow: auto;
+  margin-top: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.history-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.history-col-period { width: 14%; }
+.history-col-status { width: 10%; }
+.history-col-dt { width: 12%; }
+.history-col-file { width: 18%; }
+.history-col-comment { width: 24%; }
+.history-col-actions { width: 10%; }
+.history-th-actions { text-align: right; }
+.history-cell-nowrap { white-space: nowrap; font-size: 12px; color: #334155; }
+.history-filename-cell {
+  min-width: 0;
+  max-width: 0;
+}
+.history-filename {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #0f172a;
+}
+.history-comment-cell {
+  max-width: none;
+  font-size: 12px;
+}
+.history-actions {
+  text-align: right;
+  vertical-align: middle;
+  justify-content: flex-end;
+}
+.history-action-btn {
+  min-width: 88px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .history-card { width: calc(100vw - 16px); max-width: calc(100vw - 16px); padding: 10px; }
+  .history-modal-body { max-height: min(50vh, 360px); }
+  .history-table { font-size: 12px; }
+  .history-col-period { width: 18%; }
+  .history-col-file { width: 22%; }
+}
 .upload-title { margin: 8px 0 12px; font-weight: 600; }
 .upload-note { margin: -8px 0 10px; font-size: 12px; color: #64748b; }
 .upload-reject-note { margin: 0 0 10px; font-size: 12px; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 8px; }

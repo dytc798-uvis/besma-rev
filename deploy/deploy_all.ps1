@@ -177,10 +177,10 @@ Exec-Step "Deploy backend on remote server" {
 Exec-Step "Verify API endpoints on remote" {
   $remoteVerify = @'
 set -e
-curl -fsS http://127.0.0.1:8001/health >/dev/null
-curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8001/notices | head -n 1
-curl -sS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8001/safety-policy-goals/view?scope=HQ" | head -n 1
-curl -sS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:8001/dynamic-menus/sidebar?ui_type=HQ_SAFE" | head -n 1
+curl -fsS 'http://127.0.0.1:8001/health' >/dev/null
+curl -sS -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8001/notices' | head -n 1
+curl -sS -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8001/safety-policy-goals/view?scope=HQ' | head -n 1
+curl -sS -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8001/dynamic-menus/sidebar?ui_type=HQ_SAFE' | head -n 1
 '@
   $verifyBody = ([regex]::Replace(($remoteVerify -replace "`r`n", "`n" -replace "`r", "").TrimEnd(), "`r+", "")).TrimEnd() + "`n"
   $tmpLocalV = Join-Path ([System.IO.Path]::GetTempPath()) ("besma-remote-verify-" + [Guid]::NewGuid().ToString() + ".sh")
