@@ -74,25 +74,34 @@ if ([string]::IsNullOrWhiteSpace($SshKeyPath)) {
   throw "SSH key not found: $SshKeyPath"
 }
 
-# deploy_backend.sh already loops on HEALTH_URL; avoid a duplicate trailing curl in this here-string
+# deploy_backend.sh already loops on HEALTH_URL; avoid a duplicate trailing curl in the remote script
 # (PowerShell/SSH edge cases caused libcurl exit 3 "Malformed URL" on some runs).
 $backendDeployCmd = if ($RunMigrations) { "RUN_MIGRATIONS=1 ./deploy/deploy_backend.sh" } else { "./deploy/deploy_backend.sh" }
+$backendDeployCmd = $backendDeployCmd.Trim()
+
 $cleanUntrackedVersions = if ($RemoteGitCleanUntracked) {
-  @"
-echo "[deploy] RemoteGitCleanUntracked: removing untracked files under backend/alembic/versions"
-git clean -fd backend/alembic/versions/
-"@
+  @(
+    'echo "[deploy] RemoteGitCleanUntracked: removing untracked files under backend/alembic/versions"'
+    "git clean -fd backend/alembic/versions/"
+  ) -join "`n"
 } else { "" }
-$remoteCmd = @"
-set -eo pipefail
-cd $RemoteProjectRoot
-$cleanUntrackedVersions
-git pull --ff-only
-echo "[deploy] Remote HEAD after pull: `$(git rev-parse HEAD)"
-git log -1 --oneline
-chmod +x ./deploy/deploy_backend.sh
-$backendDeployCmd
-"@
+
+# Build remote bash with explicit LF joins so CRLF from the .ps1 file cannot produce `script.sh\r` on the server.
+$remoteParts = [System.Collections.Generic.List[string]]::new()
+$remoteParts.Add("set -eo pipefail")
+$remoteParts.Add("cd $RemoteProjectRoot")
+if (-not [string]::IsNullOrWhiteSpace($cleanUntrackedVersions)) {
+  foreach ($ln in ($cleanUntrackedVersions -split "`n")) {
+    $t = $ln.Trim().Trim([char]13)
+    if ($t.Length -gt 0) { $remoteParts.Add($t) }
+  }
+}
+$remoteParts.Add("git pull --ff-only")
+$remoteParts.Add('echo "[deploy] Remote HEAD after pull: $(git rev-parse HEAD)"')
+$remoteParts.Add("git log -1 --oneline")
+$remoteParts.Add("chmod +x ./deploy/deploy_backend.sh")
+$remoteParts.Add($backendDeployCmd)
+$unix = (($remoteParts | ForEach-Object { $_.TrimEnd([char]13) }) -join "`n") + "`n"
 
 Exec-Step "Git preflight (branch, SHA, fetch, clean tree, push policy)" {
   $currentBranch = (git -C $RepoRoot branch --show-current).Trim()
@@ -143,9 +152,9 @@ if (-not $SkipPush) {
 }
 
 Exec-Step "Deploy backend on remote server" {
-  # Windows CRLF in here-string breaks remote bash (`set: invalid option`, `cd: ...\r`).
-  $unix = ($remoteCmd -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd()
-  $unix | & ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "bash -s"
+  # Normalize any stray CR before piping to ssh (Windows editors / CRLF).
+  $unixRemote = $unix.Replace("`r`n", "`n").Replace("`r", "").TrimEnd() + "`n"
+  $unixRemote | & ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "bash -s"
   if ($LASTEXITCODE -ne 0) {
     throw "Remote deploy failed (ssh exit $LASTEXITCODE). Check EC2 git pull / merge and deploy_backend.sh logs above."
   }
