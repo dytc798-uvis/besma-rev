@@ -1,15 +1,24 @@
 ---
-description: 운영 배포 요청 시 docs/OPERATIONS_DEPLOY.md 절차로 deploy_all.ps1·deploy_frontend_vercel.ps1 실행
+description: 운영 배포 요청 시 Git 확인·push·deploy 스크립트 및 SHA·로그 보고(docs/OPERATIONS_DEPLOY.md)
 alwaysApply: true
 ---
 
 # 운영 배포 요청 시
 
-사용자가 **배포**, **운영 반영**, **프로덕션 배포**, **Vercel 배포**, **EC2 배포** 등 **운영 환경 반영**을 요청하면:
+사용자가 **배포**, **운영 반영**, **프로덕션 배포**, **Vercel 배포**, **EC2 배포**, **`main` 반영** 등 **운영 환경 반영**을 요청하면 **아래 기본 묶음**과 **`docs/OPERATIONS_DEPLOY.md`**(「운영 연속성 우선」절), **`deploy/PRODUCTION_DEPLOY_RUNBOOK.md`** 를 따른다.
 
-1. **`docs/OPERATIONS_DEPLOY.md`** 의 **표준 배포 절차**를 따른다.
-2. 구현·결정 질문 없이 **PowerShell로 `deploy_all.ps1` → `deploy_frontend_vercel.ps1`** 를 저장소 루트에서 실행한다(사용자가 “백엔드만” 등으로 한정한 경우는 해당 단계만).
-3. `RepoRoot`는 **현재 워크스페이스 루트 절대 경로**를 쓴다. Git·Volta가 PATH에 없으면 `OPERATIONS_DEPLOY.md`에 적은 `$env:Path` 보강을 한다.
-4. 실패 시 같은 문서의 **Git push / SSH 키 ACL / Vercel 로그인** 절을 안내·실행한다.
+## 기본 묶음(에이전트)
+
+1. **`git status`**(필요 시 **`git diff`**)로 작업 트리를 확인한다.
+2. **제품 반영 대상**으로 보이는 미커밋 변경이 있으면: 범위·파일이 **모호하면 한 번** 사용자에게 안전하게 커밋할 경로·메시지를 확인한다. **명확하면** 개인키·`.env` 실비밀·`storage/` 등 **문서상 금지 경로를 제외**하고 스테이징 후 **커밋**한다(사용자가 커밋을 명시적으로 금지하면 커밋을 생략하고 그 이유를 먼저 보고한다).
+3. **`git push origin main`**(또는 저장소 기본 원격 브랜치)를 시도한다. **push 불가**(권한, non-fast-forward, 인증 실패 등)이면 원인을 **명확히** 보고하고, 가능하면 배포 스크립트 실행을 중단하거나 push 해결 후 재시도 안내를 한다.
+4. 구현·제품 UI 결정 질문 없이 **PowerShell**로 저장소 루트에서 **`deploy\deploy_all.ps1` → `deploy\deploy_frontend_vercel.ps1`** 를 실행한다(사용자가 **백엔드만·프론트만** 등으로 한정한 경우 해당 단계만).
+5. **보고:** “배포 완료”만 쓰지 않는다. **로컬 HEAD SHA**, 스크립트에 **`[deploy] Remote HEAD after pull:`** 가 있으면 그 내용, Vercel **`READY`**·프로덕션 **별칭** 관련 출력을 요약한다.
+
+## 공통
+
+- **`RepoRoot`**는 **현재 워크스페이스 루트 절대 경로**를 쓴다. Git·Volta가 PATH에 없으면 `OPERATIONS_DEPLOY.md`의 **`$env:Path`** 보강을 한다.
+- 실패 시 같은 문서의 **Git push / SSH 키 ACL / Vercel 로그인** 절을 안내·실행한다.
+- `-AllowDirtyWorkingTree`, `-SkipPush` 등은 문서대로 **예외**이며 **기본은 깨끗한 트리 + push**다.
 
 `docs/DECISION_LOG.md`의 제품 UI·KPI 결정과 충돌하지 않는 **운영 스크립트 실행**이므로 별도 [DECISION REQUIRED] 없이 진행한다.

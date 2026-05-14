@@ -887,8 +887,12 @@ def get_document_history_by_requirement(
         .filter(DocumentRequirement.id == requirement_id, DocumentRequirement.site_id == site_id)
         .first()
     )
-    if req is not None:
-        assert_not_ledger_managed_document_type(req.code)
+    if req is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Requirement not found for this site",
+        )
+    assert_not_ledger_managed_document_type(req.code)
     rows = get_requirement_document_history(
         db,
         site_id=site_id,

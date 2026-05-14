@@ -3,6 +3,49 @@
 > **목적:** 세션을 옮겨도 “어떻게 운영에 올리는지”를 한곳에서 찾을 수 있게 한다.  
 > 사용자가 **「배포해」「운영 반영해」**라고 하면, 에이전트는 **본 문서 순서대로** PowerShell 명령을 실행한다(사전 승인이 필요한 경우만 확인).
 
+## 운영 연속성 우선 (재발 방지)
+
+### 원칙
+
+**미반영 배포·“성공” 착각**(로컬만 수정, push 누띄, 스크립트만 돌리고 검증 생략)으로 **HQ/현장 업무가 멈추는 비용**은, 일반적인 “커밋을 조심하자” 수준의 실수보다 훨씬 크다. 배포 절차에서는 **원격에 반영된 사실(SHA·스크립트 로그·헬스·Vercel 상태)** 을 근거로 말한다.
+
+### 표준 운영자 흐름 (매번)
+
+1. **변경 확인** — 반영하려는 수정이 맞는지, 제품 코드·설정 경로인지 본다.
+2. **(필요 시) 안전 범위 커밋** — EC2는 **push된 커밋**만 당긴다. 미커밋 제품 변경이 있으면 스크립트가 기본으로 중단한다 → **의도된 변경만** 스테이징해 커밋한다.
+3. **`git push origin main`** — `deploy_all.ps1`가 push를 포함하더라도, 운영자는 **원격에 올라간 커밋**이 무엇인지 알 수 있게 푸시 직후 SHA를 기준으로 한다(로컬 `HEAD`와 `origin/main` 일치 확인 권장).
+4. **`deploy_all.ps1`** → **`deploy_frontend_vercel.ps1`** — 사용자가 “백엔드만” 등으로 한정하지 않는 한 **둘 다** 실행한다.
+5. **반드시 확인 (말로 끝내지 않음)**  
+   - **푸시된 SHA:** 로컬 `git rev-parse HEAD`와 원격 `git ls-remote origin refs/heads/main`(또는 사용 브랜치) 등으로 **포함 커밋**을 확인한다.  
+   - **백엔드:** 출력 **`[deploy] Remote HEAD after pull:`** 및 `git log -1 --oneline` 한 줄, 필요 시 `/health` = `ok`.  
+   - **프론트:** Vercel 출력 **`readyState":"READY"`**, 프로덕션 **별칭**(예: `https://www.besma.co.kr`).
+
+### 금지
+
+**“배포 완료”만** 말하고 **push 여부·포함 커밋·스크립트 성공 로그**를 확인하지 않는 것.
+
+### 비밀·대용량 (그대로 제외)
+
+개인키(`*.pem` 등), `.env` **실비밀**, `storage/` 등 **대용량·로컬 전용 데이터**는 **커밋·동반 업로드 금지**다. 이는 운영 연속성과 별개인 **보안·저장소 정책**이다.
+
+### 예외: 프리플라이트 플래그
+
+**기본값 = 깨끗한 작업 트리 + 원격에 반영된 커밋.** 아래는 **예외**로만 쓴다(사유·상황을 기록할 것).
+
+| 플래그 | 용도 |
+|--------|------|
+| `-AllowDirtyWorkingTree` | 미커밋이 있어도 스크립트 진행(EC2에 올라가는 것은 여전히 **push된 코드**). |
+| `-SkipPush` | 이미 push함. 로컬이 `origin/main`보다 앞서 있으면 기본 실패. |
+| `-AllowSkipPushUnpushed` | push 없이 진행 강제(위험; 런북·사유 명시 후만). |
+| `-SkipFrontendBuild` | 로컬 프론트 빌드 검증만 생략. |
+| `-RemoteGitCleanUntracked` | **EC2 전용.** `git pull` 직전에 `backend/alembic/versions/` 아래 **미추적 파일만** `git clean -fd`로 삭제한다. 서버에만 생긴 Alembic 복사본 등으로 pull이 막힐 때만, 백업·사유 기록 후 사용(기본값 꺼짐). |
+
+**원격 `git pull` 실패 시:** `deploy_all.ps1`는 `ssh` 종료 코드를 검사해 **비정상 종료**로 끝난다(성공 착각 방지). pull이 통과한 뒤 DB 마이그레이션은 `deploy_backend.sh` 또는 수동 `alembic upgrade head`로 진행한다.
+
+전체 단계·명령 예: 아래 **표준 배포 절차** 및 `deploy/PRODUCTION_DEPLOY_RUNBOOK.md`.
+
+---
+
 ## 한 줄 요약
 
 | 구분 | 대상 | 명령 |
@@ -78,6 +121,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1 `
 
 **성공 판정:** 로그에 `[deploy] OK: besma-backend is up`, 원격 `curl …/health` → `{"status":"ok"}`. 로그에 **`[deploy] Remote HEAD after pull:`** 와 **커밋 한 줄**이 나오면 서버가 실제로 당긴 SHA를 확인할 수 있다.
 
+**EC2 Alembic 미추적 파일로 `pull`이 막힐 때:** 서버에서 `git status`로 경로를 확인한 뒤, 해당 파일을 백업·삭제하거나 `deploy/PRODUCTION_DEPLOY_RUNBOOK.md` 「원격 git pull이 막힐 때」절을 따른다. 한 경로만 정리하려면 `deploy_all.ps1`에 **`-RemoteGitCleanUntracked`** 를 붙여 `backend/alembic/versions/` 아래 미추적만 제거한 뒤 재실행한다.
+
 ### 배포했는데 변경이 안 보일 때 (원인 패턴)
 
 | 증상 | 흔한 원인 |
@@ -136,6 +181,6 @@ git push origin main
 
 ## 에이전트 동작 규칙 (요약)
 
-- 사용자가 **운영 배포·배포해·프로덕션 반영** 등을 요청하면 **본 파일의 표준 절차**를 실행한다.  
+- 사용자가 **운영 배포·배포해·프로덕션 반영** 등을 요청하면 **위「운영 연속성 우선」** 및 **표준 배포 절차**를 따른다(기본 묶음: Git 상태 확인 → 필요 시 안전 커밋·push → 두 스크립트 → **SHA·Remote HEAD·Vercel READY/별칭** 보고). 상세는 `.cursor/rules/besma-deploy-on-request.mdc`.  
 - **백엔드만** 필요하면 1)만, **프론트만** 필요하면 2)만 실행할 수 있으나, 기본은 **둘 다** 시도한다.  
 - 실패 시 로그·에러 메시지를 보고, 위 “사전 조건”과 런북 2절을 점검한다.

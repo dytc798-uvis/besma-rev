@@ -3,6 +3,14 @@
 **매 배포마다 이 문서 순서대로 실행하면 됩니다.**  
 백엔드는 EC2(`api.besma.co.kr`) Git + `deploy_backend.sh`, 프론트는 **Vercel**입니다. `deploy_all.ps1`만으로 프론트가 올라가지 않습니다.
 
+## 운영 연속성 우선
+
+- **원칙:** 미반영·착각 배포로 HQ/현장 업무가 멈추는 비용이, 일반적인 Git 실수 방지 비용보다 크다. 에이전트·운영자 공통 상세는 **`docs/OPERATIONS_DEPLOY.md`** 의「운영 연속성 우선」절을 본다.
+- **표준 흐름:** 변경 확인 → (필요 시) 안전 범위 커밋 → `git push origin main` → `deploy_all.ps1` → `deploy_frontend_vercel.ps1` → **푸시 SHA**, 스크립트 **`[deploy] Remote HEAD after pull:`**, **Vercel READY·프로덕션 별칭** 확인.
+- **금지:** 위 검증 없이 “배포 완료”만 기술.
+- **예외 플래그:** `-AllowDirtyWorkingTree`, `-SkipPush`, `-AllowSkipPushUnpushed`, `-SkipFrontendBuild`, `-RemoteGitCleanUntracked` — **기본은 깨끗한 트리 + push**; 표는 `OPERATIONS_DEPLOY.md` 참고.
+- **pull 실패 시:** `deploy_all.ps1`는 원격 `ssh`가 실패하면 **0이 아닌 종료 코드**로 끝난다. 로그에 `[deploy] Remote HEAD after pull:` 가 없으면 배포가 끝까지 가지 않은 것이다.
+
 ---
 
 ## 0. 한 번만 확인할 것
@@ -43,6 +51,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1 `
 
 ### 성공 판정 (백엔드)
 
+- 로컬 스크립트가 **에러 없이 종료**(원격 `git pull`·헬스 체크 실패 시 `deploy_all.ps1`는 비정상 종료).
 - 원격에서 `git pull --ff-only`가 **에러 없이** 끝남.
 - 출력에 **`[deploy] Remote HEAD after pull:`** 및 `git log -1 --oneline` 한 줄(서버가 당긴 커밋 확인).
 - 로그에 `[deploy] OK: besma-backend is up` 또는 스크립트 마지막 `curl .../health` 가 동작.
@@ -54,11 +63,23 @@ ssh -i "C:\besma-rev\besma-rev_handoff\.secrets\besma-key.pem" ubuntu@api.besma.
 
 기대 응답: `{"status":"ok"}`
 
+#### DB 마이그레이션만 적용할 때 (`pull`은 이미 성공)
+
+`deploy_all.ps1`는 기본으로 원격에서 `RUN_MIGRATIONS=1 ./deploy/deploy_backend.sh`를 호출해 **`alembic upgrade head`가 포함**된다. `git pull`만 수동으로 끝낸 뒤 마이그레이션만 돌리려면 EC2에서:
+
+```bash
+cd /home/ubuntu/besma-rev/backend
+.venv/bin/alembic upgrade head
+sudo systemctl restart besma-backend
+```
+
 ---
 
 ## 2. 원격 `git pull`이 막힐 때만 (서버 작업 트리가 지저분할 때)
 
 증상: `Your local changes... would be overwritten` 또는 미추적 파일 때문에 `pull` / `merge` 중단.
+
+**Alembic만 꼬인 경우(흔함):** `git status`에 `backend/alembic/versions/` 아래 **미추적 `.py`** 가 있으면, 원격에 없는 복사본이 `pull`과 충돌한다. 서버에서 해당 파일명을 기록한 뒤 `cp`로 백업하고 `rm` 한 파일만 지우거나, 아래 **선택**으로 `deploy_all.ps1 -RemoteGitCleanUntracked` 를 한 번 쓴다(해당 디렉터리의 **미추적만** 삭제).
 
 **원칙:** 서버에서 코드는 **GitHub `origin/main`과 동일**하게 두고 배포한다. 업로드 파일(`storage/`), DB 백업(`database/` 등)은 건드리지 않는다.
 

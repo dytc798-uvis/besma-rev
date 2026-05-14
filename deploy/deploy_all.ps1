@@ -10,7 +10,8 @@ param(
   [switch]$SkipFrontendBuild,
   [switch]$AllowDirtyWorkingTree,
   [switch]$AllowSkipPushUnpushed,
-  [switch]$SkipGitPreflightFetch
+  [switch]$SkipGitPreflightFetch,
+  [switch]$RemoteGitCleanUntracked
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,9 +75,16 @@ if ([string]::IsNullOrWhiteSpace($SshKeyPath)) {
 }
 
 $backendDeployCmd = if ($RunMigrations) { "RUN_MIGRATIONS=1 ./deploy/deploy_backend.sh" } else { "./deploy/deploy_backend.sh" }
+$cleanUntrackedVersions = if ($RemoteGitCleanUntracked) {
+  @"
+echo "[deploy] RemoteGitCleanUntracked: removing untracked files under backend/alembic/versions"
+git clean -fd backend/alembic/versions/
+"@
+} else { "" }
 $remoteCmd = @"
-set -e
+set -eo pipefail
 cd $RemoteProjectRoot
+$cleanUntrackedVersions
 git pull --ff-only
 echo "[deploy] Remote HEAD after pull: `$(git rev-parse HEAD)"
 git log -1 --oneline
@@ -137,10 +145,16 @@ Exec-Step "Deploy backend on remote server" {
   # Windows CRLF in here-string breaks remote bash (`set: invalid option`, `cd: ...\r`).
   $unix = ($remoteCmd -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd()
   $unix | & ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "bash -s"
+  if ($LASTEXITCODE -ne 0) {
+    throw "Remote deploy failed (ssh exit $LASTEXITCODE). Check EC2 git pull / merge and deploy_backend.sh logs above."
+  }
 }
 
 Exec-Step "Verify API endpoints on remote" {
   ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "curl -i http://127.0.0.1:8001/notices | head -n 1; curl -i 'http://127.0.0.1:8001/safety-policy-goals/view?scope=HQ' | head -n 1; curl -i 'http://127.0.0.1:8001/dynamic-menus/sidebar?ui_type=HQ_SAFE' | head -n 1"
+  if ($LASTEXITCODE -ne 0) {
+    throw "Remote verification ssh failed (exit $LASTEXITCODE)."
+  }
 }
 
 Write-Host ""
