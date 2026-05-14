@@ -1065,17 +1065,99 @@ def _requirement_upload_histories_for_scope(
     )
 
 
+def _requirement_documents_fallback_for_scope(
+    db: Session,
+    *,
+    site_id: int,
+    requirement: DocumentRequirement,
+    requirement_id: int,
+    restrict_to_document_instance_id: int | None,
+    exclude_document_ids: set[int],
+) -> list[tuple[Document, DocumentInstance | None, str]]:
+    """업로드 이력 행은 없고 `documents`에만 파일이 남은 경우(SITE 병합용). 반환: (document, instance, source_type)."""
+    DocInst = aliased(DocumentInstance)
+    dt_code = requirement.document_type.code if requirement.document_type else None
+    req_type_match = (
+        or_(Document.document_type == requirement.code, Document.document_type == dt_code)
+        if dt_code is not None
+        else Document.document_type == requirement.code
+    )
+    req_match = or_(
+        DocInst.selected_requirement_id == requirement_id,
+        DocInst.document_type_code == requirement.code,
+        req_type_match,
+    )
+    site_match = Document.site_id == site_id
+    scope_match = req_match
+    if restrict_to_document_instance_id is not None:
+        scope_match = and_(req_match, Document.instance_id == restrict_to_document_instance_id)
+
+    has_file = and_(
+        Document.file_path.isnot(None),
+        func.trim(Document.file_path) != "",
+    )
+    q = (
+        db.query(Document, DocInst)
+        .outerjoin(DocInst, Document.instance_id == DocInst.id)
+        .filter(site_match, scope_match, has_file)
+        .order_by(Document.uploaded_at.desc().nullslast(), Document.created_at.desc(), Document.id.desc())
+    )
+    if exclude_document_ids:
+        q = q.filter(~Document.id.in_(exclude_document_ids))
+    out: list[tuple[Document, DocumentInstance | None, str]] = []
+    for doc, inst in q.all():
+        if inst is not None and inst.selected_requirement_id is not None and int(inst.selected_requirement_id) != int(requirement_id):
+            st = "legacy_file"
+        else:
+            st = "current_document"
+        out.append((doc, inst, st))
+    return out
+
+
+def _merge_history_rows_with_site_document_fallback(
+    history_rows: list[dict[str, Any]],
+    fallback_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """이력 우선. 동일 document_id 폴백 제거. 정렬: 업로드 시각 내림차순, history_id 내림차순."""
+    seen_doc_ids: set[int] = set()
+    for r in history_rows:
+        did = r.get("document_id")
+        if isinstance(did, int):
+            seen_doc_ids.add(did)
+    merged_fb = [r for r in fallback_rows if isinstance(r.get("document_id"), int) and r["document_id"] not in seen_doc_ids]
+    merged = history_rows + merged_fb
+
+    def sort_key(row: dict[str, Any]) -> tuple[float, int, int]:
+        ts = row.get("uploaded_at")
+        if isinstance(ts, datetime):
+            tsn = -ts.timestamp()
+        else:
+            tsn = 0.0
+        hid = row.get("history_id")
+        hidn = -int(hid) if hid is not None else 0
+        did = row.get("document_id")
+        didn = -int(did) if isinstance(did, int) else 0
+        return (tsn, hidn, didn)
+
+    merged.sort(key=sort_key)
+    return merged
+
+
 def get_requirement_document_history(
     db: Session,
     *,
     site_id: int,
     requirement_id: int,
     document_instance_id: int | None = None,
-) -> tuple[list[dict[str, Any]], bool]:
-    """이력 목록은 항상 site+requirement 광역 조회. instance_id는 strict 조회가 비었는지 판별용(used_fallback)."""
+    include_document_site_merge: bool = False,
+) -> tuple[list[dict[str, Any]], bool, bool]:
+    """이력 목록은 항상 site+requirement 광역 조회. instance_id는 strict 조회가 비었는지 판별용(used_fallback).
+
+    include_document_site_merge: SITE 전용. 업로드 이력에 없는 `documents` 행을 읽기 전용으로 병합한다.
+    """
     requirement = db.query(DocumentRequirement).filter(DocumentRequirement.id == requirement_id).first()
     if requirement is None:
-        return [], False
+        return [], False, False
 
     history_freq = _effective_site_requirement_frequency(requirement.code, requirement.frequency)
 
@@ -1145,9 +1227,69 @@ def get_requirement_document_history(
                 ),
                 "history_file_available": bool(h.file_path),
                 "file_download_url": f"/documents/history/{h.id}/file" if h.file_path else None,
+                "source_type": "upload_history",
             }
         )
-    return rows, used_fallback
+
+    merged_document_fallback = False
+    if include_document_site_merge:
+        exclude_ids = {int(r["document_id"]) for r in rows if isinstance(r.get("document_id"), int)}
+        fb_pairs = _requirement_documents_fallback_for_scope(
+            db,
+            site_id=site_id,
+            requirement=requirement,
+            requirement_id=requirement_id,
+            restrict_to_document_instance_id=None,
+            exclude_document_ids=exclude_ids,
+        )
+        if fb_pairs:
+            fb_doc_ids = [int(d.id) for d, _, _ in fb_pairs]
+            fb_review = _latest_review_snapshot_map(db, fb_doc_ids)
+            fb_reject = _latest_reject_snapshot_map(db, fb_doc_ids)
+            fb_rows: list[dict[str, Any]] = []
+            for doc, inst, source_type in fb_pairs:
+                review_snapshot = fb_review.get(int(doc.id))
+                reject_snapshot = fb_reject.get(int(doc.id))
+                reviewed_at = None
+                if doc.current_status == _STATUS_REJECTED:
+                    reviewed_at = doc.reviewed_at
+                    if reviewed_at is None and reject_snapshot and reject_snapshot.get("action_at"):
+                        reviewed_at = reject_snapshot["action_at"]
+                elif doc.current_status == _STATUS_APPROVED:
+                    if review_snapshot and review_snapshot.get("action_at"):
+                        reviewed_at = review_snapshot["action_at"]
+                uploaded_at = doc.uploaded_at or doc.created_at
+                fb_rows.append(
+                    {
+                        "history_id": None,
+                        "document_id": doc.id,
+                        "instance_id": doc.instance_id,
+                        "version_no": doc.version_no,
+                        "action_type": "DOCUMENT",
+                        "status": doc.current_status,
+                        "uploaded_at": uploaded_at,
+                        "review_note": _sanitize_public_review_note(doc.rejection_reason)
+                        if doc.current_status == _STATUS_REJECTED
+                        else None,
+                        "uploader_user_id": doc.uploaded_by_user_id,
+                        "file_name": doc.file_name,
+                        "reviewed_at": reviewed_at,
+                        "period_start": doc.period_start if doc is not None else (inst.period_start if inst else None),
+                        "period_end": doc.period_end if doc is not None else (inst.period_end if inst else None),
+                        "period_label": _period_label(
+                            freq=history_freq,
+                            start=(doc.period_start if doc is not None else (inst.period_start if inst else None)),
+                            end=(doc.period_end if doc is not None else (inst.period_end if inst else None)),
+                        ),
+                        "history_file_available": bool(doc.file_path),
+                        "file_download_url": f"/documents/{doc.id}/file" if doc.file_path else None,
+                        "source_type": source_type,
+                    }
+                )
+            if fb_rows:
+                merged_document_fallback = True
+                rows = _merge_history_rows_with_site_document_fallback(rows, fb_rows)
+    return rows, used_fallback, merged_document_fallback
 
 
 def get_document_content(

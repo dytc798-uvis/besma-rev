@@ -391,7 +391,7 @@
         <tbody>
           <tr
             v-for="row in historyItems"
-            :key="row.history_id"
+            :key="row.history_id ?? `doc-${row.document_id}`"
             role="button"
             tabindex="0"
             class="history-row"
@@ -511,7 +511,7 @@ interface RequirementStatusItem {
 }
 
 interface HistoryItem {
-  history_id: number;
+  history_id: number | null;
   document_id: number;
   instance_id: number | null;
   version_no: number;
