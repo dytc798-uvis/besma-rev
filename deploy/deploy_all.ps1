@@ -90,7 +90,7 @@ echo "[deploy] Remote HEAD after pull: `$(git rev-parse HEAD)"
 git log -1 --oneline
 chmod +x ./deploy/deploy_backend.sh
 $backendDeployCmd
-curl -fsS http://127.0.0.1:8001/health
+curl -fsS 'http://127.0.0.1:8001/health'
 "@
 
 Exec-Step "Git preflight (branch, SHA, fetch, clean tree, push policy)" {
@@ -151,7 +151,16 @@ Exec-Step "Deploy backend on remote server" {
 }
 
 Exec-Step "Verify API endpoints on remote" {
-  ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "curl -i http://127.0.0.1:8001/notices | head -n 1; curl -i 'http://127.0.0.1:8001/safety-policy-goals/view?scope=HQ' | head -n 1; curl -i 'http://127.0.0.1:8001/dynamic-menus/sidebar?ui_type=HQ_SAFE' | head -n 1"
+  # Single-quoted here-string: PowerShell must not parse `&` or `?` inside remote URLs (curl exit 3 / malformed URL).
+  $remoteVerify = @'
+set -e
+curl -fsS 'http://127.0.0.1:8001/health' >/dev/null
+curl -fsS -o /dev/null -w "%{http_code}\n" 'http://127.0.0.1:8001/notices' | head -n 1
+curl -fsS -o /dev/null -w "%{http_code}\n" 'http://127.0.0.1:8001/safety-policy-goals/view?scope=HQ' | head -n 1
+curl -fsS -o /dev/null -w "%{http_code}\n" 'http://127.0.0.1:8001/dynamic-menus/sidebar?ui_type=HQ_SAFE' | head -n 1
+'@
+  $unixVerify = ($remoteVerify -replace "`r`n", "`n" -replace "`r", "`n").TrimEnd()
+  $unixVerify | & ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "bash -s"
   if ($LASTEXITCODE -ne 0) {
     throw "Remote verification ssh failed (exit $LASTEXITCODE)."
   }
