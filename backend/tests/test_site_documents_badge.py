@@ -446,10 +446,26 @@ def test_document_history_instance_fallback_and_permissions(tmp_path: Path) -> N
             role=Role.HQ_SAFE,
         )
     )
+    inst_orphan = DocumentInstance(
+        site_id=site_id,
+        document_type_code="TYPE_X",
+        period_start=date(2026, 2, 1),
+        period_end=date(2026, 2, 1),
+        generation_anchor_date=date(2026, 2, 1),
+        due_date=date(2026, 2, 1),
+        status=DocumentInstanceStatus.GENERATED,
+        status_reason="OK",
+        selected_requirement_id=req.id,
+        workflow_status=WorkflowStatus.SUBMITTED,
+        period_basis="CYCLE",
+        rule_is_required=True,
+    )
+    db.add(inst_orphan)
     db.commit()
     req_id = req.id
     inst_id = inst.id
     inst_new_id = inst_new.id
+    inst_orphan_id = inst_orphan.id
     db.close()
 
     app = FastAPI()
@@ -474,6 +490,7 @@ def test_document_history_instance_fallback_and_permissions(tmp_path: Path) -> N
     )
     assert res_req_only.status_code == 200
     assert len(res_req_only.json()["items"]) == 2
+    assert res_req_only.json().get("used_fallback") is False
 
     res_inst = client.get(
         "/documents/history",
@@ -482,6 +499,7 @@ def test_document_history_instance_fallback_and_permissions(tmp_path: Path) -> N
     assert res_inst.status_code == 200
     assert len(res_inst.json()["items"]) == 2
     assert res_inst.json()["document_instance_id"] == inst_id
+    assert res_inst.json().get("used_fallback") is False
 
     res_new_inst = client.get(
         "/documents/history",
@@ -489,6 +507,15 @@ def test_document_history_instance_fallback_and_permissions(tmp_path: Path) -> N
     )
     assert res_new_inst.status_code == 200
     assert len(res_new_inst.json()["items"]) == 2
+    assert res_new_inst.json().get("used_fallback") is False
+
+    res_orphan_inst = client.get(
+        "/documents/history",
+        params={"site_id": site_id, "requirement_id": req_id, "document_instance_id": inst_orphan_id},
+    )
+    assert res_orphan_inst.status_code == 200
+    assert len(res_orphan_inst.json()["items"]) == 2
+    assert res_orphan_inst.json().get("used_fallback") is True
 
     app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
         id=3, role=Role.HQ_SAFE, site_id=None

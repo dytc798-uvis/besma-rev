@@ -1018,21 +1018,15 @@ def count_site_dashboard_pending_current_task(items: list[dict[str, Any]]) -> in
     return n
 
 
-def get_requirement_document_history(
+def _requirement_upload_histories_for_scope(
     db: Session,
     *,
     site_id: int,
+    requirement: DocumentRequirement,
     requirement_id: int,
-    document_instance_id: int | None = None,
-) -> list[dict[str, Any]]:
-    requirement = db.query(DocumentRequirement).filter(DocumentRequirement.id == requirement_id).first()
-    if requirement is None:
-        return []
-
-    history_freq = _effective_site_requirement_frequency(requirement.code, requirement.frequency)
-
-    # 업로드 이력 행의 instance_id로만 DocumentInstance를 붙이면, 레거시(히스토리.instance_id NULL)에서
-    # 인스턴스의 selected_requirement_id를 평가할 수 없어 이력이 누락된다. Document.instance_id 기준 별도 조인을 둔다.
+    restrict_to_document_instance_id: int | None,
+) -> list[tuple[DocumentUploadHistory, Document, Any, Any]]:
+    """requirement_id·site 기준 업로드 이력. restrict가 있으면 해당 인스턴스에 한정(AND)."""
     HistInst = aliased(DocumentInstance)
     DocInst = aliased(DocumentInstance)
     dt_code = requirement.document_type.code if requirement.document_type else None
@@ -1049,16 +1043,15 @@ def get_requirement_document_history(
         req_type_match,
     )
     site_match = Document.site_id == site_id
-    if document_instance_id is not None:
+    scope_match = req_match
+    if restrict_to_document_instance_id is not None:
         instance_match = or_(
-            DocumentUploadHistory.instance_id == document_instance_id,
-            Document.instance_id == document_instance_id,
+            DocumentUploadHistory.instance_id == restrict_to_document_instance_id,
+            Document.instance_id == restrict_to_document_instance_id,
         )
-        scope_match = or_(instance_match, req_match)
-    else:
-        scope_match = req_match
+        scope_match = and_(req_match, instance_match)
 
-    histories = (
+    return (
         db.query(DocumentUploadHistory, Document, HistInst, DocInst)
         .join(Document, Document.id == DocumentUploadHistory.document_id)
         .outerjoin(HistInst, DocumentUploadHistory.instance_id == HistInst.id)
@@ -1070,6 +1063,49 @@ def get_requirement_document_history(
         .order_by(DocumentUploadHistory.uploaded_at.desc().nullslast(), DocumentUploadHistory.id.desc())
         .all()
     )
+
+
+def get_requirement_document_history(
+    db: Session,
+    *,
+    site_id: int,
+    requirement_id: int,
+    document_instance_id: int | None = None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """이력 목록은 항상 site+requirement 광역 조회. instance_id는 strict 조회가 비었는지 판별용(used_fallback)."""
+    requirement = db.query(DocumentRequirement).filter(DocumentRequirement.id == requirement_id).first()
+    if requirement is None:
+        return [], False
+
+    history_freq = _effective_site_requirement_frequency(requirement.code, requirement.frequency)
+
+    used_fallback = False
+    if document_instance_id is not None:
+        strict_rows = _requirement_upload_histories_for_scope(
+            db,
+            site_id=site_id,
+            requirement=requirement,
+            requirement_id=requirement_id,
+            restrict_to_document_instance_id=document_instance_id,
+        )
+        broad_rows = _requirement_upload_histories_for_scope(
+            db,
+            site_id=site_id,
+            requirement=requirement,
+            requirement_id=requirement_id,
+            restrict_to_document_instance_id=None,
+        )
+        if not strict_rows and broad_rows:
+            used_fallback = True
+        histories = broad_rows
+    else:
+        histories = _requirement_upload_histories_for_scope(
+            db,
+            site_id=site_id,
+            requirement=requirement,
+            requirement_id=requirement_id,
+            restrict_to_document_instance_id=None,
+        )
 
     history_doc_ids = [int(history.document_id) for history, _, _, _ in histories if history.document_id]
     review_snapshot_map = _latest_review_snapshot_map(db, history_doc_ids)
@@ -1111,7 +1147,7 @@ def get_requirement_document_history(
                 "file_download_url": f"/documents/history/{h.id}/file" if h.file_path else None,
             }
         )
-    return rows
+    return rows, used_fallback
 
 
 def get_document_content(

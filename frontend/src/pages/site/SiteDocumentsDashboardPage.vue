@@ -898,6 +898,7 @@ async function openHistory(item: RequirementStatusItem) {
   if (!siteId.value) return;
   historyTarget.value = item;
   historyFocusedDocumentId.value = null;
+  // 이력은 이 페이지에서 모달로만 조회(GET /documents/history). document-explorer 라우트로 이동하지 않음.
   const res = await api.get("/documents/history", {
     params: {
       site_id: siteId.value,

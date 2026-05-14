@@ -921,11 +921,21 @@ def get_document_history_by_requirement(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Document instance not found for this site",
             )
-    rows = get_requirement_document_history(
+    rows, used_fallback = get_requirement_document_history(
         db,
         site_id=site_id,
         requirement_id=requirement_id,
         document_instance_id=document_instance_id,
+    )
+    role_val = getattr(current_user.role, "value", current_user.role)
+    logger.info(
+        "document_history_request role=%s user_site_id=%s requirement_id=%s document_instance_id=%s matched_count=%s used_fallback=%s",
+        role_val,
+        getattr(current_user, "site_id", None),
+        requirement_id,
+        document_instance_id,
+        len(rows),
+        used_fallback,
     )
     if not rows:
         logger.info(
@@ -938,6 +948,7 @@ def get_document_history_by_requirement(
         "site_id": site_id,
         "requirement_id": requirement_id,
         "document_instance_id": document_instance_id,
+        "used_fallback": used_fallback,
         "items": rows,
     }
 
