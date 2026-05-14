@@ -7,7 +7,7 @@ from typing import Any
 from types import SimpleNamespace
 
 from sqlalchemy import and_, case, func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.modules.approvals.models import ApprovalAction, ApprovalHistory
 from app.core.enums import Role
@@ -1031,10 +1031,22 @@ def get_requirement_document_history(
 
     history_freq = _effective_site_requirement_frequency(requirement.code, requirement.frequency)
 
+    # 업로드 이력 행의 instance_id로만 DocumentInstance를 붙이면, 레거시(히스토리.instance_id NULL)에서
+    # 인스턴스의 selected_requirement_id를 평가할 수 없어 이력이 누락된다. Document.instance_id 기준 별도 조인을 둔다.
+    HistInst = aliased(DocumentInstance)
+    DocInst = aliased(DocumentInstance)
+    dt_code = requirement.document_type.code if requirement.document_type else None
+    req_type_match = (
+        or_(Document.document_type == requirement.code, Document.document_type == dt_code)
+        if dt_code is not None
+        else Document.document_type == requirement.code
+    )
     req_match = or_(
-        DocumentInstance.selected_requirement_id == requirement_id,
-        Document.document_type == requirement.code,
-        Document.document_type == requirement.document_type.code,
+        HistInst.selected_requirement_id == requirement_id,
+        DocInst.selected_requirement_id == requirement_id,
+        HistInst.document_type_code == requirement.code,
+        DocInst.document_type_code == requirement.code,
+        req_type_match,
     )
     site_match = Document.site_id == site_id
     if document_instance_id is not None:
@@ -1047,9 +1059,10 @@ def get_requirement_document_history(
         scope_match = req_match
 
     histories = (
-        db.query(DocumentUploadHistory, Document, DocumentInstance)
+        db.query(DocumentUploadHistory, Document, HistInst, DocInst)
         .join(Document, Document.id == DocumentUploadHistory.document_id)
-        .outerjoin(DocumentInstance, DocumentUploadHistory.instance_id == DocumentInstance.id)
+        .outerjoin(HistInst, DocumentUploadHistory.instance_id == HistInst.id)
+        .outerjoin(DocInst, Document.instance_id == DocInst.id)
         .filter(
             site_match,
             scope_match,
@@ -1058,11 +1071,12 @@ def get_requirement_document_history(
         .all()
     )
 
-    history_doc_ids = [int(history.document_id) for history, _, _ in histories if history.document_id]
+    history_doc_ids = [int(history.document_id) for history, _, _, _ in histories if history.document_id]
     review_snapshot_map = _latest_review_snapshot_map(db, history_doc_ids)
     reject_snapshot_map = _latest_reject_snapshot_map(db, history_doc_ids)
     rows: list[dict[str, Any]] = []
-    for h, doc, inst in histories:
+    for h, doc, hist_inst, doc_inst in histories:
+        inst = hist_inst or doc_inst
         review_snapshot = review_snapshot_map.get(int(h.document_id))
         reject_snapshot = reject_snapshot_map.get(int(h.document_id))
         reviewed_at = None

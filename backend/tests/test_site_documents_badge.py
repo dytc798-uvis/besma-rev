@@ -385,9 +385,71 @@ def test_document_history_instance_fallback_and_permissions(tmp_path: Path) -> N
             uploaded_at=datetime(2026, 1, 1, 12, 0, 0),
         )
     )
+    inst_new = DocumentInstance(
+        site_id=site_id,
+        document_type_code="TYPE_X",
+        period_start=date(2026, 5, 14),
+        period_end=date(2026, 5, 14),
+        generation_anchor_date=date(2026, 5, 14),
+        due_date=date(2026, 5, 14),
+        status=DocumentInstanceStatus.GENERATED,
+        status_reason="OK",
+        selected_requirement_id=req.id,
+        workflow_status=WorkflowStatus.SUBMITTED,
+        period_basis="CYCLE",
+        rule_is_required=True,
+    )
+    db.add(inst_new)
+    db.flush()
+    doc_new = Document(
+        document_no="NEW-1",
+        title="today doc",
+        document_type="TYPE_X",
+        site_id=site_id,
+        submitter_user_id=1,
+        current_status="SUBMITTED",
+        description="",
+        source_type="MANUAL",
+        instance_id=inst_new.id,
+        period_start=date(2026, 5, 14),
+        period_end=date(2026, 5, 14),
+        file_path="x/new.pdf",
+        file_name="new.pdf",
+        file_size=1,
+        uploaded_by_user_id=1,
+        uploaded_at=datetime(2026, 5, 14, 10, 0, 0),
+        version_no=1,
+    )
+    db.add(doc_new)
+    db.flush()
+    db.add(
+        DocumentUploadHistory(
+            document_id=doc_new.id,
+            instance_id=inst_new.id,
+            version_no=1,
+            action_type="UPLOAD",
+            document_status="SUBMITTED",
+            file_path="x/new.pdf",
+            file_name="new.pdf",
+            file_size=1,
+            uploaded_by_user_id=1,
+            uploaded_at=datetime(2026, 5, 14, 10, 0, 0),
+        )
+    )
+    db.add(
+        User(
+            id=3,
+            name="hq",
+            login_id="hq_hist",
+            password_hash="x",
+            site_id=None,
+            role=Role.HQ_SAFE,
+        )
+    )
     db.commit()
     req_id = req.id
     inst_id = inst.id
+    inst_new_id = inst_new.id
     db.close()
 
     app = FastAPI()
@@ -411,15 +473,35 @@ def test_document_history_instance_fallback_and_permissions(tmp_path: Path) -> N
         params={"site_id": site_id, "requirement_id": req_id},
     )
     assert res_req_only.status_code == 200
-    assert res_req_only.json()["items"] == []
+    assert len(res_req_only.json()["items"]) == 2
 
     res_inst = client.get(
         "/documents/history",
         params={"site_id": site_id, "requirement_id": req_id, "document_instance_id": inst_id},
     )
     assert res_inst.status_code == 200
-    assert len(res_inst.json()["items"]) == 1
+    assert len(res_inst.json()["items"]) == 2
     assert res_inst.json()["document_instance_id"] == inst_id
+
+    res_new_inst = client.get(
+        "/documents/history",
+        params={"site_id": site_id, "requirement_id": req_id, "document_instance_id": inst_new_id},
+    )
+    assert res_new_inst.status_code == 200
+    assert len(res_new_inst.json()["items"]) == 2
+
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=3, role=Role.HQ_SAFE, site_id=None
+    )
+    hq_res = client.get(
+        "/documents/history",
+        params={"site_id": site_id, "requirement_id": req_id},
+    )
+    assert hq_res.status_code == 200
+    assert len(hq_res.json()["items"]) == 2
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=1, role=Role.SITE, site_id=site_id
+    )
 
     app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
         id=2, role=Role.SITE, site_id=other_site_id

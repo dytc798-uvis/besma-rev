@@ -902,9 +902,6 @@ async function openHistory(item: RequirementStatusItem) {
     params: {
       site_id: siteId.value,
       requirement_id: item.requirement_id,
-      ...(item.current_cycle_instance_id != null
-        ? { document_instance_id: item.current_cycle_instance_id }
-        : {}),
     },
   });
   historyItems.value = res.data.items;
