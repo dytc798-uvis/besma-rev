@@ -41,6 +41,7 @@ from app.modules.documents.models import (
 )
 from app.modules.document_settings.models import DocumentRequirement
 from app.modules.documents.service import (
+    count_site_dashboard_pending_current_task,
     create_document_comment,
     delete_document_comment,
     DocumentContentInvalidStateError,
@@ -879,6 +880,10 @@ def get_document_history_by_requirement(
     current_user: CurrentUserDep,
     requirement_id: int,
     site_id: int,
+    document_instance_id: int | None = Query(
+        None,
+        description="DocumentInstance.id. 있으면 해당 인스턴스(및 요구사항 OR)로 이력을 넓게 조회한다.",
+    ),
 ):
     if current_user.role == Role.SITE and current_user.site_id != site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
@@ -888,17 +893,53 @@ def get_document_history_by_requirement(
         .first()
     )
     if req is None:
+        logger.info(
+            "document_history_requirement_missing site_id=%s requirement_id=%s user_id=%s",
+            site_id,
+            requirement_id,
+            getattr(current_user, "id", None),
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Requirement not found for this site",
         )
     assert_not_ledger_managed_document_type(req.code)
+    if document_instance_id is not None:
+        inst = (
+            db.query(DocumentInstance)
+            .filter(DocumentInstance.id == document_instance_id, DocumentInstance.site_id == site_id)
+            .first()
+        )
+        if inst is None:
+            logger.info(
+                "document_history_instance_missing site_id=%s document_instance_id=%s requirement_id=%s",
+                site_id,
+                document_instance_id,
+                requirement_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document instance not found for this site",
+            )
     rows = get_requirement_document_history(
         db,
         site_id=site_id,
         requirement_id=requirement_id,
+        document_instance_id=document_instance_id,
     )
-    return {"site_id": site_id, "requirement_id": requirement_id, "items": rows}
+    if not rows:
+        logger.info(
+            "document_history_empty site_id=%s requirement_id=%s document_instance_id=%s",
+            site_id,
+            requirement_id,
+            document_instance_id,
+        )
+    return {
+        "site_id": site_id,
+        "requirement_id": requirement_id,
+        "document_instance_id": document_instance_id,
+        "items": rows,
+    }
 
 
 @router.get("/history/{history_id}/file")
@@ -968,10 +1009,11 @@ def get_site_badge_counts(
         completion_upload_enabled=completion_upload_enabled,
     )
     summary = _compute_summary(items)
+    pending_current = count_site_dashboard_pending_current_task(items)
     return {
         "site_id": current_user.site_id,
         "date": date_value,
-        "incomplete_count": summary["not_submitted_count"] + summary["submitted_pending_count"] + summary["in_review_count"] + summary["rejected_count"],
+        "incomplete_count": pending_current,
         "rejected_count": summary["rejected_count"],
     }
 

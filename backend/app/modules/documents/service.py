@@ -503,7 +503,10 @@ def _period_label(*, freq: str, start: date | None, end: date | None) -> str:
     return end.isoformat() if end is not None else "현재 주기"
 
 
-def _site_display_bucket(freq: str) -> str:
+def _site_display_bucket(freq: str, *, requirement_code: str | None = None) -> str:
+    """현장 대시보드 3분할(현재작업/주기/재조치)용 버킷. EMERGENCY_DRILL_REPORT만 HALF_YEARLY여도 현재작업으로 둔다."""
+    if (requirement_code or "").strip().upper() == "EMERGENCY_DRILL_REPORT":
+        return "CURRENT_TASK"
     return "CURRENT_TASK" if (freq or "").upper() in _PRIMARY_SITE_FREQUENCIES else "PERIODIC_OTHER"
 
 
@@ -685,7 +688,7 @@ def get_site_requirement_status(
                     "current_cycle_end": cycle_end,
                     "current_cycle_target": False,
                     "current_period_label": _period_label(freq=freq, start=cycle_start, end=cycle_end),
-                    "site_display_bucket": _site_display_bucket(freq),
+                    "site_display_bucket": _site_display_bucket(freq, requirement_code=req.code),
                     "current_cycle_needs_reupload": False,
                     "current_cycle_last_submission_status": None,
                     "unresolved_rejected_document_id": None,
@@ -795,7 +798,7 @@ def get_site_requirement_status(
                     "current_cycle_end": cycle_end,
                     "current_cycle_target": True,
                     "current_period_label": _period_label(freq=freq, start=cycle_start, end=cycle_end),
-                    "site_display_bucket": _site_display_bucket(freq),
+                    "site_display_bucket": _site_display_bucket(freq, requirement_code=req.code),
                     "current_cycle_needs_reupload": current_cycle_needs_reupload,
                     "current_cycle_last_submission_status": current_cycle_last_submission_status,
                     "unresolved_rejected_document_id": (
@@ -874,7 +877,7 @@ def get_site_requirement_status(
                 "current_cycle_end": cycle_end,
                 "current_cycle_target": True,
                 "current_period_label": _period_label(freq=freq, start=cycle_start, end=cycle_end),
-                "site_display_bucket": _site_display_bucket(freq),
+                "site_display_bucket": _site_display_bucket(freq, requirement_code=req.code),
                 "current_cycle_needs_reupload": current_cycle_needs_reupload,
                 "current_cycle_last_submission_status": current_cycle_last_submission_status,
                 "unresolved_rejected_document_id": (
@@ -997,11 +1000,30 @@ def get_site_requirement_status(
     return sorted(items, key=sort_key)
 
 
+def count_site_dashboard_pending_current_task(items: list[dict[str, Any]]) -> int:
+    """`SiteDocumentsDashboardPage`의 제출대기(pendingCurrentCount)와 동일 집계."""
+    n = 0
+    for item in items:
+        rid = item.get("requirement_id")
+        if not isinstance(rid, int) or rid <= 0:
+            continue
+        if not item.get("is_required", True):
+            continue
+        if str(item.get("current_cycle_status") or "") == _STATUS_NOT_REQUIRED:
+            continue
+        if str(item.get("site_display_bucket") or "") != "CURRENT_TASK":
+            continue
+        if str(item.get("current_cycle_status") or "") == _STATUS_NOT_SUBMITTED:
+            n += 1
+    return n
+
+
 def get_requirement_document_history(
     db: Session,
     *,
     site_id: int,
     requirement_id: int,
+    document_instance_id: int | None = None,
 ) -> list[dict[str, Any]]:
     requirement = db.query(DocumentRequirement).filter(DocumentRequirement.id == requirement_id).first()
     if requirement is None:
@@ -1009,17 +1031,28 @@ def get_requirement_document_history(
 
     history_freq = _effective_site_requirement_frequency(requirement.code, requirement.frequency)
 
+    req_match = or_(
+        DocumentInstance.selected_requirement_id == requirement_id,
+        Document.document_type == requirement.code,
+        Document.document_type == requirement.document_type.code,
+    )
+    site_match = Document.site_id == site_id
+    if document_instance_id is not None:
+        instance_match = or_(
+            DocumentUploadHistory.instance_id == document_instance_id,
+            Document.instance_id == document_instance_id,
+        )
+        scope_match = or_(instance_match, req_match)
+    else:
+        scope_match = req_match
+
     histories = (
         db.query(DocumentUploadHistory, Document, DocumentInstance)
         .join(Document, Document.id == DocumentUploadHistory.document_id)
         .outerjoin(DocumentInstance, DocumentUploadHistory.instance_id == DocumentInstance.id)
         .filter(
-            Document.site_id == site_id,
-            or_(
-                DocumentInstance.selected_requirement_id == requirement_id,
-                Document.document_type == requirement.code,
-                Document.document_type == requirement.document_type.code,
-            ),
+            site_match,
+            scope_match,
         )
         .order_by(DocumentUploadHistory.uploaded_at.desc().nullslast(), DocumentUploadHistory.id.desc())
         .all()
