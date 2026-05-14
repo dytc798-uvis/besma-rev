@@ -101,8 +101,7 @@ $remoteParts.Add('echo "[deploy] Remote HEAD after pull: $(git rev-parse HEAD)"'
 $remoteParts.Add("git log -1 --oneline")
 $remoteParts.Add("chmod +x ./deploy/deploy_backend.sh")
 $remoteParts.Add($backendDeployCmd)
-# Strip every CR: Windows CRLF in literals or join quirks can yield a standalone `\r` line bash treats as a command.
-$unix = [regex]::Replace((($remoteParts | ForEach-Object { $_.TrimEnd([char]13) }) -join "`n"), "`r+", "") + "`n"
+$deployScriptBody = (($remoteParts | ForEach-Object { ($_ + "").Replace("`r", "").TrimEnd() }) -join "`n").TrimEnd() + "`n"
 
 Exec-Step "Git preflight (branch, SHA, fetch, clean tree, push policy)" {
   $currentBranch = (git -C $RepoRoot branch --show-current).Trim()
@@ -153,10 +152,25 @@ if (-not $SkipPush) {
 }
 
 Exec-Step "Deploy backend on remote server" {
-  $unixRemote = ([regex]::Replace($unix.TrimEnd(), "`r+", "")).TrimEnd() + "`n"
-  $unixRemote | & ssh -i $SshKeyPath "$RemoteUser@$RemoteHost" "bash -s"
-  if ($LASTEXITCODE -ne 0) {
-    throw "Remote deploy failed (ssh exit $LASTEXITCODE). Check EC2 git pull / merge and deploy_backend.sh logs above."
+  # Avoid piping a string into ssh stdin from Windows PowerShell (can inject stray CR / phantom lines after deploy_backend).
+  $tmpLocal = Join-Path ([System.IO.Path]::GetTempPath()) ("besma-remote-deploy-" + [Guid]::NewGuid().ToString() + ".sh")
+  $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  try {
+    [System.IO.File]::WriteAllText($tmpLocal, $deployScriptBody, $utf8NoBom)
+    $tmpRemote = "/tmp/besma-remote-deploy-$([Guid]::NewGuid().ToString('N')).sh"
+    & scp -i $SshKeyPath -q $tmpLocal "${RemoteUser}@${RemoteHost}:$tmpRemote"
+    if ($LASTEXITCODE -ne 0) {
+      throw "scp deploy script to remote failed (exit $LASTEXITCODE)."
+    }
+    & ssh -i $SshKeyPath "${RemoteUser}@${RemoteHost}" $('chmod +x {0} && bash {0}; ec=$?; rm -f {0}; exit $ec' -f $tmpRemote)
+    if ($LASTEXITCODE -ne 0) {
+      throw "Remote deploy failed (ssh exit $LASTEXITCODE). Check EC2 git pull / merge and deploy_backend.sh logs above."
+    }
+  }
+  finally {
+    if (Test-Path -LiteralPath $tmpLocal) {
+      Remove-Item -LiteralPath $tmpLocal -Force -ErrorAction SilentlyContinue
+    }
   }
 }
 
