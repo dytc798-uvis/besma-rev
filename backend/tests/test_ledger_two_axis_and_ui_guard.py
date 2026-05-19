@@ -20,12 +20,28 @@ def test_nonconformity_list_route_before_param_route():
     assert idx_overview < idx_param
 
 
+def test_site_layout_sidebar_excludes_worker_voice_and_nonconformity_links():
+    """전용 대장 경로는 유지하되 사이드바에서 링크를 제거한다."""
+    root = Path(__file__).resolve().parents[2]
+    vue = (root / "frontend" / "src" / "layouts" / "SiteLayout.vue").read_text(encoding="utf-8")
+    assert "/site/worker-voice" not in vue
+    assert "/site/nonconformities" not in vue
+
+
+def test_hq_safe_layout_sidebar_excludes_worker_voice_and_nonconformity_links():
+    root = Path(__file__).resolve().parents[2]
+    vue = (root / "frontend" / "src" / "layouts" / "HQSafeLayout.vue").read_text(encoding="utf-8")
+    assert "/hq-safe/worker-voice" not in vue
+    assert "/hq-safe/nonconformities" not in vue
+
+
 def test_site_documents_dashboard_hides_ledger_managed_uploads():
-    """내 현장 문서: 전용 대장 문서 코드 가드 유지."""
+    """내 현장 문서: 전용 대장 문서 코드 가드 유지 (`ledgerManagedDocument` 기준)."""
     root = Path(__file__).resolve().parents[2]
     vue = (root / "frontend" / "src" / "pages" / "site" / "SiteDocumentsDashboardPage.vue").read_text(encoding="utf-8")
-    assert "AUTO_WORKER_OPINION_LOG" in vue
-    assert "NONCONFORMITY_ACTION_REPORT" in vue
+    assert "isLedgerManagedDocumentType" in vue
+    assert "NONCONFORMITY_ACTION_REPORT" in (root / "frontend" / "src" / "utils" / "ledgerManagedDocument.ts").read_text(encoding="utf-8")
+    assert "AUTO_WORKER_OPINION_LOG" in (root / "frontend" / "src" / "utils" / "ledgerManagedDocument.ts").read_text(encoding="utf-8")
     assert "isLedgerManagedRequirement" in vue
     assert "openUpload" in vue
 

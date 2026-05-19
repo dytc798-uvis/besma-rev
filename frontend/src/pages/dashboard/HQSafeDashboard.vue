@@ -179,8 +179,8 @@
         <BaseCard class="summary-group-card">
           <div class="summary-group-head">
             <div>
-              <h2 class="summary-group-title">관리대장 / 제안</h2>
-              <p class="summary-group-sub">주요 운영 메뉴로 바로 이동할 수 있습니다.</p>
+              <h2 class="summary-group-title">문서 취합 / 제안</h2>
+              <p class="summary-group-sub">근로자의견·부적합은 사이드 메뉴 대신 문서 취합 현황·아래 바로가기에서 엽니다.</p>
             </div>
           </div>
           <div class="ledger-card-grid">

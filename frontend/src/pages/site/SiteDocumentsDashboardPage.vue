@@ -98,7 +98,7 @@
             <td>
               <div class="cell-title">{{ item.title }}</div>
               <div class="cell-subtitle">{{ sectionLabel(item.section) }}</div>
-              <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">관리대장 전용 · 문서취합은 참조</div>
+              <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">수시 문서 · 문서취합 제출, 행 편집은 대장 화면</div>
             </td>
             <td>{{ item.current_period_label || frequencyLabel(item.frequency) }}</td>
             <td>
@@ -177,7 +177,7 @@
             <td>
               <div class="cell-title">{{ item.title }}</div>
               <div class="cell-subtitle">{{ sectionLabel(item.section) }}</div>
-              <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">관리대장 전용 · 문서취합은 참조</div>
+              <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">수시 문서 · 문서취합 제출, 행 편집은 대장 화면</div>
               <div class="rework-meta">
                 <span class="badge status-badge status-rejected-strong">반려</span>
                 <span v-if="firstRejectedBacklog(item)?.review_note || item.unresolved_rejected_review_note" class="rework-note-inline">
@@ -288,7 +288,7 @@
             <td>
               <div class="cell-title">{{ item.title }}</div>
               <div class="cell-subtitle">{{ sectionLabel(item.section) }}</div>
-              <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">관리대장 전용 · 문서취합은 참조</div>
+              <div v-if="isLedgerManagedRequirement(item)" class="ledger-ref-badge">수시 문서 · 문서취합 제출, 행 편집은 대장 화면</div>
             </td>
             <td>{{ item.current_period_label || frequencyLabel(item.frequency) }}</td>
             <td>{{ frequencyLabel(item.frequency) }}</td>

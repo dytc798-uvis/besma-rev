@@ -822,6 +822,11 @@ def seed_document_type_masters(db: Session) -> None:
 
 
 def seed_document_requirements(db: Session) -> None:
+    """문서 의무(`DocumentRequirement`) 시드.
+
+    근로자의견청취대장·부적합 조치보고서는 전용 사이드바 메뉴 없이 **문서 취합**에만 노출되며,
+    주기는 **ADHOC(수시)** 로 통일한다. 기존 운영 DB는 Alembic ``20260514_0053`` 로 동일하게 맞춘다.
+    """
     sites = db.query(Site).all()
     if not sites:
         return
@@ -838,7 +843,7 @@ def seed_document_requirements(db: Session) -> None:
         ("DAILY_RISK_ASSESSMENT", "일일위험성평가", "DAILY", "당일 안전회의 시 작성", "DAILY_DOC"),
         ("DAILY_SAFETY_MEETING_LOG", "일일안전회의일지", "DAILY", "당일 안전회의 시 작성", "DAILY_DOC"),
         ("ADHOC_RISK_ASSESSMENT", "수시위험성평가", "ADHOC", "작업변경/위험요인 발생 시 작성", "INSPECTION"),
-        ("AUTO_WORKER_OPINION_LOG", "근로자의견청취대장", "ROLLING", "의견 등록 시 갱신", "OPINION_RELATED"),
+        ("AUTO_WORKER_OPINION_LOG", "근로자의견청취대장", "ADHOC", "수시 (필요 시)", "OPINION_RELATED"),
         ("SUPERVISOR_CHECKLIST", "관리감독자 점검표", "DAILY", "일 1회 업로드 (점검 완료 후)", "INSPECTION"),
         ("SITE_MANAGER_CHECKLIST", "현장소장 점검표", "DAILY", "일 1회 업로드 (점검 완료 후)", "INSPECTION"),
         ("SAFETY_MANAGER_DAILY_LOG", "안전관리자 업무일지", "DAILY", "일 1회 업로드 (업무 종료 후)", "INSPECTION"),

@@ -41,9 +41,7 @@
             본사-현장 소통
             <span v-if="unreadCommunicationCount > 0" class="hq-menu-count-badge">{{ unreadCommunicationCount }}</span>
           </RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('worker-voice')" to="/hq-safe/worker-voice">근로자의견청취</RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('safety-education')" to="/hq-safe/safety-education">안전교육 및 안전점검</RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('nonconformities')" to="/hq-safe/nonconformities">부적합사항</RouterLink>
           <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink
             v-for="m in dynamicMenus"

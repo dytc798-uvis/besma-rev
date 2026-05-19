@@ -30,14 +30,6 @@
           <span class="menu-icon" v-if="menuIcon('risk-library')">{{ menuIcon("risk-library") }}</span>
           위험성평가 DB 조회
         </RouterLink>
-        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" :style="menuOrderStyle('worker-voice')" to="/site/worker-voice">
-          <span class="menu-icon" v-if="menuIcon('worker-voice')">{{ menuIcon("worker-voice") }}</span>
-          근로자의견청취
-        </RouterLink>
-        <RouterLink :class="menuLinkClass('nonconformities', '/site/nonconformities')" :style="menuOrderStyle('nonconformities')" to="/site/nonconformities">
-          <span class="menu-icon" v-if="menuIcon('nonconformities')">{{ menuIcon("nonconformities") }}</span>
-          부적합사항
-        </RouterLink>
         <RouterLink :class="menuLinkClass('document-explorer', '/site/document-explorer')" :style="menuOrderStyle('document-explorer')" to="/site/document-explorer">
           <span class="menu-icon" v-if="menuIcon('document-explorer')">{{ menuIcon("document-explorer") }}</span>
           문서 탐색
@@ -103,16 +95,6 @@
           @click="closeMobileDrawer"
         >
           안전교육 및 안전점검
-        </RouterLink>
-        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" to="/site/worker-voice" @click="closeMobileDrawer">
-          근로자의견청취
-        </RouterLink>
-        <RouterLink
-          :class="menuLinkClass('nonconformities', '/site/nonconformities')"
-          to="/site/nonconformities"
-          @click="closeMobileDrawer"
-        >
-          부적합사항
         </RouterLink>
         <RouterLink
           :class="menuLinkClass('document-explorer', '/site/document-explorer')"
@@ -215,8 +197,6 @@ const SITE_FIXED_MENU_KEYS = [
   "notices",
   "safety-policy-goals",
   "risk-library",
-  "worker-voice",
-  "nonconformities",
   "document-explorer",
   "safety-education",
   "mobile",
@@ -236,8 +216,6 @@ const PRIMARY_MENUS = [
   "mobile",
   "safety-policy-goals",
   "risk-library",
-  "worker-voice",
-  "nonconformities",
   "document-explorer",
   "documents",
 ] as const;
@@ -500,9 +478,7 @@ function menuIcon(key: string) {
   const iconMap: Record<string, string> = {
     documents: "📄",
     "risk-library": "⚠️",
-    "worker-voice": "🗣",
     "document-explorer": "🔍",
-    nonconformities: "🚨",
   };
   return iconMap[key] ?? "";
 }
