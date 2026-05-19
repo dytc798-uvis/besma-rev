@@ -204,6 +204,13 @@
               >
                 보기
               </button>
+              <button
+                v-if="canReplaceReworkDocument(item)"
+                class="secondary"
+                @click="openReplace(item)"
+              >
+                수정
+              </button>
               <button v-if="!isLedgerManagedRequirement(item)" class="secondary" @click="openHistory(item)">이력 보기</button>
               <button v-else type="button" class="secondary ledger-nav-btn" @click="goLedgerPage(item)">관리대장에서 보기</button>
             </td>
@@ -894,7 +901,7 @@ function openUpload(item: RequirementStatusItem) {
 
 function openReplace(item: RequirementStatusItem) {
   if (isLedgerManagedRequirement(item)) return;
-  if (!canReplaceCurrentDocument(item)) return;
+  if (!canReplaceCurrentDocument(item) && !canReplaceReworkDocument(item)) return;
   uploadMode.value = "replace";
   uploadTarget.value = item;
   selectedFile.value = null;
@@ -944,11 +951,23 @@ function reuploadInstanceId(item: RequirementStatusItem | null) {
   return item.unresolved_rejected_instance_id || item.current_cycle_instance_id || null;
 }
 
+function replaceInstanceId(item: RequirementStatusItem) {
+  if (canReplaceReworkDocument(item)) return item.unresolved_rejected_instance_id;
+  return item.current_cycle_instance_id;
+}
+
+/** [DECISION-065] 현재 회차: SUBMITTED/IN_REVIEW만 파일 교체. */
 function canReplaceCurrentDocument(item: RequirementStatusItem) {
   if (isLedgerManagedRequirement(item)) return false;
   if (!item.current_cycle_document_id || !item.current_cycle_instance_id) return false;
   const status = (item.current_cycle_status || "").toUpperCase();
   return status === "SUBMITTED" || status === "IN_REVIEW";
+}
+
+/** 재조치 영역: 반려 건 인스턴스 — API는 REJECTED에서도 replace 허용(오업로드 정정). */
+function canReplaceReworkDocument(item: RequirementStatusItem) {
+  if (isLedgerManagedRequirement(item)) return false;
+  return !!(item.unresolved_rejected_document_id && item.unresolved_rejected_instance_id);
 }
 
 async function submitUpload() {
@@ -960,7 +979,9 @@ async function submitUpload() {
     const form = new FormData();
     form.append("file", selectedFile.value);
     if (uploadMode.value === "replace") {
-      form.append("instance_id", String(uploadTarget.value.current_cycle_instance_id));
+      const instId = replaceInstanceId(uploadTarget.value);
+      if (!instId) throw new Error("replace instance missing");
+      form.append("instance_id", String(instId));
       await api.post("/document-submissions/replace", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });

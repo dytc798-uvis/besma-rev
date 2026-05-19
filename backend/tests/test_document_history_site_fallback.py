@@ -1,4 +1,8 @@
-"""GET /documents/history: SITE도 업로드 이력만 반환(문서-only SITE 병합 없음)."""
+"""GET /documents/history: SITE도 업로드 이력만 반환(문서-only SITE 병합 없음).
+
+동일 site_id에 Document+UploadHistory가 있으면 행을 반환한다(test_site_history_returns_upload_history_rows).
+Alembic 20260514_0052(site demo→canonical 리맵)는 idempotent 정책이나, 전체 마이그레이션 E2E는 CI에서 돌리지 않는다.
+"""
 
 from __future__ import annotations
 

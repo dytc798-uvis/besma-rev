@@ -53,6 +53,7 @@ Recommendation:
 | **Context** | API는 `not_submitted_count`, `rejected_count`, `pending_review_count`, 제출률 등을 제공한다. “기한 초과”는 항목 단위 일시가 없어 자동 집계가 어렵다. |
 | **Options** | A. 제출률·미제출·검토대기·반려 (현재에 가까움) / B. 미제출·반려·검토대기·(네 번째: 처리필요 합성 등) 운영 중심 / C. 혼합(카피만 운영형, 숫자는 A) |
 | **Required Decision** | YES |
+| **Sync (2026-05-20)** | **HQ 문서취합 KPI 4종·정렬·기본 필터는 [DECISION-008]으로 확정됨.** 본 OPEN은 HQ 외 화면·SITE KPI·네 번째 지표 변형 등 **DECISION-008 범위 밖** 항목만 남는다. |
 
 ---
 
@@ -64,17 +65,7 @@ Recommendation:
 | **Context** | `due_rule_text`만 있고 마감 시각 필드는 없다. |
 | **Options** | A. 숫자 KPI로 쓰지 않고 규칙 텍스트만 표시 / B. “당일 미제출” 등 **대리 지표**를 ‘기한’에 가깝게 표현(오해 가능성 인지) / C. 백엔드 확장은 **별도 프로젝트**로 분리해 결정 |
 | **Required Decision** | YES |
-
----
-
-### [OPEN-003]
-
-| 항목 | 내용 |
-|------|------|
-| **Title** | SITE 문서 화면 기본 뷰 |
-| **Context** | 지금은 전체 테이블 중심이다. 운영 관점에서는 “할 일”만 먼저 보는 편이 좋다는 의견이 있다. |
-| **Options** | A. 테이블 단일 화면 유지 / B. 작업 큐(미완료 우선) + 전체 접기/탭 / C. 작업 큐만 기본(완료는 별 화면) |
-| **Required Decision** | YES |
+| **Sync (2026-05-20)** | **blocked by [DECISION-008] 범위:** HQ는 기한 초과 **숫자 KPI 없이** DECISION-008의 4 KPI만 사용. 정밀 “기한 초과” 집계·SITE/HQ 공통 표현은 본 OPEN에서 별도 확정 필요. |
 
 ---
 
@@ -219,6 +210,7 @@ Recommendation:
 - `OPEN-008` : A ([DECISION-046], 중복 현장 숨김/샘플 최소 노출)
 - `OPEN-009` : A ([DECISION-046], SITE 기본 연결/노출을 C18 중심으로 고정)
 - `OPEN-041` : A ([DECISION-050], 운영 아이디어 제안 삭제는 작성자 또는 관리자)
+- `OPEN-003` : B→**B 확정** ([DECISION-053] 3영역; [DECISION-009]·[DECISION-039] SITE 기본 뷰 대체. 단일 전체 테이블 기본 뷰는 더 이상 사용하지 않음.)
 - `OPEN-042` : B ([DECISION-053], SITE 문서취합 3영역 구조 + 현장 전용 read model 보강)
 - `OPEN-043` : A ([DECISION-054], HQ 본사 날씨 기준 위치를 환경설정으로 명시 관리)
 - `OPEN-044` : B ([DECISION-055], 위험성평가 승인 체계는 기존 ref에 SITE/HQ 승인 상태 추가)
@@ -244,3 +236,4 @@ Recommendation:
 | 2026-03-26 | [OPEN-020] 사원 대량 계정(전화번호 ID)·초기 비밀번호 정책 추가 |
 | 2026-03-31 | [OPEN-025] 등록 후 **해결** — 선택 B, [DECISION-032] 반영 |
 | 2026-04-20 | [OPEN-050] 문서취합 현황 HQ/SITE 기간 표시(단일 선택 vs 주기별 동시 노출) 추가 |
+| 2026-05-20 | [OPEN-003] 해결됨 이동(DECISION-053). [OPEN-001]/[OPEN-002] DECISION-008 동기화 주석 |
