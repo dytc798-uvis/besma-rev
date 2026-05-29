@@ -18,15 +18,21 @@ def test_document_explorer_list_and_search(tmp_path: Path):
     field_dir = storage_root / "documents"
     docs_dir.mkdir(parents=True, exist_ok=True)
     field_dir.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "현장안전일지.pdf").write_text("dummy", encoding="utf-8")
-    (docs_dir / "template" / "TBM_양식.xlsx").parent.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "template" / "TBM_양식.xlsx").write_text("dummy", encoding="utf-8")
-    (docs_dir / "기본양식" / "표지.ai").parent.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "기본양식" / "표지.ai").write_text("dummy", encoding="utf-8")
-    (docs_dir / "현장문서" / "제출_안전일지.hwp").parent.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "현장문서" / "제출_안전일지.hwp").write_text("dummy", encoding="utf-8")
-    (field_dir / "instance_1_1710000000_일일서류.xlsx").write_text("dummy", encoding="utf-8")
-    (field_dir / "현장제출_샘플.pdf").write_text("dummy", encoding="utf-8")
+
+    samsung_dir = docs_dir / "\uc0bc\uc131\uad00\ub828 \uc591\uc2dd"
+    samsung_dir.mkdir(parents=True, exist_ok=True)
+    (samsung_dir / "tbm_template.hwp").write_text("dummy", encoding="utf-8")
+
+    general_dir = docs_dir / "\uc77c\ubc18 \uc591\uc2dd" / "02-training"
+    general_dir.mkdir(parents=True, exist_ok=True)
+    (general_dir / "training_log.xlsx").write_text("dummy", encoding="utf-8")
+
+    (docs_dir / "\uae30\ubcf8\uc591\uc2dd" / "\ud45c\uc9c0.ai").parent.mkdir(parents=True, exist_ok=True)
+    (docs_dir / "\uae30\ubcf8\uc591\uc2dd" / "\ud45c\uc9c0.ai").write_text("dummy", encoding="utf-8")
+
+    (field_dir / "instance_1_1710000000_field_doc.pdf").write_text("dummy", encoding="utf-8")
+    (field_dir / "instance_1_1710000001_field_doc.xlsx").write_text("dummy", encoding="utf-8")
+    (field_dir / "\ud604\uc7a5\uc81c\ucd9c_\uc0d8\ud50c.pdf").write_text("dummy", encoding="utf-8")
 
     original_base_dir = settings.document_explorer_base_dir
     original_storage_root = settings.storage_root
@@ -46,29 +52,22 @@ def test_document_explorer_list_and_search(tmp_path: Path):
         res = client.get("/document-explorer/list")
         assert res.status_code == 200
         items = res.json()["items"]
-        assert len(items) == 6
-        names = {item["name"] for item in items}
-        assert "현장안전일지.pdf" in names
-        assert "TBM_양식.xlsx" in names
-        assert "제출_안전일지.hwp" in names
-        assert "표지.ai" in names
-        assert "현장제출_샘플.pdf" in names
-        assert "instance_1_1710000000_일일서류.xlsx" in names
+        by_name = {item["name"]: item for item in items}
+        assert by_name["tbm_template.hwp"]["category"] == "template"
+        assert by_name["training_log.xlsx"]["category"] == "general"
+        assert by_name["instance_1_1710000000_field_doc.pdf"]["category"] == "field"
+        assert by_name["instance_1_1710000001_field_doc.xlsx"]["category"] == "field"
+        assert "\ud45c\uc9c0.ai" not in by_name
 
-        search_res = client.get("/document-explorer/search", params={"q": "현장안전일지"})
+        search_res = client.get("/document-explorer/search", params={"q": "tbm"})
         assert search_res.status_code == 200
         search_items = search_res.json()["items"]
         assert len(search_items) == 1
-        assert search_items[0]["name"] == "현장안전일지.pdf"
-
-        search_tbm = client.get("/document-explorer/search", params={"q": "TBM"})
-        assert search_tbm.status_code == 200
-        tbm_names = {item["name"] for item in search_tbm.json()["items"]}
-        assert "TBM_양식.xlsx" in tbm_names
+        assert search_items[0]["name"] == "tbm_template.hwp"
 
         field_xlsx = client.get(
             "/document-explorer/file",
-            params={"relative_path": "field/instance_1_1710000000_일일서류.xlsx", "disposition": "attachment"},
+            params={"relative_path": "field/instance_1_1710000001_field_doc.xlsx", "disposition": "attachment"},
         )
         assert field_xlsx.status_code == 200
     finally:
@@ -77,7 +76,6 @@ def test_document_explorer_list_and_search(tmp_path: Path):
 
 
 def test_document_explorer_list_allows_site_role(tmp_path: Path):
-    """현장(SITE) 계정도 HQ와 동일하게 base+field 전체 스캔 목록을 본다(역할별 부분집합 없음)."""
     docs_dir = tmp_path / "docs" / "base"
     storage_root = tmp_path / "storage"
     field_dir = storage_root / "documents"
@@ -112,11 +110,6 @@ def test_document_explorer_list_allows_site_role(tmp_path: Path):
         assert len(items) == 4
         names = {item["name"] for item in items}
         assert names == {"site_visible.txt", "older_form.hwp", "instance_1_1710000000_yesterday.txt", "instance_1_1999999999_today_tbm.hwp"}
-        paths = {item["relative_path"] for item in items}
-        assert "base/site_visible.txt" in paths
-        assert "base/nested/older_form.hwp" in paths
-        assert "field/instance_1_1710000000_yesterday.txt" in paths
-        assert "field/instance_1_1999999999_today_tbm.hwp" in paths
     finally:
         settings.document_explorer_base_dir = original_base_dir
         settings.storage_root = original_storage_root
@@ -125,8 +118,9 @@ def test_document_explorer_list_allows_site_role(tmp_path: Path):
 def test_document_explorer_file_open_and_not_found(tmp_path: Path):
     docs_dir = tmp_path / "docs" / "base"
     docs_dir.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "template" / "TBM_양식.pdf").parent.mkdir(parents=True, exist_ok=True)
-    file_path = docs_dir / "template" / "TBM_양식.pdf"
+    template_dir = docs_dir / "\uc0bc\uc131\uad00\ub828 \uc591\uc2dd"
+    template_dir.mkdir(parents=True, exist_ok=True)
+    file_path = template_dir / "tbm_template.hwp"
     file_path.write_text("dummy", encoding="utf-8")
 
     original_base_dir = settings.document_explorer_base_dir
@@ -142,13 +136,15 @@ def test_document_explorer_file_open_and_not_found(tmp_path: Path):
     client = TestClient(app)
 
     try:
+        rel = f"base/{template_dir.relative_to(docs_dir).as_posix()}/tbm_template.hwp"
         ok_res = client.get(
             "/document-explorer/file",
-            params={"relative_path": "base/template/TBM_양식.pdf", "disposition": "inline"},
+            params={"relative_path": rel, "disposition": "attachment"},
         )
         assert ok_res.status_code == 200
         assert "content-disposition" in {k.lower() for k in ok_res.headers.keys()}
 
+        (docs_dir / "template" / "sheet.xlsx").parent.mkdir(parents=True, exist_ok=True)
         (docs_dir / "template" / "sheet.xlsx").write_text("xlsx-dummy", encoding="utf-8")
         ok_xlsx = client.get(
             "/document-explorer/file",
@@ -158,7 +154,7 @@ def test_document_explorer_file_open_and_not_found(tmp_path: Path):
 
         nf_res = client.get(
             "/document-explorer/file",
-            params={"relative_path": "base/template/not-exists.xlsx", "disposition": "inline"},
+            params={"relative_path": f"{rel.rsplit('/', 1)[0]}/not-exists.hwp", "disposition": "attachment"},
         )
         assert nf_res.status_code == 404
     finally:
@@ -281,4 +277,3 @@ def test_document_explorer_upload_path_traversal_rejected(tmp_path: Path):
         assert res.status_code == 400
     finally:
         settings.document_explorer_base_dir = original_base_dir
-

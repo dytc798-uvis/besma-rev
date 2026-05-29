@@ -3,8 +3,8 @@
     <section class="hero-panel">
       <div class="hero-copy">
         <h1 class="page-title">문서 탐색</h1>
-        <p class="page-subtitle">기준·표준 양식(docs/base)과 현장 제출본(문서취합 저장소)은 업로드된 파일 형식을 모두 목록에 표시합니다. (실행 파일 등은 제외)</p>
-        <p class="page-note">검색은 파일명과 상대 경로 문자열 기준입니다. (실행 파일 등은 제외)</p>
+        <p class="page-subtitle">삼성관련·일반 양식(docs/base)과 현장 제출본(문서취합 저장소)을 탐색합니다.</p>
+        <p class="page-note">기본 화면은 양식만 표시합니다. 검색은 파일명과 폴더 경로 기준입니다.</p>
       </div>
       <button type="button" class="law-registry-link" @click="openLawRegistry">법규등록부</button>
     </section>
@@ -12,8 +12,8 @@
     <section class="stitch-kpi-grid">
       <KpiCard label="전체 문서" :value="allDocuments.length" accent="blue" footer-note="실파일 스캔 기준" />
       <KpiCard label="현장 문서" :value="categoryCounts.field" accent="blue" footer-note="기본 업로드 문서" />
-      <KpiCard label="양식" :value="categoryCounts.template" accent="slate" footer-note="파일명/확장자 추정" />
-      <KpiCard label="기준/참고자료" :value="categoryCounts.reference" accent="slate" footer-note="파일명/확장자 추정" />
+      <KpiCard label="양식" :value="categoryCounts.template" accent="slate" footer-note="삼성관련 양식" />
+      <KpiCard label="일반 양식" :value="categoryCounts.general" accent="slate" footer-note="표준 현장 안전서류" />
     </section>
 
     <div class="explorer-layout">
@@ -135,32 +135,43 @@
           <p v-if="loading" class="state-msg">파일 목록을 불러오는 중입니다.</p>
           <p v-else-if="error" class="state-msg state-error">{{ error }}</p>
 
-          <div v-else class="document-list">
-            <article v-for="doc in pagedDocuments" :key="doc.id" class="document-card">
-              <div class="doc-icon" :class="`doc-icon-${doc.category}`">
-                <span>{{ categoryIcon(doc.category) }}</span>
-              </div>
-
-              <div class="doc-main">
-                <div class="doc-top">
-                  <h3 class="doc-title">{{ doc.name }}</h3>
-                  <span class="category-badge" :class="`category-${doc.category}`">
-                    {{ categoryLabel(doc.category) }}
-                  </span>
-                </div>
-                <div class="doc-meta">
-                  <span>경로 {{ doc.relative_path }}</span>
-                  <span>수정일 {{ formatDate(doc.modified_at) }}</span>
-                  <span>{{ formatSize(doc.size_bytes) }}</span>
-                </div>
-              </div>
-
-              <div class="doc-actions">
-                <button type="button" class="icon-btn" @click="noopAction('view', doc)">보기</button>
-                <button type="button" class="icon-btn" @click="noopAction('download', doc)">다운로드</button>
-                <button type="button" class="detail-btn" @click="noopAction('detail', doc)">상세보기</button>
-              </div>
-            </article>
+          <div v-else class="document-table-wrap">
+            <table v-if="pagedDocuments.length > 0" class="document-table">
+              <thead>
+                <tr>
+                  <th>유형</th>
+                  <th>파일명</th>
+                  <th>폴더</th>
+                  <th>수정일</th>
+                  <th>크기</th>
+                  <th>작업</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="doc in pagedDocuments" :key="doc.id">
+                  <td>
+                    <span class="category-badge" :class="`category-${doc.category}`">
+                      {{ categoryLabel(doc.category) }}
+                    </span>
+                  </td>
+                  <td class="doc-name-cell">{{ doc.name }}</td>
+                  <td class="doc-folder-cell">{{ folderLabel(doc.relative_path) }}</td>
+                  <td>{{ formatDate(doc.modified_at) }}</td>
+                  <td>{{ formatSize(doc.size_bytes) }}</td>
+                  <td class="doc-actions-cell">
+                    <button
+                      v-if="canInlineView(doc)"
+                      type="button"
+                      class="icon-btn"
+                      @click="handleDocumentAction('view', doc)"
+                    >
+                      보기
+                    </button>
+                    <button type="button" class="icon-btn" @click="handleDocumentAction('download', doc)">다운로드</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
             <div v-if="pagedDocuments.length === 0" class="empty-state">
               업로드된 파일이 없거나 검색 조건과 일치하는 파일이 없습니다.
@@ -234,7 +245,7 @@ import { BaseCard, FilterBar, KpiCard } from "@/components/product";
 import { api } from "@/services/api";
 import { formatDateKst, toDate } from "@/utils/datetime";
 
-type DocumentCategory = "field" | "template" | "reference";
+type DocumentCategory = "field" | "template" | "general";
 type ExplorerTab = "all" | DocumentCategory;
 
 interface ExplorerDocument {
@@ -271,16 +282,16 @@ interface LawSearchResponse {
 }
 
 const tabs: { key: ExplorerTab; label: string }[] = [
-  { key: "all", label: "전체" },
-  { key: "field", label: "현장문서" },
   { key: "template", label: "양식" },
-  { key: "reference", label: "참고자료" },
+  { key: "general", label: "일반 양식" },
+  { key: "field", label: "현장문서" },
+  { key: "all", label: "전체" },
 ];
 
 const docTypeOptions: { key: DocumentCategory; label: string }[] = [
-  { key: "field", label: "현장문서" },
   { key: "template", label: "양식" },
-  { key: "reference", label: "참고자료" },
+  { key: "general", label: "일반 양식" },
+  { key: "field", label: "현장문서" },
 ];
 
 const dateRangeOptions = [
@@ -308,13 +319,13 @@ const lawLoading = ref(false);
 const lawError = ref("");
 const showAllLawResults = ref(false);
 const searchText = ref("");
-const activeTab = ref<ExplorerTab>("all");
-const selectedDocTypes = ref<DocumentCategory[]>(["field", "template", "reference"]);
+const activeTab = ref<ExplorerTab>("template");
+const selectedDocTypes = ref<DocumentCategory[]>(["template"]);
 const selectedSite = ref("");
 const selectedDateRange = ref("");
 const selectedTags = ref<string[]>([]);
 const currentPage = ref(1);
-const pageSize = 6;
+const pageSize = 20;
 
 const siteOptions = computed(() => {
   const values = new Set<string>();
@@ -328,7 +339,7 @@ const siteOptions = computed(() => {
 const categoryCounts = computed(() => ({
   field: allDocuments.value.filter((doc) => doc.category === "field").length,
   template: allDocuments.value.filter((doc) => doc.category === "template").length,
-  reference: allDocuments.value.filter((doc) => doc.category === "reference").length,
+  general: allDocuments.value.filter((doc) => doc.category === "general").length,
 }));
 
 const favoriteDocuments = computed(() => allDocuments.value.slice(0, 4));
@@ -373,8 +384,8 @@ function resetExplorerUiState() {
   lawResultsTotal.value = 0;
   lawError.value = "";
   showAllLawResults.value = false;
-  activeTab.value = "all";
-  selectedDocTypes.value = ["field", "template", "reference"];
+  activeTab.value = "template";
+  selectedDocTypes.value = ["template"];
   selectedSite.value = "";
   selectedDateRange.value = "";
   selectedTags.value = [];
@@ -479,8 +490,18 @@ async function loadSearchResults() {
   lawLoading.value = false;
 }
 
-async function handleDocumentAction(action: "view" | "download" | "detail" | "favorite", doc: ExplorerDocument) {
-  if (action === "detail" || action === "favorite") return;
+function folderLabel(relativePath: string) {
+  const withoutSource = relativePath.replace(/^base\//, "").replace(/^field\//, "");
+  const idx = withoutSource.lastIndexOf("/");
+  if (idx <= 0) return "/";
+  return withoutSource.slice(0, idx);
+}
+
+function canInlineView(doc: ExplorerDocument) {
+  return doc.extension.toLowerCase() === ".pdf";
+}
+
+async function handleDocumentAction(action: "view" | "download", doc: ExplorerDocument) {
   const disposition = action === "view" ? "inline" : "attachment";
   try {
     const res = await api.get("/document-explorer/file", {
@@ -524,15 +545,9 @@ function toggleTag(tag: string) {
 }
 
 function categoryLabel(category: DocumentCategory) {
-  if (category === "field") return "FIELD_DOC";
-  if (category === "template") return "TEMPLATE";
-  return "REFERENCE";
-}
-
-function categoryIcon(category: DocumentCategory) {
-  if (category === "field") return "문";
-  if (category === "template") return "양";
-  return "참";
+  if (category === "field") return "현장문서";
+  if (category === "template") return "양식";
+  return "일반 양식";
 }
 
 function formatDate(value: string) {
@@ -569,15 +584,6 @@ function openLawRegistry() {
 }
 
 function noopAction(action: string, payload: unknown) {
-  if (
-    typeof payload === "object" &&
-    payload !== null &&
-    "relative_path" in payload &&
-    "name" in payload
-  ) {
-    void handleDocumentAction(action as "view" | "download" | "detail" | "favorite", payload as ExplorerDocument);
-    return;
-  }
   console.log(`[document-explorer] ${action}`, payload);
 }
 </script>
@@ -933,65 +939,45 @@ function noopAction(action: string, payload: unknown) {
   cursor: pointer;
 }
 
-.document-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.document-table-wrap {
+  overflow-x: auto;
 }
 
-.document-card {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: center;
-  border: 1px solid #e2e8f0;
-  border-radius: 18px;
-  background: #fff;
-  padding: 18px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+.document-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
 }
 
-.doc-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  font-size: 16px;
-  font-weight: 800;
+.document-table th,
+.document-table td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 10px;
+  text-align: left;
+  vertical-align: middle;
 }
 
-.doc-icon-field {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.doc-icon-template {
-  background: #e2e8f0;
-  color: #475569;
-}
-
-.doc-icon-reference {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.doc-main {
-  min-width: 0;
-}
-
-.doc-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.doc-title {
-  margin: 0;
-  font-size: 18px;
+.document-table th {
+  font-size: 12px;
   font-weight: 700;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.doc-name-cell {
+  font-weight: 600;
   color: #0f172a;
+  min-width: 220px;
+}
+
+.doc-folder-cell {
+  color: #475569;
+  min-width: 180px;
+  word-break: break-all;
+}
+
+.doc-actions-cell {
+  white-space: nowrap;
 }
 
 .category-badge {
@@ -1014,24 +1000,9 @@ function noopAction(action: string, payload: unknown) {
   color: #475569;
 }
 
-.category-reference {
+.category-general {
   background: #dcfce7;
   color: #15803d;
-}
-
-.doc-meta {
-  margin-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  font-size: 12px;
-  color: #64748b;
-}
-
-.doc-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .empty-state {
@@ -1095,17 +1066,9 @@ function noopAction(action: string, payload: unknown) {
 
 @media (max-width: 760px) {
   .hero-panel,
-  .results-head,
-  .document-card {
-    grid-template-columns: 1fr;
-    display: flex;
+  .results-head {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .doc-actions {
-    justify-content: flex-start;
-    flex-wrap: wrap;
   }
 }
 </style>

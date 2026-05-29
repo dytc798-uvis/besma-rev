@@ -1219,6 +1219,21 @@
 
 ---
 
+### [DECISION-086]
+
+| 항목 | 내용 |
+|------|------|
+| **Date** | 2026-04-22 |
+| **Title** | 문서탐색 양식 저장 구조·UI·기본 모드 개편 |
+| **Context** | 오너 확정: Z: 삼성 현장 서류양식·표준 현장 안전서류양식을 문서탐색 양식으로 동기화하고, 기본 화면은 양식만 노출한다. 참고자료 명칭은 일반 양식으로 바꾸며, 카드 대신 표로 보여주고 상세보기는 제거한다. |
+| **Options** | A. `docs/base/삼성관련 양식` + `docs/base/일반 양식` 폴더 분리, 기본 필터=양식, 표 UI / B. 기존 단일 폴더·카드 UI 유지 / C. DB 업로드형 양식 관리 |
+| **Decision** | **A** |
+| **Reason** | 실제 운영 폴더 구조와 일치하고, 양식 중심 탐색 동선을 가장 직관적으로 만든다. |
+| **Impact Scope** | `docs/base/*`, `scripts/sync_document_explorer_templates.py`, `backend/app/modules/document_explorer/routes.py`, `frontend/src/pages/hq/HQDocumentExplorerPage.vue`, 관련 테스트 |
+| **Supersedes** | [DECISION-042]의 문서탐색 PDF 전용 제한 중 `docs/base` 양식 파일(hwp/xlsx/pptx 등) |
+
+---
+
 ## 변경 이력
 
 | 날짜 | 내용 |
@@ -1243,6 +1258,7 @@
 | 2026-04-10 | Decision 039 추가 — SITE 문서취합을 단일 전체 목록 + 승인 하단 정렬로 전환 |
 | 2026-04-10 | Decision 040 추가 — SITE 공지사항 게시판+댓글 및 상단 티커 추가 |
 | 2026-04-10 | Decision 041 추가 — 안전보건 방침/목표 단일 메뉴 역할별 분기(HQ 업로드, SITE 현장기본+본사전환) |
+| 2026-04-22 | Decision 086 추가 — 문서탐색 양식 폴더 분리·표 UI·기본 양식 모드 |
 | 2026-04-10 | Decision 042 추가 — 모바일 동선 우선(방침/목표 제외) 및 문서탐색 PDF 전용 제한 |
 | 2026-04-10 | Decision 043 추가 — 안전 교육/점검/부적합사항 메뉴를 추천값(A2+B1+C1+D2)으로 구현 |
 | 2026-04-10 | Decision 044 추가 — 근로자의견청취 3단계 워크플로우(A) 확정 |
