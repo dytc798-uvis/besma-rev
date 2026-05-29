@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -123,6 +124,58 @@ def _period_attendance_rrn_hashes(
     if site_code:
         q = q.filter(FunctionalEvalAttendanceEntry.site_code == site_code)
     return {r[0] for r in q.distinct().all()}
+
+
+def _clean_erp_site_label(label: str | None) -> str:
+    if not label:
+        return ""
+    text = str(label).strip()
+    if text.startswith("현장명:"):
+        text = text.split(":", 1)[1].strip()
+    return text
+
+
+def _attendance_site_meta(
+    db: Session, period_id: int
+) -> tuple[set[str], dict[str, str], dict[str, str]]:
+    """출역일보에 실제 등장한 현장코드·ERP 현장명·대표(소장) 열."""
+    rows = (
+        db.query(FunctionalEvalAttendanceEntry)
+        .filter(FunctionalEvalAttendanceEntry.period_id == period_id)
+        .all()
+    )
+    codes: set[str] = set()
+    labels: dict[str, str] = {}
+    rep_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    for row in rows:
+        code = (row.site_code or "").strip()
+        if not code:
+            continue
+        codes.add(code)
+        cleaned = _clean_erp_site_label(row.erp_site_label)
+        if cleaned and (code not in labels or len(cleaned) > len(labels[code])):
+            labels[code] = cleaned
+        if row.rep_name:
+            rep_counts[code][str(row.rep_name).strip()] += 1
+    rep_best: dict[str, str] = {}
+    for code, counter in rep_counts.items():
+        if counter:
+            rep_best[code] = counter.most_common(1)[0][0]
+    return codes, labels, rep_best
+
+
+def _resolve_site_display_name(
+    site_code: str,
+    site_names: dict[str, str],
+    erp_labels: dict[str, str],
+) -> str:
+    erp = erp_labels.get(site_code) or ""
+    registered = (site_names.get(site_code) or "").strip()
+    if erp:
+        return erp
+    if registered and not registered.startswith(f"현장 {site_code}"):
+        return registered
+    return registered or f"현장 {site_code}"
 
 
 def _reference_worker_map(db: Session, period_id: int) -> dict[str, FunctionalEvalWorker]:
@@ -420,15 +473,29 @@ def _aggregate_site_eval_stats(
     assess_map: dict[int, dict[str, Any]],
     site_names: dict[str, str],
     evaluators: dict[str, str],
+    *,
+    erp_labels: dict[str, str] | None = None,
+    rep_evaluators: dict[str, str] | None = None,
+    evaluator_site_codes: set[str] | None = None,
 ) -> list[dict[str, Any]]:
+    erp_labels = erp_labels or {}
+    rep_evaluators = rep_evaluators or {}
+    evaluator_site_codes = evaluator_site_codes if evaluator_site_codes is not None else set(evaluators)
     by_site: dict[str, dict[str, Any]] = {}
     for worker in workers:
         code = worker.site_code or ""
         if code not in by_site:
+            missing_ev = code not in evaluator_site_codes and code not in evaluators
+            ev_name = evaluators.get(code) or ""
+            if not ev_name and rep_evaluators.get(code):
+                ev_name = f"{rep_evaluators[code]} (출역 대표)"
+            if not ev_name:
+                ev_name = "—"
             by_site[code] = {
                 "site_code": code,
-                "site_name": worker.site_name or site_names.get(code) or f"현장 {code}",
-                "evaluator_name": evaluators.get(code) or "—",
+                "site_name": _resolve_site_display_name(code, site_names, erp_labels),
+                "evaluator_name": ev_name,
+                "evaluator_missing": missing_ev,
                 "total": 0,
                 "fully_complete": 0,
             }
@@ -475,37 +542,38 @@ def build_hq_sites_overview(
     sort_dir: str = "asc",
     site_code: str | None = None,
 ) -> dict[str, Any]:
-    """현장 목록은 소장 계정 전체, 진행률(분모)은 기간 내 출역 대상."""
+    """본사 현장 목록 = 기간 내 출역일보에 등장한 현장만 (출역 없는 소장 현장 제외)."""
     workers = _attendance_target_workers(db, period, site_code=site_code)
-    list_site_codes = _hq_evaluator_site_codes(db)
+    attendance_site_codes, erp_labels, rep_evaluators = _attendance_site_meta(db, period.id)
     if site_code:
-        list_site_codes = {site_code} if site_code in list_site_codes else set()
-    elif not list_site_codes:
-        list_site_codes = {w.site_code for w in workers if w.site_code}
+        attendance_site_codes = {site_code} & attendance_site_codes
 
-    all_codes = list_site_codes | {w.site_code for w in workers if w.site_code}
+    all_codes = attendance_site_codes | {w.site_code for w in workers if w.site_code}
     site_names = _site_name_map(db, all_codes)
+    evaluator_site_codes = _hq_evaluator_site_codes(db)
     evaluators = _site_evaluator_map(db, all_codes)
     assess_map = _assessments_map(db, [w.id for w in workers])
-    sites = _aggregate_site_eval_stats(workers, assess_map, site_names, evaluators)
-    by_code = {row["site_code"]: row for row in sites}
+    sites = _aggregate_site_eval_stats(
+        workers,
+        assess_map,
+        site_names,
+        evaluators,
+        erp_labels=erp_labels,
+        rep_evaluators=rep_evaluators,
+        evaluator_site_codes=evaluator_site_codes,
+    )
+    for row in sites:
+        row["attendance_pending"] = False
 
-    has_attendance = bool(_period_attendance_rrn_hashes(db, period.id))
-    for code in sorted(list_site_codes, key=lambda c: (len(c), c)):
-        if code in by_code:
-            by_code[code]["attendance_pending"] = False
-            continue
-        by_code[code] = {
-            "site_code": code,
-            "site_name": site_names.get(code) or f"현장 {code}",
-            "evaluator_name": evaluators.get(code) or "—",
-            "total": 0,
-            "fully_complete": 0,
-            "progress": "0/0" if has_attendance else "—",
-            "has_completed": False,
-            "attendance_pending": not has_attendance,
-        }
-    sites = list(by_code.values())
+    has_attendance = bool(attendance_site_codes)
+    gaps = {
+        "sites_missing_evaluator_account": sorted(
+            code for code in attendance_site_codes if code not in evaluator_site_codes
+        ),
+        "evaluator_sites_without_attendance": sorted(
+            code for code in evaluator_site_codes if code not in attendance_site_codes
+        ),
+    }
 
     reverse = sort_dir.lower() == "desc"
 
@@ -530,6 +598,7 @@ def build_hq_sites_overview(
     return {
         "period": serialize_period(period, db),
         "attendance_message": attendance_message,
+        "gaps": gaps,
         "totals": {
             "sites": len(sites),
             "workers": total_workers,
@@ -1314,6 +1383,7 @@ def apply_attendance_report_diff(
                 rrn_hash=row.rrn_hash,
                 name=row.name,
                 job_name=row.job_name,
+                rep_name=row.rep_name,
                 erp_site_label=row.erp_site_label,
                 batch_id=batch.id,
             )

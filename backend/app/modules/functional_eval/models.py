@@ -90,6 +90,7 @@ class FunctionalEvalAttendanceEntry(Base):
     rrn_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     job_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    rep_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     erp_site_label: Mapped[str | None] = mapped_column(String(500), nullable=True)
     batch_id: Mapped[int] = mapped_column(
         ForeignKey("functional_eval_attendance_import_batches.id"), nullable=False

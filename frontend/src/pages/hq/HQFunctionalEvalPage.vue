@@ -39,6 +39,11 @@
       <h2>현장별 평가 진행</h2>
       <p class="panel-sub">현장을 선택하면 <strong>평가 완료(기능+안전)</strong>된 근로자만 표시됩니다.</p>
       <p v-if="attendanceMessage" class="attendance-warn">{{ attendanceMessage }}</p>
+      <p v-if="gapsMissingEvaluator.length" class="attendance-warn gaps-warn">
+        출역은 있으나 BESMA 소장 계정이 없는 현장 {{ gapsMissingEvaluator.length }}곳:
+        {{ gapsMissingEvaluator.join(", ") }}
+        (출역일보 「대표」 이름으로 표시, 계정은 명부 직종1 반영 후 생성)
+      </p>
       <p v-if="loadError" class="load-error">{{ loadError }}</p>
       <div class="toolbar">
         <label>
@@ -85,7 +90,10 @@
               @click="openSite(s)"
             >
               <td>{{ s.site_name }}</td>
-              <td>{{ s.evaluator_name }}</td>
+              <td>
+                {{ s.evaluator_name }}
+                <span v-if="s.evaluator_missing" class="tag-missing" title="소장 BESMA 계정 없음">!</span>
+              </td>
               <td>
                 <span class="progress-pill" :class="{ done: s.fully_complete > 0 }">{{ s.progress }}</span>
               </td>
@@ -208,6 +216,7 @@ interface SiteRow {
   site_code: string;
   site_name: string;
   evaluator_name: string;
+  evaluator_missing?: boolean;
   total: number;
   fully_complete: number;
   progress: string;
@@ -254,6 +263,7 @@ const attendanceInput = ref<HTMLInputElement | null>(null);
 const applyingAttendance = ref(false);
 const attendanceResult = ref("");
 const attendanceMessage = ref("");
+const gapsMissingEvaluator = ref<string[]>([]);
 
 const filteredSites = computed(() => {
   let list = sites.value;
@@ -289,6 +299,7 @@ async function loadOverview() {
     period.value = res.data.period;
     totals.value = res.data.totals || null;
     attendanceMessage.value = res.data.attendance_message || "";
+    gapsMissingEvaluator.value = res.data.gaps?.sites_missing_evaluator_account ?? [];
     const rows = res.data.sites ?? res.data.site_progress ?? [];
     sites.value = Array.isArray(rows) ? rows : [];
     if (!sites.value.length && (totals.value?.workers ?? 0) > 0) {
@@ -474,6 +485,13 @@ onMounted(loadOverview);
   border-radius: 8px;
   font-size: 14px;
   margin-bottom: 8px;
+}
+.gaps-warn { font-size: 13px; }
+.tag-missing {
+  display: inline-block;
+  margin-left: 4px;
+  color: #b45309;
+  font-weight: 700;
 }
 .load-error { color: #991b1b; background: #fef2f2; padding: 10px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 8px; }
 </style>
