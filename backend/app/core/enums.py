@@ -9,6 +9,13 @@ class Role(str, Enum):
     WORKER = "WORKER"
     HQ_SAFE_ADMIN = "HQ_SAFE_ADMIN"
     SUPER_ADMIN = "SUPER_ADMIN"
+    SITE_FUNCTIONAL_EVAL = "SITE_FUNCTIONAL_EVAL"
+
+
+class FunctionalEvalSafetyAction(str, Enum):
+    NONE = "NONE"
+    WARNING = "WARNING"
+    IMMEDIATE_EXPULSION = "IMMEDIATE_EXPULSION"
 
 
 class UIType(str, Enum):

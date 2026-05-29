@@ -61,6 +61,7 @@
           <RouterLink :style="menuOrderSecondaryStyle('settings')" to="/hq-safe/settings">안전문서 설정관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('functional-eval')" to="/hq-safe/functional-eval">기능인제 인사고과</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('approvals-inbox')" to="/hq-safe/approvals/inbox">결재함(공사중)</RouterLink>
         </div>
       </nav>

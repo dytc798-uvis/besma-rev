@@ -55,6 +55,9 @@ import SiteMobileSiteSearchPage from "@/pages/site/SiteMobileSiteSearchPage.vue"
 import SiteInfoPage from "@/pages/site/SiteInfoPage.vue";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
 import UserGuidePage from "@/pages/common/UserGuidePage.vue";
+import FunctionalEvalLayout from "@/layouts/FunctionalEvalLayout.vue";
+import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPage.vue";
+import HQFunctionalEvalPage from "@/pages/hq/HQFunctionalEvalPage.vue";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 
 const routes: RouteRecordRaw[] = [
@@ -163,6 +166,15 @@ const routes: RouteRecordRaw[] = [
         component: HQContractorDocumentBundleSettingsPage,
       },
       { path: "user-guide", name: "hq-safe-user-guide", component: UserGuidePage },
+      { path: "functional-eval", name: "hq-safe-functional-eval", component: HQFunctionalEvalPage },
+    ],
+  },
+  {
+    path: "/site/functional-eval",
+    component: FunctionalEvalLayout,
+    meta: { requiresAuth: true, uiType: "SITE", requiresFunctionalEval: true },
+    children: [
+      { path: "", name: "site-functional-eval", component: SiteFunctionalEvalPage },
     ],
   },
   {
@@ -282,6 +294,25 @@ router.beforeEach((to, _from, next) => {
     next({ name: "login" });
     return;
   }
+
+  const role = auth.user?.role || "";
+  const isFunctionalEvalUser = role === "SITE_FUNCTIONAL_EVAL";
+  const goingFunctionalEval = to.path.startsWith("/site/functional-eval");
+  if (
+    auth.isAuthenticated &&
+    isFunctionalEvalUser &&
+    !goingFunctionalEval &&
+    to.path !== "/change-password" &&
+    to.name !== "login"
+  ) {
+    next({ name: "site-functional-eval" });
+    return;
+  }
+  if (auth.isAuthenticated && !isFunctionalEvalUser && goingFunctionalEval) {
+    next({ name: siteMobileOrDesktopHomeName() });
+    return;
+  }
+
   if (to.meta.requiresAccidentAdmin && auth.user?.role !== "ACCIDENT_ADMIN") {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-dashboard" });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
@@ -358,6 +389,7 @@ router.beforeEach((to, _from, next) => {
       else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next();
     } else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
+    else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") next({ name: "site-functional-eval" });
     else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
