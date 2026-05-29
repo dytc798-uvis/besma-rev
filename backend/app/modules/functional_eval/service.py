@@ -11,8 +11,11 @@ from app.config.security import get_password_hash
 from app.core.enums import Role, UIType
 from app.core.datetime_utils import utc_now
 from app.modules.functional_eval.eval_catalog import EvalType, catalog_for_api, compute_assessment, get_criteria
+from app.modules.functional_eval.attendance import ParsedAttendanceRow, parse_attendance_report_xlsx
 from app.modules.functional_eval.models import (
     FunctionalEvalAssessment,
+    FunctionalEvalAttendanceEntry,
+    FunctionalEvalAttendanceImportBatch,
     FunctionalEvalPeriod,
     FunctionalEvalRosterImportBatch,
     FunctionalEvalSanction,
@@ -89,13 +92,98 @@ def assert_period_editable(period: FunctionalEvalPeriod) -> None:
         raise ValueError("PERIOD_CLOSED")
 
 
-def serialize_period(period: FunctionalEvalPeriod) -> dict[str, Any]:
+def get_latest_attendance_date(db: Session, period_id: int) -> date | None:
+    row = (
+        db.query(FunctionalEvalAttendanceEntry.work_date)
+        .filter(FunctionalEvalAttendanceEntry.period_id == period_id)
+        .order_by(FunctionalEvalAttendanceEntry.work_date.desc())
+        .first()
+    )
+    return row[0] if row else None
+
+
+def _attendance_rrn_hashes_for_date(
+    db: Session, period_id: int, work_date: date, *, site_code: str | None = None
+) -> set[str]:
+    q = db.query(FunctionalEvalAttendanceEntry.rrn_hash).filter(
+        FunctionalEvalAttendanceEntry.period_id == period_id,
+        FunctionalEvalAttendanceEntry.work_date == work_date,
+    )
+    if site_code:
+        q = q.filter(FunctionalEvalAttendanceEntry.site_code == site_code)
+    return {r[0] for r in q.all()}
+
+
+def _period_attendance_rrn_hashes(
+    db: Session, period_id: int, *, site_code: str | None = None
+) -> set[str]:
+    q = db.query(FunctionalEvalAttendanceEntry.rrn_hash).filter(
+        FunctionalEvalAttendanceEntry.period_id == period_id,
+    )
+    if site_code:
+        q = q.filter(FunctionalEvalAttendanceEntry.site_code == site_code)
+    return {r[0] for r in q.distinct().all()}
+
+
+def _reference_worker_map(db: Session, period_id: int) -> dict[str, FunctionalEvalWorker]:
+    rows = (
+        db.query(FunctionalEvalWorker)
+        .filter(FunctionalEvalWorker.period_id == period_id)
+        .all()
+    )
+    return {w.rrn_hash: w for w in rows if w.rrn_hash}
+
+
+def _worker_has_assessments(db: Session, worker_id: int) -> bool:
+    return (
+        db.query(FunctionalEvalAssessment.id)
+        .filter(FunctionalEvalAssessment.worker_id == worker_id)
+        .first()
+        is not None
+    )
+
+
+def _assert_worker_attendance_eligible(
+    db: Session, period: FunctionalEvalPeriod, worker: FunctionalEvalWorker
+) -> None:
+    """당일 출역 목록 또는 기간 내 출역·기존 평가가 있으면 입력 허용."""
+    if _worker_has_assessments(db, worker.id):
+        return
+    if worker.rrn_hash in _period_attendance_rrn_hashes(db, period.id, site_code=worker.site_code):
+        return
+    latest = get_latest_attendance_date(db, period.id)
+    if latest is None:
+        raise ValueError("NO_ATTENDANCE_UPLOAD")
+    if worker.rrn_hash in _attendance_rrn_hashes_for_date(
+        db, period.id, latest, site_code=worker.site_code
+    ):
+        return
+    raise ValueError("WORKER_NOT_ON_ATTENDANCE")
+
+
+def serialize_period(period: FunctionalEvalPeriod, db: Session | None = None) -> dict[str, Any]:
+    attendance_date = period.last_attendance_date
+    attendance_count = 0
+    if db is not None:
+        if attendance_date is None:
+            attendance_date = get_latest_attendance_date(db, period.id)
+        if attendance_date is not None:
+            attendance_count = (
+                db.query(FunctionalEvalAttendanceEntry.id)
+                .filter(
+                    FunctionalEvalAttendanceEntry.period_id == period.id,
+                    FunctionalEvalAttendanceEntry.work_date == attendance_date,
+                )
+                .count()
+            )
     return {
         "id": period.id,
         "title": period.title,
         "deadline_date": period.deadline_date,
         "is_active": period.is_active,
         "is_closed": period_is_closed(period),
+        "last_attendance_date": attendance_date,
+        "attendance_row_count": attendance_count,
         "created_at": period.created_at,
         "updated_at": period.updated_at,
     }
@@ -353,6 +441,26 @@ def _aggregate_site_eval_stats(
     return sites
 
 
+def _attendance_target_workers(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    *,
+    site_code: str | None = None,
+) -> list[FunctionalEvalWorker]:
+    """기간 내 출역 이력이 있는 근로자(평가·HQ 진행률 대상)."""
+    rrn_hashes = _period_attendance_rrn_hashes(db, period.id, site_code=site_code)
+    if not rrn_hashes:
+        return []
+    q = db.query(FunctionalEvalWorker).filter(
+        FunctionalEvalWorker.period_id == period.id,
+        FunctionalEvalWorker.is_site_manager.is_(False),
+        FunctionalEvalWorker.rrn_hash.in_(rrn_hashes),
+    )
+    if site_code:
+        q = q.filter(FunctionalEvalWorker.site_code == site_code)
+    return q.all()
+
+
 def build_hq_sites_overview(
     db: Session,
     period: FunctionalEvalPeriod,
@@ -361,14 +469,7 @@ def build_hq_sites_overview(
     sort_dir: str = "asc",
     site_code: str | None = None,
 ) -> dict[str, Any]:
-    q = db.query(FunctionalEvalWorker).filter(
-        FunctionalEvalWorker.period_id == period.id,
-        FunctionalEvalWorker.is_site_manager.is_(False),
-        FunctionalEvalWorker.is_active.is_(True),
-    )
-    if site_code:
-        q = q.filter(FunctionalEvalWorker.site_code == site_code)
-    workers = q.all()
+    workers = _attendance_target_workers(db, period, site_code=site_code)
     site_codes = {w.site_code for w in workers if w.site_code}
     site_names = _site_name_map(db, site_codes)
     evaluators = _site_evaluator_map(db, site_codes)
@@ -390,7 +491,7 @@ def build_hq_sites_overview(
     total_workers = len(workers)
     fully = sum(1 for w in workers if _is_fully_evaluated(_worker_assess_payload(assess_map, w.id)))
     return {
-        "period": serialize_period(period),
+        "period": serialize_period(period, db),
         "totals": {
             "sites": len(sites),
             "workers": total_workers,
@@ -544,14 +645,23 @@ def _assert_worker_access(user: User, worker: FunctionalEvalWorker) -> None:
 
 def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
     site_code = _site_code_for_user(user)
-    q = db.query(FunctionalEvalWorker).filter(
-        FunctionalEvalWorker.period_id == period.id,
-        FunctionalEvalWorker.is_site_manager.is_(False),
-        FunctionalEvalWorker.is_active.is_(True),
+    work_date = get_latest_attendance_date(db, period.id)
+    if work_date is None:
+        return []
+    rrn_hashes = _attendance_rrn_hashes_for_date(db, period.id, work_date, site_code=site_code)
+    if not rrn_hashes:
+        return []
+    rows = (
+        db.query(FunctionalEvalWorker)
+        .filter(
+            FunctionalEvalWorker.period_id == period.id,
+            FunctionalEvalWorker.is_site_manager.is_(False),
+            FunctionalEvalWorker.site_code == site_code,
+            FunctionalEvalWorker.rrn_hash.in_(rrn_hashes),
+        )
+        .order_by(FunctionalEvalWorker.row_no.asc(), FunctionalEvalWorker.id.asc())
+        .all()
     )
-    if user.role == Role.SITE_FUNCTIONAL_EVAL:
-        q = q.filter(FunctionalEvalWorker.site_code == site_code)
-    rows = q.order_by(FunctionalEvalWorker.row_no.asc(), FunctionalEvalWorker.id.asc()).all()
     assess_map = _assessments_map(db, [r.id for r in rows])
     return [serialize_worker(db, row, assessments=assess_map.get(row.id, {})) for row in rows]
 
@@ -632,9 +742,7 @@ def record_sanction(
         raise ValueError("WORKER_NOT_FOUND")
     if worker.is_site_manager:
         raise ValueError("CANNOT_SANCTION_SITE_MANAGER")
-    if not worker.is_active:
-        raise ValueError("WORKER_INACTIVE")
-
+    _assert_worker_attendance_eligible(db, period, worker)
     _assert_worker_access(user, worker)
 
     prior_count = (
@@ -676,15 +784,8 @@ def list_hq_summary(
     sanction_status: str | None = None,
     include_inactive: bool = False,
 ) -> list[dict[str, Any]]:
-    q = db.query(FunctionalEvalWorker).filter(
-        FunctionalEvalWorker.period_id == period.id,
-        FunctionalEvalWorker.is_site_manager.is_(False),
-    )
-    if not include_inactive:
-        q = q.filter(FunctionalEvalWorker.is_active.is_(True))
-    if site_code:
-        q = q.filter(FunctionalEvalWorker.site_code == site_code)
-    workers = q.all()
+    del include_inactive  # 출역 대상 기준; 명부 비활성과 무관
+    workers = _attendance_target_workers(db, period, site_code=site_code)
     site_codes = {w.site_code for w in workers if w.site_code}
     site_names = _site_name_map(db, site_codes)
     assess_map = _assessments_map(db, [w.id for w in workers])
@@ -913,6 +1014,7 @@ def apply_daily_roster_diff(
                 phone_mobile=row.phone,
                 is_site_manager=row.is_site_manager,
                 is_active=True,
+                is_on_reference_roster=True,
             )
             db.add(worker)
         else:
@@ -925,6 +1027,7 @@ def apply_daily_roster_diff(
             worker.rrn_masked = row.rrn_masked
             worker.is_site_manager = row.is_site_manager
             worker.is_active = True
+            worker.is_on_reference_roster = True
             worker.removed_at = None
             worker.updated_at = now
             db.add(worker)
@@ -932,8 +1035,9 @@ def apply_daily_roster_diff(
     for rrn_hash, worker in by_hash.items():
         if rrn_hash in incoming_hashes:
             continue
-        if not worker.is_active:
+        if not worker.is_on_reference_roster and not worker.is_active:
             continue
+        worker.is_on_reference_roster = False
         worker.is_active = False
         worker.removed_at = now
         db.add(worker)
@@ -1052,11 +1156,12 @@ def save_worker_assessment(
     _assert_worker_access(user, worker)
     if worker.is_site_manager:
         raise ValueError("CANNOT_EVALUATE_SITE_MANAGER")
-    if not worker.is_active:
-        raise ValueError("WORKER_INACTIVE")
     period = db.query(FunctionalEvalPeriod).filter(FunctionalEvalPeriod.id == worker.period_id).first()
-    if period and period_is_closed(period):
+    if period is None:
+        raise ValueError("WORKER_NOT_FOUND")
+    if period_is_closed(period):
         raise ValueError("PERIOD_CLOSED")
+    _assert_worker_attendance_eligible(db, period, worker)
 
     computed = compute_assessment(eval_type, scores)
     row = (
@@ -1107,3 +1212,108 @@ def apply_daily_roster_file(
         original_filename=original_filename,
         stored_path=str(file_path),
     )
+
+
+def apply_attendance_report_diff(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    parsed_rows: list[ParsedAttendanceRow],
+    *,
+    original_filename: str,
+    stored_path: str,
+) -> dict[str, Any]:
+    assert_period_editable(period)
+    work_dates = {r.work_date for r in parsed_rows}
+    if len(work_dates) != 1:
+        raise ValueError("MULTIPLE_WORK_DATES")
+    work_date = next(iter(work_dates))
+
+    db.query(FunctionalEvalAttendanceEntry).filter(
+        FunctionalEvalAttendanceEntry.period_id == period.id,
+        FunctionalEvalAttendanceEntry.work_date == work_date,
+    ).delete(synchronize_session=False)
+
+    by_hash = _reference_worker_map(db, period.id)
+    now = utc_now()
+    linked = 0
+    skipped = 0
+    row_counters: dict[str, int] = {}
+
+    batch = FunctionalEvalAttendanceImportBatch(
+        period_id=period.id,
+        work_date=work_date,
+        original_filename=original_filename,
+        stored_path=stored_path,
+        total_rows=0,
+    )
+    db.add(batch)
+    db.flush()
+
+    for row in parsed_rows:
+        worker = by_hash.get(row.rrn_hash)
+        if worker is None or worker.is_site_manager:
+            skipped += 1
+            continue
+        site_code = worker.site_code
+        worker.name = row.name
+        if row.job_name:
+            worker.job_name = row.job_name
+        worker.rrn_masked = row.rrn_masked or worker.rrn_masked
+        worker.updated_at = now
+        db.add(worker)
+
+        if site_code not in row_counters:
+            row_counters[site_code] = _next_row_no(db, period.id, site_code) - 1
+        row_counters[site_code] += 1
+        worker.row_no = row_counters[site_code]
+
+        db.add(
+            FunctionalEvalAttendanceEntry(
+                period_id=period.id,
+                work_date=work_date,
+                worker_id=worker.id,
+                site_code=site_code,
+                rrn_hash=row.rrn_hash,
+                name=row.name,
+                job_name=row.job_name,
+                erp_site_label=row.erp_site_label,
+                batch_id=batch.id,
+            )
+        )
+        linked += 1
+
+    batch.total_rows = linked
+    batch.linked_workers = linked
+    batch.skipped_no_roster = skipped
+    period.last_attendance_date = work_date
+    db.add(period)
+    db.add(batch)
+    db.commit()
+
+    return {
+        "batch_id": batch.id,
+        "work_date": work_date.isoformat(),
+        "total_rows": len(parsed_rows),
+        "linked_workers": linked,
+        "skipped_no_roster": skipped,
+        "site_count": len({by_hash[r.rrn_hash].site_code for r in parsed_rows if r.rrn_hash in by_hash}),
+    }
+
+
+def apply_attendance_report_file(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    file_path: Path,
+    *,
+    original_filename: str,
+) -> dict[str, Any]:
+    parsed = parse_attendance_report_xlsx(file_path)
+    result = apply_attendance_report_diff(
+        db,
+        period,
+        parsed,
+        original_filename=original_filename,
+        stored_path=str(file_path),
+    )
+    db.refresh(period)
+    return {**result, "period": serialize_period(period, db)}

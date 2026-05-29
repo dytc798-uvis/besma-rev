@@ -95,6 +95,8 @@ def save_worker_assessment(
             raise HTTPException(status_code=400, detail=code) from exc
         if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER", "WORKER_INACTIVE"}:
             raise HTTPException(status_code=400, detail=code) from exc
+        if code in {"WORKER_NOT_ON_ATTENDANCE", "NO_ATTENDANCE_UPLOAD"}:
+            raise HTTPException(status_code=400, detail="당일 출역 명단에 없거나 출역일보가 반영되지 않았습니다.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return {"assessment": result}
 
@@ -102,7 +104,7 @@ def save_worker_assessment(
 @router.get("/period/current")
 def get_current_period(db: DbDep, current_user: CurrentUserDep):
     period = service.get_or_create_active_period(db)
-    return service.serialize_period(period)
+    return service.serialize_period(period, db)
 
 
 @router.patch("/period/{period_id}/deadline")
@@ -120,16 +122,22 @@ def update_period_deadline(
     db.add(period)
     db.commit()
     db.refresh(period)
-    return service.serialize_period(period)
+    return service.serialize_period(period, db)
 
 
 @router.get("/my-site/workers")
 def list_my_site_workers(db: DbDep, current_user: CurrentUserDep):
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
+    items = service.list_workers_for_user(db, current_user, period)
+    period_payload = service.serialize_period(period, db)
+    message = None
+    if not period_payload.get("last_attendance_date"):
+        message = "출역일보가 아직 반영되지 않았습니다. 본사에 업로드를 요청하세요."
     return {
-        "period": service.serialize_period(period),
-        "items": service.list_workers_for_user(db, current_user, period),
+        "period": period_payload,
+        "items": items,
+        "attendance_message": message,
     }
 
 
@@ -252,7 +260,7 @@ async def roster_diff(
         result = service.diff_daily_roster_file(db, period, tmp)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"period": service.serialize_period(period), **result}
+    return {"period": service.serialize_period(period, db), **result}
 
 
 @router.post("/hq/roster/apply")
@@ -270,7 +278,35 @@ async def roster_apply(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"period": service.serialize_period(period), **result}
+    return {"period": service.serialize_period(period, db), **result}
+
+
+@router.post("/hq/attendance/apply")
+async def attendance_apply(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    file: UploadFile = File(...),
+):
+    """ERP 출역일보 xlsx — 평가 기간 중 1일 1회 반영 (동일 출역일 재업로드 시 교체)."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    tmp = await _save_upload(file, period.id)
+    try:
+        result = service.apply_attendance_report_file(
+            db, period, tmp, original_filename=file.filename or "attendance.xlsx"
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "EMPTY_FILE":
+            raise HTTPException(status_code=400, detail="파일이 비어 있습니다.") from exc
+        if code == "NO_ATTENDANCE_ROWS":
+            raise HTTPException(status_code=400, detail="출역 근로자 행을 찾을 수 없습니다.") from exc
+        if code == "MULTIPLE_WORK_DATES":
+            raise HTTPException(status_code=400, detail="한 파일에 출역일이 여러 개입니다.") from exc
+        if code == "PERIOD_CLOSED":
+            raise HTTPException(status_code=409, detail="마감일이 지나 반영할 수 없습니다.") from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+    return result
 
 
 @router.post("/hq/import-roster")

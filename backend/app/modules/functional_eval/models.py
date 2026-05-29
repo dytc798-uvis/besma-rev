@@ -14,6 +14,7 @@ class FunctionalEvalPeriod(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     deadline_date: Mapped[date] = mapped_column(Date, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    last_attendance_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now, nullable=False
@@ -27,6 +28,12 @@ class FunctionalEvalPeriod(Base):
     )
     import_batches: Mapped[list["FunctionalEvalRosterImportBatch"]] = relationship(
         "FunctionalEvalRosterImportBatch", back_populates="period"
+    )
+    attendance_batches: Mapped[list["FunctionalEvalAttendanceImportBatch"]] = relationship(
+        "FunctionalEvalAttendanceImportBatch", back_populates="period"
+    )
+    attendance_entries: Mapped[list["FunctionalEvalAttendanceEntry"]] = relationship(
+        "FunctionalEvalAttendanceEntry", back_populates="period"
     )
 
 
@@ -46,6 +53,51 @@ class FunctionalEvalRosterImportBatch(Base):
 
     period: Mapped[FunctionalEvalPeriod] = relationship(
         "FunctionalEvalPeriod", back_populates="import_batches"
+    )
+
+
+class FunctionalEvalAttendanceImportBatch(Base):
+    __tablename__ = "functional_eval_attendance_import_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    period_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_periods.id"), nullable=False)
+    work_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    total_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    linked_workers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_no_roster: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+    period: Mapped[FunctionalEvalPeriod] = relationship(
+        "FunctionalEvalPeriod", back_populates="attendance_batches"
+    )
+
+
+class FunctionalEvalAttendanceEntry(Base):
+    __tablename__ = "functional_eval_attendance_entries"
+    __table_args__ = (
+        UniqueConstraint("period_id", "work_date", "rrn_hash", name="uq_fe_attendance_period_date_rrn"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    period_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_periods.id"), nullable=False, index=True)
+    work_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    worker_id: Mapped[int | None] = mapped_column(
+        ForeignKey("functional_eval_workers.id"), nullable=True, index=True
+    )
+    site_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    rrn_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    job_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    erp_site_label: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    batch_id: Mapped[int] = mapped_column(
+        ForeignKey("functional_eval_attendance_import_batches.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+    period: Mapped[FunctionalEvalPeriod] = relationship(
+        "FunctionalEvalPeriod", back_populates="attendance_entries"
     )
 
 
@@ -70,6 +122,7 @@ class FunctionalEvalWorker(Base):
     phone_mobile: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_site_manager: Mapped[bool] = mapped_column(default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    is_on_reference_roster: Mapped[bool] = mapped_column(default=True, nullable=False)
     removed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     mileage_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     mileage_note: Mapped[str | None] = mapped_column(String(500), nullable=True)

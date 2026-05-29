@@ -22,6 +22,10 @@ backend/__pycache__/
 # 로컬 전용 비밀(PEM 등). 내용물은 커밋하지 않음. 안내는 .secrets/README.md 만 추적.
 .secrets/*
 !.secrets/README.md
+*.pem
+besma-key.pem
+.secrets/besma-key.pem
+.secrets/*.pem
 
 # DB / caches
 *.db

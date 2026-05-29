@@ -14,11 +14,44 @@ from sqlalchemy.orm import sessionmaker
 from app.core.auth import get_current_user_with_bypass, get_db
 from app.core.database import Base
 from app.core.enums import Role, UIType
-from app.modules.functional_eval.models import FunctionalEvalPeriod, FunctionalEvalWorker
+from app.modules.functional_eval.models import (
+    FunctionalEvalAttendanceEntry,
+    FunctionalEvalAttendanceImportBatch,
+    FunctionalEvalPeriod,
+    FunctionalEvalWorker,
+)
 from app.modules.functional_eval.routes import router as functional_eval_router
 from app.modules.functional_eval.sanctions import resolve_sanction
 from app.modules.sites.models import Site
 from app.modules.users.models import User
+
+
+def _seed_attendance(db, period: FunctionalEvalPeriod, worker: FunctionalEvalWorker, work_date: date | None = None):
+    wd = work_date or date(2026, 5, 29)
+    batch = FunctionalEvalAttendanceImportBatch(
+        period_id=period.id,
+        work_date=wd,
+        original_filename="test.xlsx",
+        stored_path="storage/test.xlsx",
+        total_rows=1,
+        linked_workers=1,
+    )
+    db.add(batch)
+    db.flush()
+    db.add(
+        FunctionalEvalAttendanceEntry(
+            period_id=period.id,
+            work_date=wd,
+            worker_id=worker.id,
+            site_code=worker.site_code,
+            rrn_hash=worker.rrn_hash,
+            name=worker.name,
+            batch_id=batch.id,
+        )
+    )
+    period.last_attendance_date = wd
+    db.add(period)
+    db.commit()
 
 
 @pytest.mark.parametrize(
@@ -81,7 +114,8 @@ def test_functional_eval_sanction_flow(tmp_path: Path):
         is_active=True,
     )
     setup_db.add(worker)
-    setup_db.commit()
+    setup_db.flush()
+    _seed_attendance(setup_db, period, worker)
     site_id = site.id
     worker_id = worker.id
     setup_db.close()
@@ -200,7 +234,8 @@ def test_functional_eval_assessment_flow(tmp_path: Path):
         is_active=True,
     )
     setup_db.add(worker)
-    setup_db.commit()
+    setup_db.flush()
+    _seed_attendance(setup_db, period, worker)
     site_id = site.id
     worker_id = worker.id
     setup_db.close()
@@ -317,7 +352,8 @@ def test_hq_eval_summary(tmp_path: Path):
         is_active=True,
     )
     setup_db.add(worker)
-    setup_db.commit()
+    setup_db.flush()
+    _seed_attendance(setup_db, period, worker)
     site_id = site.id
     worker_id = worker.id
     setup_db.close()

@@ -3,7 +3,12 @@
     <div class="page-head">
       <div>
         <h1 class="page-title">기능인제 인사고과 · 본사</h1>
-        <p class="page-sub">현장별 평가 진행 확인 — 상세는 현장 선택, 전체 명단은 엑셀</p>
+        <p class="page-sub">
+          출역일보 기준 평가 진행 — 상세는 현장 선택, 전체 명단은 엑셀
+          <span v-if="period?.last_attendance_date" class="attendance-badge">
+            출역 반영 {{ period.last_attendance_date }} ({{ period.attendance_row_count }}명)
+          </span>
+        </p>
       </div>
       <div class="head-actions">
         <button class="stitch-btn-secondary" type="button" :disabled="exporting" @click="downloadEvalExcel">
@@ -139,7 +144,23 @@
         {{ showAdmin ? "▾" : "▸" }} 명부·제재 관리
       </button>
       <template v-if="showAdmin">
-        <h3>일용직 명부 (xlsx)</h3>
+        <h3>출역일보 (ERP xlsx) — 매일 1회</h3>
+        <p class="panel-sub">평가 대상은 출역일보 기준입니다. 동일 출역일 재업로드 시 해당 일 데이터가 교체됩니다.</p>
+        <div class="row import-row">
+          <input ref="attendanceInput" type="file" accept=".xlsx,.xls" @change="onAttendanceFileChange" />
+          <button
+            class="stitch-btn-primary"
+            type="button"
+            :disabled="!attendanceFile || applyingAttendance"
+            @click="applyAttendance"
+          >
+            {{ applyingAttendance ? "반영 중..." : "출역일보 반영" }}
+          </button>
+        </div>
+        <p v-if="attendanceResult" class="meta success">{{ attendanceResult }}</p>
+
+        <h3>일용직 참조 명부 (xlsx)</h3>
+        <p class="panel-sub">소속현장·소장 계정·주민번호 매핑용 참조 데이터입니다.</p>
         <div class="row import-row">
           <input ref="fileInput" type="file" accept=".xlsx,.xls" @change="onFileChange" />
           <button class="stitch-btn-secondary" type="button" :disabled="!rosterFile || diffing" @click="runDiff">
@@ -171,6 +192,8 @@ interface Period {
   id: number;
   deadline_date: string;
   is_closed: boolean;
+  last_attendance_date?: string | null;
+  attendance_row_count?: number;
 }
 
 interface Totals {
@@ -225,6 +248,10 @@ const diffing = ref(false);
 const applying = ref(false);
 const diffResult = ref<DiffResult | null>(null);
 const applyResult = ref("");
+const attendanceFile = ref<File | null>(null);
+const attendanceInput = ref<HTMLInputElement | null>(null);
+const applyingAttendance = ref(false);
+const attendanceResult = ref("");
 
 const filteredSites = computed(() => {
   let list = sites.value;
@@ -302,6 +329,30 @@ function onFileChange(e: Event) {
   rosterFile.value = input.files?.[0] || null;
   diffResult.value = null;
   applyResult.value = "";
+}
+
+function onAttendanceFileChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  attendanceFile.value = input.files?.[0] || null;
+  attendanceResult.value = "";
+}
+
+async function applyAttendance() {
+  if (!attendanceFile.value) return;
+  applyingAttendance.value = true;
+  attendanceResult.value = "";
+  try {
+    const form = new FormData();
+    form.append("file", attendanceFile.value);
+    const res = await api.post("/functional-eval/hq/attendance/apply", form);
+    period.value = res.data.period;
+    attendanceResult.value = `출역일 ${res.data.work_date} · 반영 ${res.data.linked_workers}명 (명부 미매칭 ${res.data.skipped_no_roster}명)`;
+    await loadOverview();
+  } catch {
+    attendanceResult.value = "출역일보 반영에 실패했습니다. 파일 형식을 확인하세요.";
+  } finally {
+    applyingAttendance.value = false;
+  }
 }
 
 async function uploadFile(endpoint: string) {

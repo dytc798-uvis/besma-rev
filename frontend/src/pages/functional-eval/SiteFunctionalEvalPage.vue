@@ -5,10 +5,12 @@
         <h1 class="page-title">기능인제 인사고과</h1>
         <p class="page-sub">
           마감일 <strong>{{ period?.deadline_date || "—" }}</strong>
+          <span v-if="period?.last_attendance_date"> · 출역 {{ period.last_attendance_date }} ({{ workers.length }}명)</span>
           <span v-if="!period?.is_closed" class="incomplete-count">미평가 {{ incompleteCount }}명</span>
           <span v-if="period?.is_closed" class="badge closed">마감</span>
           <span v-else class="badge open">진행</span>
         </p>
+        <p v-if="attendanceMessage" class="attendance-warn">{{ attendanceMessage }}</p>
       </div>
       <button class="btn-refresh stitch-btn-secondary" type="button" @click="load">새로고침</button>
     </div>
@@ -270,6 +272,8 @@ interface Period {
   id: number;
   deadline_date: string;
   is_closed: boolean;
+  last_attendance_date?: string | null;
+  attendance_row_count?: number;
 }
 
 interface ViolationItem {
@@ -306,6 +310,7 @@ const activeTab = ref<MainTab>("functional");
 const focusWorkerId = ref<number | null>(null);
 const evalCatalog = ref<{ FUNCTIONAL: EvalCatalogBlock; SAFETY: EvalCatalogBlock } | null>(null);
 const period = ref<Period | null>(null);
+const attendanceMessage = ref("");
 const workers = ref<Worker[]>([]);
 const violations = ref<ViolationItem[]>([]);
 const selectedWorker = ref<Worker | null>(null);
@@ -405,9 +410,11 @@ async function loadCatalog() {
 
 async function load() {
   error.value = "";
+  attendanceMessage.value = "";
   const res = await api.get("/functional-eval/my-site/workers");
   period.value = res.data.period;
   workers.value = res.data.items || [];
+  attendanceMessage.value = res.data.attendance_message || "";
 }
 
 async function openHistory(worker: Worker) {
@@ -470,6 +477,16 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.attendance-warn {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  color: #9a3412;
+  font-size: 14px;
+}
+
 .fe-page {
   display: flex;
   flex-direction: column;
