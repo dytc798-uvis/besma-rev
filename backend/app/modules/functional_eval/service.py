@@ -398,6 +398,8 @@ def build_hq_sites_overview(
             "incomplete": total_workers - fully,
         },
         "sites": sites,
+        # 구버전 프론트( site_progress 키 ) 호환
+        "site_progress": sites,
         "sort_by": sort_by,
         "sort_dir": sort_dir,
     }

@@ -33,10 +33,15 @@
     <section v-if="!selectedSite" class="panel">
       <h2>현장별 평가 진행</h2>
       <p class="panel-sub">현장을 선택하면 <strong>평가 완료(기능+안전)</strong>된 근로자만 표시됩니다.</p>
+      <p v-if="loadError" class="load-error">{{ loadError }}</p>
       <div class="toolbar">
         <label>
           현장 검색
           <input v-model="siteSearch" type="text" placeholder="현장명·코드·소장명" class="input-md" />
+        </label>
+        <label class="checkbox-label">
+          <input v-model="onlyWithProgress" type="checkbox" />
+          평가 완료 1명 이상만
         </label>
         <label>
           정렬
@@ -208,9 +213,11 @@ const evalRows = ref<EvalRow[]>([]);
 const loadingSite = ref(false);
 const exporting = ref(false);
 const deadlineInput = ref("");
-const sortBy = ref("site_code");
-const sortDir = ref("asc");
+const sortBy = ref("progress");
+const sortDir = ref("desc");
 const siteSearch = ref("");
+const onlyWithProgress = ref(false);
+const loadError = ref("");
 const showAdmin = ref(false);
 const rosterFile = ref<File | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -220,9 +227,13 @@ const diffResult = ref<DiffResult | null>(null);
 const applyResult = ref("");
 
 const filteredSites = computed(() => {
+  let list = sites.value;
+  if (onlyWithProgress.value) {
+    list = list.filter((s) => s.has_completed || (s.fully_complete ?? 0) > 0);
+  }
   const q = siteSearch.value.trim().toLowerCase();
-  if (!q) return sites.value;
-  return sites.value.filter(
+  if (!q) return list;
+  return list.filter(
     (s) =>
       s.site_code.toLowerCase().includes(q) ||
       (s.site_name || "").toLowerCase().includes(q) ||
@@ -241,13 +252,28 @@ function gradeClass(grade: string) {
 }
 
 async function loadOverview() {
-  const res = await api.get("/functional-eval/hq/summary", {
-    params: { sort_by: sortBy.value, sort_dir: sortDir.value },
-  });
-  period.value = res.data.period;
-  totals.value = res.data.totals || null;
-  sites.value = res.data.sites || [];
-  deadlineInput.value = period.value?.deadline_date || "";
+  loadError.value = "";
+  try {
+    const res = await api.get("/functional-eval/hq/summary", {
+      params: { sort_by: sortBy.value, sort_dir: sortDir.value },
+    });
+    period.value = res.data.period;
+    totals.value = res.data.totals || null;
+    const rows = res.data.sites ?? res.data.site_progress ?? [];
+    sites.value = Array.isArray(rows) ? rows : [];
+    if (!sites.value.length && (totals.value?.workers ?? 0) > 0) {
+      loadError.value = "현장 목록을 불러오지 못했습니다. 새로고침(Ctrl+F5) 후 다시 시도해 주세요.";
+    }
+    deadlineInput.value = period.value?.deadline_date || "";
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    if (status === 403) {
+      loadError.value = "이 계정은 본사 평가 조회 권한이 없습니다. 관리자에게 문의하세요.";
+    } else {
+      loadError.value = "평가 현황을 불러오지 못했습니다. 네트워크 확인 후 새로고침해 주세요.";
+    }
+    sites.value = [];
+  }
 }
 
 async function openSite(site: SiteRow) {
@@ -386,4 +412,5 @@ onMounted(loadOverview);
 .muted { color: #94a3b8; }
 .section-toggle { width: 100%; text-align: left; background: none; border: none; font-size: 15px; font-weight: 600; cursor: pointer; padding: 0 0 12px; }
 .diff-summary { display: flex; gap: 12px; margin-top: 8px; font-size: 14px; }
+.load-error { color: #991b1b; background: #fef2f2; padding: 10px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 8px; }
 </style>
