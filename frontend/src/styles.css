@@ -278,6 +278,30 @@ form.form-grid .form-field label {
     min-width: 0;
   }
 
+  /* 기능인제 현장: 사이드바 드로어 + 콘텐츠 전폭 */
+  .layout-root.functional-eval-shell.site-mobile-layout {
+    flex-direction: row !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    position: relative;
+  }
+
+  .layout-root.functional-eval-shell.site-mobile-layout .layout-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(88vw, 280px) !important;
+    z-index: 300;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .layout-root.functional-eval-shell.site-mobile-layout.mobile-drawer-open .layout-sidebar {
+    transform: translateX(0);
+    box-shadow: 8px 0 28px rgba(15, 23, 42, 0.18);
+  }
+
   .mobile-drawer-backdrop {
     position: fixed;
     inset: 0;

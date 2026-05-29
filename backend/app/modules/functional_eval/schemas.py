@@ -56,6 +56,21 @@ class FunctionalEvalSanctionOut(BaseModel):
     created_at: datetime
 
 
+class FunctionalEvalAssessmentSave(BaseModel):
+    scores: dict[str, str] = Field(default_factory=dict)
+
+
+class FunctionalEvalAssessmentOut(BaseModel):
+    eval_type: str
+    scores: dict[str, str]
+    total_score: int
+    max_score: int
+    grade_code: str
+    grade_label: str
+    is_complete: bool
+    updated_at: datetime | None = None
+
+
 class FunctionalEvalWorkerOut(BaseModel):
     id: int
     period_id: int
@@ -72,6 +87,8 @@ class FunctionalEvalWorkerOut(BaseModel):
     sanction_status_label: str
     sanction_count: int
     latest_sanction: FunctionalEvalSanctionOut | None = None
+    functional_assessment: FunctionalEvalAssessmentOut | None = None
+    safety_assessment: FunctionalEvalAssessmentOut | None = None
 
 
 class FunctionalEvalHqSummaryItem(BaseModel):

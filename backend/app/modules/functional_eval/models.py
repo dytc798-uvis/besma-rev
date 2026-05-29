@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -82,6 +82,34 @@ class FunctionalEvalWorker(Base):
     sanctions: Mapped[list["FunctionalEvalSanction"]] = relationship(
         "FunctionalEvalSanction", back_populates="worker"
     )
+    assessments: Mapped[list["FunctionalEvalAssessment"]] = relationship(
+        "FunctionalEvalAssessment", back_populates="worker"
+    )
+
+
+class FunctionalEvalAssessment(Base):
+    """2-1(기능) / 2-2(안전) 인사고과 점수 — 근로자·유형당 1건."""
+
+    __tablename__ = "functional_eval_assessments"
+    __table_args__ = (
+        UniqueConstraint("worker_id", "eval_type", name="uq_fe_assessment_worker_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_workers.id"), nullable=False, index=True)
+    eval_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    scores_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    total_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    grade_code: Mapped[str] = mapped_column(String(10), nullable=False, default="")
+    grade_label: Mapped[str] = mapped_column(String(30), nullable=False, default="")
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    worker: Mapped["FunctionalEvalWorker"] = relationship("FunctionalEvalWorker", back_populates="assessments")
 
 
 class FunctionalEvalSanction(Base):

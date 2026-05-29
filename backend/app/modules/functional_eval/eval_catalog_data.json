@@ -1,0 +1,370 @@
+{
+  "FUNCTIONAL": [
+    {
+      "id": "c1",
+      "title": "전문지식(숙련도)",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 12
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 9
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 6
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "title": "정확성, 신속성",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 12
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 9
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 6
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "title": "이해력",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 12
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 9
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 6
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    },
+    {
+      "id": "c4",
+      "title": "창의력",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 10
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 8
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 6
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 4
+        }
+      ]
+    },
+    {
+      "id": "c5",
+      "title": "규율성",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 10
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 8
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 6
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 4
+        }
+      ]
+    },
+    {
+      "id": "c6",
+      "title": "책임감",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 10
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 8
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 6
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 4
+        }
+      ]
+    },
+    {
+      "id": "c7",
+      "title": "적극성",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 10
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 8
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 6
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 4
+        }
+      ]
+    },
+    {
+      "id": "c8",
+      "title": "기본자세",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 12
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 9
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 6
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    },
+    {
+      "id": "c9",
+      "title": "출결상태",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 12
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 9
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 6
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    }
+  ],
+  "SAFETY": [
+    {
+      "id": "c1",
+      "title": "TBM 참석",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 15
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 11
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 7
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "title": "도급사 안전활동 참여 및 포상",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 15
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 11
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 7
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "title": "개인보호구 착용",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 15
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 11
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 7
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    },
+    {
+      "id": "c4",
+      "title": "기본 공도구 관리",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 15
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 11
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 7
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    },
+    {
+      "id": "c5",
+      "title": "입수보행, 핸드폰보행, 이어폰작업",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 15
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 11
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 7
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 3
+        }
+      ]
+    }
+  ]
+}

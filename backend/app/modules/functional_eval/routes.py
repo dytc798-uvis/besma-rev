@@ -13,6 +13,7 @@ from app.core.permissions import CurrentUserDep, assert_hq_safe_workspace
 from app.modules.functional_eval import service
 from app.modules.functional_eval.models import FunctionalEvalPeriod
 from app.modules.functional_eval.schemas import (
+    FunctionalEvalAssessmentSave,
     FunctionalEvalPeriodDeadlineUpdate,
     FunctionalEvalSanctionCreate,
 )
@@ -42,6 +43,60 @@ async def _save_upload(file: UploadFile, period_id: int) -> Path:
 @router.get("/violation-catalog")
 def get_violation_catalog(current_user: CurrentUserDep):
     return {"items": service.violation_catalog_public()}
+
+
+@router.get("/eval-catalog")
+def get_eval_catalog(current_user: CurrentUserDep):
+    return service.eval_catalog_public()
+
+
+@router.get("/workers/{worker_id}/assessment/{eval_type}")
+def get_worker_assessment(
+    worker_id: int,
+    eval_type: str,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    if eval_type not in {"FUNCTIONAL", "SAFETY"}:
+        raise HTTPException(status_code=400, detail="eval_type must be FUNCTIONAL or SAFETY")
+    try:
+        return service.get_worker_assessment(db, current_user, worker_id, eval_type)  # type: ignore[arg-type]
+    except ValueError as exc:
+        code = str(exc)
+        if code == "WORKER_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Worker not found") from exc
+        if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER"}:
+            raise HTTPException(status_code=403, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+
+
+@router.put("/workers/{worker_id}/assessment/{eval_type}")
+def save_worker_assessment(
+    worker_id: int,
+    eval_type: str,
+    body: FunctionalEvalAssessmentSave,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    _assert_site_functional_eval(current_user)
+    if eval_type not in {"FUNCTIONAL", "SAFETY"}:
+        raise HTTPException(status_code=400, detail="eval_type must be FUNCTIONAL or SAFETY")
+    try:
+        result = service.save_worker_assessment(
+            db, current_user, worker_id, eval_type, body.scores  # type: ignore[arg-type]
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "PERIOD_CLOSED":
+            raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
+        if code == "WORKER_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Worker not found") from exc
+        if code.startswith("INCOMPLETE:") or code.startswith("INVALID_GRADE:"):
+            raise HTTPException(status_code=400, detail=code) from exc
+        if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER", "WORKER_INACTIVE"}:
+            raise HTTPException(status_code=400, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+    return {"assessment": result}
 
 
 @router.get("/period/current")
@@ -151,26 +206,37 @@ def hq_summary(
     sort_by: str = Query(default="site_code"),
     sort_dir: str = Query(default="asc"),
     site_code: str | None = Query(default=None),
-    sanction_status: str | None = Query(default=None),
-    include_inactive: bool = Query(default=False),
 ):
+    """현장별 평가 진행률 목록 (근로자 상세 미포함)."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
-    items = service.list_hq_summary(
+    return service.build_hq_summary_response(
         db,
         period,
         sort_by=sort_by,
         sort_dir=sort_dir,
         site_code=site_code,
-        sanction_status=sanction_status,
-        include_inactive=include_inactive,
     )
-    return {
-        "period": service.serialize_period(period),
-        "items": items,
-        "sort_by": sort_by,
-        "sort_dir": sort_dir,
-    }
+
+
+@router.get("/hq/sites/{site_code}/evaluations")
+def hq_site_evaluations(
+    site_code: str,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    sort_by: str = Query(default="name"),
+    sort_dir: str = Query(default="asc"),
+):
+    """현장별 평가 완료자만 (기능+안전 모두 완료)."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    return service.list_hq_site_completed_evaluations(
+        db,
+        period,
+        site_code.strip(),
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
 
 
 @router.post("/hq/roster/diff")
@@ -215,6 +281,59 @@ async def import_roster_legacy(
 ):
     """일용직 명부 적용 (DIFF 반영). `/hq/roster/apply` 와 동일."""
     return await roster_apply(db, current_user, file)
+
+
+@router.get("/hq/export/evaluations")
+def export_hq_evaluations_excel(
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    """전체 평가 현황 엑셀 (미평가 포함, 본사 일괄 조회용)."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+
+    import io
+
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "평가현황"
+    ws.append(
+        [
+            "현장코드",
+            "현장명",
+            "평가자(소장)",
+            "성명",
+            "품질등급",
+            "안전등급",
+            "전체완료",
+            "비고",
+        ]
+    )
+    for row in service.list_hq_eval_export_rows(db, period):
+        ws.append(
+            [
+                row["site_code"],
+                row["site_name"],
+                row["evaluator_name"],
+                row["name"],
+                row["functional_grade"],
+                row["safety_grade"],
+                row["fully_complete"],
+                row["remark"],
+            ]
+        )
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"functional_eval_grades_{period.id}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/hq/export")
