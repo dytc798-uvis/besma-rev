@@ -42,6 +42,7 @@ function Resolve-BesmaSshKeyPath {
     $fromEnv,
     (Join-Path $RepoRoot ".secrets\besma-key.pem"),
     (Join-Path $RepoRoot "besma-key.pem"),
+    (Join-Path $env:USERPROFILE ".ssh\besma-key.pem"),
     (Join-Path $env:USERPROFILE "Downloads\besma-key.pem")
   ) | Where-Object { $_ -ne "" }
   foreach ($c in $candidates) {
@@ -66,12 +67,33 @@ if (!(Test-Path -LiteralPath $RepoRoot)) {
 
 $defaultDownloads = Join-Path $env:USERPROFILE "Downloads\besma-key.pem"
 if ([string]::IsNullOrWhiteSpace($SshKeyPath)) {
+  $envPath = Join-Path $RepoRoot ".env"
+  $fromEnv = Get-DotEnvValue -EnvPath $envPath -Key "BESMA_SSH_KEY_PATH"
+  $candidateList = @(
+    $(if ($fromEnv) { ".env BESMA_SSH_KEY_PATH -> $fromEnv" }),
+    (Join-Path $RepoRoot ".secrets\besma-key.pem"),
+    (Join-Path $RepoRoot "besma-key.pem"),
+    (Join-Path $env:USERPROFILE ".ssh\besma-key.pem"),
+    $defaultDownloads
+  ) | Where-Object { $_ -ne "" }
   $SshKeyPath = Resolve-BesmaSshKeyPath -RepoRoot $RepoRoot
   if ([string]::IsNullOrWhiteSpace($SshKeyPath)) {
-    throw "SSH key not found. Set BESMA_SSH_KEY_PATH in .env (see .env.example), place besma-key.pem under .secrets\, or pass -SshKeyPath. Tried: .env BESMA_SSH_KEY_PATH, .secrets\besma-key.pem, repo root, $defaultDownloads"
+    Write-Host ""
+    Write-Host "SSH key file is missing on this PC (script regression is NOT the cause)." -ForegroundColor Red
+    Write-Host "Checked locations:" -ForegroundColor Yellow
+    foreach ($line in $candidateList) {
+      $pathOnly = if ($line -match '->\s*(.+)$') { $Matches[1].Trim() } else { $line }
+      $exists = Test-Path -LiteralPath $pathOnly
+      $mark = if ($exists) { "FOUND" } else { "missing" }
+      Write-Host "  [$mark] $line" -ForegroundColor $(if ($exists) { "Green" } else { "DarkGray" })
+    }
+    Write-Host ""
+    Write-Host "Restore besma-key.pem (e.g. copy into .secrets\besma-key.pem), then re-run deploy_all.ps1." -ForegroundColor Yellow
+    Write-Host "See .secrets\README.md and: deploy\fix_ssh_key_permissions.ps1" -ForegroundColor DarkGray
+    throw "SSH key not found on disk."
   }
 } elseif (-not (Test-Path -LiteralPath $SshKeyPath)) {
-  throw "SSH key not found: $SshKeyPath"
+  throw "SSH key not found at -SshKeyPath: $SshKeyPath"
 }
 
 # deploy_backend.sh already loops on HEALTH_URL; avoid a duplicate trailing curl in the remote script

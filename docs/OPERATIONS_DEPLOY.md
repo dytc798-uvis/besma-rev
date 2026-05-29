@@ -73,8 +73,10 @@
    **로컬에만 있는 수정(미커밋)** 은 EC2 `git pull`로는 절대 반영되지 않는다. `deploy_all.ps1`는 기본적으로 **작업 트리가 깨끗하지 않으면 중단**한다(재발 방지). 우회 시 `-AllowDirtyWorkingTree`.
 
 3. **SSH 키**  
-   - 권장 위치: `.secrets\besma-key.pem`  
+   - 권장 위치: `.secrets\besma-key.pem` (파일이 **실제로 존재**해야 함 — `.env`만 있고 pem이 없으면 배포 불가)  
    - 루트 `.env`의 `BESMA_SSH_KEY_PATH` 또는 스크립트 기본 탐색 경로.  
+   - **Cursor 에이전트는 `.gitignore`된 pem을 읽을 수 없어** 백엔드 배포는 **사용자 PC PowerShell**에서 실행한다.  
+   - `deploy_all.ps1` 실패 시 목록에 `[missing]`이면 pem을 복구한 뒤 재시도.  
    - OpenSSH 오류 `UNPROTECTED PRIVATE KEY FILE` 시, 키 파일 ACL을 **현재 사용자만 읽기**로 제한한다:
 
    ```powershell
