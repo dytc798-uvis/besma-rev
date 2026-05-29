@@ -143,7 +143,7 @@ try {
   Pop-Location
 }
 
-Write-Host "[vercel-deploy] deploy production" -ForegroundColor Cyan
+Write-Host "[vercel-deploy] deploy production (repo root; Vercel Root Directory=$RootDirectory)" -ForegroundColor Cyan
 Push-Location $RepoRoot
 try {
   Invoke-PatchedVercel deploy --prod --yes --scope $Scope --cwd $RepoRoot

@@ -1,0 +1,11 @@
+backend/
+database/
+docs/
+storage/
+manual-system/
+handoff-besma/
+archive-for-notebook/
+deploy/
+scripts/
+*.pem
+.git/

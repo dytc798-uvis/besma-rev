@@ -33,6 +33,11 @@ from app.modules.document_settings.models import DocumentRequirement
 from app.modules.documents.ledger_managed import assert_not_ledger_managed_document_type
 from app.modules.documents.models import Document, DocumentUploadHistory
 from app.modules.documents.models import DocumentStatus
+from app.modules.documents.storage_paths import (
+    image_derivative_filenames,
+    versioned_primary_filename,
+    write_instance_file,
+)
 from app.modules.documents.feedback_loop_service import sync_feedback_loop_from_workflow
 from app.modules.sites.models import Site
 
@@ -182,12 +187,6 @@ async def _collect_pdf_parts_from_uploads(files: list[UploadFile]) -> list[bytes
             continue
         raise ValueError(f"unsupported_attachment:{ext or 'unknown'}")
     return parts
-
-
-def _write_bytes(storage_dir: Path, filename: str, content: bytes) -> str:
-    target = storage_dir / filename
-    target.write_bytes(content)
-    return str(target.relative_to(settings.storage_root))
 
 
 def _get_or_create_instance_for_upload(
@@ -382,12 +381,13 @@ async def upload_document_for_instance(
         _record_upload_history(db, doc=doc_append, action_type="BEFORE_REUPLOAD")
         doc_append.version_no = (doc_append.version_no or 1) + 1
         storage_dir_append = _ensure_documents_dir()
-        timestamp_append = int(utc_now().timestamp())
         safe_keep = doc_append.file_name or "document.pdf"
-        filename_append = f"instance_{inst_append.id}_{timestamp_append}_{safe_keep}"
-        stored_append = storage_dir_append / filename_append
-        stored_append.write_bytes(merged_append)
-        doc_append.file_path = str(stored_append.relative_to(settings.storage_root))
+        doc_append.file_path = write_instance_file(
+            storage_dir_append,
+            inst_append.id,
+            safe_keep,
+            merged_append,
+        )
         doc_append.file_size = len(merged_append)
         doc_append.uploaded_by_user_id = current_user.id
         doc_append.uploaded_at = utc_now()
@@ -508,10 +508,10 @@ async def upload_document_for_instance(
     storage_dir = _ensure_documents_dir()
     source_name = file.filename or "upload.bin"
     content = await file.read()
-    timestamp = int(utc_now().timestamp())
     primary_content, primary_ext = _optimize_uploaded_content(content, source_name, file.content_type)
     original_file_path: str | None = None
     optimized_file_path: str | None = None
+    image_asset = None
 
     if is_image_upload(source_name, file.content_type):
         try:
@@ -525,17 +525,6 @@ async def upload_document_for_instance(
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
         primary_content = image_asset.pdf_bytes or primary_content
         primary_ext = ".pdf"
-        stem = f"instance_{inst.id}_{timestamp}_{Path(source_name).stem}"
-        original_file_path = _write_bytes(
-            storage_dir,
-            f"{stem}__original{image_asset.original_ext}",
-            image_asset.original_bytes,
-        )
-        optimized_file_path = _write_bytes(
-            storage_dir,
-            f"{stem}__optimized{image_asset.optimized_ext}",
-            image_asset.optimized_bytes,
-        )
 
     ledger_merge = (inst.document_type_code or document_type_code or "").strip()
     if append_list and ledger_merge not in MERGE_APPEND_DOCUMENT_CODES:
@@ -584,11 +573,26 @@ async def upload_document_for_instance(
         period_start=inst.period_start,
         extension=primary_ext,
     )
-    filename = f"instance_{inst.id}_{timestamp}_{safe_name}"
-    stored_path = storage_dir / filename
-    stored_path.write_bytes(primary_content)
+    if image_asset is not None:
+        orig_name, opt_name = image_derivative_filenames(
+            safe_name,
+            image_asset.original_ext,
+            image_asset.optimized_ext,
+        )
+        original_file_path = write_instance_file(
+            storage_dir,
+            inst.id,
+            orig_name,
+            image_asset.original_bytes,
+        )
+        optimized_file_path = write_instance_file(
+            storage_dir,
+            inst.id,
+            opt_name,
+            image_asset.optimized_bytes,
+        )
 
-    doc.file_path = str(stored_path.relative_to(settings.storage_root))
+    doc.file_path = write_instance_file(storage_dir, inst.id, safe_name, primary_content)
     doc.original_file_path = original_file_path
     doc.optimized_file_path = optimized_file_path
     doc.file_name = safe_name
@@ -706,10 +710,10 @@ async def replace_uploaded_document_file(
 
     source_name = file.filename or "upload.bin"
     content = await file.read()
-    timestamp = int(utc_now().timestamp())
     primary_content, primary_ext = _optimize_uploaded_content(content, source_name, file.content_type)
     original_file_path: str | None = None
     optimized_file_path: str | None = None
+    image_asset = None
 
     storage_dir = _ensure_documents_dir()
     if is_image_upload(source_name, file.content_type):
@@ -724,17 +728,6 @@ async def replace_uploaded_document_file(
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
         primary_content = image_asset.pdf_bytes or primary_content
         primary_ext = ".pdf"
-        stem = f"instance_{inst.id}_{timestamp}_{Path(source_name).stem}"
-        original_file_path = _write_bytes(
-            storage_dir,
-            f"{stem}__original{image_asset.original_ext}",
-            image_asset.original_bytes,
-        )
-        optimized_file_path = _write_bytes(
-            storage_dir,
-            f"{stem}__optimized{image_asset.optimized_ext}",
-            image_asset.optimized_bytes,
-        )
 
     if len(primary_content) > settings.document_upload_max_bytes:
         raise HTTPException(
@@ -761,13 +754,29 @@ async def replace_uploaded_document_file(
         extension=primary_ext,
     )
     next_version = (doc.version_no or 1) + 1
-    filename = f"instance_{inst.id}_{timestamp}_v{next_version}_{safe_name}"
-    stored_path = storage_dir / filename
-    stored_path.write_bytes(primary_content)
+    stored_filename = versioned_primary_filename(safe_name, next_version)
+    if image_asset is not None:
+        orig_name, opt_name = image_derivative_filenames(
+            safe_name,
+            image_asset.original_ext,
+            image_asset.optimized_ext,
+        )
+        original_file_path = write_instance_file(
+            storage_dir,
+            inst.id,
+            orig_name,
+            image_asset.original_bytes,
+        )
+        optimized_file_path = write_instance_file(
+            storage_dir,
+            inst.id,
+            opt_name,
+            image_asset.optimized_bytes,
+        )
 
     _record_upload_history(db, doc=doc, action_type="BEFORE_REPLACE_UPLOAD")
     doc.version_no = next_version
-    doc.file_path = str(stored_path.relative_to(settings.storage_root))
+    doc.file_path = write_instance_file(storage_dir, inst.id, stored_filename, primary_content)
     doc.original_file_path = original_file_path
     doc.optimized_file_path = optimized_file_path
     doc.file_name = safe_name

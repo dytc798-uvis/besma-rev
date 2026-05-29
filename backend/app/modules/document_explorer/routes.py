@@ -13,6 +13,10 @@ from fastapi.responses import FileResponse
 from app.config.settings import settings
 from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
+from app.modules.documents.storage_paths import (
+    field_file_display_name,
+    is_field_derivative_filename,
+)
 from app.schemas.document_explorer import DocumentExplorerFileItem, DocumentExplorerListResponse
 
 router = APIRouter(prefix="/document-explorer", tags=["document-explorer"])
@@ -73,7 +77,6 @@ LEGACY_BASE_PREFIXES = (
     "삼성인정제/",
     "현장 안전서류양식/",
 )
-
 
 def _assert_document_explorer_access(current_user) -> None:
     role_value = getattr(current_user, "role", None)
@@ -150,6 +153,12 @@ def _is_legacy_base_path(relative_path: str) -> bool:
     return any(lower.startswith(prefix.lower()) for prefix in LEGACY_BASE_PREFIXES)
 
 
+def _explorer_item_name(path: Path, category: str) -> str:
+    if category == "field":
+        return field_file_display_name(path.name)
+    return path.name
+
+
 def _infer_category(relative_path: str, source: str) -> str | None:
     if source == "field":
         return "field"
@@ -176,6 +185,8 @@ def _scan_document_files() -> list[DocumentExplorerFileItem]:
                 continue
             if not _explorer_file_allowed(path):
                 continue
+            if source == "field" and is_field_derivative_filename(path.name):
+                continue
             ext = path.suffix.lower()
             if allowed_ext is not None and ext not in allowed_ext:
                 continue
@@ -190,7 +201,7 @@ def _scan_document_files() -> list[DocumentExplorerFileItem]:
             items.append(
                 DocumentExplorerFileItem(
                     id=md5(rel.encode("utf-8")).hexdigest(),
-                    name=path.name,
+                    name=_explorer_item_name(path, category),
                     relative_path=rel,
                     modified_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
                     size_bytes=stat.st_size,
@@ -318,7 +329,7 @@ def open_or_download_document_explorer_file(
     if resolved_disposition not in {"attachment", "inline"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="disposition must be attachment or inline")
     media_type = mimetypes.guess_type(str(candidate))[0] or "application/octet-stream"
-    filename = candidate.name
+    filename = field_file_display_name(candidate.name) if source == "field" else candidate.name
     response = FileResponse(path=candidate, media_type=media_type, filename=filename)
     response.headers["Content-Disposition"] = f"{resolved_disposition}; filename*=UTF-8''{quote(filename)}"
     response.headers["X-Content-Type-Options"] = "nosniff"

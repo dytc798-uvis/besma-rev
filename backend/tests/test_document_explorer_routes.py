@@ -55,8 +55,9 @@ def test_document_explorer_list_and_search(tmp_path: Path):
         by_name = {item["name"]: item for item in items}
         assert by_name["tbm_template.hwp"]["category"] == "template"
         assert by_name["training_log.xlsx"]["category"] == "general"
-        assert by_name["instance_1_1710000000_field_doc.pdf"]["category"] == "field"
-        assert by_name["instance_1_1710000001_field_doc.xlsx"]["category"] == "field"
+        assert by_name["field_doc.pdf"]["category"] == "field"
+        assert by_name["field_doc.xlsx"]["category"] == "field"
+        assert "instance_1_1710000000_field_doc.pdf" not in by_name
         assert "\ud45c\uc9c0.ai" not in by_name
 
         search_res = client.get("/document-explorer/search", params={"q": "tbm"})
@@ -70,6 +71,41 @@ def test_document_explorer_list_and_search(tmp_path: Path):
             params={"relative_path": "field/instance_1_1710000001_field_doc.xlsx", "disposition": "attachment"},
         )
         assert field_xlsx.status_code == 200
+    finally:
+        settings.document_explorer_base_dir = original_base_dir
+        settings.storage_root = original_storage_root
+
+
+def test_document_explorer_download_uses_display_filename(tmp_path: Path):
+    docs_dir = tmp_path / "docs" / "base"
+    storage_root = tmp_path / "storage"
+    field_dir = storage_root / "documents"
+    field_dir.mkdir(parents=True, exist_ok=True)
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    disk = field_dir / "instance_2_999_field.pdf"
+    disk.write_text("dummy", encoding="utf-8")
+
+    original_base_dir = settings.document_explorer_base_dir
+    original_storage_root = settings.storage_root
+    settings.document_explorer_base_dir = docs_dir
+    settings.storage_root = storage_root
+
+    app = FastAPI()
+    app.include_router(document_explorer_router)
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=1,
+        role=Role.HQ_SAFE,
+        ui_type="HQ_SAFE",
+    )
+    client = TestClient(app)
+
+    try:
+        res = client.get(
+            "/document-explorer/file",
+            params={"relative_path": "field/instance_2_999_field.pdf", "disposition": "attachment"},
+        )
+        assert res.status_code == 200
+        assert "field.pdf" in res.headers.get("content-disposition", "")
     finally:
         settings.document_explorer_base_dir = original_base_dir
         settings.storage_root = original_storage_root
@@ -114,7 +150,7 @@ def test_document_explorer_list_allows_site_role(tmp_path: Path):
         items = res.json()["items"]
         assert len(items) == 4
         names = {item["name"] for item in items}
-        assert names == {"site_visible.txt", "older_form.hwp", "instance_1_1710000000_yesterday.txt", "instance_1_1999999999_today_tbm.hwp"}
+        assert names == {"site_visible.txt", "older_form.hwp", "yesterday.txt", "today_tbm.hwp"}
         assert "legacy_dup.hwp" not in names
     finally:
         settings.document_explorer_base_dir = original_base_dir
