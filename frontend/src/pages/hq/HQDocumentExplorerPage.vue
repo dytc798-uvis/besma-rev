@@ -4,7 +4,7 @@
       <div class="hero-copy">
         <h1 class="page-title">문서 탐색</h1>
         <p class="page-subtitle">삼성관련·일반 양식(docs/base)과 현장 제출본(문서취합 저장소)을 탐색합니다.</p>
-        <p class="page-note">기본 화면은 양식만 표시합니다. 검색은 파일명과 폴더 경로 기준입니다.</p>
+        <p class="page-note">기본 화면은 삼성관련·일반 양식만 표시합니다(현장 제출본 제외). 탭으로 구분해 탐색합니다.</p>
       </div>
       <button type="button" class="law-registry-link" @click="openLawRegistry">법규등록부</button>
     </section>
@@ -12,7 +12,7 @@
     <section class="stitch-kpi-grid">
       <KpiCard label="전체 문서" :value="allDocuments.length" accent="blue" footer-note="실파일 스캔 기준" />
       <KpiCard label="현장 문서" :value="categoryCounts.field" accent="blue" footer-note="기본 업로드 문서" />
-      <KpiCard label="양식" :value="categoryCounts.template" accent="slate" footer-note="삼성관련 양식" />
+      <KpiCard label="삼성관련 양식" :value="categoryCounts.template" accent="slate" footer-note="삼성인정제 현장 서류" />
       <KpiCard label="일반 양식" :value="categoryCounts.general" accent="slate" footer-note="표준 현장 안전서류" />
     </section>
 
@@ -282,14 +282,14 @@ interface LawSearchResponse {
 }
 
 const tabs: { key: ExplorerTab; label: string }[] = [
-  { key: "template", label: "양식" },
+  { key: "template", label: "삼성관련 양식" },
   { key: "general", label: "일반 양식" },
   { key: "field", label: "현장문서" },
   { key: "all", label: "전체" },
 ];
 
 const docTypeOptions: { key: DocumentCategory; label: string }[] = [
-  { key: "template", label: "양식" },
+  { key: "template", label: "삼성관련 양식" },
   { key: "general", label: "일반 양식" },
   { key: "field", label: "현장문서" },
 ];
@@ -320,7 +320,7 @@ const lawError = ref("");
 const showAllLawResults = ref(false);
 const searchText = ref("");
 const activeTab = ref<ExplorerTab>("template");
-const selectedDocTypes = ref<DocumentCategory[]>(["template"]);
+const selectedDocTypes = ref<DocumentCategory[]>(["template", "general"]);
 const selectedSite = ref("");
 const selectedDateRange = ref("");
 const selectedTags = ref<string[]>([]);
@@ -385,7 +385,7 @@ function resetExplorerUiState() {
   lawError.value = "";
   showAllLawResults.value = false;
   activeTab.value = "template";
-  selectedDocTypes.value = ["template"];
+  selectedDocTypes.value = ["template", "general"];
   selectedSite.value = "";
   selectedDateRange.value = "";
   selectedTags.value = [];
@@ -546,7 +546,7 @@ function toggleTag(tag: string) {
 
 function categoryLabel(category: DocumentCategory) {
   if (category === "field") return "현장문서";
-  if (category === "template") return "양식";
+  if (category === "template") return "삼성관련 양식";
   return "일반 양식";
 }
 

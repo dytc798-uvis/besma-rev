@@ -81,9 +81,14 @@ def test_document_explorer_list_allows_site_role(tmp_path: Path):
     field_dir = storage_root / "documents"
     docs_dir.mkdir(parents=True, exist_ok=True)
     field_dir.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "site_visible.txt").write_text("ok", encoding="utf-8")
-    (docs_dir / "nested" / "older_form.hwp").parent.mkdir(parents=True, exist_ok=True)
-    (docs_dir / "nested" / "older_form.hwp").write_text("hwp", encoding="utf-8")
+    general_root = docs_dir / "\uc77c\ubc18 \uc591\uc2dd"
+    general_root.mkdir(parents=True, exist_ok=True)
+    (general_root / "site_visible.txt").write_text("ok", encoding="utf-8")
+    (general_root / "nested" / "older_form.hwp").parent.mkdir(parents=True, exist_ok=True)
+    (general_root / "nested" / "older_form.hwp").write_text("hwp", encoding="utf-8")
+    legacy_samsung = docs_dir / "\uc0bc\uc131\uc778\uc815\uc81c"
+    legacy_samsung.mkdir(parents=True, exist_ok=True)
+    (legacy_samsung / "legacy_dup.hwp").write_text("legacy", encoding="utf-8")
     (field_dir / "instance_1_1710000000_yesterday.txt").write_text("old", encoding="utf-8")
     (field_dir / "instance_1_1999999999_today_tbm.hwp").write_text("tbm", encoding="utf-8")
 
@@ -110,6 +115,7 @@ def test_document_explorer_list_allows_site_role(tmp_path: Path):
         assert len(items) == 4
         names = {item["name"] for item in items}
         assert names == {"site_visible.txt", "older_form.hwp", "instance_1_1710000000_yesterday.txt", "instance_1_1999999999_today_tbm.hwp"}
+        assert "legacy_dup.hwp" not in names
     finally:
         settings.document_explorer_base_dir = original_base_dir
         settings.storage_root = original_storage_root
@@ -178,21 +184,22 @@ def test_document_explorer_upload_overwrite(tmp_path: Path):
     client = TestClient(app)
 
     try:
+        upload_rel = "\uc77c\ubc18 \uc591\uc2dd/std-forms/a.xlsx"
         r1 = client.post(
             "/document-explorer/upload",
-            data={"relative_path": "std-forms/a.xlsx"},
+            data={"relative_path": upload_rel},
             files={"file": ("a.xlsx", b"v1", "application/octet-stream")},
         )
         assert r1.status_code == 200
-        assert (docs_dir / "std-forms" / "a.xlsx").read_bytes() == b"v1"
+        assert (docs_dir / "\uc77c\ubc18 \uc591\uc2dd" / "std-forms" / "a.xlsx").read_bytes() == b"v1"
 
         r2 = client.post(
             "/document-explorer/upload",
-            data={"relative_path": "std-forms/a.xlsx"},
+            data={"relative_path": upload_rel},
             files={"file": ("a.xlsx", b"v2-updated", "application/octet-stream")},
         )
         assert r2.status_code == 200
-        assert (docs_dir / "std-forms" / "a.xlsx").read_bytes() == b"v2-updated"
+        assert (docs_dir / "\uc77c\ubc18 \uc591\uc2dd" / "std-forms" / "a.xlsx").read_bytes() == b"v2-updated"
     finally:
         settings.document_explorer_base_dir = original_base_dir
 

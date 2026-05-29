@@ -66,12 +66,11 @@ BASE_TEMPLATE_EXTENSIONS = {
     ".zip",
 }
 
-SAMSUNG_TEMPLATE_PREFIXES = (
-    "삼성관련 양식/",
+SAMSUNG_TEMPLATE_PREFIX = "삼성관련 양식/"
+GENERAL_TEMPLATE_PREFIX = "일반 양식/"
+# 구 폴더는 스캔·분류 대상에서 제외(신규 폴더와 중복 노출 방지)
+LEGACY_BASE_PREFIXES = (
     "삼성인정제/",
-)
-GENERAL_TEMPLATE_PREFIXES = (
-    "일반 양식/",
     "현장 안전서류양식/",
 )
 
@@ -145,20 +144,22 @@ def _allowed_extensions_for_source(source: str) -> set[str] | None:
     return None
 
 
-def _infer_category(relative_path: str, source: str) -> str:
+def _is_legacy_base_path(relative_path: str) -> bool:
+    normalized = relative_path.replace("\\", "/")
+    lower = normalized.lower()
+    return any(lower.startswith(prefix.lower()) for prefix in LEGACY_BASE_PREFIXES)
+
+
+def _infer_category(relative_path: str, source: str) -> str | None:
     if source == "field":
         return "field"
     normalized = relative_path.replace("\\", "/")
     lower = normalized.lower()
-    for prefix in SAMSUNG_TEMPLATE_PREFIXES:
-        if lower.startswith(prefix.lower()):
-            return "template"
-    for prefix in GENERAL_TEMPLATE_PREFIXES:
-        if lower.startswith(prefix.lower()):
-            return "general"
-    if "양식" in normalized or "template" in lower:
+    if lower.startswith(SAMSUNG_TEMPLATE_PREFIX.lower()):
         return "template"
-    return "general"
+    if lower.startswith(GENERAL_TEMPLATE_PREFIX.lower()):
+        return "general"
+    return None
 
 
 def _scan_document_files() -> list[DocumentExplorerFileItem]:
@@ -179,6 +180,11 @@ def _scan_document_files() -> list[DocumentExplorerFileItem]:
             if allowed_ext is not None and ext not in allowed_ext:
                 continue
             root_rel = path.relative_to(root_dir).as_posix()
+            if source == "base" and _is_legacy_base_path(root_rel):
+                continue
+            category = _infer_category(root_rel, source)
+            if category is None:
+                continue
             rel = f"{source}/{root_rel}" if root_rel else source
             stat = path.stat()
             items.append(
@@ -189,7 +195,7 @@ def _scan_document_files() -> list[DocumentExplorerFileItem]:
                     modified_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
                     size_bytes=stat.st_size,
                     extension=ext,
-                    category=_infer_category(root_rel, source),
+                    category=category,
                 )
             )
 
@@ -249,6 +255,15 @@ async def upload_document_explorer_base_file(
             detail=f"File exceeds document_upload_max_bytes ({max_bytes})",
         )
 
+    if _is_legacy_base_path(rel):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Legacy template folders are read-only")
+    category = _infer_category(rel, "base")
+    if category is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Upload path must be under 삼성관련 양식/ or 일반 양식/",
+        )
+
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(content)
     stat = dest.stat()
@@ -262,7 +277,7 @@ async def upload_document_explorer_base_file(
         modified_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
         size_bytes=stat.st_size,
         extension=ext,
-        category=_infer_category(root_rel, "base"),
+        category=category,
     )
 
 

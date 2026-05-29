@@ -75,6 +75,10 @@ def main() -> None:
     if LEGACY_GENERAL.exists():
         print("migrate legacy general folder")
         merge_stats(totals, sync_tree(LEGACY_GENERAL, GENERAL_DEST))
+    for legacy_dir in (LEGACY_SAMSUNG, LEGACY_GENERAL):
+        if legacy_dir.exists():
+            shutil.rmtree(legacy_dir)
+            print(f"removed legacy folder: {legacy_dir.name}")
     print(
         "done",
         f"added={totals.get('added', 0)}",
