@@ -18,6 +18,9 @@ backend/__pycache__/
 .env
 .env.local
 .env.*.local
+# 기능인제 소장 PW 포함 관리용 계정표 (로컬 생성만, 커밋 금지)
+docs/기능인제_소장계정_관리용*.xlsx
+docs/~$기능인제_소장계정*.xlsx
 
 # 로컬 전용 비밀(PEM 등). 내용물은 커밋하지 않음. 안내는 .secrets/README.md 만 추적.
 .secrets/*

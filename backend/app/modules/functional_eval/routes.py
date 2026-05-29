@@ -201,6 +201,11 @@ def create_sanction(body: FunctionalEvalSanctionCreate, db: DbDep, current_user:
             raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
         if code in {"WORKER_NOT_FOUND", "SITE_MISMATCH", "CANNOT_SANCTION_SITE_MANAGER", "WORKER_INACTIVE"}:
             raise HTTPException(status_code=400, detail=code) from exc
+        if code in {"WORKER_NOT_ON_ATTENDANCE", "NO_ATTENDANCE_UPLOAD"}:
+            raise HTTPException(
+                status_code=400,
+                detail="당일 출역 명단에 없거나 출역일보가 반영되지 않았습니다.",
+            ) from exc
         if code == "UNKNOWN_VIOLATION":
             raise HTTPException(status_code=400, detail="알 수 없는 위반 항목입니다.") from exc
         raise HTTPException(status_code=400, detail=code) from exc

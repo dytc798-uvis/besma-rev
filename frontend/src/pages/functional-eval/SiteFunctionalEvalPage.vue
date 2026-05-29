@@ -40,24 +40,28 @@
       @request-safety="onRequestSafety"
     />
 
-    <!-- 모바일: 제재·이력 바텀시트 -->
+    <!-- 제재·이력 모달 (모바일 바텀시트 / 데스크톱 중앙 모달) -->
     <Teleport to="body">
       <div
-        v-if="isMobileViewport && (selectedWorker || historyWorker)"
-        class="fe-sheet-backdrop"
+        v-if="selectedWorker || historyWorker"
+        class="fe-overlay-backdrop"
         aria-hidden="true"
         @click="closePanels"
       />
       <section
         v-if="selectedWorker"
-        class="panel sanction-form"
-        :class="{ 'fe-sheet': isMobileViewport, 'fe-sheet-open': isMobileViewport }"
+        class="panel sanction-form fe-dialog"
+        :class="dialogShellClass"
         role="dialog"
         aria-modal="true"
         :aria-label="`${selectedWorker.name} 제재 등록`"
+        @click.stop
       >
         <div v-if="isMobileViewport" class="fe-sheet-handle" aria-hidden="true" />
-        <h2>{{ selectedWorker.name }} — 위반·제재</h2>
+        <div class="dialog-head">
+          <h2>{{ selectedWorker.name }} — 위반·제재</h2>
+          <button class="link-btn dialog-close" type="button" aria-label="닫기" @click="closeForm">✕</button>
+        </div>
         <label class="field">
           <span class="field-label">위반 항목</span>
           <select v-model="form.violation_code" class="field-control">
@@ -76,7 +80,7 @@
             class="stitch-btn-primary touch-btn"
             type="button"
             :disabled="!form.violation_code || saving || period?.is_closed"
-            @click="submitSanction"
+            @click="requestSubmitSanction"
           >
             {{ saving ? "등록 중…" : "제재 등록" }}
           </button>
@@ -85,17 +89,18 @@
       </section>
 
       <section
-        v-if="historyWorker"
-        class="panel history-panel"
-        :class="{ 'fe-sheet': isMobileViewport, 'fe-sheet-open': isMobileViewport }"
+        v-else-if="historyWorker"
+        class="panel history-panel fe-dialog"
+        :class="dialogShellClass"
         role="dialog"
         aria-modal="true"
         :aria-label="`${historyWorker.name} 이력`"
+        @click.stop
       >
         <div v-if="isMobileViewport" class="fe-sheet-handle" aria-hidden="true" />
-        <div class="history-head">
-          <h2>{{ historyWorker.name }} — 이력</h2>
-          <button class="link-btn touch-btn-inline" type="button" @click="closeHistory">닫기</button>
+        <div class="dialog-head history-head">
+          <h2>{{ historyWorker.name }} — 제재 이력</h2>
+          <button class="dialog-close" type="button" aria-label="닫기" @click="closeHistory">✕</button>
         </div>
         <p v-if="!historyData?.history_visible" class="warn">{{ historyData?.message }}</p>
         <ul v-else class="history-list">
@@ -113,56 +118,6 @@
         </div>
       </section>
     </Teleport>
-
-    <!-- 데스크톱: 인라인 패널 -->
-    <section v-if="!isMobileViewport && selectedWorker" class="panel sanction-form">
-      <h2>{{ selectedWorker.name }} — 위반·제재 등록</h2>
-      <label class="field">
-        <span class="field-label">위반 항목</span>
-        <select v-model="form.violation_code" class="field-control">
-          <optgroup v-for="group in groupedViolations" :key="group.category" :label="group.label">
-            <option v-for="item in group.items" :key="item.code" :value="item.code">{{ item.label }}</option>
-          </optgroup>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field-label">비고</span>
-        <textarea v-model="form.note" class="field-control" rows="2" placeholder="위반 상황 (선택)" />
-      </label>
-      <div class="actions">
-        <button class="stitch-btn-secondary" type="button" @click="closeForm">취소</button>
-        <button
-          class="stitch-btn-primary"
-          type="button"
-          :disabled="!form.violation_code || saving || period?.is_closed"
-          @click="submitSanction"
-        >
-          {{ saving ? "등록 중..." : "제재 등록" }}
-        </button>
-      </div>
-      <p v-if="error" class="error">{{ error }}</p>
-    </section>
-
-    <section v-if="!isMobileViewport && historyWorker" class="panel history-panel">
-      <div class="history-head">
-        <h2>{{ historyWorker.name }} — 이력</h2>
-        <button class="link-btn" type="button" @click="closeHistory">닫기</button>
-      </div>
-      <p v-if="!historyData?.history_visible" class="warn">{{ historyData?.message }}</p>
-      <ul v-else class="history-list">
-        <li v-for="s in allHistorySanctions" :key="`${s.id}-h`">
-          <span v-if="s.from_prior_period" class="tag">이전</span>
-          {{ s.violation_label }} → {{ s.sanction_result_label }} ({{ s.strike_number }}차)
-          <span class="meta">{{ formatDate(s.created_at) }}</span>
-        </li>
-        <li v-if="!allHistorySanctions.length">제재 이력 없음</li>
-      </ul>
-      <div class="mileage-box">
-        <h3>마일리지 (운영 준비)</h3>
-        <p>{{ historyData?.mileage?.message }}</p>
-        <p class="meta">적립 예정 포인트: {{ historyData?.mileage?.points ?? 0 }}</p>
-      </div>
-    </section>
 
     <section v-show="activeTab === 'sanctions'" class="panel workers-panel">
       <div class="workers-head">
@@ -360,6 +315,10 @@ const allHistorySanctions = computed(() => {
   return [...(historyData.value.prior_sanctions || []), ...(historyData.value.sanctions || [])];
 });
 
+const dialogShellClass = computed(() =>
+  isMobileViewport.value ? "fe-sheet fe-sheet-open" : "fe-modal-panel",
+);
+
 function statusClass(status: string) {
   if (status.includes("EXPULSION") || status.includes("BAN")) return "danger";
   if (status.includes("WARNING") || status.includes("TRAINING")) return "warn";
@@ -379,6 +338,19 @@ function closePanels() {
   closeHistory();
 }
 
+function selectedViolationLabel(): string {
+  const item = violations.value.find((v) => v.code === form.violation_code);
+  return item?.label || "선택한 위반";
+}
+
+function requestSubmitSanction() {
+  if (!selectedWorker.value || !form.violation_code) return;
+  const ok = window.confirm(
+    `${selectedWorker.value.name} 근로자\n위반: ${selectedViolationLabel()}\n\n제재를 등록하시겠습니까?`,
+  );
+  if (ok) submitSanction();
+}
+
 function onRequestSafety(workerId: number) {
   focusWorkerId.value = workerId;
   activeTab.value = "safety";
@@ -391,14 +363,6 @@ watch(activeTab, (tab, prev) => {
     focusWorkerId.value = null;
   }
 });
-
-function closeHistory() {
-  historyWorker.value = null;
-  historyData.value = null;
-  if (!selectedWorker.value) {
-    document.body.classList.remove("fe-sheet-open-body");
-  }
-}
 
 async function loadCatalog() {
   const res = await api.get("/functional-eval/violation-catalog");
@@ -418,31 +382,56 @@ async function load() {
 }
 
 async function openHistory(worker: Worker) {
-  historyWorker.value = worker;
   selectedWorker.value = null;
   error.value = "";
-  const res = await api.get(`/functional-eval/workers/${worker.id}/history`);
-  historyData.value = res.data;
-  if (isMobileViewport.value) {
-    document.body.classList.add("fe-sheet-open-body");
+  historyWorker.value = worker;
+  historyData.value = null;
+  document.body.classList.add("fe-sheet-open-body");
+  try {
+    const res = await api.get(`/functional-eval/workers/${worker.id}/history`);
+    historyData.value = res.data;
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    error.value = typeof msg === "string" ? msg : "이력을 불러오지 못했습니다.";
+    historyWorker.value = null;
+    document.body.classList.remove("fe-sheet-open-body");
   }
 }
 
 function openSanction(worker: Worker) {
-  selectedWorker.value = worker;
   historyWorker.value = null;
+  historyData.value = null;
+  selectedWorker.value = worker;
   form.note = "";
   error.value = "";
-  if (isMobileViewport.value) {
-    document.body.classList.add("fe-sheet-open-body");
-  }
+  document.body.classList.add("fe-sheet-open-body");
 }
 
 function closeForm() {
   selectedWorker.value = null;
-  if (!historyWorker.value) {
-    document.body.classList.remove("fe-sheet-open-body");
+  error.value = "";
+  document.body.classList.remove("fe-sheet-open-body");
+}
+
+function closeHistory() {
+  historyWorker.value = null;
+  historyData.value = null;
+  error.value = "";
+  document.body.classList.remove("fe-sheet-open-body");
+}
+
+function sanctionErrorMessage(detail: unknown): string {
+  if (typeof detail !== "string") return "제재 등록에 실패했습니다.";
+  if (detail === "WORKER_NOT_ON_ATTENDANCE" || detail.includes("출역")) {
+    return "당일 출역 명단에 없는 근로자입니다. 출역일보 반영 후 다시 시도하세요.";
   }
+  if (detail === "NO_ATTENDANCE_UPLOAD") {
+    return "출역일보가 반영되지 않았습니다. 본사에 업로드 요청 후 다시 시도하세요.";
+  }
+  if (detail === "PERIOD_CLOSED" || detail.includes("마감")) {
+    return "마감일이 지나 제재를 등록할 수 없습니다.";
+  }
+  return detail;
 }
 
 async function submitSanction() {
@@ -455,12 +444,11 @@ async function submitSanction() {
       violation_code: form.violation_code,
       note: form.note || null,
     });
-    selectedWorker.value = null;
-    document.body.classList.remove("fe-sheet-open-body");
+    closeForm();
     await load();
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    error.value = typeof msg === "string" ? msg : "제재 등록에 실패했습니다.";
+    error.value = sanctionErrorMessage(msg);
   } finally {
     saving.value = false;
   }
@@ -917,13 +905,26 @@ textarea.field-control {
 }
 </style>
 
-<!-- 바텀시트: Teleport 콘텐츠는 scoped 밖 전역 클래스 -->
+<!-- Teleport 모달: scoped 밖 전역 클래스 -->
 <style>
-.fe-sheet-backdrop {
+.fe-overlay-backdrop {
   position: fixed;
   inset: 0;
   z-index: 400;
   background: rgba(15, 23, 42, 0.45);
+}
+
+.fe-modal-panel {
+  position: fixed;
+  z-index: 410;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(480px, calc(100vw - 32px));
+  max-height: min(85vh, 640px);
+  overflow-y: auto;
+  margin: 0;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
 }
 
 .fe-sheet {
@@ -952,6 +953,45 @@ textarea.field-control {
   background: #cbd5e1;
   border-radius: 999px;
   margin: 0 auto 12px;
+}
+
+.fe-dialog .dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.fe-dialog .dialog-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.35;
+  flex: 1;
+  min-width: 0;
+}
+
+.fe-dialog .dialog-close {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fe-dialog .dialog-close:hover {
+  background: #e2e8f0;
+}
+
+.fe-dialog.history-panel .history-list {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
 body.fe-sheet-open-body {
