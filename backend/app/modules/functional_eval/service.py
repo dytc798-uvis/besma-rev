@@ -379,6 +379,12 @@ def _site_evaluator_map(db: Session, site_codes: set[str]) -> dict[str, str]:
     return {u.login_id: u.name for u in rows if u.login_id}
 
 
+def _hq_evaluator_site_codes(db: Session) -> set[str]:
+    """본사 현장 목록 — 소장(SITE_FUNCTIONAL_EVAL) 계정 기준 (출역 유무와 무관)."""
+    rows = db.query(User).filter(User.role == Role.SITE_FUNCTIONAL_EVAL).all()
+    return {str(u.login_id).strip() for u in rows if u.login_id}
+
+
 def build_site_progress(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_site: dict[str, dict[str, Any]] = {}
     for item in items:
@@ -469,12 +475,37 @@ def build_hq_sites_overview(
     sort_dir: str = "asc",
     site_code: str | None = None,
 ) -> dict[str, Any]:
+    """현장 목록은 소장 계정 전체, 진행률(분모)은 기간 내 출역 대상."""
     workers = _attendance_target_workers(db, period, site_code=site_code)
-    site_codes = {w.site_code for w in workers if w.site_code}
-    site_names = _site_name_map(db, site_codes)
-    evaluators = _site_evaluator_map(db, site_codes)
+    list_site_codes = _hq_evaluator_site_codes(db)
+    if site_code:
+        list_site_codes = {site_code} if site_code in list_site_codes else set()
+    elif not list_site_codes:
+        list_site_codes = {w.site_code for w in workers if w.site_code}
+
+    all_codes = list_site_codes | {w.site_code for w in workers if w.site_code}
+    site_names = _site_name_map(db, all_codes)
+    evaluators = _site_evaluator_map(db, all_codes)
     assess_map = _assessments_map(db, [w.id for w in workers])
     sites = _aggregate_site_eval_stats(workers, assess_map, site_names, evaluators)
+    by_code = {row["site_code"]: row for row in sites}
+
+    has_attendance = bool(_period_attendance_rrn_hashes(db, period.id))
+    for code in sorted(list_site_codes, key=lambda c: (len(c), c)):
+        if code in by_code:
+            by_code[code]["attendance_pending"] = False
+            continue
+        by_code[code] = {
+            "site_code": code,
+            "site_name": site_names.get(code) or f"현장 {code}",
+            "evaluator_name": evaluators.get(code) or "—",
+            "total": 0,
+            "fully_complete": 0,
+            "progress": "0/0" if has_attendance else "—",
+            "has_completed": False,
+            "attendance_pending": not has_attendance,
+        }
+    sites = list(by_code.values())
 
     reverse = sort_dir.lower() == "desc"
 
@@ -490,8 +521,15 @@ def build_hq_sites_overview(
     sites.sort(key=_key, reverse=reverse)
     total_workers = len(workers)
     fully = sum(1 for w in workers if _is_fully_evaluated(_worker_assess_payload(assess_map, w.id)))
+    attendance_message = None
+    if not has_attendance:
+        attendance_message = (
+            "출역일보가 아직 반영되지 않았습니다. 「명부·제재 관리」에서 출역일보를 업로드하면 "
+            "현장별 진행률(완료/출역대상)이 표시됩니다."
+        )
     return {
         "period": serialize_period(period, db),
+        "attendance_message": attendance_message,
         "totals": {
             "sites": len(sites),
             "workers": total_workers,

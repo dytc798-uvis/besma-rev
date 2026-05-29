@@ -38,6 +38,7 @@
     <section v-if="!selectedSite" class="panel">
       <h2>현장별 평가 진행</h2>
       <p class="panel-sub">현장을 선택하면 <strong>평가 완료(기능+안전)</strong>된 근로자만 표시됩니다.</p>
+      <p v-if="attendanceMessage" class="attendance-warn">{{ attendanceMessage }}</p>
       <p v-if="loadError" class="load-error">{{ loadError }}</p>
       <div class="toolbar">
         <label>
@@ -252,6 +253,7 @@ const attendanceFile = ref<File | null>(null);
 const attendanceInput = ref<HTMLInputElement | null>(null);
 const applyingAttendance = ref(false);
 const attendanceResult = ref("");
+const attendanceMessage = ref("");
 
 const filteredSites = computed(() => {
   let list = sites.value;
@@ -286,6 +288,7 @@ async function loadOverview() {
     });
     period.value = res.data.period;
     totals.value = res.data.totals || null;
+    attendanceMessage.value = res.data.attendance_message || "";
     const rows = res.data.sites ?? res.data.site_progress ?? [];
     sites.value = Array.isArray(rows) ? rows : [];
     if (!sites.value.length && (totals.value?.workers ?? 0) > 0) {
@@ -463,5 +466,14 @@ onMounted(loadOverview);
 .muted { color: #94a3b8; }
 .section-toggle { width: 100%; text-align: left; background: none; border: none; font-size: 15px; font-weight: 600; cursor: pointer; padding: 0 0 12px; }
 .diff-summary { display: flex; gap: 12px; margin-top: 8px; font-size: 14px; }
+.attendance-warn {
+  color: #9a3412;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
 .load-error { color: #991b1b; background: #fef2f2; padding: 10px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 8px; }
 </style>
