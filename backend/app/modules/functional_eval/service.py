@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import csv
+import io
 import re
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -26,6 +29,7 @@ from app.modules.functional_eval.roster import (
     ParsedRosterRow,
     RosterDiffItem,
     RosterDiffResult,
+    hash_rrn,
     parse_daily_roster_xlsx,
 )
 from app.modules.functional_eval.sanctions import (
@@ -38,6 +42,7 @@ from app.modules.functional_eval.sanctions import (
 )
 from app.modules.sites.models import Site
 from app.modules.users.models import User
+from app.utils.file_ingestion import parse_excel_with_fallback
 
 DEFAULT_PERIOD_TITLE = "기능인제 인사고과"
 DEFAULT_DEADLINE = date(2026, 6, 26)
@@ -61,6 +66,22 @@ def _birth_sort_key(rrn_raw: str) -> tuple[int, int, int]:
     if digits[6] in "34":
         century = 2000
     return (century + yy, mm, dd)
+
+
+def _site_code_from_login_id(login_id: str | None) -> str:
+    raw = (login_id or "").strip()
+    if not raw:
+        return ""
+    return raw.split("-", 1)[0].strip()
+
+
+@dataclass
+class ParsedTeamAssignmentRow:
+    site_code: str
+    team_leader_name: str
+    team_leader_rrn_raw: str
+    worker_name: str
+    worker_rrn_raw: str | None = None
 
 
 def get_or_create_active_period(db: Session) -> FunctionalEvalPeriod:
@@ -355,6 +376,7 @@ def serialize_worker(
         "position_name": worker.position_name,
         "job_name": worker.job_name,
         "rrn_masked": worker.rrn_masked,
+        "assigned_evaluator_login_id": worker.assigned_evaluator_login_id,
         "is_site_manager": worker.is_site_manager,
         "is_active": worker.is_active,
         "sanction_status": status,
@@ -742,16 +764,29 @@ def serialize_mileage_placeholder(worker: FunctionalEvalWorker) -> dict[str, Any
 
 
 def _site_code_for_user(user: User) -> str:
-    return (user.login_id or "").strip()
+    return _site_code_from_login_id(user.login_id)
 
 
 def _assert_worker_access(user: User, worker: FunctionalEvalWorker) -> None:
-    if user.role == Role.SITE_FUNCTIONAL_EVAL and _site_code_for_user(user) != worker.site_code:
+    if user.role != Role.SITE_FUNCTIONAL_EVAL:
+        return
+    login_id = (user.login_id or "").strip()
+    site_code = _site_code_for_user(user)
+    if site_code != worker.site_code:
+        raise ValueError("SITE_MISMATCH")
+    assigned = (worker.assigned_evaluator_login_id or "").strip()
+    # 기본 소장 계정(현장코드)에는 전체 접근을 허용한다.
+    if login_id == site_code:
+        return
+    if assigned and assigned != login_id:
+        raise ValueError("SITE_MISMATCH")
+    if not assigned:
         raise ValueError("SITE_MISMATCH")
 
 
 def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
     site_code = _site_code_for_user(user)
+    login_id = (user.login_id or "").strip()
     work_date = get_latest_attendance_date(db, period.id)
     if work_date is None:
         return []
@@ -769,6 +804,8 @@ def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod)
         .order_by(FunctionalEvalWorker.row_no.asc(), FunctionalEvalWorker.id.asc())
         .all()
     )
+    if login_id and login_id != site_code:
+        rows = [r for r in rows if (r.assigned_evaluator_login_id or "").strip() == login_id]
     assess_map = _assessments_map(db, [r.id for r in rows])
     return [serialize_worker(db, row, assessments=assess_map.get(row.id, {})) for row in rows]
 
@@ -1119,6 +1156,7 @@ def apply_daily_roster_diff(
                 rrn_masked=row.rrn_masked,
                 job_code=row.job_code,
                 phone_mobile=row.phone,
+                assigned_evaluator_login_id=row.site_code,
                 is_site_manager=row.is_site_manager,
                 is_active=True,
                 is_on_reference_roster=True,
@@ -1132,6 +1170,7 @@ def apply_daily_roster_diff(
             worker.job_code = row.job_code
             worker.phone_mobile = row.phone
             worker.rrn_masked = row.rrn_masked
+            worker.assigned_evaluator_login_id = worker.assigned_evaluator_login_id or row.site_code
             worker.is_site_manager = row.is_site_manager
             worker.is_active = True
             worker.is_on_reference_roster = True
@@ -1319,6 +1358,212 @@ def apply_daily_roster_file(
         original_filename=original_filename,
         stored_path=str(file_path),
     )
+
+
+def _pick_column(headers: list[str], aliases: tuple[str, ...]) -> int | None:
+    normalized = [str(h or "").strip().lower() for h in headers]
+    for idx, name in enumerate(normalized):
+        for alias in aliases:
+            if alias in name:
+                return idx
+    return None
+
+
+def _to_text(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if text.endswith(".0"):
+        text = text[:-2]
+    return text
+
+
+def _parse_team_assignments_xlsx(path: Path) -> list[ParsedTeamAssignmentRow]:
+    parsed = parse_excel_with_fallback(path)
+    headers = parsed.headers or []
+    rows = parsed.rows or []
+    i_site = _pick_column(headers, ("현장코드", "site_code"))
+    i_leader = _pick_column(headers, ("팀장", "leader"))
+    i_leader_rrn = _pick_column(headers, ("팀장주민", "팀장 주민", "leader_rrn", "leader rrn"))
+    i_worker = _pick_column(headers, ("팀원", "근로자", "성명", "worker"))
+    i_worker_rrn = _pick_column(headers, ("팀원주민", "팀원 주민", "worker_rrn", "worker rrn", "주민번호"))
+    required = [i_site, i_leader, i_leader_rrn, i_worker]
+    if any(v is None for v in required):
+        raise ValueError("TEAM_ASSIGNMENT_HEADER_INVALID")
+    out: list[ParsedTeamAssignmentRow] = []
+    for raw in rows:
+        site_code = _to_text(raw[i_site]) if i_site is not None and i_site < len(raw) else ""
+        leader = _to_text(raw[i_leader]) if i_leader is not None and i_leader < len(raw) else ""
+        leader_rrn = _to_text(raw[i_leader_rrn]) if i_leader_rrn is not None and i_leader_rrn < len(raw) else ""
+        worker_name = _to_text(raw[i_worker]) if i_worker is not None and i_worker < len(raw) else ""
+        worker_rrn = _to_text(raw[i_worker_rrn]) if i_worker_rrn is not None and i_worker_rrn < len(raw) else ""
+        if not (site_code and leader and leader_rrn and worker_name):
+            continue
+        out.append(
+            ParsedTeamAssignmentRow(
+                site_code=site_code,
+                team_leader_name=leader,
+                team_leader_rrn_raw=leader_rrn,
+                worker_name=worker_name,
+                worker_rrn_raw=worker_rrn or None,
+            )
+        )
+    return out
+
+
+def _parse_team_assignments_txt(path: Path) -> list[ParsedTeamAssignmentRow]:
+    raw = path.read_bytes()
+    text = ""
+    for enc in ("utf-8-sig", "cp949", "euc-kr", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except Exception:
+            continue
+    if not text.strip():
+        raise ValueError("EMPTY_FILE")
+    reader = csv.DictReader(io.StringIO(text), delimiter="\t")
+    if not reader.fieldnames:
+        reader = csv.DictReader(io.StringIO(text))
+    out: list[ParsedTeamAssignmentRow] = []
+    for row in reader:
+        site_code = (row.get("site_code") or row.get("현장코드") or "").strip()
+        leader = (row.get("team_leader_name") or row.get("팀장명") or "").strip()
+        leader_rrn = (row.get("team_leader_rrn") or row.get("팀장주민번호") or "").strip()
+        worker_name = (row.get("worker_name") or row.get("팀원명") or row.get("근로자명") or "").strip()
+        worker_rrn = (row.get("worker_rrn") or row.get("팀원주민번호") or row.get("주민번호") or "").strip()
+        if not (site_code and leader and leader_rrn and worker_name):
+            continue
+        out.append(
+            ParsedTeamAssignmentRow(
+                site_code=site_code,
+                team_leader_name=leader,
+                team_leader_rrn_raw=leader_rrn,
+                worker_name=worker_name,
+                worker_rrn_raw=worker_rrn or None,
+            )
+        )
+    return out
+
+
+def parse_team_assignment_file(file_path: Path) -> list[ParsedTeamAssignmentRow]:
+    ext = file_path.suffix.lower()
+    if ext in {".xlsx", ".xls"}:
+        return _parse_team_assignments_xlsx(file_path)
+    if ext == ".txt":
+        return _parse_team_assignments_txt(file_path)
+    raise ValueError("TEAM_ASSIGNMENT_UNSUPPORTED_FILE")
+
+
+def apply_team_leader_assignments_file(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    file_path: Path,
+    *,
+    threshold: int = 20,
+) -> dict[str, Any]:
+    rows = parse_team_assignment_file(file_path)
+    if not rows:
+        raise ValueError("NO_TEAM_ASSIGNMENT_ROWS")
+
+    site_worker_counts: dict[str, int] = defaultdict(int)
+    for worker in db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.period_id == period.id).all():
+        if worker.is_site_manager:
+            continue
+        site_worker_counts[worker.site_code] += 1
+
+    grouped: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+    for row in rows:
+        key = (row.team_leader_name.strip(), re.sub(r"\D", "", row.team_leader_rrn_raw))
+        if not key[0] or not key[1]:
+            continue
+        bucket = grouped[row.site_code].setdefault(
+            key[0],
+            {
+                "rrn": key[1],
+                "workers": [],
+            },
+        )
+        bucket["workers"].append(row)
+
+    assignment_rows: list[dict[str, Any]] = []
+    created_accounts = 0
+    assigned_workers = 0
+
+    for site_code, leaders in grouped.items():
+        if site_worker_counts.get(site_code, 0) <= threshold:
+            continue
+        site = db.query(Site).filter(Site.site_code == site_code).first()
+        if site is None:
+            site = Site(site_code=site_code, site_name=f"현장 {site_code}")
+            db.add(site)
+            db.flush()
+
+        ordered_leaders = sorted(leaders.items(), key=lambda x: _birth_sort_key(x[1]["rrn"]))
+        for idx, (leader_name, meta) in enumerate(ordered_leaders, start=2):
+            login_id = f"{site_code}-{idx}"
+            initial_pw = _rrn_front_password(meta["rrn"])
+            if not initial_pw:
+                continue
+            user = db.query(User).filter(User.login_id == login_id).first()
+            if user is None:
+                user = User(
+                    name=leader_name,
+                    login_id=login_id,
+                    password_hash=get_password_hash(initial_pw),
+                    role=Role.SITE_FUNCTIONAL_EVAL,
+                    ui_type=UIType.SITE,
+                    site_id=site.id,
+                    must_change_password=False,
+                )
+                db.add(user)
+                created_accounts += 1
+            else:
+                user.name = leader_name
+                user.password_hash = get_password_hash(initial_pw)
+                user.role = Role.SITE_FUNCTIONAL_EVAL
+                user.ui_type = UIType.SITE
+                user.site_id = site.id
+                user.must_change_password = False
+                db.add(user)
+
+            team_workers = meta["workers"]
+            names = {r.worker_name.strip() for r in team_workers if r.worker_name.strip()}
+            rrn_hashes: set[str] = set()
+            for r in team_workers:
+                if r.worker_rrn_raw:
+                    rrn_hashes.add(hash_rrn(r.worker_rrn_raw))
+            q = db.query(FunctionalEvalWorker).filter(
+                FunctionalEvalWorker.period_id == period.id,
+                FunctionalEvalWorker.site_code == site_code,
+                FunctionalEvalWorker.is_site_manager.is_(False),
+            )
+            candidates = q.all()
+            for worker in candidates:
+                if worker.name in names or (worker.rrn_hash and worker.rrn_hash in rrn_hashes):
+                    worker.assigned_evaluator_login_id = login_id
+                    db.add(worker)
+                    assigned_workers += 1
+
+            assignment_rows.append(
+                {
+                    "site_code": site_code,
+                    "team_leader_name": leader_name,
+                    "login_id": login_id,
+                    "initial_password": initial_pw,
+                    "team_worker_count": len(team_workers),
+                }
+            )
+
+    db.commit()
+    assignment_rows.sort(key=lambda x: (x["site_code"], x["login_id"]))
+    return {
+        "threshold": threshold,
+        "parsed_rows": len(rows),
+        "created_accounts": created_accounts,
+        "assigned_workers": assigned_workers,
+        "account_rows": assignment_rows,
+    }
 
 
 def apply_attendance_report_diff(

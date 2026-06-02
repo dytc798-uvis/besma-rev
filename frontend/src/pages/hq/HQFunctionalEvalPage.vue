@@ -188,6 +188,45 @@
           <span>제외 {{ diffResult.removed_count }}</span>
         </div>
         <p v-if="applyResult" class="meta success">{{ applyResult }}</p>
+
+        <h3>팀장 분산평가 계정 반영 (20명 초과 현장)</h3>
+        <p class="panel-sub">
+          TXT/XLSX 업로드로 팀장 계정(ID: 현장코드-2..n, PW: 주민번호 앞 6자리)을 발급하고 팀원 배정을 반영합니다.
+        </p>
+        <div class="row import-row">
+          <input ref="teamLeaderInput" type="file" accept=".txt,.xlsx,.xls" @change="onTeamLeaderFileChange" />
+          <button
+            class="stitch-btn-primary"
+            type="button"
+            :disabled="!teamLeaderFile || applyingTeamLeaders"
+            @click="applyTeamLeaders"
+          >
+            {{ applyingTeamLeaders ? "반영 중..." : "팀장 계정/배정 반영" }}
+          </button>
+        </div>
+        <p v-if="teamLeaderResult" class="meta success">{{ teamLeaderResult }}</p>
+        <div v-if="teamLeaderRows.length" class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>현장코드</th>
+                <th>팀장명</th>
+                <th>아이디</th>
+                <th>초기비밀번호</th>
+                <th>담당인원</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in teamLeaderRows" :key="`${row.site_code}-${row.login_id}`">
+                <td>{{ row.site_code }}</td>
+                <td>{{ row.team_leader_name }}</td>
+                <td>{{ row.login_id }}</td>
+                <td>{{ row.initial_password }}</td>
+                <td>{{ row.team_worker_count }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </template>
     </section>
   </div>
@@ -237,6 +276,14 @@ interface DiffResult {
   removed_count: number;
 }
 
+interface TeamLeaderRow {
+  site_code: string;
+  team_leader_name: string;
+  login_id: string;
+  initial_password: string;
+  team_worker_count: number;
+}
+
 const period = ref<Period | null>(null);
 const totals = ref<Totals | null>(null);
 const sites = ref<SiteRow[]>([]);
@@ -264,6 +311,11 @@ const applyingAttendance = ref(false);
 const attendanceResult = ref("");
 const attendanceMessage = ref("");
 const gapsMissingEvaluator = ref<string[]>([]);
+const teamLeaderFile = ref<File | null>(null);
+const teamLeaderInput = ref<HTMLInputElement | null>(null);
+const applyingTeamLeaders = ref(false);
+const teamLeaderResult = ref("");
+const teamLeaderRows = ref<TeamLeaderRow[]>([]);
 
 const filteredSites = computed(() => {
   let list = sites.value;
@@ -351,6 +403,13 @@ function onAttendanceFileChange(e: Event) {
   attendanceResult.value = "";
 }
 
+function onTeamLeaderFileChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  teamLeaderFile.value = input.files?.[0] || null;
+  teamLeaderResult.value = "";
+  teamLeaderRows.value = [];
+}
+
 async function applyAttendance() {
   if (!attendanceFile.value) return;
   applyingAttendance.value = true;
@@ -366,6 +425,26 @@ async function applyAttendance() {
     attendanceResult.value = "출역일보 반영에 실패했습니다. 파일 형식을 확인하세요.";
   } finally {
     applyingAttendance.value = false;
+  }
+}
+
+async function applyTeamLeaders() {
+  if (!teamLeaderFile.value) return;
+  applyingTeamLeaders.value = true;
+  teamLeaderResult.value = "";
+  try {
+    const form = new FormData();
+    form.append("file", teamLeaderFile.value);
+    const res = await api.post("/functional-eval/hq/team-leaders/apply", form);
+    teamLeaderRows.value = Array.isArray(res.data.account_rows) ? res.data.account_rows : [];
+    teamLeaderResult.value = `계정 생성 ${res.data.created_accounts}건 · 팀원 배정 ${res.data.assigned_workers}건`;
+    teamLeaderFile.value = null;
+    if (teamLeaderInput.value) teamLeaderInput.value.value = "";
+    await loadOverview();
+  } catch {
+    teamLeaderResult.value = "팀장 계정/배정 반영에 실패했습니다. 파일 형식을 확인하세요.";
+  } finally {
+    applyingTeamLeaders.value = false;
   }
 }
 

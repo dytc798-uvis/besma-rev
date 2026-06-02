@@ -121,6 +121,7 @@ class FunctionalEvalWorker(Base):
     rrn_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     job_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     phone_mobile: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    assigned_evaluator_login_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     is_site_manager: Mapped[bool] = mapped_column(default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     is_on_reference_roster: Mapped[bool] = mapped_column(default=True, nullable=False)

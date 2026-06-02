@@ -314,6 +314,30 @@ async def attendance_apply(
     return result
 
 
+@router.post("/hq/team-leaders/apply")
+async def apply_team_leaders(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    file: UploadFile = File(...),
+):
+    """20명 초과 현장에 팀장 계정(현장코드-2..n) 발급 및 팀원 배정."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    tmp = await _save_upload(file, period.id)
+    try:
+        result = service.apply_team_leader_assignments_file(db, period, tmp)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "TEAM_ASSIGNMENT_UNSUPPORTED_FILE":
+            raise HTTPException(status_code=400, detail="지원 형식은 .txt/.xls/.xlsx 입니다.") from exc
+        if code == "TEAM_ASSIGNMENT_HEADER_INVALID":
+            raise HTTPException(status_code=400, detail="필수 컬럼(현장코드/팀장명/팀장주민번호/팀원명)을 확인하세요.") from exc
+        if code in {"NO_TEAM_ASSIGNMENT_ROWS", "EMPTY_FILE"}:
+            raise HTTPException(status_code=400, detail="반영 가능한 팀장/팀원 행이 없습니다.") from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+    return {"period": service.serialize_period(period, db), **result}
+
+
 @router.post("/hq/import-roster")
 async def import_roster_legacy(
     db: DbDep,
