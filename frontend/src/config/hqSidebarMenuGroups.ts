@@ -13,6 +13,7 @@ export const HQ_SIDEBAR_PRIMARY_KEYS = [
   "approvals-history",
   "safety-education",
   "accidents",
+  "functional-eval",
 ] as const;
 
 /** 현장 SITE `menu-link-primary`와 동일 정책: 주요 업무 강조 */

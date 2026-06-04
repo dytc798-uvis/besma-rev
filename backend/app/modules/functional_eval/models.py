@@ -74,6 +74,23 @@ class FunctionalEvalAttendanceImportBatch(Base):
     )
 
 
+class FunctionalEvalSiteRegistry(Base):
+    """월별현장별집계 기준 현장코드·ERP 현장명·로그인 별칭(대우청라 등)."""
+
+    __tablename__ = "functional_eval_site_registry"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    site_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
+    erp_site_label: Mapped[str] = mapped_column(String(500), nullable=False)
+    site_alias: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    manager_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    manager_login_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
 class FunctionalEvalAttendanceEntry(Base):
     __tablename__ = "functional_eval_attendance_entries"
     __table_args__ = (

@@ -1,4 +1,4 @@
-"""ERP 출역일보 xlsx 파싱 (현장명 블록 반복 형식)."""
+"""ERP 출역일보 파싱 (현장명 블록 반복 형식, xls/xlsx)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,8 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-import openpyxl
-
 from app.modules.functional_eval.roster import hash_rrn, mask_rrn
+from app.modules.functional_eval.xls_io import iter_sheet_rows
 
 
 @dataclass
@@ -31,11 +30,7 @@ def _parse_work_date(cell: str) -> date:
     return date.fromisoformat(text[:10])
 
 
-def parse_attendance_report_xlsx(file_path: Path) -> list[ParsedAttendanceRow]:
-    wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-    wb.close()
+def _parse_attendance_rows(rows: list[tuple]) -> list[ParsedAttendanceRow]:
     if not rows:
         raise ValueError("EMPTY_FILE")
 
@@ -94,3 +89,12 @@ def parse_attendance_report_xlsx(file_path: Path) -> list[ParsedAttendanceRow]:
     if not parsed:
         raise ValueError("NO_ATTENDANCE_ROWS")
     return parsed
+
+
+def parse_attendance_report(file_path: Path) -> list[ParsedAttendanceRow]:
+    return _parse_attendance_rows(iter_sheet_rows(file_path))
+
+
+def parse_attendance_report_xlsx(file_path: Path) -> list[ParsedAttendanceRow]:
+    """하위 호환 — xls/xlsx 모두 parse_attendance_report 사용."""
+    return parse_attendance_report(file_path)

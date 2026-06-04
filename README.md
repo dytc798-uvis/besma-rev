@@ -54,16 +54,11 @@ scripts\dev_start.bat
 
 ### 6. 샘플 계정
 
-**새로 `python -m app.seed.seed_data`로 만든 DB** 기준으로, 아래 계정의 초기 비밀번호는 **P@ssw0rd!** 입니다.
+**`python -m app.seed.seed_data` 실행 후** 데모 계정 비밀번호는 모두 **`1111`** 입니다.
 
-- HQ 안전 관리자
-  - `hqsafe1`
-  - `hqsafe2`
-- 현장 관리자
-  - `site01`
-  - `site02`
-- 본사 타부서
-  - `hqother1`
+- 본사: `hq01` ~ `hq05` (대표: **`hq01` / `1111`**)
+- 현장: `site01` ~ `site05` (대표: **`site01` / `1111`**)
+- 근로자: `worker01`, `worker02`
 
 > **기존 `database/besma.db`를 그대로 쓰는 경우:** `seed_data`는 이미 있는 사용자의 비밀번호 해시를 바꾸지 않습니다. 예전에 `create_demo_login_users.py` 등으로 넣은 계정이 있으면 비밀번호가 다를 수 있습니다. 현장 데모 전에는 **DB 백업 후 DB 삭제·재시드** 또는 알려진 비밀번호로 로그인해 확인하세요.
 

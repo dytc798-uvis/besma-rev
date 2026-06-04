@@ -23,6 +23,7 @@ from app.modules.functional_eval.models import (
     FunctionalEvalPeriod,
     FunctionalEvalRosterImportBatch,
     FunctionalEvalSanction,
+    FunctionalEvalSiteRegistry,
     FunctionalEvalWorker,
 )
 from app.modules.functional_eval.roster import (
@@ -43,6 +44,8 @@ from app.modules.functional_eval.sanctions import (
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.utils.file_ingestion import parse_excel_with_fallback
+
+from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
 
 DEFAULT_PERIOD_TITLE = "기능인제 인사고과"
 DEFAULT_DEADLINE = date(2026, 6, 26)
@@ -443,21 +446,39 @@ def _site_name_map(db: Session, site_codes: set[str]) -> dict[str, str]:
 def _site_evaluator_map(db: Session, site_codes: set[str]) -> dict[str, str]:
     if not site_codes:
         return {}
-    rows = (
-        db.query(User)
-        .filter(
-            User.role == Role.SITE_FUNCTIONAL_EVAL,
-            User.login_id.in_(site_codes),
-        )
+    out: dict[str, str] = {}
+    regs = (
+        db.query(FunctionalEvalSiteRegistry)
+        .filter(FunctionalEvalSiteRegistry.site_code.in_(site_codes))
         .all()
     )
-    return {u.login_id: u.name for u in rows if u.login_id}
+    login_ids = set(site_codes)
+    login_ids.update(r.manager_login_id for r in regs if r.manager_login_id)
+    users = (
+        db.query(User)
+        .filter(User.role == Role.SITE_FUNCTIONAL_EVAL, User.login_id.in_(login_ids))
+        .all()
+    )
+    by_login = {u.login_id: u.name for u in users if u.login_id}
+    for reg in regs:
+        out[reg.site_code] = by_login.get(reg.manager_login_id) or reg.manager_name
+    for code in site_codes:
+        if code not in out and code in by_login:
+            out[code] = by_login[code]
+    return out
 
 
 def _hq_evaluator_site_codes(db: Session) -> set[str]:
-    """본사 현장 목록 — 소장(SITE_FUNCTIONAL_EVAL) 계정 기준 (출역 유무와 무관)."""
-    rows = db.query(User).filter(User.role == Role.SITE_FUNCTIONAL_EVAL).all()
-    return {str(u.login_id).strip() for u in rows if u.login_id}
+    """본사 현장 목록 — 소장 계정(별칭-이름)이 있는 현장코드."""
+    codes = {r.site_code for r in db.query(FunctionalEvalSiteRegistry.site_code).all() if r[0]}
+    for user in db.query(User).filter(User.role == Role.SITE_FUNCTIONAL_EVAL).all():
+        if user.site_id:
+            site = db.query(Site).filter(Site.id == user.site_id).first()
+            if site and site.site_code:
+                codes.add(site.site_code)
+        elif (user.login_id or "").strip().isdigit():
+            codes.add(str(user.login_id).strip())
+    return codes
 
 
 def build_site_progress(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -763,21 +784,45 @@ def serialize_mileage_placeholder(worker: FunctionalEvalWorker) -> dict[str, Any
     }
 
 
-def _site_code_for_user(user: User) -> str:
-    return _site_code_from_login_id(user.login_id)
+def _site_code_for_user(user: User, db: Session) -> str:
+    if user.site_id:
+        site = db.query(Site).filter(Site.id == user.site_id).first()
+        if site and site.site_code:
+            return site.site_code
+    login = (user.login_id or "").strip()
+    if login.isdigit():
+        return login
+    return ""
 
 
-def _assert_worker_access(user: User, worker: FunctionalEvalWorker) -> None:
+def _manager_login_for_site(db: Session, site_code: str) -> str:
+    reg = (
+        db.query(FunctionalEvalSiteRegistry)
+        .filter(FunctionalEvalSiteRegistry.site_code == site_code)
+        .first()
+    )
+    if reg and (reg.manager_login_id or "").strip():
+        return reg.manager_login_id.strip()
+    return site_code
+
+
+def _is_primary_site_evaluator(db: Session, user: User, site_code: str) -> bool:
+    login_id = (user.login_id or "").strip()
+    if login_id == site_code:
+        return True
+    return login_id == _manager_login_for_site(db, site_code)
+
+
+def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
     if user.role != Role.SITE_FUNCTIONAL_EVAL:
         return
     login_id = (user.login_id or "").strip()
-    site_code = _site_code_for_user(user)
+    site_code = _site_code_for_user(user, db)
     if site_code != worker.site_code:
         raise ValueError("SITE_MISMATCH")
-    assigned = (worker.assigned_evaluator_login_id or "").strip()
-    # 기본 소장 계정(현장코드)에는 전체 접근을 허용한다.
-    if login_id == site_code:
+    if _is_primary_site_evaluator(db, user, site_code):
         return
+    assigned = (worker.assigned_evaluator_login_id or "").strip()
     if assigned and assigned != login_id:
         raise ValueError("SITE_MISMATCH")
     if not assigned:
@@ -785,7 +830,7 @@ def _assert_worker_access(user: User, worker: FunctionalEvalWorker) -> None:
 
 
 def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
-    site_code = _site_code_for_user(user)
+    site_code = _site_code_for_user(user, db)
     login_id = (user.login_id or "").strip()
     work_date = get_latest_attendance_date(db, period.id)
     if work_date is None:
@@ -804,7 +849,7 @@ def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod)
         .order_by(FunctionalEvalWorker.row_no.asc(), FunctionalEvalWorker.id.asc())
         .all()
     )
-    if login_id and login_id != site_code:
+    if not _is_primary_site_evaluator(db, user, site_code):
         rows = [r for r in rows if (r.assigned_evaluator_login_id or "").strip() == login_id]
     assess_map = _assessments_map(db, [r.id for r in rows])
     return [serialize_worker(db, row, assessments=assess_map.get(row.id, {})) for row in rows]
@@ -814,7 +859,7 @@ def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
     if worker is None:
         raise ValueError("WORKER_NOT_FOUND")
-    _assert_worker_access(user, worker)
+    _assert_worker_access(db, user, worker)
 
     permanent = _worker_is_permanently_expelled(db, worker.id)
     worker_payload = serialize_worker(db, worker)
@@ -887,7 +932,7 @@ def record_sanction(
     if worker.is_site_manager:
         raise ValueError("CANNOT_SANCTION_SITE_MANAGER")
     _assert_worker_attendance_eligible(db, period, worker)
-    _assert_worker_access(user, worker)
+    _assert_worker_access(db, user, worker)
 
     prior_count = (
         db.query(FunctionalEvalSanction)
@@ -1270,7 +1315,7 @@ def get_worker_assessment(db: Session, user: User, worker_id: int, eval_type: Ev
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
     if worker is None:
         raise ValueError("WORKER_NOT_FOUND")
-    _assert_worker_access(user, worker)
+    _assert_worker_access(db, user, worker)
     if worker.is_site_manager:
         raise ValueError("CANNOT_EVALUATE_SITE_MANAGER")
     row = (
@@ -1299,7 +1344,7 @@ def save_worker_assessment(
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
     if worker is None:
         raise ValueError("WORKER_NOT_FOUND")
-    _assert_worker_access(user, worker)
+    _assert_worker_access(db, user, worker)
     if worker.is_site_manager:
         raise ValueError("CANNOT_EVALUATE_SITE_MANAGER")
     period = db.query(FunctionalEvalPeriod).filter(FunctionalEvalPeriod.id == worker.period_id).first()
@@ -1460,7 +1505,7 @@ def apply_team_leader_assignments_file(
     period: FunctionalEvalPeriod,
     file_path: Path,
     *,
-    threshold: int = 20,
+    threshold: int = TEAM_LEADER_SPLIT_THRESHOLD,
 ) -> dict[str, Any]:
     rows = parse_team_assignment_file(file_path)
     if not rows:
@@ -1566,91 +1611,20 @@ def apply_team_leader_assignments_file(
     }
 
 
-def apply_attendance_report_diff(
+def apply_monthly_site_aggregate_file(
     db: Session,
     period: FunctionalEvalPeriod,
-    parsed_rows: list[ParsedAttendanceRow],
+    file_path: Path,
     *,
     original_filename: str,
-    stored_path: str,
 ) -> dict[str, Any]:
-    assert_period_editable(period)
-    work_dates = {r.work_date for r in parsed_rows}
-    if len(work_dates) != 1:
-        raise ValueError("MULTIPLE_WORK_DATES")
-    work_date = next(iter(work_dates))
+    from app.modules.functional_eval import eval_provisioning
 
-    db.query(FunctionalEvalAttendanceEntry).filter(
-        FunctionalEvalAttendanceEntry.period_id == period.id,
-        FunctionalEvalAttendanceEntry.work_date == work_date,
-    ).delete(synchronize_session=False)
-
-    by_hash = _reference_worker_map(db, period.id)
-    now = utc_now()
-    linked = 0
-    skipped = 0
-    row_counters: dict[str, int] = {}
-
-    batch = FunctionalEvalAttendanceImportBatch(
-        period_id=period.id,
-        work_date=work_date,
-        original_filename=original_filename,
-        stored_path=stored_path,
-        total_rows=0,
+    result = eval_provisioning.apply_monthly_site_aggregate_file(
+        db, period, file_path, original_filename=original_filename
     )
-    db.add(batch)
-    db.flush()
-
-    for row in parsed_rows:
-        worker = by_hash.get(row.rrn_hash)
-        if worker is None or worker.is_site_manager:
-            skipped += 1
-            continue
-        site_code = worker.site_code
-        worker.name = row.name
-        if row.job_name:
-            worker.job_name = row.job_name
-        worker.rrn_masked = row.rrn_masked or worker.rrn_masked
-        worker.updated_at = now
-        db.add(worker)
-
-        if site_code not in row_counters:
-            row_counters[site_code] = _next_row_no(db, period.id, site_code) - 1
-        row_counters[site_code] += 1
-        worker.row_no = row_counters[site_code]
-
-        db.add(
-            FunctionalEvalAttendanceEntry(
-                period_id=period.id,
-                work_date=work_date,
-                worker_id=worker.id,
-                site_code=site_code,
-                rrn_hash=row.rrn_hash,
-                name=row.name,
-                job_name=row.job_name,
-                rep_name=row.rep_name,
-                erp_site_label=row.erp_site_label,
-                batch_id=batch.id,
-            )
-        )
-        linked += 1
-
-    batch.total_rows = linked
-    batch.linked_workers = linked
-    batch.skipped_no_roster = skipped
-    period.last_attendance_date = work_date
-    db.add(period)
-    db.add(batch)
-    db.commit()
-
-    return {
-        "batch_id": batch.id,
-        "work_date": work_date.isoformat(),
-        "total_rows": len(parsed_rows),
-        "linked_workers": linked,
-        "skipped_no_roster": skipped,
-        "site_count": len({by_hash[r.rrn_hash].site_code for r in parsed_rows if r.rrn_hash in by_hash}),
-    }
+    db.refresh(period)
+    return {**result, "period": serialize_period(period, db)}
 
 
 def apply_attendance_report_file(
@@ -1660,13 +1634,10 @@ def apply_attendance_report_file(
     *,
     original_filename: str,
 ) -> dict[str, Any]:
-    parsed = parse_attendance_report_xlsx(file_path)
-    result = apply_attendance_report_diff(
-        db,
-        period,
-        parsed,
-        original_filename=original_filename,
-        stored_path=str(file_path),
+    from app.modules.functional_eval import eval_provisioning
+
+    result = eval_provisioning.apply_attendance_report_file(
+        db, period, file_path, original_filename=original_filename
     )
     db.refresh(period)
     return {**result, "period": serialize_period(period, db)}

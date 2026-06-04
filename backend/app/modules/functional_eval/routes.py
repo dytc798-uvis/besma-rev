@@ -286,13 +286,39 @@ async def roster_apply(
     return {"period": service.serialize_period(period, db), **result}
 
 
+@router.post("/hq/site-aggregate/apply")
+async def site_aggregate_apply(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    file: UploadFile = File(...),
+):
+    """월별현장별집계 xls — 현장코드·별칭(대우청라)·소장 로그인 ID 매핑."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    tmp = await _save_upload(file, period.id)
+    try:
+        result = service.apply_monthly_site_aggregate_file(
+            db, period, tmp, original_filename=file.filename or "site_aggregate.xls"
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "EMPTY_FILE":
+            raise HTTPException(status_code=400, detail="파일이 비어 있습니다.") from exc
+        if code == "NO_SITE_AGGREGATE_ROWS":
+            raise HTTPException(status_code=400, detail="현장 집계 행을 찾을 수 없습니다.") from exc
+        if code == "PERIOD_CLOSED":
+            raise HTTPException(status_code=409, detail="마감일이 지나 반영할 수 없습니다.") from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+    return result
+
+
 @router.post("/hq/attendance/apply")
 async def attendance_apply(
     db: DbDep,
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ):
-    """ERP 출역일보 xlsx — 평가 기간 중 1일 1회 반영 (동일 출역일 재업로드 시 교체)."""
+    """ERP 출역일보 xls/xlsx — 집계 반영 후 1일 1회 업로드(별칭-이름 계정·팀장 자동)."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     tmp = await _save_upload(file, period.id)
@@ -308,6 +334,11 @@ async def attendance_apply(
             raise HTTPException(status_code=400, detail="출역 근로자 행을 찾을 수 없습니다.") from exc
         if code == "MULTIPLE_WORK_DATES":
             raise HTTPException(status_code=400, detail="한 파일에 출역일이 여러 개입니다.") from exc
+        if code == "SITE_REGISTRY_REQUIRED":
+            raise HTTPException(
+                status_code=400,
+                detail="먼저 월별현장별집계 파일을 반영한 뒤 출역일보를 업로드하세요.",
+            ) from exc
         if code == "PERIOD_CLOSED":
             raise HTTPException(status_code=409, detail="마감일이 지나 반영할 수 없습니다.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
@@ -320,7 +351,7 @@ async def apply_team_leaders(
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ):
-    """20명 초과 현장에 팀장 계정(현장코드-2..n) 발급 및 팀원 배정."""
+    """10명 초과 현장에 팀장 계정 발급 및 팀원 배정(이하 현장은 소장이 전원 평가)."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     tmp = await _save_upload(file, period.id)

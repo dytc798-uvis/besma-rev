@@ -97,11 +97,11 @@ run_frontend.bat    :: 별도 CMD 창에서
 
 | 계정 | 비밀번호 | 역할 |
 |------|----------|------|
-| hqsafe1 | P@ssw0rd! | HQ 관리자 |
-| site01 | P@ssw0rd! | 현장 관리자 |
-| site02 | P@ssw0rd! | 현장 관리자 |
-| worker01 | P@ssw0rd! | 근로자 |
-| worker02 | P@ssw0rd! | 근로자 |
+| hq01 | 1111 | HQ 관리자 (본사) |
+| site01 | 1111 | 현장 관리자 |
+| site02 | 1111 | 현장 관리자 |
+| worker01 | 1111 | 근로자 |
+| worker02 | 1111 | 근로자 |
 
 > 시드 데이터 기준. 실제 비밀번호는 `backend/app/seed/seed_data.py` 참조.
 

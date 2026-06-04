@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config.security import get_password_hash
-from app.seed.demo_login_users import DEMO_DEFAULT_PASSWORD
+from app.seed.demo_login_users import DEMO_DEFAULT_PASSWORD, ensure_demo_login_users
 from app.core.datetime_utils import utc_now
 from app.core.database import SessionLocal, init_db
 from app.core.enums import Role, UIType
@@ -109,6 +109,9 @@ def seed_sites(db: Session) -> None:
 
 
 def seed_users(db: Session) -> None:
+    """데모 로그인: hq01~hq05, site01~site05 (비밀번호 1111). 구 hqsafe* 계정은 비활성화."""
+    ensure_demo_login_users(db, password=DEMO_DEFAULT_PASSWORD, site_code="SITE002")
+
     site1 = db.query(Site).filter(Site.site_code == "SITE001").first()
     site2 = db.query(Site).filter(Site.site_code == "SITE002").first()
     preferred_c18_site = (
@@ -124,12 +127,12 @@ def seed_users(db: Session) -> None:
     site2_for_assignment = preferred_c18_site or site2
 
     password_plain = DEMO_DEFAULT_PASSWORD
-    # demo 계정 비밀번호는 운영/로컬 모두 동일하게 유지한다.
-    demo_site_immediate_login_ids = {"site01", "site02", "site03", "site04", "site05"}
 
-    # 기존 DB를 재사용하는 경우에도 로그인 가능하도록 "샘플 계정은 upsert" 한다.
-    # (MVP에서 마이그레이션 체계가 없기 때문에, 이전 해시 포맷이 남아 500이 나지 않도록 보정)
-    # worker 로그인 데모 계정을 위해 person/employment를 보장한다.
+    for legacy_login_id in ("hqsafe1", "hqsafe2"):
+        legacy = db.query(User).filter(User.login_id == legacy_login_id).first()
+        if legacy is not None:
+            legacy.is_active = False
+
     worker_person_1 = db.query(Person).filter(Person.phone_mobile == "01090000001").first()
     if worker_person_1 is None:
         worker_person_1 = Person(name="근로자1", phone_mobile="01090000001")
@@ -160,63 +163,12 @@ def seed_users(db: Session) -> None:
             )
         )
 
+    # 기능인제 소장 계정은 시드에 넣지 않음 — 출역/명부 xlsx 반영 시 login_id=현장코드, PW=주민번호 앞 6자리로 자동 생성
+    legacy_fe = db.query(User).filter(User.login_id == "fe01").first()
+    if legacy_fe is not None:
+        legacy_fe.is_active = False
+
     desired = [
-        dict(
-            name="본사안전1",
-            login_id="hqsafe1",
-            department="안전보건실",
-            role=Role.HQ_SAFE,  # 기본 role 유지 (관리자 분리는 다음 단계에서 정책 확정 후 적용 가능)
-            ui_type=UIType.HQ_SAFE,
-            site_id=None,
-        ),
-        dict(
-            name="본사안전2",
-            login_id="hqsafe2",
-            department="안전보건실",
-            role=Role.HQ_SAFE,
-            ui_type=UIType.HQ_SAFE,
-            site_id=None,
-        ),
-        dict(
-            name="양규성",
-            login_id="site01",
-            department="현장",
-            role=Role.SITE,
-            ui_type=UIType.SITE,
-            site_id=site2_for_assignment.id if site2_for_assignment else None,
-        ),
-        dict(
-            name="박명식",
-            login_id="site02",
-            department="현장",
-            role=Role.SITE,
-            ui_type=UIType.SITE,
-            site_id=site2_for_assignment.id if site2_for_assignment else None,
-        ),
-        dict(
-            name="박규철",
-            login_id="site03",
-            department="현장",
-            role=Role.SITE,
-            ui_type=UIType.SITE,
-            site_id=site2_for_assignment.id if site2_for_assignment else None,
-        ),
-        dict(
-            name="이상현",
-            login_id="site04",
-            department="현장",
-            role=Role.SITE,
-            ui_type=UIType.SITE,
-            site_id=site2_for_assignment.id if site2_for_assignment else None,
-        ),
-        dict(
-            name="민경준",
-            login_id="site05",
-            department="현장",
-            role=Role.SITE,
-            ui_type=UIType.SITE,
-            site_id=site2_for_assignment.id if site2_for_assignment else None,
-        ),
         dict(
             name="본사타부서1",
             login_id="hqother1",
@@ -248,7 +200,6 @@ def seed_users(db: Session) -> None:
 
     for u in desired:
         existing = db.query(User).filter(User.login_id == u["login_id"]).first()
-        user_password_plain = password_plain
         if existing:
             existing.name = u["name"]
             existing.department = u["department"]
@@ -257,22 +208,21 @@ def seed_users(db: Session) -> None:
             existing.site_id = u["site_id"]
             existing.person_id = u.get("person_id")
             existing.is_active = True
-            if u["login_id"] in demo_site_immediate_login_ids:
-                existing.password_hash = get_password_hash(user_password_plain)
-                existing.must_change_password = False
+            existing.password_hash = get_password_hash(password_plain)
+            existing.must_change_password = False
         else:
             db.add(
                 User(
                     name=u["name"],
                     login_id=u["login_id"],
-                    password_hash=get_password_hash(user_password_plain),
+                    password_hash=get_password_hash(password_plain),
                     department=u["department"],
                     role=u["role"],
                     ui_type=u["ui_type"],
                     site_id=u["site_id"],
                     person_id=u.get("person_id"),
                     is_active=True,
-                    must_change_password=False if u["login_id"] in demo_site_immediate_login_ids else True,
+                    must_change_password=False,
                 )
             )
     db.commit()

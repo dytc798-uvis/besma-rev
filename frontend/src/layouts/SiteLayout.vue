@@ -57,6 +57,9 @@
         <RouterLink :class="menuLinkClass('communications', '/site/communications')" :style="menuOrderStyle('communications')" to="/site/communications">
           소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span>
         </RouterLink>
+        <RouterLink :class="menuLinkClass('work-plan-forklift', '/site/work-plan-forklift')" to="/site/work-plan-forklift">
+          작업계획서(지게차)
+        </RouterLink>
         <RouterLink :class="menuLinkClass('opinions', '/site/opinions')" :style="menuOrderStyle('opinions')" to="/site/opinions">
           운영 아이디어 제안
         </RouterLink>

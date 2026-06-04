@@ -44,3 +44,7 @@ coverage/
 .DS_Store
 Thumbs.db
 .vercel
+
+# Local generated artifacts
+storage/work_plans/
+storage/_test_copy.xlsx

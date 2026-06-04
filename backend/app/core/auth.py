@@ -81,9 +81,9 @@ def get_current_user(
 def _get_dev_bypass_user(db: Session) -> user_models.User | None:
     """
     로컬/DEV 환경에서 DEV_BYPASS_AUTH=true 인 경우 사용할 테스트용 사용자 조회.
-    기본적으로 hqsafe1 계정을 우선 사용하고, 없으면 HQ_SAFE/HQ_OTHER 중 하나를 선택한다.
+    기본적으로 hq01 계정을 우선 사용하고, 없으면 HQ_SAFE/HQ_OTHER 중 하나를 선택한다.
     """
-    user = db.query(user_models.User).filter(user_models.User.login_id == "hqsafe1").first()
+    user = db.query(user_models.User).filter(user_models.User.login_id == "hq01").first()
     if user:
         return user
     user = (

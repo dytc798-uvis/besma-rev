@@ -42,6 +42,7 @@
             <span v-if="unreadCommunicationCount > 0" class="hq-menu-count-badge">{{ unreadCommunicationCount }}</span>
           </RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('safety-education')" to="/hq-safe/safety-education">안전교육 및 안전점검</RouterLink>
+          <RouterLink :style="menuOrderPrimaryStyle('functional-eval')" to="/hq-safe/functional-eval">기능인제 인사고과</RouterLink>
           <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink
             v-for="m in dynamicMenus"
@@ -61,7 +62,6 @@
           <RouterLink :style="menuOrderSecondaryStyle('settings')" to="/hq-safe/settings">안전문서 설정관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
-          <RouterLink :style="menuOrderSecondaryStyle('functional-eval')" to="/hq-safe/functional-eval">기능인제 인사고과</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('approvals-inbox')" to="/hq-safe/approvals/inbox">결재함(공사중)</RouterLink>
         </div>
       </nav>

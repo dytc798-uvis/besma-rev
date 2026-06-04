@@ -153,8 +153,47 @@
         {{ showAdmin ? "▾" : "▸" }} 명부·제재 관리
       </button>
       <template v-if="showAdmin">
-        <h3>출역일보 (ERP xlsx) — 매일 1회</h3>
-        <p class="panel-sub">평가 대상은 출역일보 기준입니다. 동일 출역일 재업로드 시 해당 일 데이터가 교체됩니다.</p>
+        <h3>① 월별현장별집계 (xls) — 시즌·갱신</h3>
+        <p class="panel-sub">
+          현장코드·현장명·소장명 → 로그인 ID <code>별칭-이름</code>(예: 대우청라-박명식). 비밀번호는 출역일보 반영 시 주민번호(B열) 앞 6자리로 설정됩니다.
+        </p>
+        <div class="row import-row">
+          <input ref="aggregateInput" type="file" accept=".xlsx,.xls" @change="onAggregateFileChange" />
+          <button
+            class="stitch-btn-primary"
+            type="button"
+            :disabled="!aggregateFile || applyingAggregate"
+            @click="applySiteAggregate"
+          >
+            {{ applyingAggregate ? "반영 중..." : "현장집계 반영" }}
+          </button>
+        </div>
+        <p v-if="aggregateResult" class="meta success">{{ aggregateResult }}</p>
+        <div v-if="aggregateAccountRows.length" class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>현장코드</th>
+                <th>별칭</th>
+                <th>소장</th>
+                <th>로그인 ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in aggregateAccountRows" :key="row.site_code">
+                <td>{{ row.site_code }}</td>
+                <td>{{ row.site_alias }}</td>
+                <td>{{ row.manager_name }}</td>
+                <td>{{ row.login_id }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>② 출역일보 (ERP xls/xlsx) — 매일 1회</h3>
+        <p class="panel-sub">
+          ① 반영 후 업로드. 10명 이하 현장은 소장이 전원 평가, 11명 이상은 팀장 열 기준 <code>별칭-팀장명</code> 계정 자동 발급.
+        </p>
         <div class="row import-row">
           <input ref="attendanceInput" type="file" accept=".xlsx,.xls" @change="onAttendanceFileChange" />
           <button
@@ -167,8 +206,30 @@
           </button>
         </div>
         <p v-if="attendanceResult" class="meta success">{{ attendanceResult }}</p>
+        <div v-if="attendanceAccountRows.length" class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>현장</th>
+                <th>역할</th>
+                <th>로그인 ID</th>
+                <th>초기 PW</th>
+                <th>담당</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, idx) in attendanceAccountRows" :key="`${row.login_id}-${idx}`">
+                <td>{{ row.site_code }}</td>
+                <td>{{ row.role }}</td>
+                <td>{{ row.login_id }}</td>
+                <td>{{ row.initial_password }}</td>
+                <td>{{ row.team_worker_count ?? "—" }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-        <h3>일용직 참조 명부 (xlsx)</h3>
+        <h3>일용직 참조 명부 (xlsx, 선택)</h3>
         <p class="panel-sub">소속현장·소장 계정·주민번호 매핑용 참조 데이터입니다.</p>
         <div class="row import-row">
           <input ref="fileInput" type="file" accept=".xlsx,.xls" @change="onFileChange" />
@@ -189,9 +250,9 @@
         </div>
         <p v-if="applyResult" class="meta success">{{ applyResult }}</p>
 
-        <h3>팀장 분산평가 계정 반영 (20명 초과 현장)</h3>
+        <h3>팀장 분산평가 계정 반영 (10명 초과 현장)</h3>
         <p class="panel-sub">
-          TXT/XLSX 업로드로 팀장 계정(ID: 현장코드-2..n, PW: 주민번호 앞 6자리)을 발급하고 팀원 배정을 반영합니다.
+          출역 10명 이하 현장은 소장이 전원 평가합니다. 11명 이상만 팀장 계정(별칭-이름, PW: 주민번호 앞 6자리) 발급·배정(TXT/XLSX 또는 출역 자동 반영).
         </p>
         <div class="row import-row">
           <input ref="teamLeaderInput" type="file" accept=".txt,.xlsx,.xls" @change="onTeamLeaderFileChange" />
@@ -305,10 +366,26 @@ const diffing = ref(false);
 const applying = ref(false);
 const diffResult = ref<DiffResult | null>(null);
 const applyResult = ref("");
+const aggregateFile = ref<File | null>(null);
+const aggregateInput = ref<HTMLInputElement | null>(null);
+const applyingAggregate = ref(false);
+const aggregateResult = ref("");
+const aggregateAccountRows = ref<
+  { site_code: string; site_alias: string; manager_name: string; login_id: string }[]
+>([]);
 const attendanceFile = ref<File | null>(null);
 const attendanceInput = ref<HTMLInputElement | null>(null);
 const applyingAttendance = ref(false);
 const attendanceResult = ref("");
+const attendanceAccountRows = ref<
+  {
+    site_code: string;
+    role: string;
+    login_id: string;
+    initial_password: string;
+    team_worker_count?: number;
+  }[]
+>([]);
 const attendanceMessage = ref("");
 const gapsMissingEvaluator = ref<string[]>([]);
 const teamLeaderFile = ref<File | null>(null);
@@ -397,10 +474,37 @@ function onFileChange(e: Event) {
   applyResult.value = "";
 }
 
+function onAggregateFileChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  aggregateFile.value = input.files?.[0] || null;
+  aggregateResult.value = "";
+  aggregateAccountRows.value = [];
+}
+
 function onAttendanceFileChange(e: Event) {
   const input = e.target as HTMLInputElement;
   attendanceFile.value = input.files?.[0] || null;
   attendanceResult.value = "";
+  attendanceAccountRows.value = [];
+}
+
+async function applySiteAggregate() {
+  if (!aggregateFile.value) return;
+  applyingAggregate.value = true;
+  aggregateResult.value = "";
+  try {
+    const form = new FormData();
+    form.append("file", aggregateFile.value);
+    const res = await api.post("/functional-eval/hq/site-aggregate/apply", form);
+    period.value = res.data.period;
+    aggregateAccountRows.value = Array.isArray(res.data.account_rows) ? res.data.account_rows : [];
+    aggregateResult.value = `현장 ${res.data.site_count}곳 반영 (신규 Site ${res.data.sites_upserted})`;
+    await loadOverview();
+  } catch {
+    aggregateResult.value = "월별현장별집계 반영에 실패했습니다. 파일 형식을 확인하세요.";
+  } finally {
+    applyingAggregate.value = false;
+  }
 }
 
 function onTeamLeaderFileChange(e: Event) {
@@ -419,7 +523,9 @@ async function applyAttendance() {
     form.append("file", attendanceFile.value);
     const res = await api.post("/functional-eval/hq/attendance/apply", form);
     period.value = res.data.period;
-    attendanceResult.value = `출역일 ${res.data.work_date} · 반영 ${res.data.linked_workers}명 (명부 미매칭 ${res.data.skipped_no_roster}명)`;
+    attendanceAccountRows.value = Array.isArray(res.data.account_rows) ? res.data.account_rows : [];
+    const skipped = res.data.skipped_no_registry ?? res.data.skipped_no_roster ?? 0;
+    attendanceResult.value = `출역일 ${res.data.work_date} · 반영 ${res.data.linked_workers}명 · 계정 ${res.data.created_accounts ?? 0}건 (집계 미매칭 ${skipped}명)`;
     await loadOverview();
   } catch {
     attendanceResult.value = "출역일보 반영에 실패했습니다. 파일 형식을 확인하세요.";
