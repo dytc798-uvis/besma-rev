@@ -179,6 +179,8 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, uiType: "SITE", requiresFunctionalEval: true },
     children: [
       { path: "", name: "site-functional-eval", component: SiteFunctionalEvalPage },
+      { path: "roster", name: "site-functional-eval-roster", component: SiteFunctionalEvalPage },
+      { path: "evaluate", name: "site-functional-eval-evaluate", component: SiteFunctionalEvalPage },
     ],
   },
   {

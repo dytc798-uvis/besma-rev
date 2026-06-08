@@ -13,15 +13,53 @@
       @click="mobileDrawerOpen = false"
     />
     <aside v-if="!isMobileViewport" class="layout-sidebar">
-      <h1>BESMA · 기능인제 인사고과</h1>
+      <h1>기능인정제 평가</h1>
       <nav class="layout-menu">
-        <RouterLink class="fe-menu-highlight" to="/site/functional-eval">인사고과</RouterLink>
+        <RouterLink
+          class="fe-menu-highlight"
+          :class="{ active: isRosterMenuActive }"
+          :to="{ name: 'site-functional-eval' }"
+        >
+          등급현황
+        </RouterLink>
+        <div class="fe-sidebar-group">
+          <div class="fe-sidebar-group-title">평가</div>
+          <RouterLink
+            v-for="status in evalMenuStatuses"
+            :key="`eval-${status}`"
+            class="fe-menu-subitem"
+            :class="{ active: isEvalMenuActive(status) }"
+            :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status } }"
+          >
+            {{ status }}
+          </RouterLink>
+        </div>
       </nav>
     </aside>
     <aside v-else class="layout-sidebar">
-      <h1>기능인제</h1>
+      <h1>기능인정제 평가</h1>
       <nav class="layout-menu">
-        <RouterLink class="fe-menu-highlight" to="/site/functional-eval" @click="mobileDrawerOpen = false">인사고과·제재</RouterLink>
+        <RouterLink
+          class="fe-menu-highlight"
+          :class="{ active: isRosterMenuActive }"
+          :to="{ name: 'site-functional-eval' }"
+          @click="mobileDrawerOpen = false"
+        >
+          등급현황
+        </RouterLink>
+        <div class="fe-sidebar-group">
+          <div class="fe-sidebar-group-title">평가</div>
+          <RouterLink
+            v-for="status in evalMenuStatuses"
+            :key="`eval-mobile-${status}`"
+            class="fe-menu-subitem"
+            :class="{ active: isEvalMenuActive(status) }"
+            :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status } }"
+            @click="mobileDrawerOpen = false"
+          >
+            {{ status }}
+          </RouterLink>
+        </div>
       </nav>
     </aside>
     <section class="layout-content">
@@ -38,12 +76,12 @@
             <span class="hamburger-glyph" aria-hidden="true">☰</span>
           </button>
           <div class="header-title-block">
-            <div class="header-title">기능인제 인사고과</div>
-            <div v-if="isMobileViewport" class="header-sub">{{ auth.user?.name }} · 현장 {{ auth.user?.login_id }}</div>
+            <div class="header-title">기능인정제 평가</div>
+            <div v-if="isMobileViewport" class="header-sub">{{ auth.user?.name }} (아이디 {{ auth.user?.login_id }})</div>
           </div>
         </div>
         <div class="header-right">
-          <span v-if="!isMobileViewport">{{ auth.user?.name }} (현장 {{ auth.user?.login_id }})</span>
+          <span v-if="!isMobileViewport">{{ auth.user?.name }} (아이디 {{ auth.user?.login_id }})</span>
           <button class="stitch-btn-secondary header-logout" type="button" @click="logout">로그아웃</button>
         </div>
       </header>
@@ -55,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useMobileViewport } from "@/composables/useMobileViewport";
 import { useAuthStore } from "@/stores/auth";
@@ -65,6 +103,16 @@ const router = useRouter();
 const route = useRoute();
 const { isMobileViewport } = useMobileViewport();
 const mobileDrawerOpen = ref(false);
+
+const evalMenuStatuses = ["미평가", "진행중", "평가완료"];
+
+const isRosterMenuActive = computed(
+  () => route.name === "site-functional-eval" || route.name === "site-functional-eval-roster",
+);
+
+function isEvalMenuActive(status: string) {
+  return route.name === "site-functional-eval-evaluate" && route.query.eval_status === status;
+}
 
 watch(
   () => route.path,
@@ -145,6 +193,46 @@ function logout() {
 .layout-main-fe {
   padding: 12px;
   max-width: none;
+}
+
+.fe-sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.fe-sidebar-group-title {
+  margin: 0 10px;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+.fe-menu-subitem {
+  display: block;
+  margin: 0 10px 0 22px;
+  padding: 9px 12px;
+  color: #475569;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+}
+
+.fe-menu-subitem.active,
+.fe-menu-subitem.router-link-active {
+  background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%);
+  color: #fff;
+  font-weight: 600;
+}
+
+.fe-menu-highlight.active,
+.fe-menu-highlight.router-link-active {
+  background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%);
+  color: #fff;
+  font-weight: 600;
 }
 
 @media (min-width: 769px) {

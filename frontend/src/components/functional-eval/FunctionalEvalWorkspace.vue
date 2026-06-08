@@ -1,16 +1,9 @@
-<template>
+﻿<template>
   <div class="fe-workspace">
-    <!-- 모바일: 명단 화면 (평가 중이 아닐 때) -->
+    <!-- 紐⑤컮?? 紐낅떒 ?붾㈃ (?됯? 以묒씠 ?꾨땺 ?? -->
     <section v-if="isMobileViewport && !evalWorker" class="panel mobile-roster">
       <div class="roster-head">
-        <input
-          v-model.trim="workerSearch"
-          type="search"
-          class="field-control"
-          placeholder="이름 검색"
-          autocomplete="off"
-        />
-        <p class="roster-hint">근로자를 선택하면 {{ shortTitle }} 평가를 입력합니다.</p>
+        <p class="roster-hint">평가를 시작하려면 대상자를 선택해 주세요</p>
       </div>
       <ul class="roster-list">
         <li v-for="(w, idx) in filteredWorkers" :key="w.id">
@@ -21,19 +14,13 @@
             <span v-else class="pending-dot" aria-label="미평가" />
           </button>
         </li>
-        <li v-if="!filteredWorkers.length" class="empty">검색 결과가 없습니다.</li>
+        <li v-if="!filteredWorkers.length" class="empty">조회 결과가 없습니다.</li>
       </ul>
     </section>
 
-    <!-- PC: 좌측 명단 + 우측 평가 -->
+    <!-- PC: 醫뚯륫 紐낅떒 + ?곗륫 ?됯? -->
     <div v-else-if="!isMobileViewport" class="split-layout">
       <aside class="worker-rail panel">
-        <input
-          v-model.trim="workerSearch"
-          type="search"
-          class="field-control rail-search"
-          placeholder="이름 검색"
-        />
         <ul class="rail-list">
           <li v-for="(w, idx) in filteredWorkers" :key="w.id">
             <button
@@ -83,7 +70,7 @@
       </div>
     </div>
 
-    <!-- 모바일: 평가 모달 -->
+    <!-- 紐⑤컮?? ?됯? 紐⑤떖 -->
     <Teleport to="body">
       <div
         v-if="isMobileViewport && evalWorker"
@@ -181,7 +168,6 @@ const groupedViolations = computed(() => props.groupedViolations || []);
 
 const { isMobileViewport } = useMobileViewport();
 
-const workerSearch = ref("");
 const evalWorker = ref<EvalWorker | null>(null);
 const evalScores = ref<Record<string, string>>({});
 const evalLoading = ref(false);
@@ -190,11 +176,9 @@ const evalError = ref("");
 
 const shortTitle = computed(() => (props.evalType === "SAFETY" ? "2-2 안전·제재" : "2-1 기능"));
 
-const filteredWorkers = computed(() => {
-  const q = workerSearch.value.toLowerCase();
-  if (!q) return props.workers;
-  return props.workers.filter((w) => w.name.toLowerCase().includes(q));
-});
+const filteredWorkers = computed(() =>
+  [...props.workers].sort((a, b) => a.name.localeCompare(b.name, "ko")),
+);
 
 function badgeLabel(w: EvalWorker) {
   return completionBadge(w);
@@ -261,7 +245,7 @@ async function loadScores(worker: EvalWorker) {
     }
     evalScores.value = scores;
   } catch {
-    evalError.value = "평가표를 불러오지 못했습니다.";
+    evalError.value = "?됯??쒕? 遺덈윭?ㅼ? 紐삵뻽?듬땲??";
   } finally {
     evalLoading.value = false;
   }
@@ -321,7 +305,7 @@ async function saveEval(advanceOnMobile: boolean) {
     }
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    evalError.value = typeof msg === "string" ? msg : "평가 저장에 실패했습니다.";
+    evalError.value = typeof msg === "string" ? msg : "?됯? ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.";
   } finally {
     evalSaving.value = false;
   }
@@ -377,17 +361,6 @@ watch(
   min-height: 0;
   padding: 12px;
   overflow: hidden;
-}
-
-.rail-search {
-  flex-shrink: 0;
-  margin-bottom: 10px;
-  font-size: 14px;
-  padding: 8px 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  width: 100%;
-  box-sizing: border-box;
 }
 
 .rail-list {
@@ -579,3 +552,4 @@ watch(
   }
 }
 </style>
+

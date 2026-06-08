@@ -2,7 +2,7 @@
   <div class="fe-hq-page">
     <div class="page-head">
       <div>
-        <h1 class="page-title">기능인제 인사고과 · 본사</h1>
+        <h1 class="page-title">기능인정제 평가 · 본사</h1>
         <p class="page-sub">
           출역일보 기준 평가 진행 — 상세는 현장 선택, 전체 명단은 엑셀
           <span v-if="period?.last_attendance_date" class="attendance-badge">

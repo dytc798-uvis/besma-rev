@@ -55,7 +55,7 @@
             :style="menuOrderPrimaryStyle('functional-eval')"
             to="/hq-safe/functional-eval"
           >
-            기능인제 인사고과
+            기능인정제 평가
           </RouterLink>
           <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink

@@ -2,18 +2,18 @@
 
 /* 현장 · 기능인제 전용 레이아웃 (다크 사이드바) */
 .functional-eval-shell .layout-sidebar {
-  background: linear-gradient(180deg, #1c1917 0%, #1f2933 48%, #292524 100%);
+  background: linear-gradient(180deg, #fff7ed 0%, #ffedd5 45%, #fed7aa 100%);
 }
 
 .functional-eval-shell .layout-sidebar h1 {
-  color: #ffedd5;
-  background: linear-gradient(180deg, rgba(234, 88, 12, 0.22) 0%, transparent 100%);
+  color: #9a3412;
+  background: linear-gradient(180deg, rgba(234, 88, 12, 0.12) 0%, transparent 100%);
 }
 
 .functional-eval-shell .layout-menu a.fe-menu-highlight {
   font-weight: 700;
-  color: #fff7ed;
-  background: linear-gradient(90deg, rgba(234, 88, 12, 0.42) 0%, rgba(251, 146, 60, 0.22) 100%);
+  color: #7c2d12;
+  background: linear-gradient(90deg, rgba(234, 88, 12, 0.14) 0%, rgba(251, 146, 60, 0.1) 100%);
   border-left: 4px solid #fb923c;
   margin: 6px 10px;
   padding: 11px 14px;

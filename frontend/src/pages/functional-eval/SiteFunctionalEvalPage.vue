@@ -2,7 +2,7 @@
   <div class="fe-page">
     <div class="page-head">
       <div class="page-head-text">
-        <h1 class="page-title">기능인제 인사고과</h1>
+        <h1 class="page-title">기능인 인정제 평가</h1>
         <p class="page-sub">
           <span v-if="evaluator" :class="['evaluator-badge', evaluatorBadgeClass]">{{ evaluatorHeadline }}</span>
           마감일 <strong>{{ period?.deadline_date || "—" }}</strong>
@@ -36,7 +36,7 @@
       </div>
     </div>
 
-    <nav class="fe-tabs" aria-label="인사고과 구역">
+        <nav class="fe-tabs" aria-label="기능인 인정제 평가">
       <template v-if="mainView === 'evaluate'">
         <button type="button" class="fe-tab fe-tab-back" @click="goToRoster">← 현황</button>
         <button type="button" class="fe-tab" :class="{ active: activeTab === 'functional' }" @click="activeTab = 'functional'">
@@ -56,17 +56,10 @@
     <!-- 첫 화면: 근로자별 현재 등급 -->
     <section v-if="mainView === 'roster'" class="panel roster-panel">
       <div class="roster-toolbar">
-        <input
-          v-model.trim="workerSearch"
-          type="search"
-          class="field-control roster-search"
-          placeholder="이름 검색"
-          autocomplete="off"
-        />
         <button
           class="stitch-btn-primary btn-start-eval"
           type="button"
-          :disabled="Boolean(period?.is_closed) || !workers.length || evaluationLocked"
+          :disabled="Boolean(period?.is_closed) || !rosterSource.length"
           @click="startEvaluation()"
         >
           평가 시작
@@ -121,6 +114,15 @@
               </td>
               <td class="actions-cell">
                 <button
+                  class="status-pill status-pill-link"
+                  :class="rosterStatusClass(w)"
+                  type="button"
+                  :disabled="!canEvaluateWorker(w) || rosterStatusLabel(w) === '평가완료'"
+                  @click="onRosterStatusClick(w)"
+                >
+                  {{ rosterStatusLabel(w) }}
+                </button>
+                <button
                   v-if="canEvaluateWorker(w)"
                   class="link-btn"
                   type="button"
@@ -128,7 +130,7 @@
                 >
                   평가
                 </button>
-                <span v-else-if="evalWorkerIds.has(w.id) && evaluationLocked" class="muted-action">승인 중</span>
+                <span v-else-if="evaluationLocked" class="muted-action">승인 중</span>
                 <button
                   v-if="canOpenHistory(w)"
                   class="link-btn"
@@ -158,7 +160,7 @@
     <FunctionalEvalWorkspace
       v-if="mainView === 'evaluate' && evalCriteria.length"
       :key="`${evalSessionKey}-${activeTab}`"
-      :workers="workers"
+      :workers="rosterSource"
       :eval-type="currentEvalType"
       :title="evalTabTitle"
       :criteria="evalCriteria"
@@ -278,6 +280,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import FunctionalEvalWorkspace from "@/components/functional-eval/FunctionalEvalWorkspace.vue";
 import type { Criterion } from "@/components/functional-eval/EvalAssessmentSheet.vue";
 import { useMobileViewport } from "@/composables/useMobileViewport";
+import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import {
   countIncompleteWorkers,
@@ -285,6 +288,7 @@ import {
   gradeDisplayLabel,
   isEvalIncomplete,
   isFunctionalComplete,
+  isSafetyComplete,
   isFullyComplete,
   needsSanctionPrompt,
   safetySanctionDisplay,
@@ -386,8 +390,18 @@ interface SanctionRow {
 }
 
 const { isMobileViewport } = useMobileViewport();
+const route = useRoute();
+const router = useRouter();
 
-const mainView = ref<MainView>("roster");
+const mainView = computed<MainView>(() =>
+  route.name === "site-functional-eval-evaluate" ? "evaluate" : "roster",
+);
+const activeEvalStatus = computed(() => {
+  const q = typeof route.query.eval_status === "string" ? route.query.eval_status : "";
+  if (q === "진행중" || q === "평가완료") return q;
+  return "미평가";
+});
+
 const activeTab = ref<EvalTab>("functional");
 const focusWorkerId = ref<number | null>(null);
 const evalSessionKey = ref(0);
@@ -414,14 +428,13 @@ const historyData = ref<{
 const saving = ref(false);
 const exportingGrade = ref(false);
 const error = ref("");
-const workerSearch = ref("");
 const form = reactive({ violation_code: "", note: "" });
 
 const currentEvalType = computed<EvalType>(() => (activeTab.value === "safety" ? "SAFETY" : "FUNCTIONAL"));
 
 const evalTabTitle = computed(() => {
   const block = evalCatalog.value?.[currentEvalType.value];
-  return block?.title || (activeTab.value === "safety" ? "2-2 안전·제재 인사고과" : "2-1 기능 인사고과");
+  return block?.title || (activeTab.value === "safety" ? "2-2 안전·제재" : "2-1 기능인정제 평가");
 });
 
 const evalCriteria = computed(() => evalCatalog.value?.[currentEvalType.value]?.criteria || []);
@@ -430,15 +443,13 @@ const incompleteCount = computed(() =>
   approval.value?.incomplete_count ?? countIncompleteWorkers(rosterSource.value),
 );
 
-const evaluableIncompleteCount = computed(() => workers.value.filter(isEvalIncomplete).length);
+const evaluableIncompleteCount = computed(() => rosterSource.value.filter(isEvalIncomplete).length);
 
 const canStartFromIncomplete = computed(() =>
   !Boolean(period?.value?.is_closed)
-  && !evaluationLocked.value
   && evaluableIncompleteCount.value > 0,
 );
 
-const evalWorkerIds = computed(() => new Set(workers.value.map((w) => w.id)));
 
 const isManager = computed(() => evaluator.value?.role === "MANAGER");
 
@@ -480,10 +491,11 @@ const rosterDescription = computed(() => evaluatorHint.value);
 const rosterColspan = computed(() => (isManager.value && evaluator.value?.team_split_active ? 6 : 5));
 
 const filteredWorkers = computed(() => {
-  const q = workerSearch.value.toLowerCase();
-  const list = rosterSource.value;
-  if (!q) return list;
-  return list.filter((w) => w.name.toLowerCase().includes(q));
+  const list =
+    route.name === "site-functional-eval-evaluate"
+      ? rosterSource.value.filter((w) => workerEvalStatus(w) === activeEvalStatus.value)
+      : rosterSource.value;
+  return [...list].sort((a, b) => a.name.localeCompare(b.name, "ko"));
 });
 
 function assignmentLabel(w: Worker): string {
@@ -492,12 +504,12 @@ function assignmentLabel(w: Worker): string {
 }
 
 function canEvaluateWorker(w: Worker): boolean {
-  return evalWorkerIds.value.has(w.id) && !evaluationLocked.value && !period.value?.is_closed;
+  return !period.value?.is_closed;
 }
 
 function startEvaluationFromIncomplete() {
   if (!canStartFromIncomplete.value) return;
-  const target = workers.value.find(isEvalIncomplete);
+  const target = rosterSource.value.find(isEvalIncomplete);
   if (!target) return;
   startEvaluation(target);
 }
@@ -577,41 +589,55 @@ function requestSubmitSanction() {
   if (ok) submitSanction();
 }
 
-function rosterStatusLabel(w: Worker): string {
-  if (needsSanctionPrompt(w)) return "제재 필요";
-  if (isFullyComplete(w)) return "평가 완료";
-  if (isFunctionalComplete(w)) return "안전 미평가";
-  if (w.safety_assessment?.is_complete) return "기능 미평가";
+function workerEvalStatus(w: Worker): string {
+  if (isFullyComplete(w)) return "평가완료";
+  if (isFunctionalComplete(w) || isSafetyComplete(w)) return "진행중";
   return "미평가";
 }
 
+function rosterStatusLabel(w: Worker): string {
+  return workerEvalStatus(w);
+}
+
 function rosterStatusClass(w: Worker): string {
-  if (needsSanctionPrompt(w)) return "pending";
-  if (isFullyComplete(w)) return "done";
+  if (workerEvalStatus(w) === "평가완료") return "done";
+  if (workerEvalStatus(w) === "진행중") return "normal";
   return "pending";
 }
 
 function goToRoster() {
-  mainView.value = "roster";
+  router.push({ name: "site-functional-eval" });
   focusWorkerId.value = null;
 }
 
 function startEvaluation(worker?: Worker) {
+  const target = (() => {
+    if (worker) return worker;
+    const firstIncomplete = rosterSource.value.find(isEvalIncomplete);
+    if (firstIncomplete) return firstIncomplete;
+    return rosterSource.value[0] ?? null;
+  })();
+  if (!target) return;
+
   evalSessionKey.value += 1;
-  mainView.value = "evaluate";
-  if (worker) {
-    focusWorkerId.value = worker.id;
-    activeTab.value = isFunctionalComplete(worker) ? "safety" : "functional";
+  focusWorkerId.value = target.id;
+  activeTab.value = isFunctionalComplete(target) ? "safety" : "functional";
+  const nextRoute = {
+    name: "site-functional-eval-evaluate" as const,
+    query: { eval_status: workerEvalStatus(target) },
+  };
+
+  if (route.name === "site-functional-eval-evaluate") {
+    void router.replace(nextRoute);
     return;
   }
-  const firstIncomplete = workers.value.find(isEvalIncomplete);
-  if (firstIncomplete) {
-    focusWorkerId.value = firstIncomplete.id;
-    activeTab.value = isFunctionalComplete(firstIncomplete) ? "safety" : "functional";
-    return;
-  }
-  focusWorkerId.value = workers.value[0]?.id ?? null;
-  activeTab.value = "functional";
+  void router.push(nextRoute);
+}
+
+function onRosterStatusClick(w: Worker) {
+  if (!canEvaluateWorker(w)) return;
+  if (workerEvalStatus(w) === "평가완료") return;
+  startEvaluation(w);
 }
 
 function onSafetySaved(worker: Worker) {
@@ -643,8 +669,7 @@ watch(mainView, (view) => {
 });
 
 function openHistoryById(workerId: number) {
-  const worker =
-    workers.value.find((w) => w.id === workerId) ?? rosterSource.value.find((w) => w.id === workerId);
+  const worker = rosterSource.value.find((w) => w.id === workerId);
   if (worker) openHistory(worker);
 }
 
@@ -1008,6 +1033,17 @@ textarea.field-control {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
+}
+
+.status-pill-link {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.status-pill-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .status-pill.danger {
