@@ -23,6 +23,7 @@ from app.modules.document_submissions.service import (
     map_action_to_history_type,
     transition_instance_workflow_status,
 )
+from app.modules.documents.ledger_managed import assert_not_ledger_managed_document, assert_not_ledger_managed_document_type
 from app.modules.documents.storage_paths import resolve_existing_storage_path
 from app.modules.documents.feedback_loop_service import (
     apply_feedback_loop_patch,
