@@ -60,6 +60,8 @@ def export_my_site_grade_workbook(db: DbDep, current_user: CurrentUserDep):
     site_code = service._site_code_for_user(current_user, db)
     try:
         content = service.build_site_grade_workbook_bytes(db, period, site_code=site_code)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         if str(exc) == "NO_ATTENDANCE_WORKERS":
             raise HTTPException(
@@ -81,6 +83,8 @@ def export_hq_site_grade_workbook(
     period = service.get_or_create_active_period(db)
     try:
         content = service.build_site_grade_workbook_bytes(db, period, site_code=site_code)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         if str(exc) == "NO_ATTENDANCE_WORKERS":
             raise HTTPException(status_code=404, detail="출역 반영된 근로자가 없습니다.") from exc

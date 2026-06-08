@@ -16,6 +16,7 @@ from app.config.settings import BASE_DIR
 from app.modules.functional_eval.eval_catalog import get_criteria
 
 TEMPLATE_GLOB = "01.*기능인등급*.xlsx"
+MODULE_TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 SHEET1_DATA_START_ROW = 6
 SHEET_EVAL_START_ROW = 7
 GRADE_KEYS = ("TOP", "MID", "LOW", "BOTTOM")
@@ -35,10 +36,15 @@ COL_GRADE_SAFETY = 18
 
 
 def resolve_site_grade_template_path() -> Path:
+    bundled = sorted(MODULE_TEMPLATE_DIR.glob(TEMPLATE_GLOB))
+    if bundled:
+        return bundled[0]
     docs_dir = BASE_DIR / "docs"
     matches = sorted(docs_dir.glob(TEMPLATE_GLOB))
     if not matches:
-        raise FileNotFoundError(f"기능인등급 템플릿을 찾을 수 없습니다: {docs_dir / TEMPLATE_GLOB}")
+        raise FileNotFoundError(
+            f"기능인등급 템플릿을 찾을 수 없습니다: {MODULE_TEMPLATE_DIR / TEMPLATE_GLOB} 또는 {docs_dir / TEMPLATE_GLOB}"
+        )
     return matches[0]
 
 
