@@ -430,11 +430,12 @@ const incompleteCount = computed(() =>
   approval.value?.incomplete_count ?? countIncompleteWorkers(rosterSource.value),
 );
 
+const evaluableIncompleteCount = computed(() => workers.value.filter(isEvalIncomplete).length);
+
 const canStartFromIncomplete = computed(() =>
   !Boolean(period?.value?.is_closed)
   && !evaluationLocked.value
-  && workers.value.length > 0
-  && incompleteCount.value > 0,
+  && evaluableIncompleteCount.value > 0,
 );
 
 const evalWorkerIds = computed(() => new Set(workers.value.map((w) => w.id)));
@@ -486,6 +487,7 @@ const filteredWorkers = computed(() => {
 });
 
 function assignmentLabel(w: Worker): string {
+  if (isManager.value && !evaluator.value?.team_split_active) return "직영";
   return w.eval_assignment === "TEAM" ? "팀원" : "직영";
 }
 
@@ -495,7 +497,9 @@ function canEvaluateWorker(w: Worker): boolean {
 
 function startEvaluationFromIncomplete() {
   if (!canStartFromIncomplete.value) return;
-  startEvaluation();
+  const target = workers.value.find(isEvalIncomplete);
+  if (!target) return;
+  startEvaluation(target);
 }
 
 function canOpenHistory(w: Worker): boolean {
