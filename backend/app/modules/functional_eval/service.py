@@ -1110,7 +1110,8 @@ def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker)
         if site_count > TEAM_LEADER_SPLIT_THRESHOLD:
             manager_login = _manager_login_for_site(db, site_code)
             assigned = (worker.assigned_evaluator_login_id or "").strip()
-            if assigned != manager_login:
+            allowed_manager_logins = {site_code, manager_login}
+            if assigned and assigned not in allowed_manager_logins:
                 raise ValueError("SITE_MISMATCH")
         return
     assigned = (worker.assigned_evaluator_login_id or "").strip()
