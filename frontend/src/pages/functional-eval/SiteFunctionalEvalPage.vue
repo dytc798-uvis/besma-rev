@@ -121,7 +121,14 @@
                   평가
                 </button>
                 <span v-else-if="evalWorkerIds.has(w.id) && evaluationLocked" class="muted-action">승인 중</span>
-                <button class="link-btn" type="button" @click="openHistory(w)">이력</button>
+                <button
+                  v-if="canOpenHistory(w)"
+                  class="link-btn"
+                  type="button"
+                  @click="openHistory(w)"
+                >
+                  이력
+                </button>
                 <button
                   v-if="canRegisterSanction(w)"
                   class="link-btn"
@@ -471,6 +478,16 @@ function canEvaluateWorker(w: Worker): boolean {
   return evalWorkerIds.value.has(w.id) && !evaluationLocked.value && !period.value?.is_closed;
 }
 
+function canOpenHistory(w: Worker): boolean {
+  if (isManager.value) {
+    if (evaluator.value?.team_split_active) {
+      return canEvaluateWorker(w);
+    }
+    return true;
+  }
+  return canEvaluateWorker(w);
+}
+
 function canRegisterSanction(w: Worker): boolean {
   return !period.value?.is_closed && !w.is_permanently_expelled && (needsSanctionPrompt(w) || isFullyComplete(w));
 }
@@ -682,9 +699,14 @@ async function openHistory(worker: Worker) {
     historyData.value = res.data;
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    error.value = typeof msg === "string" ? msg : "이력을 불러오지 못했습니다.";
-    historyWorker.value = null;
-    document.body.classList.remove("fe-sheet-open-body");
+    historyData.value = {
+      history_visible: false,
+      message: typeof msg === "string" ? msg : "이력을 불러오지 못했습니다.",
+      sanctions: [],
+      prior_sanctions: [],
+      prior_assessments: [],
+      mileage: {},
+    };
   }
 }
 
