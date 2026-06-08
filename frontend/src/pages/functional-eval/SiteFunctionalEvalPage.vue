@@ -117,7 +117,7 @@
                   class="status-pill status-pill-link"
                   :class="rosterStatusClass(w)"
                   type="button"
-                  :disabled="!canEvaluateWorker(w) || rosterStatusLabel(w) === '평가완료'"
+                  :disabled="!canEvaluateWorker(w) || workerEvalStatusKey(w) === 'complete'"
                   @click="onRosterStatusClick(w)"
                 >
                   {{ rosterStatusLabel(w) }}
@@ -298,6 +298,7 @@ import {
 type MainView = "roster" | "evaluate";
 type EvalTab = "functional" | "safety";
 type EvalType = "FUNCTIONAL" | "SAFETY";
+type EvalStatusKey = "incomplete" | "in_progress" | "complete";
 
 interface AssessmentBrief {
   scores: Record<string, string>;
@@ -393,13 +394,22 @@ const { isMobileViewport } = useMobileViewport();
 const route = useRoute();
 const router = useRouter();
 
+const evalStatusFromLabel: Record<string, EvalStatusKey> = {
+  미평가: "incomplete",
+  진행중: "in_progress",
+  평가완료: "complete",
+  incomplete: "incomplete",
+  in_progress: "in_progress",
+  complete: "complete",
+};
+
 const mainView = computed<MainView>(() =>
   route.name === "site-functional-eval-evaluate" ? "evaluate" : "roster",
 );
-const activeEvalStatus = computed(() => {
+
+const activeEvalStatus = computed<EvalStatusKey>(() => {
   const q = typeof route.query.eval_status === "string" ? route.query.eval_status : "";
-  if (q === "진행중" || q === "평가완료") return q;
-  return "미평가";
+  return evalStatusFromLabel[q] ?? "incomplete";
 });
 
 const activeTab = ref<EvalTab>("functional");
@@ -493,7 +503,7 @@ const rosterColspan = computed(() => (isManager.value && evaluator.value?.team_s
 const filteredWorkers = computed(() => {
   const list =
     route.name === "site-functional-eval-evaluate"
-      ? rosterSource.value.filter((w) => workerEvalStatus(w) === activeEvalStatus.value)
+      ? rosterSource.value.filter((w) => workerEvalStatusKey(w) === activeEvalStatus.value)
       : rosterSource.value;
   return [...list].sort((a, b) => a.name.localeCompare(b.name, "ko"));
 });
@@ -515,17 +525,11 @@ function startEvaluationFromIncomplete() {
 }
 
 function canOpenHistory(w: Worker): boolean {
-  if (isManager.value) {
-    if (evaluator.value?.team_split_active) {
-      return canEvaluateWorker(w);
-    }
-    return true;
-  }
-  return canEvaluateWorker(w);
+  return Boolean(w.history_visible);
 }
 
 function canRegisterSanction(w: Worker): boolean {
-  return !period.value?.is_closed && !w.is_permanently_expelled && (needsSanctionPrompt(w) || isFullyComplete(w));
+  return !period.value?.is_closed && !w.is_permanently_expelled && needsSanctionPrompt(w);
 }
 
 function safetySanctionCell(w: Worker) {
@@ -595,6 +599,10 @@ function workerEvalStatus(w: Worker): string {
   return "미평가";
 }
 
+function workerEvalStatusKey(w: Worker): EvalStatusKey {
+  return evalStatusFromLabel[workerEvalStatus(w)] ?? "incomplete";
+}
+
 function rosterStatusLabel(w: Worker): string {
   return workerEvalStatus(w);
 }
@@ -624,7 +632,7 @@ function startEvaluation(worker?: Worker) {
   activeTab.value = isFunctionalComplete(target) ? "safety" : "functional";
   const nextRoute = {
     name: "site-functional-eval-evaluate" as const,
-    query: { eval_status: workerEvalStatus(target) },
+    query: { eval_status: workerEvalStatusKey(target) },
   };
 
   if (route.name === "site-functional-eval-evaluate") {
@@ -636,7 +644,7 @@ function startEvaluation(worker?: Worker) {
 
 function onRosterStatusClick(w: Worker) {
   if (!canEvaluateWorker(w)) return;
-  if (workerEvalStatus(w) === "평가완료") return;
+  if (workerEvalStatusKey(w) === "complete") return;
   startEvaluation(w);
 }
 
@@ -644,7 +652,7 @@ function onSafetySaved(worker: Worker) {
   if (!needsSanctionPrompt(worker)) return;
   const f = gradeDisplayLabel(worker.functional_assessment);
   const s = gradeDisplayLabel(worker.safety_assessment);
-  sanctionPromptMessage.value = `기능 ${f} · 안전 ${s} — 만점(S) 미달로 제재 등록이 필요합니다.`;
+  sanctionPromptMessage.value = `기능 ${f} · 안전 ${s} — 부족/문제(C등급)일 때만 제재를 등록하세요.`;
   focusWorkerId.value = worker.id;
   activeTab.value = "safety";
   if (isMobileViewport.value) {

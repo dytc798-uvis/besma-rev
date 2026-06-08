@@ -119,7 +119,7 @@ export function workerRowHighlightClass(w: EvalWorkerCompletion): string {
   return workerNeedsHighlight(w) ? "row-highlight--alert" : "";
 }
 
-/** 안전 평가 저장 후 제재 입력 유도 (C등급 또는 만점 S 미달) */
+/** 안전 평가 저장 후 제재 입력 유도 (부족/문제 상태인 C등급만) */
 export function needsSanctionPrompt(w: EvalWorkerCompletion): boolean {
   if (!isFullyComplete(w)) return false;
   const codes = [
@@ -128,8 +128,7 @@ export function needsSanctionPrompt(w: EvalWorkerCompletion): boolean {
   ]
     .filter(Boolean)
     .map((c) => normalizeGradeCode(c)) as string[];
-  if (codes.some((c) => c === "C")) return true;
-  return codes.some((c) => c !== "S");
+  return codes.some((c) => c === "C");
 }
 
 export type CompletionBadge = "전체완료" | "기능완료" | "안전완료" | null;
