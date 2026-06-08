@@ -7,6 +7,25 @@ export interface EvalAssessmentBrief {
 export interface EvalWorkerCompletion {
   functional_assessment?: EvalAssessmentBrief | null;
   safety_assessment?: EvalAssessmentBrief | null;
+  sanction_status?: string;
+}
+
+/** 엑셀·백엔드와 동일 — D등급 없음, 구 DB D는 C로 표시 */
+export function normalizeGradeCode(code: string | null | undefined): string {
+  const text = (code || "").trim().toUpperCase();
+  if (!text) return "";
+  if (text === "D") return "C";
+  return text;
+}
+
+/** 점수 비율 → 등급 라벨 (엑셀 IF >85 S, >70 A, >50 B, >0 C) */
+export function scoreRatioToGradeLabel(ratio: number): string {
+  const pct = ratio * 100;
+  if (pct > 85) return "S등급";
+  if (pct > 70) return "A등급";
+  if (pct > 50) return "B등급";
+  if (pct > 0) return "C등급";
+  return "—";
 }
 
 export function isFunctionalComplete(w: EvalWorkerCompletion): boolean {
@@ -28,30 +47,88 @@ export function isEvalIncomplete(w: EvalWorkerCompletion): boolean {
 
 export function gradeDisplayLabel(assessment: EvalAssessmentBrief | null | undefined): string {
   if (!assessment?.is_complete) return "미평가";
-  const code = assessment.grade_code?.trim();
+  const code = normalizeGradeCode(assessment.grade_code);
   if (code) return code;
   return assessment.grade_label?.replace("등급", "") || "—";
 }
 
 export function gradeDisplayClass(assessment: EvalAssessmentBrief | null | undefined): string {
   if (!assessment?.is_complete) return "grade-pill grade-pill--pending";
-  const code = assessment.grade_code || "";
+  const code = normalizeGradeCode(assessment.grade_code);
   if (code === "S") return "grade-pill grade-pill--s";
   if (code === "A") return "grade-pill grade-pill--a";
   if (code === "B") return "grade-pill grade-pill--b";
   if (code === "C") return "grade-pill grade-pill--c";
-  if (code === "D") return "grade-pill grade-pill--d";
   return "grade-pill";
 }
 
-/** 안전 평가 저장 후 제재 입력 유도 (C·D 등급 또는 만점 S 미달) */
+export function hasLowGrade(w: EvalWorkerCompletion): boolean {
+  const codes = [w.functional_assessment?.grade_code, w.safety_assessment?.grade_code]
+    .filter(Boolean)
+    .map((c) => normalizeGradeCode(c));
+  return codes.some((c) => c === "C");
+}
+
+export function hasSanctionRecord(w: EvalWorkerCompletion): boolean {
+  const status = (w.sanction_status || "").trim().toUpperCase();
+  return Boolean(status && status !== "NONE");
+}
+
+export function sanctionStatusClass(status: string): string {
+  const s = (status || "").toUpperCase();
+  if (s.includes("EXPULSION") || s.includes("BAN")) return "danger";
+  if (s.includes("WARNING") || s.includes("TRAINING")) return "warn";
+  return "normal";
+}
+
+export interface SafetySanctionDisplay {
+  safetyLabel: string;
+  safetyClass: string;
+  subLabel: string;
+  subClass: string;
+}
+
+/** 현황표 안전·제재 통합 열 */
+export function safetySanctionDisplay(
+  w: EvalWorkerCompletion & { sanction_status?: string; sanction_status_label?: string },
+): SafetySanctionDisplay {
+  const safetyLabel = gradeDisplayLabel(w.safety_assessment);
+  const safetyClass = gradeDisplayClass(w.safety_assessment);
+  let subLabel = "";
+  let subClass = "status-pill normal";
+
+  if (isSafetyComplete(w)) {
+    if (needsSanctionPrompt(w)) {
+      subLabel = "제재 필요";
+      subClass = "status-pill pending";
+    } else if (hasSanctionRecord(w)) {
+      subLabel = (w.sanction_status_label || "제재").trim();
+      subClass = `status-pill ${sanctionStatusClass(w.sanction_status || "")}`;
+    }
+  }
+
+  return { safetyLabel, safetyClass, subLabel, subClass };
+}
+
+/** 제재 이력 또는 C등급 — 평가 결과 강조 */
+export function workerNeedsHighlight(w: EvalWorkerCompletion): boolean {
+  return hasSanctionRecord(w) || hasLowGrade(w);
+}
+
+export function workerRowHighlightClass(w: EvalWorkerCompletion): string {
+  return workerNeedsHighlight(w) ? "row-highlight--alert" : "";
+}
+
+/** 안전 평가 저장 후 제재 입력 유도 (C등급 또는 만점 S 미달) */
 export function needsSanctionPrompt(w: EvalWorkerCompletion): boolean {
   if (!isFullyComplete(w)) return false;
   const codes = [
     w.functional_assessment?.grade_code,
     w.safety_assessment?.grade_code,
-  ].filter(Boolean) as string[];
-  if (codes.some((c) => c === "C" || c === "D")) return true;
+  ]
+    .filter(Boolean)
+    .map((c) => normalizeGradeCode(c)) as string[];
+  if (codes.some((c) => c === "C")) return true;
   return codes.some((c) => c !== "S");
 }
 

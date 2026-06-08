@@ -4,16 +4,24 @@
       <div class="page-head-text">
         <h1 class="page-title">기능인제 인사고과</h1>
         <p class="page-sub">
+          <span v-if="evaluator" :class="['evaluator-badge', evaluatorBadgeClass]">{{ evaluatorHeadline }}</span>
           마감일 <strong>{{ period?.deadline_date || "—" }}</strong>
           <span v-if="period?.last_attendance_date"> · 출역 {{ period.last_attendance_date }} ({{ workers.length }}명)</span>
           <span v-if="!period?.is_closed" class="incomplete-count">미평가 {{ incompleteCount }}명</span>
           <span v-if="period?.is_closed" class="badge closed">마감</span>
           <span v-else class="badge open">진행</span>
         </p>
+        <p v-if="evaluatorHint" class="evaluator-hint">{{ evaluatorHint }}</p>
         <p v-if="attendanceMessage" class="attendance-warn">{{ attendanceMessage }}</p>
       </div>
       <div class="page-head-actions">
-      <button class="btn-export stitch-btn-primary" type="button" :disabled="exportingGrade" @click="downloadSiteGradeWorkbook">
+      <button
+        v-if="!evaluator || evaluator.role === 'MANAGER'"
+        class="btn-export stitch-btn-primary"
+        type="button"
+        :disabled="exportingGrade"
+        @click="downloadSiteGradeWorkbook"
+      >
         {{ exportingGrade ? "출력 중…" : "현장별 기능인등급 출력" }}
       </button>
       <button class="btn-refresh stitch-btn-secondary" type="button" @click="load">새로고침</button>
@@ -27,15 +35,12 @@
           2-1 기능
         </button>
         <button type="button" class="fe-tab" :class="{ active: activeTab === 'safety' }" @click="activeTab = 'safety'">
-          2-2 안전
+          2-2 안전·제재
         </button>
       </template>
       <template v-else>
-        <button type="button" class="fe-tab" :class="{ active: mainView === 'roster' }" @click="mainView = 'roster'">
+        <button type="button" class="fe-tab active">
           등급 현황
-        </button>
-        <button type="button" class="fe-tab" :class="{ active: mainView === 'sanctions' }" @click="mainView = 'sanctions'">
-          제재
         </button>
       </template>
     </nav>
@@ -53,83 +58,86 @@
         <button
           class="stitch-btn-primary btn-start-eval"
           type="button"
-          :disabled="Boolean(period?.is_closed) || !workers.length"
+          :disabled="Boolean(period?.is_closed) || !workers.length || evaluationLocked"
           @click="startEvaluation()"
         >
           평가 시작
         </button>
       </div>
-      <p class="roster-desc">근로자별 기능·안전 등급을 확인한 뒤, 평가 시작으로 이어서 입력할 수 있습니다.</p>
+      <p class="roster-desc">{{ rosterDescription }}</p>
 
-      <div class="table-wrap desktop-only">
+      <div v-if="isManager && approval" class="approval-panel">
+        <div class="approval-stats">
+          <span>전체 {{ approval.site_complete_workers }}/{{ approval.site_total_workers }}명 완료</span>
+          <span v-if="evaluator?.team_split_active"> · 직영 {{ approval.direct_complete }}/{{ approval.direct_total }}</span>
+          <span v-if="approval.team_total"> · 팀원 {{ approval.team_complete }}/{{ approval.team_total }}</span>
+        </div>
+        <p class="approval-status">{{ approval.status_label }}</p>
+        <button
+          v-if="approval.can_submit_site_approval"
+          class="stitch-btn-primary btn-approve-site"
+          type="button"
+          :disabled="submittingApproval || Boolean(period?.is_closed)"
+          @click="submitSiteApproval"
+        >
+          {{ submittingApproval ? "제출 중…" : "현장 전체 승인" }}
+        </button>
+      </div>
+
+      <div class="table-wrap roster-table-wrap">
         <table class="data-table roster-table">
           <thead>
             <tr>
               <th>번호</th>
               <th>성명</th>
+              <th v-if="isManager && evaluator?.team_split_active">구분</th>
               <th>기능 (2-1)</th>
-              <th>안전 (2-2)</th>
-              <th>상태</th>
+              <th>안전·제재 (2-2)</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="w in filteredWorkers" :key="w.id">
-              <td>{{ w.row_no }}</td>
+            <tr v-for="(w, idx) in filteredWorkers" :key="w.id" :class="workerRowHighlightClass(w)">
+              <td>{{ idx + 1 }}</td>
               <td>{{ w.name }}</td>
+              <td v-if="isManager && evaluator?.team_split_active">{{ assignmentLabel(w) }}</td>
               <td>
                 <span :class="gradeDisplayClass(w.functional_assessment)">{{ gradeDisplayLabel(w.functional_assessment) }}</span>
               </td>
-              <td>
-                <span :class="gradeDisplayClass(w.safety_assessment)">{{ gradeDisplayLabel(w.safety_assessment) }}</span>
-              </td>
-              <td>
-                <span :class="['status-pill', rosterStatusClass(w)]">{{ rosterStatusLabel(w) }}</span>
+              <td class="safety-sanction-cell">
+                <span :class="safetySanctionCell(w).safetyClass">{{ safetySanctionCell(w).safetyLabel }}</span>
+                <span
+                  v-if="safetySanctionCell(w).subLabel"
+                  :class="safetySanctionCell(w).subClass"
+                >{{ safetySanctionCell(w).subLabel }}</span>
               </td>
               <td class="actions-cell">
                 <button
+                  v-if="canEvaluateWorker(w)"
                   class="link-btn"
                   type="button"
-                  :disabled="Boolean(period?.is_closed)"
                   @click="startEvaluation(w)"
                 >
                   평가
                 </button>
+                <span v-else-if="evalWorkerIds.has(w.id) && evaluationLocked" class="muted-action">승인 중</span>
+                <button class="link-btn" type="button" @click="openHistory(w)">이력</button>
+                <button
+                  v-if="canRegisterSanction(w)"
+                  class="link-btn"
+                  type="button"
+                  @click="openSanction(w)"
+                >
+                  제재
+                </button>
               </td>
             </tr>
             <tr v-if="!filteredWorkers.length">
-              <td colspan="6" class="empty-cell">검색 결과가 없습니다.</td>
+              <td :colspan="rosterColspan" class="empty-cell">검색 결과가 없습니다.</td>
             </tr>
           </tbody>
         </table>
       </div>
-
-      <ul class="worker-cards mobile-only">
-        <li v-for="w in filteredWorkers" :key="w.id" class="worker-card roster-card">
-          <div class="worker-card-main">
-            <span class="worker-no">{{ w.row_no }}</span>
-            <div class="worker-info">
-              <span class="worker-name">{{ w.name }}</span>
-              <div class="roster-grades">
-                <span :class="gradeDisplayClass(w.functional_assessment)">기능 {{ gradeDisplayLabel(w.functional_assessment) }}</span>
-                <span :class="gradeDisplayClass(w.safety_assessment)">안전 {{ gradeDisplayLabel(w.safety_assessment) }}</span>
-              </div>
-              <span :class="['status-pill', rosterStatusClass(w)]">{{ rosterStatusLabel(w) }}</span>
-            </div>
-          </div>
-          <div class="worker-card-actions">
-            <button
-              class="card-btn card-btn-primary touch-btn"
-              type="button"
-              :disabled="Boolean(period?.is_closed)"
-              @click="startEvaluation(w)"
-            >
-              평가
-            </button>
-          </div>
-        </li>
-        <li v-if="!filteredWorkers.length" class="worker-card empty-card">검색 결과가 없습니다.</li>
-      </ul>
     </section>
 
     <FunctionalEvalWorkspace
@@ -142,9 +150,14 @@
       :period-closed="Boolean(period?.is_closed)"
       :focus-worker-id="focusWorkerId"
       :auto-pick-on-mount="false"
+      :grouped-violations="groupedViolations"
+      :sanction-prompt-message="sanctionPromptMessage"
+      :default-violation-code="form.violation_code"
       :reload="load"
       @request-safety="onRequestSafety"
       @safety-saved="onSafetySaved"
+      @sanction-saved="sanctionPromptMessage = ''"
+      @open-history="openHistoryById"
     />
 
     <!-- 제재·이력 모달 (모바일 바텀시트 / 데스크톱 중앙 모달) -->
@@ -207,18 +220,33 @@
       >
         <div v-if="isMobileViewport" class="fe-sheet-handle" aria-hidden="true" />
         <div class="dialog-head history-head">
-          <h2>{{ historyWorker.name }} — 제재 이력</h2>
+          <h2>{{ historyWorker.name }} — 평가·제재 이력</h2>
           <button class="dialog-close" type="button" aria-label="닫기" @click="closeHistory">✕</button>
         </div>
         <p v-if="!historyData?.history_visible" class="warn">{{ historyData?.message }}</p>
-        <ul v-else class="history-list">
-          <li v-for="s in allHistorySanctions" :key="`${s.id}-h`">
-            <span v-if="s.from_prior_period" class="tag">이전</span>
-            {{ s.violation_label }} → {{ s.sanction_result_label }} ({{ s.strike_number }}차)
-            <span class="meta">{{ formatDate(s.created_at) }}</span>
-          </li>
-          <li v-if="!allHistorySanctions.length">제재 이력 없음</li>
-        </ul>
+        <div v-else class="history-sections">
+          <section v-if="allHistoryAssessments.length" class="history-block">
+            <h3>과거 평가 등급</h3>
+            <ul class="history-list">
+              <li v-for="(a, i) in allHistoryAssessments" :key="`a-${i}`">
+                <span v-if="a.from_prior_period" class="tag">이전</span>
+                {{ a.period_title || `기간 ${a.period_id}` }}
+                — 기능 {{ gradeDisplayLabel(a.functional_assessment) }} · 안전 {{ gradeDisplayLabel(a.safety_assessment) }}
+              </li>
+            </ul>
+          </section>
+          <section class="history-block">
+            <h3>제재 이력</h3>
+            <ul class="history-list">
+              <li v-for="s in allHistorySanctions" :key="`${s.id}-h`">
+                <span v-if="s.from_prior_period" class="tag">이전</span>
+                {{ s.violation_label }} → {{ s.sanction_result_label }} ({{ s.strike_number }}차)
+                <span class="meta">{{ formatDate(s.created_at) }}</span>
+              </li>
+              <li v-if="!allHistorySanctions.length">제재 이력 없음</li>
+            </ul>
+          </section>
+        </div>
         <div class="mileage-box">
           <h3>마일리지 (운영 준비)</h3>
           <p>{{ historyData?.mileage?.message }}</p>
@@ -227,81 +255,6 @@
       </section>
     </Teleport>
 
-    <section v-show="mainView === 'sanctions'" class="panel workers-panel">
-      <div class="workers-head">
-        <h2>제재 대상 근로자 <span class="count">{{ filteredWorkers.length }}</span>명</h2>
-        <input
-          v-model.trim="workerSearch"
-          type="search"
-          class="worker-search field-control"
-          placeholder="이름 검색"
-          autocomplete="off"
-          enterkeyhint="search"
-        />
-      </div>
-
-      <!-- 데스크톱 테이블 -->
-      <div class="table-wrap desktop-only">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>번호</th>
-              <th>성명</th>
-              <th>제재 상태</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="w in filteredWorkers" :key="w.id">
-              <td>{{ w.row_no }}</td>
-              <td>{{ w.name }}</td>
-              <td>
-                <span :class="['status-pill', statusClass(w.sanction_status)]">{{ w.sanction_status_label }}</span>
-              </td>
-              <td class="actions-cell">
-                <button class="link-btn" type="button" @click="openHistory(w)">이력</button>
-                <button
-                  class="link-btn"
-                  type="button"
-                  :disabled="period?.is_closed || w.is_permanently_expelled"
-                  @click="openSanction(w)"
-                >
-                  제재
-                </button>
-              </td>
-            </tr>
-            <tr v-if="!filteredWorkers.length">
-              <td colspan="4" class="empty-cell">검색 결과가 없습니다.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- 모바일 카드 목록 -->
-      <ul class="worker-cards mobile-only">
-        <li v-for="w in filteredWorkers" :key="w.id" class="worker-card">
-          <div class="worker-card-main">
-            <span class="worker-no">{{ w.row_no }}</span>
-            <div class="worker-info">
-              <span class="worker-name">{{ w.name }}</span>
-              <span :class="['status-pill', statusClass(w.sanction_status)]">{{ w.sanction_status_label }}</span>
-            </div>
-          </div>
-          <div class="worker-card-actions">
-            <button class="card-btn card-btn-secondary touch-btn" type="button" @click="openHistory(w)">이력</button>
-            <button
-              class="card-btn card-btn-primary touch-btn"
-              type="button"
-              :disabled="period?.is_closed || w.is_permanently_expelled"
-              @click="openSanction(w)"
-            >
-              제재
-            </button>
-          </div>
-        </li>
-        <li v-if="!filteredWorkers.length" class="worker-card empty-card">검색 결과가 없습니다.</li>
-      </ul>
-    </section>
   </div>
 </template>
 
@@ -319,9 +272,11 @@ import {
   isFunctionalComplete,
   isFullyComplete,
   needsSanctionPrompt,
+  safetySanctionDisplay,
+  workerRowHighlightClass,
 } from "@/utils/functionalEvalCompletion";
 
-type MainView = "roster" | "evaluate" | "sanctions";
+type MainView = "roster" | "evaluate";
 type EvalTab = "functional" | "safety";
 type EvalType = "FUNCTIONAL" | "SAFETY";
 
@@ -338,6 +293,36 @@ interface EvalCatalogBlock {
   title: string;
   criteria: Criterion[];
   max_score: number;
+}
+
+interface EvaluatorSession {
+  role: "MANAGER" | "TEAM_LEADER";
+  role_label: string;
+  eval_scope_label?: string;
+  login_id: string;
+  display_name: string;
+  site_code: string;
+  site_alias: string;
+  manager_name: string;
+  assigned_worker_count: number;
+  site_worker_count: number;
+  team_split_active: boolean;
+  split_threshold: number;
+}
+
+interface ApprovalPayload {
+  status: string;
+  status_label: string;
+  site_total_workers: number;
+  site_complete_workers: number;
+  direct_total: number;
+  direct_complete: number;
+  team_total: number;
+  team_complete: number;
+  incomplete_count: number;
+  can_submit_site_approval: boolean;
+  evaluation_editable: boolean;
+  reject_note?: string | null;
 }
 
 interface Period {
@@ -359,12 +344,21 @@ interface Worker {
   id: number;
   row_no: number;
   name: string;
+  eval_assignment?: "DIRECT" | "TEAM";
   sanction_status: string;
   sanction_status_label: string;
   is_permanently_expelled: boolean;
   history_visible: boolean;
   functional_assessment?: AssessmentBrief | null;
   safety_assessment?: AssessmentBrief | null;
+}
+
+interface AssessmentHistoryRow {
+  period_id: number;
+  period_title?: string;
+  functional_assessment?: AssessmentBrief | null;
+  safety_assessment?: AssessmentBrief | null;
+  from_prior_period?: boolean;
 }
 
 interface SanctionRow {
@@ -385,8 +379,12 @@ const evalSessionKey = ref(0);
 const sanctionPromptMessage = ref("");
 const evalCatalog = ref<{ FUNCTIONAL: EvalCatalogBlock; SAFETY: EvalCatalogBlock } | null>(null);
 const period = ref<Period | null>(null);
+const evaluator = ref<EvaluatorSession | null>(null);
 const attendanceMessage = ref("");
 const workers = ref<Worker[]>([]);
+const siteOverview = ref<Worker[]>([]);
+const approval = ref<ApprovalPayload | null>(null);
+const submittingApproval = ref(false);
 const violations = ref<ViolationItem[]>([]);
 const selectedWorker = ref<Worker | null>(null);
 const historyWorker = ref<Worker | null>(null);
@@ -395,6 +393,7 @@ const historyData = ref<{
   message?: string;
   sanctions: SanctionRow[];
   prior_sanctions: SanctionRow[];
+  prior_assessments?: AssessmentHistoryRow[];
   mileage: { message?: string; points?: number };
 } | null>(null);
 const saving = ref(false);
@@ -407,18 +406,78 @@ const currentEvalType = computed<EvalType>(() => (activeTab.value === "safety" ?
 
 const evalTabTitle = computed(() => {
   const block = evalCatalog.value?.[currentEvalType.value];
-  return block?.title || (activeTab.value === "safety" ? "2-2 안전 인사고과" : "2-1 기능 인사고과");
+  return block?.title || (activeTab.value === "safety" ? "2-2 안전·제재 인사고과" : "2-1 기능 인사고과");
 });
 
 const evalCriteria = computed(() => evalCatalog.value?.[currentEvalType.value]?.criteria || []);
 
-const incompleteCount = computed(() => countIncompleteWorkers(workers.value));
+const incompleteCount = computed(() =>
+  approval.value?.incomplete_count ?? countIncompleteWorkers(rosterSource.value),
+);
+
+const evalWorkerIds = computed(() => new Set(workers.value.map((w) => w.id)));
+
+const isManager = computed(() => evaluator.value?.role === "MANAGER");
+
+const rosterSource = computed(() =>
+  isManager.value && siteOverview.value.length ? siteOverview.value : workers.value,
+);
+
+const evaluationLocked = computed(() => approval.value?.evaluation_editable === false);
+
+const evaluatorHeadline = computed(() => {
+  if (!evaluator.value) return "";
+  if (evaluator.value.eval_scope_label) return `${evaluator.value.role_label} · ${evaluator.value.eval_scope_label}`;
+  if (evaluator.value.role === "TEAM_LEADER") {
+    return `팀장 · 담당 ${evaluator.value.assigned_worker_count}명`;
+  }
+  return "소장 평가";
+});
+
+const evaluatorBadgeClass = computed(() =>
+  evaluator.value?.role === "TEAM_LEADER" ? "evaluator-badge--leader" : "evaluator-badge--manager",
+);
+
+const evaluatorHint = computed(() => {
+  if (approval.value?.status_label && approval.value.status !== "IN_PROGRESS") {
+    return approval.value.status_label + (approval.value.reject_note ? ` — ${approval.value.reject_note}` : "");
+  }
+  if (!evaluator.value) return "";
+  if (evaluator.value.role === "TEAM_LEADER") {
+    return "담당 팀원만 평가할 수 있습니다. 소장이 현장 전체를 승인한 뒤 본사·대표 승인이 이어집니다.";
+  }
+  if (evaluator.value.team_split_active) {
+    return `출역 ${evaluator.value.split_threshold}명 초과: 직영은 소장, 팀원은 팀장이 평가합니다. 전원 완료 후 소장이 현장 전체를 승인하세요.`;
+  }
+  return "10명 이하 현장은 소장이 전원 평가합니다. 완료 후 소장 승인 → 안전보건실 → 대표이사 순으로 확정됩니다.";
+});
+
+const rosterDescription = computed(() => evaluatorHint.value);
+
+const rosterColspan = computed(() => (isManager.value && evaluator.value?.team_split_active ? 6 : 5));
 
 const filteredWorkers = computed(() => {
   const q = workerSearch.value.toLowerCase();
-  if (!q) return workers.value;
-  return workers.value.filter((w) => w.name.toLowerCase().includes(q));
+  const list = rosterSource.value;
+  if (!q) return list;
+  return list.filter((w) => w.name.toLowerCase().includes(q));
 });
+
+function assignmentLabel(w: Worker): string {
+  return w.eval_assignment === "TEAM" ? "팀원" : "직영";
+}
+
+function canEvaluateWorker(w: Worker): boolean {
+  return evalWorkerIds.value.has(w.id) && !evaluationLocked.value && !period.value?.is_closed;
+}
+
+function canRegisterSanction(w: Worker): boolean {
+  return !period.value?.is_closed && !w.is_permanently_expelled && (needsSanctionPrompt(w) || isFullyComplete(w));
+}
+
+function safetySanctionCell(w: Worker) {
+  return safetySanctionDisplay(w);
+}
 
 const groupedViolations = computed(() => {
   const map = new Map<string, { category: string; label: string; items: ViolationItem[] }>();
@@ -434,6 +493,11 @@ const groupedViolations = computed(() => {
 const allHistorySanctions = computed(() => {
   if (!historyData.value?.history_visible) return [];
   return [...(historyData.value.prior_sanctions || []), ...(historyData.value.sanctions || [])];
+});
+
+const allHistoryAssessments = computed(() => {
+  if (!historyData.value?.history_visible) return [];
+  return historyData.value.prior_assessments || [];
 });
 
 const dialogShellClass = computed(() =>
@@ -473,6 +537,7 @@ function requestSubmitSanction() {
 }
 
 function rosterStatusLabel(w: Worker): string {
+  if (needsSanctionPrompt(w)) return "제재 필요";
   if (isFullyComplete(w)) return "평가 완료";
   if (isFunctionalComplete(w)) return "안전 미평가";
   if (w.safety_assessment?.is_complete) return "기능 미평가";
@@ -480,6 +545,7 @@ function rosterStatusLabel(w: Worker): string {
 }
 
 function rosterStatusClass(w: Worker): string {
+  if (needsSanctionPrompt(w)) return "pending";
   if (isFullyComplete(w)) return "done";
   return "pending";
 }
@@ -512,8 +578,11 @@ function onSafetySaved(worker: Worker) {
   const f = gradeDisplayLabel(worker.functional_assessment);
   const s = gradeDisplayLabel(worker.safety_assessment);
   sanctionPromptMessage.value = `기능 ${f} · 안전 ${s} — 만점(S) 미달로 제재 등록이 필요합니다.`;
-  mainView.value = "sanctions";
-  openSanction(worker);
+  focusWorkerId.value = worker.id;
+  activeTab.value = "safety";
+  if (isMobileViewport.value) {
+    openSanction(worker);
+  }
 }
 
 function onRequestSafety(workerId: number) {
@@ -527,10 +596,16 @@ watch(activeTab, () => {
 });
 
 watch(mainView, (view) => {
-  if (view !== "sanctions") {
+  if (view === "roster") {
     sanctionPromptMessage.value = "";
   }
 });
+
+function openHistoryById(workerId: number) {
+  const worker =
+    workers.value.find((w) => w.id === workerId) ?? rosterSource.value.find((w) => w.id === workerId);
+  if (worker) openHistory(worker);
+}
 
 async function loadCatalog() {
   const res = await api.get("/functional-eval/violation-catalog");
@@ -546,7 +621,27 @@ async function load() {
   const res = await api.get("/functional-eval/my-site/workers");
   period.value = res.data.period;
   workers.value = res.data.items || [];
+  siteOverview.value = res.data.site_overview || [];
+  approval.value = res.data.approval || null;
+  evaluator.value = res.data.evaluator || null;
   attendanceMessage.value = res.data.attendance_message || "";
+}
+
+async function submitSiteApproval() {
+  if (!approval.value?.can_submit_site_approval) return;
+  const ok = window.confirm("현장 전체 평가를 승인하고 안전보건실 검토로 제출하시겠습니까?");
+  if (!ok) return;
+  submittingApproval.value = true;
+  error.value = "";
+  try {
+    await api.post("/functional-eval/my-site/approval/submit");
+    await load();
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    error.value = typeof msg === "string" ? msg : "현장 승인에 실패했습니다.";
+  } finally {
+    submittingApproval.value = false;
+  }
 }
 
 function siteGradeWorkbookFilename() {
@@ -640,6 +735,7 @@ async function submitSanction() {
       violation_code: form.violation_code,
       note: form.note || null,
     });
+    sanctionPromptMessage.value = "";
     closeForm();
     await load();
   } catch (e: unknown) {
@@ -726,6 +822,33 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 600;
   color: #b45309;
+}
+
+.evaluator-badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.evaluator-badge--manager {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.evaluator-badge--leader {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.evaluator-hint {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.45;
 }
 
 .page-head-actions {
@@ -886,6 +1009,11 @@ textarea.field-control {
   background: #f8fafc;
 }
 
+.roster-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .roster-panel {
   padding: 16px;
 }
@@ -907,10 +1035,66 @@ textarea.field-control {
   white-space: nowrap;
 }
 
+.roster-table-wrap .data-table tbody tr.row-highlight--alert {
+  background: #fef2f2;
+}
+
+.roster-table-wrap .data-table tbody tr.row-highlight--alert:hover {
+  background: #fee2e2;
+}
+
+.history-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.history-block h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #334155;
+}
+
 .roster-desc {
   margin: 10px 0 14px;
   font-size: 13px;
   color: #64748b;
+}
+
+.approval-panel {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.approval-stats {
+  font-size: 13px;
+  color: #334155;
+  font-weight: 600;
+}
+
+.approval-status {
+  margin: 8px 0 10px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.btn-approve-site {
+  min-height: 44px;
+}
+
+.muted-action {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.safety-sanction-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .roster-table .grade-pill {
