@@ -379,6 +379,7 @@ def serialize_worker(
         "position_name": worker.position_name,
         "job_name": worker.job_name,
         "rrn_masked": worker.rrn_masked,
+        "phone_mobile": worker.phone_mobile,
         "assigned_evaluator_login_id": worker.assigned_evaluator_login_id,
         "is_site_manager": worker.is_site_manager,
         "is_active": worker.is_active,
@@ -763,6 +764,41 @@ def list_hq_eval_export_rows(db: Session, period: FunctionalEvalPeriod) -> list[
             }
         )
     return rows
+
+
+def list_grade_workbook_workers(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    *,
+    site_code: str | None = None,
+) -> list[dict[str, Any]]:
+    """출역 대상 근로자 + 평가 데이터 (현장별 기능인등급 엑셀용)."""
+    workers = _attendance_target_workers(db, period, site_code=site_code)
+    workers.sort(key=lambda w: (w.site_code or "", w.row_no or 0, w.id or 0))
+    site_codes = {w.site_code for w in workers if w.site_code}
+    site_names = _site_name_map(db, site_codes)
+    assess_map = _assessments_map(db, [w.id for w in workers])
+    out: list[dict[str, Any]] = []
+    for worker in workers:
+        payload = serialize_worker(db, worker, assessments=assess_map.get(worker.id, {}))
+        if not payload.get("site_name"):
+            payload["site_name"] = site_names.get(worker.site_code) or f"현장 {worker.site_code}"
+        out.append(payload)
+    return out
+
+
+def build_site_grade_workbook_bytes(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    *,
+    site_code: str | None = None,
+) -> bytes:
+    from app.modules.functional_eval.site_grade_workbook import generate_site_grade_workbook_bytes
+
+    workers = list_grade_workbook_workers(db, period, site_code=site_code)
+    if not workers:
+        raise ValueError("NO_ATTENDANCE_WORKERS")
+    return generate_site_grade_workbook_bytes(workers)
 
 
 def build_hq_summary_totals(items: list[dict[str, Any]]) -> dict[str, int]:

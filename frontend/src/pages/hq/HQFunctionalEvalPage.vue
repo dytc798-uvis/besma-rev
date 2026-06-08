@@ -11,8 +11,11 @@
         </p>
       </div>
       <div class="head-actions">
+        <button class="stitch-btn-primary" type="button" :disabled="exportingGrade" @click="downloadSiteGradeWorkbook()">
+          {{ exportingGrade ? "출력 중..." : "현장별 기능인등급 출력" }}
+        </button>
         <button class="stitch-btn-secondary" type="button" :disabled="exporting" @click="downloadEvalExcel">
-          {{ exporting ? "다운로드 중..." : "평가 현황 엑셀" }}
+          {{ exporting ? "다운로드 중..." : "평가 현황(간략)" }}
         </button>
         <button class="stitch-btn-secondary" type="button" @click="loadOverview">새로고침</button>
       </div>
@@ -192,7 +195,7 @@
 
         <h3>② 출역일보 (ERP xls/xlsx) — 매일 1회</h3>
         <p class="panel-sub">
-          ① 반영 후 업로드. 10명 이하 현장은 소장이 전원 평가, 11명 이상은 팀장 열 기준 <code>별칭-팀장명</code> 계정 자동 발급.
+          ① 반영 후 업로드. 20명 이하 현장은 소장이 전원 평가, 21명 초과는 팀장 열 기준 <code>별칭-팀장명</code> 계정 자동 발급.
         </p>
         <div class="row import-row">
           <input ref="attendanceInput" type="file" accept=".xlsx,.xls" @change="onAttendanceFileChange" />
@@ -250,9 +253,9 @@
         </div>
         <p v-if="applyResult" class="meta success">{{ applyResult }}</p>
 
-        <h3>팀장 분산평가 계정 반영 (10명 초과 현장)</h3>
+        <h3>팀장 분산평가 계정 반영 (20명 초과 현장)</h3>
         <p class="panel-sub">
-          출역 10명 이하 현장은 소장이 전원 평가합니다. 11명 이상만 팀장 계정(별칭-이름, PW: 주민번호 앞 6자리) 발급·배정(TXT/XLSX 또는 출역 자동 반영).
+          출역 20명 이하 현장은 소장이 전원 평가합니다. 21명 초과만 팀장 계정(별칭-이름, PW: 주민번호 앞 6자리) 발급·배정(TXT/XLSX 또는 출역 자동 반영).
         </p>
         <div class="row import-row">
           <input ref="teamLeaderInput" type="file" accept=".txt,.xlsx,.xls" @change="onTeamLeaderFileChange" />
@@ -353,6 +356,7 @@ const siteDetail = ref<{ site: SiteRow } | null>(null);
 const evalRows = ref<EvalRow[]>([]);
 const loadingSite = ref(false);
 const exporting = ref(false);
+const exportingGrade = ref(false);
 const deadlineInput = ref("");
 const sortBy = ref("progress");
 const sortDir = ref("desc");
@@ -594,6 +598,32 @@ async function saveDeadline() {
     deadline_date: deadlineInput.value,
   });
   await loadOverview();
+}
+
+async function downloadSiteGradeWorkbook(siteCode?: string) {
+  exportingGrade.value = true;
+  try {
+    const res = await api.get("/functional-eval/hq/export/site-grade-workbook", {
+      responseType: "blob",
+      params: siteCode ? { site_code: siteCode } : undefined,
+    });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = siteGradeWorkbookFilename();
+    a.click();
+    URL.revokeObjectURL(url);
+  } finally {
+    exportingGrade.value = false;
+  }
+}
+
+function siteGradeWorkbookFilename() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `현장별 기능인등급-${y}${m}${day}.xlsx`;
 }
 
 async function downloadEvalExcel() {

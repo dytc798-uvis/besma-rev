@@ -83,7 +83,7 @@ def test_aggregate_and_attendance_flow(db_session):
     manager = session.query(User).filter(User.login_id == "대우청라-박명식").first()
     assert manager is not None
     assert manager.password_hash
-    assert TEAM_LEADER_SPLIT_THRESHOLD == 10
+    assert TEAM_LEADER_SPLIT_THRESHOLD == 20
 
 
 def test_normalize_erp_label():

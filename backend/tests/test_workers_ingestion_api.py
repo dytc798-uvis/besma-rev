@@ -11,9 +11,10 @@ from app.core.database import Base
 from app.main import app
 from app.modules.users.models import User
 from app.modules.workers.models import Employment
+from conftest import SAMPLE_RAW_DIR
 
 
-RAW_DIR = Path("d:/besma-rev/docs/sample/site_import/raw")
+RAW_DIR = SAMPLE_RAW_DIR
 
 
 def _setup_test_client(tmp_path: Path, *, role: str = "HQ_SAFE", ui_type: str = "HQ_SAFE"):

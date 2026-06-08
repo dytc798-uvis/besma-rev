@@ -13,6 +13,8 @@ def pytest_configure(config):
 
 # Allow `import app.*` in tests when running from `backend/`
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND_DIR.parent
+SAMPLE_RAW_DIR = REPO_ROOT / "docs" / "sample" / "site_import" / "raw"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 

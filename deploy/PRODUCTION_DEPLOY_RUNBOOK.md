@@ -37,7 +37,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1 `
   -Branch main
 ```
 
-- **`-RepoRoot` 생략 시:** `deploy` 폴더가 있는 저장소 루트가 기본값(스크립트 경로 기준). 예전처럼 다른 경로(`D:\besma-rev`)만 쓰던 실수를 줄인다.  
+- **`-RepoRoot` 생략 시:** `deploy` 폴더가 있는 저장소 루트가 기본값(스크립트 경로 기준). 예전처럼 백업 경로(`D:\(Backup) besma-rev`)만 쓰던 실수를 줄인다.  
 - 이미 `git push`를 했다면 **중복 push를 피하려면** `-SkipPush` 추가(로컬이 `origin/main`보다 앞서 있으면 **기본 중단** — push 후 재실행 또는 `-AllowSkipPushUnpushed`).  
 - 로컬 프론트 빌드 검증을 건너뛰려면 `-SkipFrontendBuild` (배포 자체는 서버/Vercel에서 각각 빌드됨).  
 - 미커밋이 있는데도 백엔드 스크립트를 강행하려면 `-AllowDirtyWorkingTree`(비권장: EC2에는 커밋된 히스토리만 반영됨).

@@ -97,8 +97,9 @@ Instruction Validation Gate는 모든 구현 및 설계 지시 수행 전에 반
 ### 3.2 BESMA 기준 사례
 다음 사례는 실제 BESMA 작업에서 반복될 수 있는 대표 예시로 간주한다.
 
-1. `C:\BESMA` = 기존 프로젝트
-2. `D:\besma-rev` 또는 `C:\besma-rev` = 신규 로컬 MVP
+1. `C:\BESMA` = 별도 레거시 프로젝트
+2. `d:\JSI\besma-rev` = **현재** BESMA 로컬 MVP (운영 배포 소스)
+3. `D:\(Backup) besma-rev` = 백업 전용 (수정하지 않음)
 
 ### 3.3 작업 시작 전 필수 확인
 모든 AI 작업자는 작업 시작 전에 아래 항목을 반드시 확인한다.

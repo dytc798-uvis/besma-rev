@@ -33,15 +33,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\fix_ssh_key_permiss
 2. (키 경로에 맞게 수정)
 
 ```cmd
-takeown /f "D:\besma-rev\.secrets\besma-key.pem"
-icacls "D:\besma-rev\.secrets\besma-key.pem" /inheritance:r
-icacls "D:\besma-rev\.secrets\besma-key.pem" /grant:r "%USERNAME%:R"
+takeown /f "d:\JSI\besma-rev\.secrets\besma-key.pem"
+icacls "d:\JSI\besma-rev\.secrets\besma-key.pem" /inheritance:r
+icacls "d:\JSI\besma-rev\.secrets\besma-key.pem" /grant:r "%USERNAME%:R"
 ```
 
 ### SSH 예시
 
 ```powershell
-ssh -i "D:\besma-rev\.secrets\besma-key.pem" ubuntu@api.besma.co.kr
+ssh -i "d:\JSI\besma-rev\.secrets\besma-key.pem" ubuntu@api.besma.co.kr
 ```
 
 ( `-CopyToUserSsh` 를 썼다면 스크립트가 안내한 `%USERPROFILE%\.ssh\besma-key.pem` 경로 사용)

@@ -302,7 +302,11 @@
 
 <script setup lang="ts">
 
-import { onUnmounted, reactive, ref, watch } from "vue";
+import { onMounted, onUnmounted, reactive, ref, watch } from "vue";
+
+import { api } from "@/services/api";
+
+import { useAuthStore } from "@/stores/auth";
 
 import {
 
@@ -326,6 +330,8 @@ import {
 
 
 
+const auth = useAuthStore();
+
 const ph = FORKLIFT_EQUIPMENT_PLACEHOLDERS;
 
 const loading = ref(false);
@@ -345,6 +351,27 @@ const specLookupOk = ref(false);
 
 
 const form = reactive(createForkliftWorkPlanDefaults());
+
+
+
+async function loadLoggedInSiteName() {
+  if (!auth.user) {
+    await auth.loadMe();
+  }
+  const siteId = auth.effectiveSiteId;
+  if (!siteId) return;
+  const res = await api.get(`/sites/${siteId}`);
+  const name = String(res.data?.site_name ?? "").trim();
+  if (name) {
+    form.site_name = name;
+  }
+}
+
+
+
+onMounted(() => {
+  void loadLoggedInSiteName();
+});
 
 
 

@@ -25,7 +25,7 @@ export const FORKLIFT_EQUIPMENT_PLACEHOLDERS = {
 export function createForkliftWorkPlanDefaults(siteName?: string) {
   const t = todayParts();
   return {
-    site_name: siteName || "푸르지오스타셀라49현장",
+    site_name: siteName || "",
     company_name: "(주)부현전기",
     document_date_year: t.year,
     document_date_month: t.month,

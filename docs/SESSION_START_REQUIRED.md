@@ -11,7 +11,7 @@
 
 ## 필수 확인 사항
 
-1. 현재 워크스페이스가 실제 저장소 루트인지 확인한다(예: `C:\besma-rev\besma-rev_handoff` 또는 `D:\besma-rev` — `frontend`·`backend`·`deploy`가 같은 층에 있어야 한다).
+1. 현재 워크스페이스가 실제 저장소 루트인지 확인한다(예: `d:\JSI\besma-rev` — `frontend`·`backend`·`deploy`가 같은 층에 있어야 한다).
 2. `C:\BESMA`와 혼동하지 않았는지 확인한다.
 3. 현재 프로젝트가 `FastAPI + Vue3 + SQLite` 로컬 MVP인지 확인한다.
 4. `ai_collaboration_policy.md`에서 `Instruction Validation Gate`와 `Invariant Check` 규정을 읽는다.

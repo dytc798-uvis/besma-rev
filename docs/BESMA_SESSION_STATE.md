@@ -7,15 +7,16 @@
 ## 1. 현재 기준 프로젝트
 
 - 프로젝트명: BESMA 로컬 MVP
-- 워크스페이스 절대경로: `D:\besma-rev` (다른 머신에서는 `C:\besma-rev\besma-rev_handoff` 등 실제 경로로 대체)
+- 워크스페이스 절대경로: `d:\JSI\besma-rev` (백업: `D:\(Backup) besma-rev` — 수정하지 않음)
 - 프로젝트 유형: `FastAPI + Vue 3 + TypeScript + Vite + SQLite`
 - 실행 포트
   - backend: `127.0.0.1:8001`
   - frontend: `127.0.0.1:5174`
 - 기준 프로젝트 판정 메모
-  - 현재 세션의 기준 프로젝트는 `D:\besma-rev` 로컬 MVP이다.
-  - `C:\BESMA`는 별도 기존 프로젝트로 간주하며 동일 프로젝트로 취급하지 않는다.
+  - 현재 세션의 기준 프로젝트는 `d:\JSI\besma-rev` 로컬 MVP이다.
+  - `D:\(Backup) besma-rev`는 백업 전용이며, 개발·배포는 JSI 아래 클론에서만 진행한다.
   - 작업 시작 전 반드시 실제 워크스페이스 절대경로를 다시 확인한다.
+  - `C:\BESMA`는 별도 기존 프로젝트로 간주하며 동일 프로젝트로 취급하지 않는다.
 
 ## 2. 현재 개발 단계
 
@@ -38,7 +39,7 @@
 - [ ] `docs/ai_collaboration_policy.md`를 읽고 Instruction Validation Gate / Invariant Check 규정을 확인했다.
 - [ ] `docs/BESMA_SESSION_STATE.md` 최신 상태를 읽고 현재 세션 기준을 확인했다.
 - [ ] `docs/SESSION_START_REQUIRED.md`를 읽고 필수 참조 문서를 다시 확인했다.
-- [ ] 현재 워크스페이스가 `D:\besma-rev`인지 확인했다.
+- [ ] 현재 워크스페이스가 `d:\JSI\besma-rev`인지 확인했다.
 - [ ] `C:\BESMA`와 혼동하지 않았는지 확인했다.
 - [ ] 현재 프로젝트가 `FastAPI + Vue3` 구조인지 확인했다.
 - [ ] backend 실행 포트가 `8001`인지 확인했다.
@@ -51,6 +52,29 @@
 ## 4. 최근 작업 이력
 
 아래 형식으로 최신 작업을 위에 추가한다.
+
+### 2026-06-08 (핸드오프 체크리스트)
+
+- 작업자: Cursor Agent
+- 작업 목적: 핸드오프 체크리스트 코드 반영 (기능인제 임계값·지게차 현장명)
+- 수행 내용
+  - `TEAM_LEADER_SPLIT_THRESHOLD` 10 → **20** ([DECISION-089] 정합), HQ UI·routes 주석 갱신
+  - `WorkPlanForkliftPage`: 로그인 `effectiveSiteId` → `GET /sites/{id}` 로 **현장명 자동 주입**
+  - `forkliftWorkPlanDefaults`: 하드코딩 현장명 제거
+  - pytest: `test_functional_eval_provisioning`, `test_work_plan_forklift` 등 통과 확인
+- 다음 권장: 브라우저 E2E(HQ 집계→출역→기능인제 로그인, 지게차 엑셀 다운로드)
+
+### 2026-06-08
+
+- 작업자: Cursor Agent
+- 작업 목적: `D:\besma-rev` → `d:\JSI\besma-rev` 이전 후 경로 정합·레거시 정리
+- 수행 내용
+  - `.env` 배포 경로를 `d:\JSI\besma-rev`로 통일
+  - 테스트 샘플 경로를 저장소 상대경로(`conftest.REPO_ROOT`)로 변경
+  - `olefile` requirements 추가
+  - 노트북 이전용 `archive-for-notebook/` 등 비운영 산출물 삭제
+  - `D:\(Backup) besma-rev`는 백업 전용으로 유지
+- 다음 권장: `alembic upgrade head`, 기능인제·지게차 E2E, `TEAM_LEADER_SPLIT_THRESHOLD` 정책 확정
 
 ### 2026-05-12
 
@@ -907,7 +931,7 @@
 
 ### 7.2 금지사항
 
-- `C:\BESMA`와 `D:\besma-rev`를 같은 프로젝트로 간주하지 않는다.
+- `C:\BESMA`와 `d:\JSI\besma-rev`(또는 백업 `D:\(Backup) besma-rev`)를 같은 프로젝트로 간주하지 않는다.
 - 경로와 프레임워크를 확인하지 않은 상태에서 수정하지 않는다.
 - 사용자 요청 범위를 벗어난 대규모 리팩터링을 하지 않는다.
 - 설정 변경 후 영향 범위를 보고 없이 넘기지 않는다.
@@ -954,7 +978,7 @@
 
 ```text
 [BESMA 인계]
-기준 프로젝트: D:\besma-rev (FastAPI + Vue3 + SQLite)
+기준 프로젝트: d:\JSI\besma-rev (FastAPI + Vue3 + SQLite)
 현재 작업: SITE context 보정 및 근로자 링크 배포 UX 개선(대규모 현장 운영성 보강) 단계
 방금 한 일:
 - 테스트 페르소나 SITE_MANAGER에서 site context fallback 선택 기능 반영

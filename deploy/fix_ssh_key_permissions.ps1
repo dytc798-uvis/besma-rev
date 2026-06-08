@@ -4,7 +4,7 @@ Windows에서 OpenSSH가 요구하는 형태로 개인키 ACL을 맞춘다.
 
 사용:
   powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\fix_ssh_key_permissions.ps1
-  powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\fix_ssh_key_permissions.ps1 -KeyPath "D:\besma-rev\besma-key.pem"
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\fix_ssh_key_permissions.ps1 -KeyPath "d:\JSI\besma-rev\.secrets\besma-key.pem"
   powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\fix_ssh_key_permissions.ps1 -CopyToUserSsh
 #>
 param(

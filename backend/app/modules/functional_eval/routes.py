@@ -4,6 +4,8 @@ import uuid
 from datetime import date
 from pathlib import Path
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 
@@ -17,6 +19,7 @@ from app.modules.functional_eval.schemas import (
     FunctionalEvalPeriodDeadlineUpdate,
     FunctionalEvalSanctionCreate,
 )
+from app.modules.functional_eval.site_grade_workbook import site_grade_export_filename
 
 router = APIRouter(prefix="/functional-eval", tags=["functional-eval"])
 
@@ -38,6 +41,51 @@ async def _save_upload(file: UploadFile, period_id: int) -> Path:
     content = await file.read()
     tmp.write_bytes(content)
     return tmp
+
+
+def _site_grade_workbook_response(content: bytes) -> StreamingResponse:
+    filename = site_grade_export_filename()
+    return StreamingResponse(
+        iter([content]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@router.get("/my-site/export/site-grade-workbook")
+def export_my_site_grade_workbook(db: DbDep, current_user: CurrentUserDep):
+    """현장 — 템플릿 형식(1.인원현황 / 2-1 / 2-2) 엑셀 출력."""
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    site_code = service._site_code_for_user(current_user, db)
+    try:
+        content = service.build_site_grade_workbook_bytes(db, period, site_code=site_code)
+    except ValueError as exc:
+        if str(exc) == "NO_ATTENDANCE_WORKERS":
+            raise HTTPException(
+                status_code=404,
+                detail="출역 반영된 근로자가 없습니다. 본사에 출역일보 업로드를 요청하세요.",
+            ) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _site_grade_workbook_response(content)
+
+
+@router.get("/hq/export/site-grade-workbook")
+def export_hq_site_grade_workbook(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    site_code: str | None = Query(default=None),
+):
+    """본사 — 전 현장(또는 site_code 지정) 현장별 기능인등급 엑셀."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        content = service.build_site_grade_workbook_bytes(db, period, site_code=site_code)
+    except ValueError as exc:
+        if str(exc) == "NO_ATTENDANCE_WORKERS":
+            raise HTTPException(status_code=404, detail="출역 반영된 근로자가 없습니다.") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _site_grade_workbook_response(content)
 
 
 @router.get("/violation-catalog")
@@ -351,7 +399,7 @@ async def apply_team_leaders(
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ):
-    """10명 초과 현장에 팀장 계정 발급 및 팀원 배정(이하 현장은 소장이 전원 평가)."""
+    """20명 초과 현장에 팀장 계정 발급 및 팀원 배정(이하 현장은 소장이 전원 평가)."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     tmp = await _save_upload(file, period.id)

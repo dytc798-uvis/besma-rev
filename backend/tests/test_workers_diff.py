@@ -1,11 +1,10 @@
-from pathlib import Path
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.database import Base
 from app.modules.workers.models import Employment, Person
 from app.modules.workers.service import diff_employees_from_path
+from conftest import SAMPLE_RAW_DIR
 
 
 def _setup_db(tmp_engine) -> Session:
@@ -19,7 +18,7 @@ def test_workers_diff_new_and_updated(tmp_path):
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     db = _setup_db(engine)
 
-    base_dir = Path("d:/besma-rev/docs/sample/site_import/raw")
+    base_dir = SAMPLE_RAW_DIR
 
     # baseline import: employees_raw.xlsx -> create Persons from baseline file
     baseline_path = base_dir / "employees_raw.xlsx"

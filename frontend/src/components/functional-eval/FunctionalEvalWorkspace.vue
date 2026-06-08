@@ -102,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import EvalAssessmentSheet from "@/components/functional-eval/EvalAssessmentSheet.vue";
 import type { Criterion } from "@/components/functional-eval/EvalAssessmentSheet.vue";
 import { useMobileViewport } from "@/composables/useMobileViewport";
@@ -141,10 +141,13 @@ const props = defineProps<{
   periodClosed: boolean;
   reload: () => Promise<void>;
   focusWorkerId: number | null;
+  /** false면 마운트 시 자동 선택하지 않음(현장 명단 → 평가 시작 흐름) */
+  autoPickOnMount?: boolean;
 }>();
 
 const emit = defineEmits<{
   "request-safety": [workerId: number];
+  "safety-saved": [worker: EvalWorker];
 }>();
 
 const { isMobileViewport } = useMobileViewport();
@@ -273,6 +276,10 @@ async function saveEval(advanceOnMobile: boolean) {
       return;
     }
 
+    if (props.evalType === "SAFETY" && updated) {
+      emit("safety-saved", updated);
+    }
+
     if (advanceOnMobile && isMobileViewport.value) {
       const next = nextIncompleteWorker(savedId);
       if (next) {
@@ -297,6 +304,7 @@ async function pickInitialWorker() {
       return;
     }
   }
+  if (props.autoPickOnMount === false) return;
   if (!isMobileViewport.value && filteredWorkers.value.length) {
     const firstIncomplete = filteredWorkers.value.find((w) => !isFullyComplete(w));
     await selectWorker(firstIncomplete ?? filteredWorkers.value[0]);
@@ -306,6 +314,17 @@ async function pickInitialWorker() {
 onMounted(() => {
   void pickInitialWorker();
 });
+
+watch(
+  () => props.focusWorkerId,
+  (id) => {
+    if (id == null) return;
+    const focused = props.workers.find((w) => w.id === id);
+    if (focused && evalWorker.value?.id !== id) {
+      void selectWorker(focused);
+    }
+  },
+);
 </script>
 
 <style scoped>

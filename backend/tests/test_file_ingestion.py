@@ -1,11 +1,10 @@
-from pathlib import Path
-
 import pytest
 
 from app.utils.file_ingestion import parse_excel_with_fallback, validate_worker_file_structure
+from conftest import SAMPLE_RAW_DIR
 
 
-ROOT = Path("d:/besma-rev/docs/sample/site_import/raw")
+ROOT = SAMPLE_RAW_DIR
 
 
 def test_parse_xlsx_employees():

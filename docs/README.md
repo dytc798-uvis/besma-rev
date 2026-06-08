@@ -79,7 +79,7 @@ backend 기준:
 
 ## 5. 로컬 MVP 실행(BAT)
 
-루트(`D:\besma-rev`)에서 아래 BAT를 사용하면 된다.
+루트(`d:\JSI\besma-rev`)에서 아래 BAT를 사용하면 된다.
 
 - `run_local_mvp.bat`
   - 백엔드: `http://127.0.0.1:8001`

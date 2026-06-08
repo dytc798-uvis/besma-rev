@@ -15,7 +15,7 @@
 ## 1단계: 압축 해제
 
 ```
-besma-rev.zip 해제 -> D:\besma-rev  (또는 원하는 폴더)
+besma-rev.zip 해제 -> `d:\JSI\besma-rev`  (백업은 `D:\(Backup) besma-rev`)
 ```
 
 ---
@@ -204,9 +204,9 @@ cd backend
 powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1
 ```
 
-- 기본값: RepoRoot `D:\besma-rev`, SSH 키 `%USERPROFILE%\Downloads\besma-key.pem`
+- 기본값: RepoRoot `d:\JSI\besma-rev`, SSH 키 `%USERPROFILE%\Downloads\besma-key.pem`
 - 동작: (선택) 프론트 빌드 검증 → `git push` → 서버에서 `git pull` + `deploy_backend.sh`
-- 키가 다른 경로면: `-SshKeyPath "D:\besma-rev\besma-key.pem"` 등
+- 키가 다른 경로면: `-SshKeyPath "d:\JSI\besma-rev\.secrets\besma-key.pem"` 등
 - 상세: `deploy/PRODUCTION_DEPLOY_RUNBOOK.md`, `deploy/BACKEND_OPERATIONS.md`
 
 ### 프론트엔드(Vercel) 운영 배포
@@ -220,7 +220,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_all.ps1
 VERCEL_DEPLOY_SCOPE=sangik-jungs-projects
 VERCEL_DEPLOY_PROJECT=besma-rev
 VERCEL_DEPLOY_ROOT=frontend
-VERCEL_DEPLOY_REPO_ROOT=D:\besma-rev
+VERCEL_DEPLOY_REPO_ROOT=d:\JSI\besma-rev
 ```
 
 배포 명령:
@@ -233,7 +233,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_frontend_ver
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\deploy_frontend_vercel.ps1 `
-  -RepoRoot "D:\besma-rev" -Scope "sangik-jungs-projects" -Project "besma-rev" -RootDirectory "frontend"
+  -RepoRoot "d:\JSI\besma-rev" -Scope "sangik-jungs-projects" -Project "besma-rev" -RootDirectory "frontend"
 ```
 
 최초 로그인까지 같이 할 때:
