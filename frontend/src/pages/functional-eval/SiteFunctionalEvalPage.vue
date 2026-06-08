@@ -7,7 +7,15 @@
           <span v-if="evaluator" :class="['evaluator-badge', evaluatorBadgeClass]">{{ evaluatorHeadline }}</span>
           마감일 <strong>{{ period?.deadline_date || "—" }}</strong>
           <span v-if="period?.last_attendance_date"> · 출역 {{ period.last_attendance_date }} ({{ workers.length }}명)</span>
-          <span v-if="!period?.is_closed" class="incomplete-count">미평가 {{ incompleteCount }}명</span>
+        <button
+          v-if="!period?.is_closed"
+          class="incomplete-count"
+          type="button"
+          :disabled="!canStartFromIncomplete"
+          @click="startEvaluationFromIncomplete"
+        >
+          미평가 {{ incompleteCount }}명
+        </button>
           <span v-if="period?.is_closed" class="badge closed">마감</span>
           <span v-else class="badge open">진행</span>
         </p>
@@ -422,6 +430,13 @@ const incompleteCount = computed(() =>
   approval.value?.incomplete_count ?? countIncompleteWorkers(rosterSource.value),
 );
 
+const canStartFromIncomplete = computed(() =>
+  !Boolean(period?.value?.is_closed)
+  && !evaluationLocked.value
+  && workers.value.length > 0
+  && incompleteCount.value > 0,
+);
+
 const evalWorkerIds = computed(() => new Set(workers.value.map((w) => w.id)));
 
 const isManager = computed(() => evaluator.value?.role === "MANAGER");
@@ -476,6 +491,11 @@ function assignmentLabel(w: Worker): string {
 
 function canEvaluateWorker(w: Worker): boolean {
   return evalWorkerIds.value.has(w.id) && !evaluationLocked.value && !period.value?.is_closed;
+}
+
+function startEvaluationFromIncomplete() {
+  if (!canStartFromIncomplete.value) return;
+  startEvaluation();
 }
 
 function canOpenHistory(w: Worker): boolean {
@@ -844,6 +864,18 @@ onMounted(async () => {
   font-size: 13px;
   font-weight: 600;
   color: #b45309;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  text-decoration: underline;
+  line-height: 1.2;
+}
+
+.incomplete-count:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  text-decoration: none;
 }
 
 .evaluator-badge {
