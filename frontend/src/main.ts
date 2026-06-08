@@ -7,6 +7,8 @@ import { useAuthStore } from "./stores/auth";
 import "./tailwind.css";
 import "./styles.css";
 import "./styles/hq-stitch.css";
+import "./styles/functional-eval-menu.css";
+import "./styles/new-site-deployment-menu.css";
 
 async function bootstrap() {
   const app = createApp(App);

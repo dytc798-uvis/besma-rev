@@ -12,9 +12,10 @@ from fastapi.responses import StreamingResponse
 from app.core.auth import DbDep
 from app.core.enums import Role
 from app.core.permissions import CurrentUserDep, assert_hq_safe_workspace
-from app.modules.functional_eval import service
+from app.modules.functional_eval import approval_workflow, service
 from app.modules.functional_eval.models import FunctionalEvalPeriod
 from app.modules.functional_eval.schemas import (
+    FunctionalEvalApprovalReject,
     FunctionalEvalAssessmentSave,
     FunctionalEvalPeriodDeadlineUpdate,
     FunctionalEvalSanctionCreate,
@@ -149,6 +150,8 @@ def save_worker_assessment(
             raise HTTPException(status_code=400, detail=code) from exc
         if code in {"WORKER_NOT_ON_ATTENDANCE", "NO_ATTENDANCE_UPLOAD"}:
             raise HTTPException(status_code=400, detail="당일 출역 명단에 없거나 출역일보가 반영되지 않았습니다.") from exc
+        if code == "SITE_APPROVAL_LOCKED":
+            raise HTTPException(status_code=409, detail="승인 진행 중이라 평가를 수정할 수 없습니다.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return {"assessment": result}
 
@@ -186,11 +189,152 @@ def list_my_site_workers(db: DbDep, current_user: CurrentUserDep):
     message = None
     if not period_payload.get("last_attendance_date"):
         message = "출역일보가 아직 반영되지 않았습니다. 본사에 업로드를 요청하세요."
+    site_code = service._site_code_for_user(current_user, db)
+    site_overview = service.list_site_overview_for_manager(db, current_user, period)
+    approval = service.build_site_approval_payload(db, period, site_code)
     return {
         "period": period_payload,
         "items": items,
+        "site_overview": site_overview,
+        "approval": approval,
+        "evaluator": service.serialize_evaluator_session(db, current_user, period),
         "attendance_message": message,
     }
+
+
+@router.post("/my-site/approval/submit")
+def submit_site_approval(db: DbDep, current_user: CurrentUserDep):
+    """소장 — 현장 전체 평가 승인(안전보건실 검토 요청)."""
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    site_code = service._site_code_for_user(current_user, db)
+    if not service._is_primary_site_evaluator(db, current_user, site_code):
+        raise HTTPException(status_code=403, detail="소장만 현장 승인할 수 있습니다.")
+    summary = service.serialize_site_approval_summary(db, period, site_code)
+    try:
+        approval = approval_workflow.submit_site_approval(
+            db,
+            period=period,
+            site_code=site_code,
+            user=current_user,
+            incomplete_count=summary["incomplete_count"],
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "INCOMPLETE_EVALUATIONS":
+            raise HTTPException(
+                status_code=400,
+                detail="전원 평가(기능+안전)가 완료되어야 소장 승인할 수 있습니다.",
+            ) from exc
+        if code == "INVALID_APPROVAL_TRANSITION":
+            raise HTTPException(status_code=409, detail="이미 승인 요청되었거나 처리 중입니다.") from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+    return {"approval": approval}
+
+
+@router.get("/hq/approvals/pending")
+def list_hq_pending_approvals(db: DbDep, current_user: CurrentUserDep):
+    """안전보건실 — 소장 승인 완료 현장 목록."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    return {
+        "period": service.serialize_period(period, db),
+        "items": approval_workflow.list_pending_hq_approvals(db, period),
+    }
+
+
+@router.post("/hq/approvals/{site_code}/approve")
+def approve_site_hq(site_code: str, db: DbDep, current_user: CurrentUserDep):
+    """안전보건실 승인."""
+    assert_hq_safe_workspace(current_user)
+    try:
+        approval_workflow.assert_hq_approver(current_user)
+        period = service.get_or_create_active_period(db)
+        approval = approval_workflow.approve_hq(db, period=period, site_code=site_code.strip(), user=current_user)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "INVALID_APPROVAL_TRANSITION":
+            raise HTTPException(status_code=409, detail="소장 승인 대기 상태가 아닙니다.") from exc
+        if code == "HQ_APPROVER_ONLY":
+            raise HTTPException(status_code=403, detail="안전보건실 권한이 필요합니다.") from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+    return {"approval": approval}
+
+
+@router.post("/hq/approvals/{site_code}/reject")
+def reject_site_hq(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep, current_user: CurrentUserDep):
+    """안전보건실 반려."""
+    assert_hq_safe_workspace(current_user)
+    try:
+        approval_workflow.assert_hq_approver(current_user)
+        period = service.get_or_create_active_period(db)
+        approval = approval_workflow.reject_approval(
+            db,
+            period=period,
+            site_code=site_code.strip(),
+            user=current_user,
+            stage="HQ",
+            note=body.note,
+        )
+    except ValueError as exc:
+        if str(exc) == "INVALID_APPROVAL_TRANSITION":
+            raise HTTPException(status_code=409, detail="반려할 수 없는 상태입니다.") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"approval": approval}
+
+
+@router.get("/hq/ceo-approvals/pending")
+def list_ceo_pending_approvals(db: DbDep, current_user: CurrentUserDep):
+    """대표이사 — 안전보건실 승인 완료 현장 목록."""
+    try:
+        approval_workflow.assert_ceo_approver(current_user)
+    except ValueError as exc:
+        if str(exc) == "CEO_APPROVER_ONLY":
+            raise HTTPException(status_code=403, detail="대표이사(최고관리자) 권한이 필요합니다.") from exc
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    period = service.get_or_create_active_period(db)
+    return {
+        "period": service.serialize_period(period, db),
+        "items": approval_workflow.list_pending_ceo_approvals(db, period),
+    }
+
+
+@router.post("/hq/ceo-approvals/{site_code}/approve")
+def approve_site_ceo(site_code: str, db: DbDep, current_user: CurrentUserDep):
+    """대표이사 최종 승인."""
+    try:
+        approval_workflow.assert_ceo_approver(current_user)
+        period = service.get_or_create_active_period(db)
+        approval = approval_workflow.approve_ceo(db, period=period, site_code=site_code.strip(), user=current_user)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "INVALID_APPROVAL_TRANSITION":
+            raise HTTPException(status_code=409, detail="안전보건실 승인 대기 상태가 아닙니다.") from exc
+        if code == "CEO_APPROVER_ONLY":
+            raise HTTPException(status_code=403, detail="대표이사(최고관리자) 권한이 필요합니다.") from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+    return {"approval": approval}
+
+
+@router.post("/hq/ceo-approvals/{site_code}/reject")
+def reject_site_ceo(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep, current_user: CurrentUserDep):
+    """대표이사 반려."""
+    try:
+        approval_workflow.assert_ceo_approver(current_user)
+        period = service.get_or_create_active_period(db)
+        approval = approval_workflow.reject_approval(
+            db,
+            period=period,
+            site_code=site_code.strip(),
+            user=current_user,
+            stage="CEO",
+            note=body.note,
+        )
+    except ValueError as exc:
+        if str(exc) == "INVALID_APPROVAL_TRANSITION":
+            raise HTTPException(status_code=409, detail="반려할 수 없는 상태입니다.") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"approval": approval}
 
 
 @router.get("/workers/{worker_id}/history")
@@ -222,7 +366,7 @@ def worker_mileage_placeholder(worker_id: int, db: DbDep, current_user: CurrentU
     if worker is None:
         raise HTTPException(status_code=404, detail="Worker not found")
     try:
-        service._assert_worker_access(current_user, worker)
+        service._assert_worker_access(db, current_user, worker)
     except ValueError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return service.serialize_mileage_placeholder(worker)
@@ -397,13 +541,21 @@ async def attendance_apply(
     return result
 
 
+@router.get("/hq/evaluator-accounts")
+def list_evaluator_accounts(db: DbDep, current_user: CurrentUserDep):
+    """소장·팀장(중간 평가자) 계정 목록 — 출역 반영·배정 현황 (본사 배포용)."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    return service.list_hq_evaluator_accounts(db, period)
+
+
 @router.post("/hq/team-leaders/apply")
 async def apply_team_leaders(
     db: DbDep,
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ):
-    """20명 초과 현장에 팀장 계정 발급 및 팀원 배정(이하 현장은 소장이 전원 평가)."""
+    """10명 초과 현장에 팀장 계정 발급 및 팀원 배정(이하 현장은 소장이 전원 평가)."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     tmp = await _save_upload(file, period.id)

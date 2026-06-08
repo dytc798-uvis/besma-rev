@@ -164,13 +164,13 @@ function pickGrade(criterionId: string, gradeKey: string) {
 .eval-panel--desktop {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  flex: 1;
+  flex: 0 1 auto;
+  width: 100%;
   background: #fff;
   border-radius: 12px;
   border: 1px solid #e5e7eb;
   padding: 16px 20px 20px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .eval-panel--mobile.panel,
@@ -200,9 +200,8 @@ function pickGrade(criterionId: string, gradeKey: string) {
 }
 
 .criteria-desktop {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  overflow: visible;
   padding-right: 4px;
 }
 

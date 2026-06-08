@@ -37,6 +37,116 @@
       </div>
     </section>
 
+    <section class="panel evaluator-accounts-panel">
+      <div class="evaluator-accounts-head">
+        <div>
+          <h2>중간 평가자(팀장) 계정</h2>
+          <p class="panel-sub">
+            출역 {{ evaluatorAccounts?.split_threshold ?? 10 }}명 초과 현장은 팀장이 팀원을 평가합니다. 소장은 직영 평가 후 현장 전체를 승인합니다.
+          </p>
+        </div>
+        <div class="evaluator-accounts-actions">
+          <button class="stitch-btn-secondary" type="button" :disabled="loadingEvaluatorAccounts" @click="loadEvaluatorAccounts">
+            {{ loadingEvaluatorAccounts ? "조회 중…" : "계정 목록 조회" }}
+          </button>
+          <button
+            class="stitch-btn-secondary"
+            type="button"
+            :disabled="!evaluatorAccountItems.length"
+            @click="downloadEvaluatorAccountsTxt"
+          >
+            TXT 다운로드
+          </button>
+        </div>
+      </div>
+      <p v-if="evaluatorAccountsSummary" class="meta success">{{ evaluatorAccountsSummary }}</p>
+      <div v-if="evaluatorAccountItems.length" class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>현장</th>
+              <th>역할</th>
+              <th>이름</th>
+              <th>로그인 ID</th>
+              <th>담당</th>
+              <th>분산</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in evaluatorAccountItems" :key="`${row.site_code}-${row.login_id}`">
+              <td>{{ row.site_alias || row.site_code }} · {{ row.site_name }}</td>
+              <td>{{ row.role }}</td>
+              <td>{{ row.name }}</td>
+              <td><code>{{ row.login_id }}</code></td>
+              <td>{{ row.assigned_worker_count || "—" }}</td>
+              <td>{{ row.team_split_active ? "팀장분산" : "소장전원" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel approval-queue-panel">
+      <h2>승인 처리</h2>
+      <p class="panel-sub">소장 승인 → 안전보건실 → 대표이사(부현대표-김홍수) 최종 승인 순서입니다.</p>
+      <div class="approval-queue-actions">
+        <button class="stitch-btn-secondary" type="button" :disabled="loadingHqApprovals" @click="loadHqApprovals">
+          {{ loadingHqApprovals ? "조회 중…" : "승인 대기 새로고침" }}
+        </button>
+      </div>
+      <h3>안전보건실 검토 대기 (소장 승인 완료)</h3>
+      <div v-if="hqPendingApprovals.length" class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>현장</th>
+              <th>완료</th>
+              <th>제출</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in hqPendingApprovals" :key="row.site_code">
+              <td>{{ row.site_code }}</td>
+              <td>{{ row.site_complete_workers }}/{{ row.site_total_workers }}</td>
+              <td>{{ row.site_submitted_at || "—" }}</td>
+              <td class="actions-inline">
+                <button class="stitch-btn-primary" type="button" @click="approveHq(row.site_code)">승인</button>
+                <button class="stitch-btn-secondary" type="button" @click="rejectHq(row.site_code)">반려</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="muted">대기 중인 현장이 없습니다.</p>
+
+      <h3>대표이사 최종 승인 대기</h3>
+      <div v-if="ceoPendingApprovals.length" class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>현장</th>
+              <th>완료</th>
+              <th>본사승인</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in ceoPendingApprovals" :key="row.site_code">
+              <td>{{ row.site_code }}</td>
+              <td>{{ row.site_complete_workers }}/{{ row.site_total_workers }}</td>
+              <td>{{ row.hq_approved_at || "—" }}</td>
+              <td class="actions-inline">
+                <button class="stitch-btn-primary" type="button" @click="approveCeo(row.site_code)">최종 승인</button>
+                <button class="stitch-btn-secondary" type="button" @click="rejectCeo(row.site_code)">반려</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-else class="muted">대기 중인 현장이 없습니다.</p>
+    </section>
+
     <!-- 현장 목록 -->
     <section v-if="!selectedSite" class="panel">
       <h2>현장별 평가 진행</h2>
@@ -139,7 +249,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in evalRows" :key="row.worker_id">
+              <tr v-for="row in evalRows" :key="row.worker_id" :class="row.needs_highlight ? 'row-highlight--alert' : ''">
                 <td>{{ row.name }}</td>
                 <td><span :class="gradeClass(row.safety_grade)">{{ row.safety_grade }}</span></td>
                 <td><span :class="gradeClass(row.functional_grade)">{{ row.functional_grade }}</span></td>
@@ -195,7 +305,7 @@
 
         <h3>② 출역일보 (ERP xls/xlsx) — 매일 1회</h3>
         <p class="panel-sub">
-          ① 반영 후 업로드. 20명 이하 현장은 소장이 전원 평가, 21명 초과는 팀장 열 기준 <code>별칭-팀장명</code> 계정 자동 발급.
+          ① 반영 후 업로드. 10명 이하 현장은 소장이 전원 평가, 11명 초과는 직영=소장·팀원=팀장 평가 후 소장 전체 승인.
         </p>
         <div class="row import-row">
           <input ref="attendanceInput" type="file" accept=".xlsx,.xls" @change="onAttendanceFileChange" />
@@ -253,9 +363,9 @@
         </div>
         <p v-if="applyResult" class="meta success">{{ applyResult }}</p>
 
-        <h3>팀장 분산평가 계정 반영 (20명 초과 현장)</h3>
+        <h3>팀장 분산평가 계정 반영 (10명 초과 현장)</h3>
         <p class="panel-sub">
-          출역 20명 이하 현장은 소장이 전원 평가합니다. 21명 초과만 팀장 계정(별칭-이름, PW: 주민번호 앞 6자리) 발급·배정(TXT/XLSX 또는 출역 자동 반영).
+          출역 10명 이하 현장은 소장이 전원 평가합니다. 11명 초과만 팀장 계정(별칭-이름, PW: 주민번호 앞 6자리) 발급·배정(TXT/XLSX 또는 출역 자동 반영).
         </p>
         <div class="row import-row">
           <input ref="teamLeaderInput" type="file" accept=".txt,.xlsx,.xls" @change="onTeamLeaderFileChange" />
@@ -332,6 +442,7 @@ interface EvalRow {
   functional_grade: string;
   safety_grade: string;
   remark: string;
+  needs_highlight?: boolean;
 }
 
 interface DiffResult {
@@ -346,6 +457,26 @@ interface TeamLeaderRow {
   login_id: string;
   initial_password: string;
   team_worker_count: number;
+}
+
+interface EvaluatorAccountRow {
+  site_code: string;
+  site_alias: string;
+  site_name: string;
+  name: string;
+  login_id: string;
+  role: string;
+  assigned_worker_count: number;
+  team_split_active: boolean;
+}
+
+interface EvaluatorAccountsPayload {
+  split_threshold: number;
+  last_attendance_date?: string | null;
+  manager_count: number;
+  team_leader_count: number;
+  split_site_count: number;
+  items: EvaluatorAccountRow[];
 }
 
 const period = ref<Period | null>(null);
@@ -397,6 +528,17 @@ const teamLeaderInput = ref<HTMLInputElement | null>(null);
 const applyingTeamLeaders = ref(false);
 const teamLeaderResult = ref("");
 const teamLeaderRows = ref<TeamLeaderRow[]>([]);
+const loadingEvaluatorAccounts = ref(false);
+const evaluatorAccounts = ref<EvaluatorAccountsPayload | null>(null);
+
+const evaluatorAccountItems = computed(() => evaluatorAccounts.value?.items ?? []);
+
+const evaluatorAccountsSummary = computed(() => {
+  const p = evaluatorAccounts.value;
+  if (!p) return "";
+  const date = p.last_attendance_date ? ` · 출역 ${p.last_attendance_date}` : "";
+  return `소장 ${p.manager_count}명 · 팀장 ${p.team_leader_count}명 · 팀장분산 현장 ${p.split_site_count}곳${date}`;
+});
 
 const filteredSites = computed(() => {
   let list = sites.value;
@@ -418,9 +560,85 @@ function gradeClass(grade: string) {
   if (grade === "S" || grade === "우수") return "grade s";
   if (grade === "A") return "grade a";
   if (grade === "B" || grade === "보통") return "grade b";
-  if (grade === "C" || grade === "부족") return "grade c";
-  if (grade === "D" || grade === "최하") return "grade d";
+  if (grade === "C" || grade === "D" || grade === "부족" || grade === "최하") return "grade c";
   return "grade done";
+}
+
+const loadingHqApprovals = ref(false);
+const hqPendingApprovals = ref<Record<string, unknown>[]>([]);
+const ceoPendingApprovals = ref<Record<string, unknown>[]>([]);
+
+async function loadHqApprovals() {
+  loadingHqApprovals.value = true;
+  try {
+    const [hqRes, ceoRes] = await Promise.all([
+      api.get("/functional-eval/hq/approvals/pending"),
+      api.get("/functional-eval/hq/ceo-approvals/pending"),
+    ]);
+    hqPendingApprovals.value = hqRes.data.items || [];
+    ceoPendingApprovals.value = ceoRes.data.items || [];
+  } catch {
+    hqPendingApprovals.value = [];
+    ceoPendingApprovals.value = [];
+  } finally {
+    loadingHqApprovals.value = false;
+  }
+}
+
+async function approveHq(siteCode: string) {
+  if (!window.confirm(`${siteCode} 현장을 안전보건실에서 승인하시겠습니까?`)) return;
+  await api.post(`/functional-eval/hq/approvals/${siteCode}/approve`);
+  await loadHqApprovals();
+}
+
+async function rejectHq(siteCode: string) {
+  const note = window.prompt("반려 사유 (선택)") || "";
+  await api.post(`/functional-eval/hq/approvals/${siteCode}/reject`, { note });
+  await loadHqApprovals();
+}
+
+async function approveCeo(siteCode: string) {
+  if (!window.confirm(`${siteCode} 현장을 대표이사 최종 승인하시겠습니까?`)) return;
+  await api.post(`/functional-eval/hq/ceo-approvals/${siteCode}/approve`);
+  await loadHqApprovals();
+}
+
+async function rejectCeo(siteCode: string) {
+  const note = window.prompt("반려 사유 (선택)") || "";
+  await api.post(`/functional-eval/hq/ceo-approvals/${siteCode}/reject`, { note });
+  await loadHqApprovals();
+}
+
+async function loadEvaluatorAccounts() {
+  loadingEvaluatorAccounts.value = true;
+  try {
+    const res = await api.get("/functional-eval/hq/evaluator-accounts");
+    evaluatorAccounts.value = res.data;
+  } catch {
+    evaluatorAccounts.value = null;
+    loadError.value = "평가자 계정 목록을 불러오지 못했습니다.";
+  } finally {
+    loadingEvaluatorAccounts.value = false;
+  }
+}
+
+function downloadEvaluatorAccountsTxt() {
+  const items = evaluatorAccountItems.value;
+  if (!items.length) return;
+  const lines = [
+    "현장코드\t별칭\t현장명\t역할\t이름\t로그인ID\t담당인원",
+    ...items.map(
+      (r) =>
+        `${r.site_code}\t${r.site_alias}\t${r.site_name}\t${r.role}\t${r.name}\t${r.login_id}\t${r.assigned_worker_count}`,
+    ),
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `기능인제_평가자계정_${new Date().toISOString().slice(0, 10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function loadOverview() {
@@ -502,7 +720,7 @@ async function applySiteAggregate() {
     const res = await api.post("/functional-eval/hq/site-aggregate/apply", form);
     period.value = res.data.period;
     aggregateAccountRows.value = Array.isArray(res.data.account_rows) ? res.data.account_rows : [];
-    aggregateResult.value = `현장 ${res.data.site_count}곳 반영 (신규 Site ${res.data.sites_upserted})`;
+    aggregateResult.value = `현장 ${res.data.site_count}곳 — 신규 ${res.data.sites_added ?? 0} · 변경 ${res.data.sites_updated ?? 0} · 유지 ${res.data.sites_unchanged ?? 0}`;
     await loadOverview();
   } catch {
     aggregateResult.value = "월별현장별집계 반영에 실패했습니다. 파일 형식을 확인하세요.";
@@ -529,7 +747,8 @@ async function applyAttendance() {
     period.value = res.data.period;
     attendanceAccountRows.value = Array.isArray(res.data.account_rows) ? res.data.account_rows : [];
     const skipped = res.data.skipped_no_registry ?? res.data.skipped_no_roster ?? 0;
-    attendanceResult.value = `출역일 ${res.data.work_date} · 반영 ${res.data.linked_workers}명 · 계정 ${res.data.created_accounts ?? 0}건 (집계 미매칭 ${skipped}명)`;
+    const diff = `추가 ${res.data.diff_added ?? 0} · 변경 ${res.data.diff_updated ?? 0} · 유지 ${res.data.diff_unchanged ?? 0} · 제외 ${res.data.diff_removed ?? 0}`;
+    attendanceResult.value = `출역일 ${res.data.work_date} · 반영 ${res.data.linked_workers}명 (${diff}) · 계정 ${res.data.created_accounts ?? 0}건 (집계 미매칭 ${skipped}명)`;
     await loadOverview();
   } catch {
     attendanceResult.value = "출역일보 반영에 실패했습니다. 파일 형식을 확인하세요.";
@@ -651,10 +870,18 @@ async function downloadSanctionExcel() {
   URL.revokeObjectURL(url);
 }
 
-onMounted(loadOverview);
+onMounted(async () => {
+  await loadOverview();
+  await loadHqApprovals();
+});
 </script>
 
 <style scoped>
+.approval-queue-panel h3 { margin: 16px 0 8px; font-size: 14px; }
+.approval-queue-actions { margin-bottom: 10px; }
+.actions-inline { display: flex; gap: 6px; flex-wrap: wrap; }
+.evaluator-accounts-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.evaluator-accounts-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .fe-hq-page { display: flex; flex-direction: column; gap: 16px; }
 .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -709,4 +936,6 @@ onMounted(loadOverview);
   font-weight: 700;
 }
 .load-error { color: #991b1b; background: #fef2f2; padding: 10px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 8px; }
+.data-table tbody tr.row-highlight--alert { background: #fef2f2; }
+.data-table tbody tr.row-highlight--alert:hover { background: #fee2e2; }
 </style>

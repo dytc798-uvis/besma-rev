@@ -5,6 +5,8 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
+from unittest.mock import patch
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -149,7 +151,9 @@ def test_functional_eval_sanction_flow(tmp_path: Path):
 
     workers_res = client.get("/functional-eval/my-site/workers")
     assert workers_res.status_code == 200
-    assert workers_res.json()["items"][0]["name"] == "홍길동"
+    workers_body = workers_res.json()
+    assert workers_body["items"][0]["name"] == "홍길동"
+    assert workers_body["evaluator"]["role"] == "MANAGER"
 
     first = client.post(
         "/functional-eval/sanctions",
@@ -284,7 +288,7 @@ def test_functional_eval_assessment_flow(tmp_path: Path):
     saved = save_res.json()["assessment"]
     assert saved["is_complete"] is True
     assert saved["total_score"] > 0
-    assert saved["grade_code"] in {"S", "A", "B", "C", "D"}
+    assert saved["grade_code"] in {"S", "A", "B", "C"}
 
     workers_res = client.get("/functional-eval/my-site/workers")
     assert workers_res.status_code == 200
@@ -412,3 +416,203 @@ def test_hq_eval_summary(tmp_path: Path):
     export_res = hq_client.get("/functional-eval/hq/export/evaluations")
     assert export_res.status_code == 200
     assert "spreadsheetml" in export_res.headers.get("content-type", "")
+
+
+def test_team_leader_evaluator_session_and_filter(tmp_path: Path):
+    db_file = tmp_path / "fe_team_leader.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.functional_eval import models as functional_eval_models  # noqa: F401
+    from app.modules.functional_eval.models import FunctionalEvalSiteRegistry
+    from app.modules.workers import models as worker_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    site = Site(site_code="24025", site_name="대우청라")
+    setup_db.add(site)
+    setup_db.flush()
+    setup_db.add(
+        FunctionalEvalSiteRegistry(
+            site_code="24025",
+            site_alias="대우청라",
+            manager_name="박명식",
+            manager_login_id="대우청라-박명식",
+            erp_site_label="청라C18",
+        )
+    )
+    setup_db.add(
+        User(
+            id=30,
+            name="박명식",
+            login_id="대우청라-박명식",
+            password_hash="x",
+            role=Role.SITE_FUNCTIONAL_EVAL,
+            ui_type=UIType.SITE,
+            site_id=site.id,
+        )
+    )
+    setup_db.add(
+        User(
+            id=31,
+            name="김팀장",
+            login_id="대우청라-김팀장",
+            password_hash="x",
+            role=Role.SITE_FUNCTIONAL_EVAL,
+            ui_type=UIType.SITE,
+            site_id=site.id,
+        )
+    )
+    period = FunctionalEvalPeriod(title="test", deadline_date=date(2026, 12, 31), is_active=True)
+    setup_db.add(period)
+    setup_db.flush()
+    w1 = FunctionalEvalWorker(
+        period_id=period.id,
+        site_code="24025",
+        row_no=1,
+        name="근로자A",
+        rrn_hash=hashlib.sha256(b"a").hexdigest(),
+        assigned_evaluator_login_id="대우청라-김팀장",
+        is_site_manager=False,
+        is_active=True,
+    )
+    w2 = FunctionalEvalWorker(
+        period_id=period.id,
+        site_code="24025",
+        row_no=2,
+        name="근로자B",
+        rrn_hash=hashlib.sha256(b"b").hexdigest(),
+        assigned_evaluator_login_id="대우청라-박명식",
+        is_site_manager=False,
+        is_active=True,
+    )
+    setup_db.add_all([w1, w2])
+    setup_db.flush()
+    _seed_attendance(setup_db, period, w1)
+    _seed_attendance(setup_db, period, w2, work_date=date(2026, 5, 29))
+    site_id = site.id
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(functional_eval_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    split_patch = patch("app.modules.functional_eval.service.TEAM_LEADER_SPLIT_THRESHOLD", 1)
+
+    manager = SimpleNamespace(
+        id=30,
+        role=Role.SITE_FUNCTIONAL_EVAL,
+        ui_type=UIType.SITE,
+        site_id=site_id,
+        login_id="대우청라-박명식",
+        name="박명식",
+    )
+    leader = SimpleNamespace(
+        id=31,
+        role=Role.SITE_FUNCTIONAL_EVAL,
+        ui_type=UIType.SITE,
+        site_id=site_id,
+        login_id="대우청라-김팀장",
+        name="김팀장",
+    )
+    hq = SimpleNamespace(id=40, role=Role.HQ_SAFE, ui_type=UIType.HQ_SAFE, site_id=None, login_id="hq1")
+
+    with split_patch:
+        app.dependency_overrides[get_current_user_with_bypass] = lambda: manager
+        manager_client = TestClient(app)
+        manager_res = manager_client.get("/functional-eval/my-site/workers")
+        assert manager_res.status_code == 200
+        manager_body = manager_res.json()
+        assert manager_body["evaluator"]["role"] == "MANAGER"
+        assert len(manager_body["items"]) == 1
+        assert manager_body["items"][0]["name"] == "근로자B"
+
+        app.dependency_overrides[get_current_user_with_bypass] = lambda: leader
+        leader_client = TestClient(app)
+        leader_res = leader_client.get("/functional-eval/my-site/workers")
+        assert leader_res.status_code == 200
+        leader_body = leader_res.json()
+        assert leader_body["evaluator"]["role"] == "TEAM_LEADER"
+        assert leader_body["evaluator"]["assigned_worker_count"] == 1
+        assert [w["name"] for w in leader_body["items"]] == ["근로자A"]
+
+        app.dependency_overrides[get_current_user_with_bypass] = lambda: hq
+        hq_client = TestClient(app)
+        accounts = hq_client.get("/functional-eval/hq/evaluator-accounts")
+        assert accounts.status_code == 200
+        items = accounts.json()["items"]
+        logins = {row["login_id"]: row for row in items}
+        assert logins["대우청라-박명식"]["role"] == "소장"
+        assert logins["대우청라-김팀장"]["role"] == "팀장"
+        assert logins["대우청라-김팀장"]["assigned_worker_count"] == 1
+
+
+def test_ceo_pending_list_allows_ceo_login_id(tmp_path: Path):
+    from app.modules.functional_eval.constants import CEO_EVAL_LOGIN_IDS
+
+    db_file = tmp_path / "fe_ceo_list.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.functional_eval import models as functional_eval_models  # noqa: F401
+    from app.modules.workers import models as worker_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    ceo_login = next(iter(CEO_EVAL_LOGIN_IDS))
+    setup_db = TestingSessionLocal()
+    setup_db.add(
+        User(
+            id=99,
+            name="김홍수",
+            login_id=ceo_login,
+            password_hash="x",
+            role=Role.HQ_SAFE_ADMIN,
+            ui_type=UIType.HQ_SAFE,
+            site_id=None,
+        )
+    )
+    period = FunctionalEvalPeriod(title="test", deadline_date=date(2026, 12, 31), is_active=True)
+    setup_db.add(period)
+    setup_db.flush()
+    from app.modules.functional_eval.approval_workflow import get_or_create_site_approval
+    from app.modules.functional_eval.constants import APPROVAL_STATUS_HQ_APPROVED
+
+    row = get_or_create_site_approval(setup_db, period.id, "24025")
+    row.status = APPROVAL_STATUS_HQ_APPROVED
+    setup_db.commit()
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(functional_eval_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    ceo_user = SimpleNamespace(
+        id=99,
+        role=Role.HQ_SAFE_ADMIN,
+        ui_type=UIType.HQ_SAFE,
+        site_id=None,
+        login_id=ceo_login,
+        name="김홍수",
+    )
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: ceo_user
+    client = TestClient(app)
+    res = client.get("/functional-eval/hq/ceo-approvals/pending")
+    assert res.status_code == 200
+    assert any(item.get("site_code") == "24025" for item in res.json().get("items") or [])

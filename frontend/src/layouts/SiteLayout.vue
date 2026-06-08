@@ -25,6 +25,13 @@
         >
           안전보건 방침 및 목표
         </RouterLink>
+        <RouterLink
+          v-if="showDeploymentMenu"
+          :class="deploymentMenuClass"
+          to="/site/new-site-deployment"
+        >
+          신규현장 배포 현황
+        </RouterLink>
         <p v-if="!isMobileViewport" class="site-menu-section-label">주요업무</p>
         <RouterLink :class="menuLinkClass('risk-library', '/site/risk-library')" :style="menuOrderStyle('risk-library')" to="/site/risk-library">
           <span class="menu-icon" v-if="menuIcon('risk-library')">{{ menuIcon("risk-library") }}</span>
@@ -213,8 +220,13 @@ const SITE_FIXED_MENU_KEYS = [
 const sidebarCollapsed = ref(false);
 const isMobileViewport = ref(false);
 const mobileDrawerOpen = ref(false);
+const showDeploymentMenu = ref(false);
+const deploymentNeedsHighlight = ref(false);
 let unreadTimer: number | null = null;
 const headerSiteLabel = computed(() => (siteName.value ? `현장: ${siteName.value}` : "현장: -"));
+const deploymentMenuClass = computed(() =>
+  deploymentNeedsHighlight.value ? "site-deploy-menu-highlight" : menuLinkClass("new-site-deployment", "/site/new-site-deployment"),
+);
 const PRIMARY_MENUS = [
   "mobile",
   "safety-policy-goals",
@@ -231,6 +243,7 @@ onMounted(() => {
   window.addEventListener("besma-notice-ticker-read", handleNoticeTickerRead as EventListener);
   window.addEventListener("besma-doc-comment-ticker-ack", handleDocCommentTickerAck as EventListener);
   window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
+  window.addEventListener("besma-nsd-updated", loadDeploymentSiteStatus as EventListener);
   unreadTimer = window.setInterval(() => {
     void Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDocCommentTicker()]);
   }, 30000);
@@ -321,7 +334,24 @@ async function initializeLayout() {
     await auth.loadMe();
   }
   await Promise.all([loadBadge(), loadSiteName()]);
-  await Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDocCommentTicker(), loadDynamicMenus()]);
+  await Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDocCommentTicker(), loadDynamicMenus(), loadDeploymentSiteStatus()]);
+}
+
+async function loadDeploymentSiteStatus() {
+  if (auth.user?.role !== "SITE") {
+    showDeploymentMenu.value = false;
+    deploymentNeedsHighlight.value = false;
+    return;
+  }
+  try {
+    const res = await api.get("/new-site-deployment/my-site");
+    const item = res.data?.item;
+    showDeploymentMenu.value = Boolean(item);
+    deploymentNeedsHighlight.value = Boolean(item && !item.is_complete);
+  } catch {
+    showDeploymentMenu.value = false;
+    deploymentNeedsHighlight.value = false;
+  }
 }
 
 async function loadBadge() {

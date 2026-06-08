@@ -58,7 +58,9 @@ import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
 import UserGuidePage from "@/pages/common/UserGuidePage.vue";
 import FunctionalEvalLayout from "@/layouts/FunctionalEvalLayout.vue";
 import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPage.vue";
+import SiteNewSiteDeploymentPage from "@/pages/site/SiteNewSiteDeploymentPage.vue";
 import HQFunctionalEvalPage from "@/pages/hq/HQFunctionalEvalPage.vue";
+import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 
 const routes: RouteRecordRaw[] = [
@@ -168,6 +170,7 @@ const routes: RouteRecordRaw[] = [
       },
       { path: "user-guide", name: "hq-safe-user-guide", component: UserGuidePage },
       { path: "functional-eval", name: "hq-safe-functional-eval", component: HQFunctionalEvalPage },
+      { path: "new-site-deployment", name: "hq-safe-new-site-deployment", component: HQNewSiteDeploymentPage },
     ],
   },
   {
@@ -217,6 +220,7 @@ const routes: RouteRecordRaw[] = [
       { path: "opinions", name: "site-opinions", component: OpinionListPage },
       { path: "opinions/:id", name: "site-opinion-detail", component: OpinionDetailPage },
       { path: "user-guide", name: "site-user-guide", component: UserGuidePage },
+      { path: "new-site-deployment", name: "site-new-site-deployment", component: SiteNewSiteDeploymentPage },
     ],
   },
   {
@@ -298,6 +302,19 @@ router.beforeEach((to, _from, next) => {
   }
 
   const role = auth.user?.role || "";
+  const isDeploymentTeam = role === "HQ_BUDGET_ESTIMATE" || role === "HQ_OUTSOURCING_PURCHASE";
+  const goingDeployment = to.path.startsWith("/hq-safe/new-site-deployment");
+  if (
+    auth.isAuthenticated &&
+    isDeploymentTeam &&
+    !goingDeployment &&
+    to.path !== "/change-password" &&
+    to.name !== "login"
+  ) {
+    next({ name: "hq-safe-new-site-deployment" });
+    return;
+  }
+
   const isFunctionalEvalUser = role === "SITE_FUNCTIONAL_EVAL";
   const goingFunctionalEval = to.path.startsWith("/site/functional-eval");
   if (
@@ -392,6 +409,8 @@ router.beforeEach((to, _from, next) => {
       else next();
     } else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
     else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") next({ name: "site-functional-eval" });
+    else if (auth.user?.role === "HQ_BUDGET_ESTIMATE" || auth.user?.role === "HQ_OUTSOURCING_PURCHASE")
+      next({ name: "hq-safe-new-site-deployment" });
     else if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-documents" });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });

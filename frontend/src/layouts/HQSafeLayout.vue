@@ -42,7 +42,21 @@
             <span v-if="unreadCommunicationCount > 0" class="hq-menu-count-badge">{{ unreadCommunicationCount }}</span>
           </RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('safety-education')" to="/hq-safe/safety-education">안전교육 및 안전점검</RouterLink>
-          <RouterLink :style="menuOrderPrimaryStyle('functional-eval')" to="/hq-safe/functional-eval">기능인제 인사고과</RouterLink>
+          <RouterLink
+            class="hq-deploy-menu-highlight"
+            :style="menuOrderPrimaryStyle('new-site-deployment')"
+            to="/hq-safe/new-site-deployment"
+          >
+            신규현장 배포 현황
+            <span v-if="deployIncompleteCount > 0" class="hq-menu-count-badge">{{ deployIncompleteCount }}</span>
+          </RouterLink>
+          <RouterLink
+            class="hq-fe-menu-highlight"
+            :style="menuOrderPrimaryStyle('functional-eval')"
+            to="/hq-safe/functional-eval"
+          >
+            기능인제 인사고과
+          </RouterLink>
           <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink
             v-for="m in dynamicMenus"
@@ -109,6 +123,7 @@ const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([])
 const menuOrderPrimary = ref<Record<string, number>>({});
 const menuOrderSecondary = ref<Record<string, number>>({});
 const canAccessAccidents = computed(() => auth.user?.role === "ACCIDENT_ADMIN");
+const deployIncompleteCount = ref(0);
 
 onMounted(() => {
   if (!auth.user) {
@@ -117,13 +132,16 @@ onMounted(() => {
   loadBadge();
   void loadUnreadCommunications();
   loadDynamicMenus();
+  void loadDeploymentMenuStatus();
   window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   window.addEventListener("besma-hq-communication-read", handleCommunicationRead as EventListener);
+  window.addEventListener("besma-nsd-updated", loadDeploymentMenuStatus as EventListener);
 });
 
 onUnmounted(() => {
   window.removeEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   window.removeEventListener("besma-hq-communication-read", handleCommunicationRead as EventListener);
+  window.removeEventListener("besma-nsd-updated", loadDeploymentMenuStatus as EventListener);
 });
 
 async function loadBadge() {
@@ -148,6 +166,15 @@ async function loadUnreadCommunications() {
     unreadCommunicationCount.value = items.filter((row) => !row.is_read).length;
   } catch {
     unreadCommunicationCount.value = 0;
+  }
+}
+
+async function loadDeploymentMenuStatus() {
+  try {
+    const res = await api.get("/new-site-deployment/menu-status");
+    deployIncompleteCount.value = res.data?.incomplete_count ?? 0;
+  } catch {
+    deployIncompleteCount.value = 0;
   }
 }
 

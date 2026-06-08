@@ -15,13 +15,13 @@
     <aside v-if="!isMobileViewport" class="layout-sidebar">
       <h1>BESMA · 기능인제 인사고과</h1>
       <nav class="layout-menu">
-        <RouterLink to="/site/functional-eval">인사고과</RouterLink>
+        <RouterLink class="fe-menu-highlight" to="/site/functional-eval">인사고과</RouterLink>
       </nav>
     </aside>
     <aside v-else class="layout-sidebar">
       <h1>기능인제</h1>
       <nav class="layout-menu">
-        <RouterLink to="/site/functional-eval" @click="mobileDrawerOpen = false">인사고과·제재</RouterLink>
+        <RouterLink class="fe-menu-highlight" to="/site/functional-eval" @click="mobileDrawerOpen = false">인사고과·제재</RouterLink>
       </nav>
     </aside>
     <section class="layout-content">

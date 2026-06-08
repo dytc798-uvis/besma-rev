@@ -60,6 +60,10 @@ class FunctionalEvalAssessmentSave(BaseModel):
     scores: dict[str, str] = Field(default_factory=dict)
 
 
+class FunctionalEvalApprovalReject(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)
+
+
 class FunctionalEvalAssessmentOut(BaseModel):
     eval_type: str
     scores: dict[str, str]

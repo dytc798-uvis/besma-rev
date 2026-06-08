@@ -13,9 +13,9 @@
         <p class="roster-hint">근로자를 선택하면 {{ shortTitle }} 평가를 입력합니다.</p>
       </div>
       <ul class="roster-list">
-        <li v-for="w in filteredWorkers" :key="w.id">
-          <button type="button" class="roster-item" @click="selectWorker(w)">
-            <span class="roster-no">{{ w.row_no }}</span>
+        <li v-for="(w, idx) in filteredWorkers" :key="w.id">
+          <button type="button" class="roster-item" :class="workerRowHighlightClass(w)" @click="selectWorker(w)">
+            <span class="roster-no">{{ idx + 1 }}</span>
             <span class="roster-name">{{ w.name }}</span>
             <span v-if="badgeLabel(w)" :class="badgeClass(w)">{{ badgeLabel(w) }}</span>
             <span v-else class="pending-dot" aria-label="미평가" />
@@ -35,14 +35,14 @@
           placeholder="이름 검색"
         />
         <ul class="rail-list">
-          <li v-for="w in filteredWorkers" :key="w.id">
+          <li v-for="(w, idx) in filteredWorkers" :key="w.id">
             <button
               type="button"
               class="rail-item"
-              :class="{ active: evalWorker?.id === w.id }"
+              :class="[{ active: evalWorker?.id === w.id }, workerRowHighlightClass(w)]"
               @click="selectWorker(w)"
             >
-              <span class="rail-no">{{ w.row_no }}</span>
+              <span class="rail-no">{{ idx + 1 }}</span>
               <span class="rail-name">{{ w.name }}</span>
               <span v-if="badgeLabel(w)" :class="badgeClass(w)">{{ badgeLabel(w) }}</span>
             </button>
@@ -50,22 +50,33 @@
         </ul>
       </aside>
       <div class="eval-main">
-        <EvalAssessmentSheet
-          v-if="evalWorker && criteria.length"
-          :worker="evalWorker"
-          :title="title"
-          :criteria="criteria"
-          :scores="evalScores"
-          :loading="evalLoading"
-          :saving="evalSaving"
-          :disabled="periodClosed"
-          :error="evalError"
-          variant="desktop"
-          :preview="evalPreview"
-          :save-label="desktopSaveLabel"
-          @save="saveEval(isMobileViewport)"
-          @update:scores="evalScores = $event"
-        />
+        <template v-if="evalWorker && criteria.length">
+          <EvalAssessmentSheet
+            :worker="evalWorker"
+            :title="title"
+            :criteria="criteria"
+            :scores="evalScores"
+            :loading="evalLoading"
+            :saving="evalSaving"
+            :disabled="periodClosed"
+            :error="evalError"
+            variant="desktop"
+            :preview="evalPreview"
+            :save-label="desktopSaveLabel"
+            @save="saveEval(isMobileViewport)"
+            @update:scores="evalScores = $event"
+          />
+          <EvalSanctionInline
+            v-if="evalType === 'SAFETY'"
+            :worker="evalWorker"
+            :grouped-violations="groupedViolations"
+            :period-closed="periodClosed"
+            :prompt-message="sanctionPromptMessage"
+            :default-violation-code="defaultViolationCode"
+            @saved="onSanctionSaved"
+            @open-history="emit('open-history', evalWorker.id)"
+          />
+        </template>
         <div v-else class="eval-placeholder panel">
           <p>왼쪽에서 근로자를 선택하세요.</p>
         </div>
@@ -104,6 +115,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import EvalAssessmentSheet from "@/components/functional-eval/EvalAssessmentSheet.vue";
+import EvalSanctionInline from "@/components/functional-eval/EvalSanctionInline.vue";
 import type { Criterion } from "@/components/functional-eval/EvalAssessmentSheet.vue";
 import { useMobileViewport } from "@/composables/useMobileViewport";
 import { api } from "@/services/api";
@@ -112,6 +124,8 @@ import {
   completionBadgeClass,
   isSafetyComplete,
   isFullyComplete,
+  scoreRatioToGradeLabel,
+  workerRowHighlightClass,
 } from "@/utils/functionalEvalCompletion";
 
 export type EvalType = "FUNCTIONAL" | "SAFETY";
@@ -129,8 +143,17 @@ export interface EvalWorker {
   id: number;
   row_no: number;
   name: string;
+  sanction_status?: string;
+  sanction_status_label?: string;
+  is_permanently_expelled?: boolean;
   functional_assessment?: AssessmentBrief | null;
   safety_assessment?: AssessmentBrief | null;
+}
+
+interface ViolationGroup {
+  category: string;
+  label: string;
+  items: { code: string; category: string; category_label: string; label: string }[];
 }
 
 const props = defineProps<{
@@ -141,14 +164,20 @@ const props = defineProps<{
   periodClosed: boolean;
   reload: () => Promise<void>;
   focusWorkerId: number | null;
-  /** false면 마운트 시 자동 선택하지 않음(현장 명단 → 평가 시작 흐름) */
   autoPickOnMount?: boolean;
+  groupedViolations?: ViolationGroup[];
+  sanctionPromptMessage?: string;
+  defaultViolationCode?: string;
 }>();
 
 const emit = defineEmits<{
   "request-safety": [workerId: number];
   "safety-saved": [worker: EvalWorker];
+  "sanction-saved": [];
+  "open-history": [workerId: number];
 }>();
+
+const groupedViolations = computed(() => props.groupedViolations || []);
 
 const { isMobileViewport } = useMobileViewport();
 
@@ -159,7 +188,7 @@ const evalLoading = ref(false);
 const evalSaving = ref(false);
 const evalError = ref("");
 
-const shortTitle = computed(() => (props.evalType === "SAFETY" ? "2-2 안전" : "2-1 기능"));
+const shortTitle = computed(() => (props.evalType === "SAFETY" ? "2-2 안전·제재" : "2-1 기능"));
 
 const filteredWorkers = computed(() => {
   const q = workerSearch.value.toLowerCase();
@@ -204,12 +233,7 @@ const evalPreview = computed(() => {
     max += Math.max(...c.grades.map((x) => x.points));
   }
   const ratio = max ? total / max : 0;
-  let grade_label = "D등급";
-  if (ratio >= 0.9) grade_label = "S등급";
-  else if (ratio >= 0.8) grade_label = "A등급";
-  else if (ratio >= 0.7) grade_label = "B등급";
-  else if (ratio >= 0.6) grade_label = "C등급";
-  return { total_score: total, max_score: max, grade_label };
+  return { total_score: total, max_score: max, grade_label: scoreRatioToGradeLabel(ratio) };
 });
 
 function nextIncompleteWorker(afterId: number | null): EvalWorker | null {
@@ -256,6 +280,13 @@ function closeEval() {
   evalScores.value = {};
   evalError.value = "";
   document.body.classList.remove("fe-sheet-open-body");
+}
+
+async function onSanctionSaved() {
+  await props.reload();
+  const updated = props.workers.find((w) => w.id === evalWorker.value?.id);
+  if (updated) evalWorker.value = updated;
+  emit("sanction-saved");
 }
 
 async function saveEval(advanceOnMobile: boolean) {
@@ -329,14 +360,15 @@ watch(
 
 <style scoped>
 .fe-workspace {
-  min-height: min(72vh, 800px);
+  min-height: auto;
 }
 
 .split-layout {
   display: grid;
   grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
   gap: 12px;
-  min-height: min(72vh, 800px);
+  min-height: auto;
+  align-items: start;
 }
 
 .worker-rail {
@@ -365,6 +397,27 @@ watch(
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+
+.rail-item.row-highlight--alert {
+  background: #fef2f2;
+}
+
+.rail-item.row-highlight--alert:hover {
+  background: #fee2e2;
+}
+
+.rail-item.row-highlight--alert.active {
+  background: #fecaca;
+  box-shadow: inset 3px 0 0 #dc2626;
+}
+
+.roster-item.row-highlight--alert {
+  background: #fef2f2;
+}
+
+.roster-item.row-highlight--alert:hover {
+  background: #fee2e2;
 }
 
 .rail-item {
@@ -434,9 +487,9 @@ watch(
 
 .eval-main {
   min-width: 0;
-  min-height: 0;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
 }
 
 .eval-placeholder {

@@ -24,6 +24,7 @@ from app.modules.functional_eval.models import (
 from app.modules.functional_eval.roster import hash_rrn, mask_rrn
 from app.modules.functional_eval.site_aggregate import parse_monthly_site_aggregate
 from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
+from app.modules.functional_eval.import_diff import entry_tuple, row_tuple, worker_needs_attendance_update
 from app.modules.functional_eval.site_alias import build_eval_login_id, derive_site_alias
 from app.modules.sites.models import Site
 from app.modules.users.models import User
@@ -86,28 +87,37 @@ def apply_monthly_site_aggregate_file(
     assert_period_editable(period)
     parsed = parse_monthly_site_aggregate(file_path)
     aliases = _ensure_unique_aliases(parsed)
-    sites_upserted = 0
-    registry_upserted = 0
+    sites_added = 0
+    sites_updated = 0
+    sites_unchanged = 0
+    registry_added = 0
+    registry_updated = 0
+    registry_unchanged = 0
     account_rows: list[dict[str, Any]] = []
 
     for row in parsed:
         site_alias = aliases[row.site_code]
         manager_login_id = build_eval_login_id(site_alias, row.manager_name)
         erp_label = normalize_erp_site_label(row.erp_site_name)
+        site_name = row.erp_site_name[:200]
 
         site = db.query(Site).filter(Site.site_code == row.site_code).first()
         if site is None:
             site = Site(
                 site_code=row.site_code,
-                site_name=row.erp_site_name[:200],
+                site_name=site_name,
                 manager_name=row.manager_name,
             )
             db.add(site)
-            sites_upserted += 1
+            sites_added += 1
         else:
-            site.site_name = row.erp_site_name[:200]
-            site.manager_name = row.manager_name
-            db.add(site)
+            if site.site_name != site_name or site.manager_name != row.manager_name:
+                site.site_name = site_name
+                site.manager_name = row.manager_name
+                db.add(site)
+                sites_updated += 1
+            else:
+                sites_unchanged += 1
 
         reg = db.query(FunctionalEvalSiteRegistry).filter(FunctionalEvalSiteRegistry.site_code == row.site_code).first()
         if reg is None:
@@ -119,13 +129,23 @@ def apply_monthly_site_aggregate_file(
                 manager_login_id=manager_login_id,
             )
             db.add(reg)
-            registry_upserted += 1
+            registry_added += 1
         else:
-            reg.erp_site_label = erp_label
-            reg.site_alias = site_alias
-            reg.manager_name = row.manager_name
-            reg.manager_login_id = manager_login_id
-            db.add(reg)
+            changed = (
+                reg.erp_site_label != erp_label
+                or reg.site_alias != site_alias
+                or reg.manager_name != row.manager_name
+                or reg.manager_login_id != manager_login_id
+            )
+            if changed:
+                reg.erp_site_label = erp_label
+                reg.site_alias = site_alias
+                reg.manager_name = row.manager_name
+                reg.manager_login_id = manager_login_id
+                db.add(reg)
+                registry_updated += 1
+            else:
+                registry_unchanged += 1
 
         account_rows.append(
             {
@@ -140,8 +160,14 @@ def apply_monthly_site_aggregate_file(
     db.commit()
     account_rows.sort(key=lambda x: x["site_code"])
     return {
-        "sites_upserted": sites_upserted,
-        "registry_upserted": registry_upserted,
+        "sites_added": sites_added,
+        "sites_updated": sites_updated,
+        "sites_unchanged": sites_unchanged,
+        "registry_added": registry_added,
+        "registry_updated": registry_updated,
+        "registry_unchanged": registry_unchanged,
+        "sites_upserted": sites_added + sites_updated,
+        "registry_upserted": registry_added + registry_updated,
         "site_count": len(parsed),
         "account_rows": account_rows,
     }
@@ -215,20 +241,31 @@ def apply_attendance_report_diff(
         raise ValueError("MULTIPLE_WORK_DATES")
     work_date = next(iter(work_dates))
 
-    db.query(FunctionalEvalAttendanceEntry).filter(
-        FunctionalEvalAttendanceEntry.period_id == period.id,
-        FunctionalEvalAttendanceEntry.work_date == work_date,
-    ).delete(synchronize_session=False)
+    existing_entries = (
+        db.query(FunctionalEvalAttendanceEntry)
+        .filter(
+            FunctionalEvalAttendanceEntry.period_id == period.id,
+            FunctionalEvalAttendanceEntry.work_date == work_date,
+        )
+        .all()
+    )
+    existing_by_hash = {e.rrn_hash: e for e in existing_entries if e.rrn_hash}
 
-    existing = (
+    existing_workers = (
         db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.period_id == period.id).all()
     )
-    by_hash = {w.rrn_hash: w for w in existing if w.rrn_hash}
+    by_hash = {w.rrn_hash: w for w in existing_workers if w.rrn_hash}
     now = utc_now()
     linked = 0
     skipped = 0
+    added = 0
+    updated = 0
+    unchanged = 0
+    removed = 0
     row_counters: dict[str, int] = {}
     site_rows: dict[str, list[ParsedAttendanceRow]] = defaultdict(list)
+    incoming_hashes: set[str] = set()
+    touched_sites: set[str] = set()
 
     batch = FunctionalEvalAttendanceImportBatch(
         period_id=period.id,
@@ -247,16 +284,18 @@ def apply_attendance_report_diff(
             continue
 
         site_code = reg.site_code
+        site_name = reg.erp_site_label[:300]
         site_rows[site_code].append(row)
         manager_login = (reg.manager_login_id or "").strip() or site_code
         is_manager = (row.job_name or "").strip() == "소장" or row.name.strip() == reg.manager_name.strip()
+        incoming_hashes.add(row.rrn_hash)
 
         worker = by_hash.get(row.rrn_hash)
         if worker is None:
             worker = FunctionalEvalWorker(
                 period_id=period.id,
                 site_code=site_code,
-                site_name=reg.erp_site_label[:300],
+                site_name=site_name,
                 row_no=_next_row_no(db, period.id, site_code),
                 name=row.name,
                 rrn_hash=row.rrn_hash,
@@ -266,47 +305,84 @@ def apply_attendance_report_diff(
                 is_site_manager=is_manager,
                 is_active=True,
                 is_on_reference_roster=False,
+                removed_at=None,
             )
             db.add(worker)
             db.flush()
             by_hash[row.rrn_hash] = worker
-        else:
+            touched_sites.add(site_code)
+        elif worker_needs_attendance_update(
+            worker, row, site_code=site_code, site_name=site_name, is_manager=is_manager
+        ):
             if worker.site_code != site_code:
                 worker.row_no = _next_row_no(db, period.id, site_code)
             worker.site_code = site_code
-            worker.site_name = reg.erp_site_label[:300]
+            worker.site_name = site_name
             worker.name = row.name
             worker.job_name = row.job_name
             worker.rrn_masked = row.rrn_masked or worker.rrn_masked
             worker.is_site_manager = is_manager
             worker.is_active = True
+            worker.removed_at = None
             worker.updated_at = now
             db.add(worker)
+            touched_sites.add(site_code)
 
         if site_code not in row_counters:
             row_counters[site_code] = _next_row_no(db, period.id, site_code) - 1
         row_counters[site_code] += 1
         worker.row_no = row_counters[site_code]
 
-        db.add(
-            FunctionalEvalAttendanceEntry(
-                period_id=period.id,
-                work_date=work_date,
-                worker_id=worker.id,
-                site_code=site_code,
-                rrn_hash=row.rrn_hash,
-                name=row.name,
-                job_name=row.job_name,
-                rep_name=row.rep_name,
-                erp_site_label=row.erp_site_label,
-                batch_id=batch.id,
+        new_fields = row_tuple(row, site_code)
+        existing_entry = existing_by_hash.get(row.rrn_hash)
+        if existing_entry is None:
+            db.add(
+                FunctionalEvalAttendanceEntry(
+                    period_id=period.id,
+                    work_date=work_date,
+                    worker_id=worker.id,
+                    site_code=site_code,
+                    rrn_hash=row.rrn_hash,
+                    name=row.name,
+                    job_name=row.job_name,
+                    rep_name=row.rep_name,
+                    erp_site_label=row.erp_site_label,
+                    batch_id=batch.id,
+                )
             )
-        )
+            added += 1
+            touched_sites.add(site_code)
+        elif entry_tuple(existing_entry) != new_fields:
+            existing_entry.worker_id = worker.id
+            existing_entry.site_code = site_code
+            existing_entry.name = row.name
+            existing_entry.job_name = row.job_name
+            existing_entry.rep_name = row.rep_name
+            existing_entry.erp_site_label = row.erp_site_label
+            existing_entry.batch_id = batch.id
+            db.add(existing_entry)
+            updated += 1
+            touched_sites.add(site_code)
+        else:
+            unchanged += 1
+
         linked += 1
+
+    for rrn_hash, entry in existing_by_hash.items():
+        if rrn_hash in incoming_hashes:
+            continue
+        db.delete(entry)
+        removed += 1
+        touched_sites.add(entry.site_code)
 
     provision_stats = _provision_evaluators_from_attendance(
         db, period, work_date, site_rows=site_rows, reg_map=reg_map
     )
+
+    for site_code in touched_sites:
+        from app.modules.functional_eval.service import resequence_site_row_numbers
+
+        resequence_site_row_numbers(db, period.id, site_code)
 
     batch.total_rows = linked
     batch.linked_workers = linked
@@ -323,6 +399,10 @@ def apply_attendance_report_diff(
         "linked_workers": linked,
         "skipped_no_registry": skipped,
         "site_count": len(site_rows),
+        "diff_added": added,
+        "diff_updated": updated,
+        "diff_unchanged": unchanged,
+        "diff_removed": removed,
         **provision_stats,
     }
 
@@ -408,34 +488,39 @@ def _provision_evaluators_from_attendance(
             rep = (row.rep_name or "").strip() or manager_name
             by_rep[rep].append(row)
 
+        attending_names = {row.name.strip() for row in rows}
+
         for rep_name, team_rows in by_rep.items():
             if rep_name == manager_name:
                 evaluator_login = manager_login
-                role = "소장팀"
+                role = "직영"
             else:
-                evaluator_login = build_eval_login_id(reg.site_alias, rep_name)
                 role = "팀장"
-                rep_rrn = name_rrn.get(rep_name)
-                rep_pw = _rrn_front_password(rep_rrn or "")
-                if rep_pw and evaluator_login:
-                    _upsert_eval_user(
-                        db,
-                        login_id=evaluator_login,
-                        name=rep_name,
-                        password_plain=rep_pw,
-                        site=site,
-                    )
-                    created_accounts += 1
-                    account_rows.append(
-                        {
-                            "site_code": site_code,
-                            "site_alias": reg.site_alias,
-                            "role": role,
-                            "login_id": evaluator_login,
-                            "initial_password": rep_pw,
-                            "team_worker_count": len(team_rows),
-                        }
-                    )
+                if rep_name in attending_names:
+                    evaluator_login = build_eval_login_id(reg.site_alias, rep_name)
+                    rep_rrn = name_rrn.get(rep_name)
+                    rep_pw = _rrn_front_password(rep_rrn or "")
+                    if rep_pw and evaluator_login:
+                        _upsert_eval_user(
+                            db,
+                            login_id=evaluator_login,
+                            name=rep_name,
+                            password_plain=rep_pw,
+                            site=site,
+                        )
+                        created_accounts += 1
+                        account_rows.append(
+                            {
+                                "site_code": site_code,
+                                "site_alias": reg.site_alias,
+                                "role": role,
+                                "login_id": evaluator_login,
+                                "initial_password": rep_pw,
+                                "team_worker_count": len(team_rows),
+                            }
+                        )
+                else:
+                    evaluator_login = manager_login
 
             for row in team_rows:
                 worker = (

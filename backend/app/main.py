@@ -30,6 +30,7 @@ from app.modules.safety_features.routes import router as safety_features_router
 from app.modules.accidents.routes import router as accidents_router
 from app.modules.functional_eval.routes import router as functional_eval_router
 from app.modules.work_plan_excel.routes import router as work_plan_excel_router
+from app.modules.new_site_deployment.routes import router as new_site_deployment_router
 
 
 _original_request_form = Request.form
@@ -97,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(accidents_router)
     app.include_router(functional_eval_router)
     app.include_router(work_plan_excel_router)
+    app.include_router(new_site_deployment_router)
 
     @app.on_event("startup")
     async def on_startup() -> None:

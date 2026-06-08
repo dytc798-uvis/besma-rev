@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config.security import get_password_hash
 from app.core.enums import Role, UIType
 from app.core.datetime_utils import utc_now
-from app.modules.functional_eval.eval_catalog import EvalType, catalog_for_api, compute_assessment, get_criteria
+from app.modules.functional_eval.eval_catalog import EvalType, catalog_for_api, compute_assessment, get_criteria, normalize_grade_code
 from app.modules.functional_eval.attendance import ParsedAttendanceRow, parse_attendance_report_xlsx
 from app.modules.functional_eval.models import (
     FunctionalEvalAssessment,
@@ -46,6 +46,9 @@ from app.modules.users.models import User
 from app.utils.file_ingestion import parse_excel_with_fallback
 
 from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
+from app.modules.functional_eval.site_alias import build_eval_login_id
+from app.modules.functional_eval import approval_workflow
+from app.modules.functional_eval.legacy_site_grade import apply_legacy_assessments
 
 DEFAULT_PERIOD_TITLE = "기능인제 인사고과"
 DEFAULT_DEADLINE = date(2026, 6, 26)
@@ -330,13 +333,17 @@ def _serialize_assessment(row: FunctionalEvalAssessment | None, eval_type: EvalT
         return None
     required = len(get_criteria(eval_type))
     scores = row.scores_json or {}
+    grade_code = normalize_grade_code(row.grade_code) or row.grade_code
+    grade_label = row.grade_label or ""
+    if grade_code and grade_label.endswith("등급"):
+        grade_label = f"{grade_code}등급"
     return {
         "eval_type": row.eval_type,
         "scores": scores,
         "total_score": row.total_score,
         "max_score": row.max_score,
-        "grade_code": row.grade_code,
-        "grade_label": row.grade_label,
+        "grade_code": grade_code,
+        "grade_label": grade_label,
         "is_complete": len(scores) >= required and required > 0,
         "updated_at": row.updated_at,
     }
@@ -381,6 +388,7 @@ def serialize_worker(
         "rrn_masked": worker.rrn_masked,
         "phone_mobile": worker.phone_mobile,
         "assigned_evaluator_login_id": worker.assigned_evaluator_login_id,
+        "eval_assignment": _worker_eval_assignment(db, worker),
         "is_site_manager": worker.is_site_manager,
         "is_active": worker.is_active,
         "sanction_status": status,
@@ -397,13 +405,13 @@ def serialize_worker(
     return payload
 
 
-GRADE_SORT_ORDER = {"S": 0, "A": 1, "B": 2, "C": 3, "D": 4}
+GRADE_SORT_ORDER = {"S": 0, "A": 1, "B": 2, "C": 3}
 
 
 def _grade_sort_key(assessment: dict[str, Any] | None) -> tuple[int, int, str]:
     if not assessment or not assessment.get("is_complete"):
         return (1, 99, "")
-    code = str(assessment.get("grade_code") or "")
+    code = normalize_grade_code(str(assessment.get("grade_code") or "")) or ""
     return (0, GRADE_SORT_ORDER.get(code, 50), code)
 
 
@@ -417,6 +425,19 @@ def _is_fully_evaluated(worker_payload: dict[str, Any]) -> bool:
     f = worker_payload.get("functional_assessment") or {}
     s = worker_payload.get("safety_assessment") or {}
     return bool(f.get("is_complete")) and bool(s.get("is_complete"))
+
+
+def _worker_needs_highlight(worker_payload: dict[str, Any]) -> bool:
+    sanction = str(worker_payload.get("sanction_status") or "").strip().upper()
+    if sanction and sanction != "NONE":
+        return True
+    for key in ("functional_assessment", "safety_assessment"):
+        assessment = worker_payload.get(key) or {}
+        if not assessment.get("is_complete"):
+            continue
+        if normalize_grade_code(str(assessment.get("grade_code") or "")) == "C":
+            return True
+    return False
 
 
 def _worker_eval_remark(worker_payload: dict[str, Any]) -> str:
@@ -699,6 +720,7 @@ def build_hq_eval_rows(items: list[dict[str, Any]], *, completed_only: bool = Fa
                 "safety_score": (w.get("safety_assessment") or {}).get("total_score"),
                 "remark": _remark_for_completed_worker(w) if _is_fully_evaluated(w) else _worker_eval_remark(w),
                 "is_fully_complete": _is_fully_evaluated(w),
+                "needs_highlight": _worker_needs_highlight(w),
             }
         )
     return rows
@@ -783,6 +805,7 @@ def list_grade_workbook_workers(
         payload = serialize_worker(db, worker, assessments=assess_map.get(worker.id, {}))
         if not payload.get("site_name"):
             payload["site_name"] = site_names.get(worker.site_code) or f"현장 {worker.site_code}"
+        apply_legacy_assessments(payload)
         out.append(payload)
     return out
 
@@ -842,11 +865,237 @@ def _manager_login_for_site(db: Session, site_code: str) -> str:
     return site_code
 
 
+def _worker_eval_assignment(db: Session, worker: FunctionalEvalWorker) -> str:
+    """DIRECT=직영(소장), TEAM=팀원(팀장)."""
+    manager_login = _manager_login_for_site(db, worker.site_code)
+    assigned = (worker.assigned_evaluator_login_id or "").strip()
+    if assigned == manager_login or not assigned:
+        return "DIRECT"
+    return "TEAM"
+
+
+def _site_attendance_workers(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    site_code: str,
+) -> list[FunctionalEvalWorker]:
+    work_date = get_latest_attendance_date(db, period.id)
+    if work_date is None:
+        return []
+    rrn_hashes = _attendance_rrn_hashes_for_date(db, period.id, work_date, site_code=site_code)
+    if not rrn_hashes:
+        return []
+    return (
+        db.query(FunctionalEvalWorker)
+        .filter(
+            FunctionalEvalWorker.period_id == period.id,
+            FunctionalEvalWorker.is_site_manager.is_(False),
+            FunctionalEvalWorker.site_code == site_code,
+            FunctionalEvalWorker.rrn_hash.in_(rrn_hashes),
+        )
+        .order_by(FunctionalEvalWorker.row_no.asc(), FunctionalEvalWorker.id.asc())
+        .all()
+    )
+
+
+def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, site_code: str) -> dict[str, Any]:
+    rows = _site_attendance_workers(db, period, site_code)
+    assess_map = _assessments_map(db, [r.id for r in rows])
+    complete = 0
+    direct_total = 0
+    team_total = 0
+    direct_complete = 0
+    team_complete = 0
+    for row in rows:
+        payload = serialize_worker(db, row, assessments=assess_map.get(row.id, {}))
+        if _is_fully_evaluated(payload):
+            complete += 1
+        assignment = payload.get("eval_assignment")
+        if assignment == "DIRECT":
+            direct_total += 1
+            if _is_fully_evaluated(payload):
+                direct_complete += 1
+        else:
+            team_total += 1
+            if _is_fully_evaluated(payload):
+                team_complete += 1
+    approval_row = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
+    status = approval_row.status
+    return {
+        "site_total_workers": len(rows),
+        "site_complete_workers": complete,
+        "direct_total": direct_total,
+        "direct_complete": direct_complete,
+        "team_total": team_total,
+        "team_complete": team_complete,
+        "incomplete_count": len(rows) - complete,
+        "can_submit_site_approval": complete == len(rows) and len(rows) > 0
+        and approval_workflow.is_site_evaluation_editable(status),
+        "evaluation_editable": approval_workflow.is_site_evaluation_editable(status),
+    }
+
+
+def build_site_approval_payload(db: Session, period: FunctionalEvalPeriod, site_code: str) -> dict[str, Any]:
+    row = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
+    return {
+        **approval_workflow.serialize_site_approval(row),
+        **serialize_site_approval_summary(db, period, site_code),
+    }
+
+
 def _is_primary_site_evaluator(db: Session, user: User, site_code: str) -> bool:
     login_id = (user.login_id or "").strip()
     if login_id == site_code:
         return True
     return login_id == _manager_login_for_site(db, site_code)
+
+
+def _attendance_worker_count_for_site(
+    db: Session,
+    period_id: int,
+    site_code: str,
+    *,
+    work_date: date | None = None,
+) -> int:
+    work_date = work_date or get_latest_attendance_date(db, period_id)
+    if work_date is None:
+        return 0
+    rrn_hashes = _attendance_rrn_hashes_for_date(db, period_id, work_date, site_code=site_code)
+    if not rrn_hashes:
+        return 0
+    rows = (
+        db.query(FunctionalEvalWorker)
+        .filter(
+            FunctionalEvalWorker.period_id == period_id,
+            FunctionalEvalWorker.site_code == site_code,
+            FunctionalEvalWorker.is_site_manager.is_(False),
+            FunctionalEvalWorker.rrn_hash.in_(rrn_hashes),
+        )
+        .all()
+    )
+    return len(rows)
+
+
+def serialize_evaluator_session(db: Session, user: User, period: FunctionalEvalPeriod) -> dict[str, Any]:
+    site_code = _site_code_for_user(user, db)
+    login_id = (user.login_id or "").strip()
+    is_manager = _is_primary_site_evaluator(db, user, site_code)
+    reg = (
+        db.query(FunctionalEvalSiteRegistry)
+        .filter(FunctionalEvalSiteRegistry.site_code == site_code)
+        .first()
+    )
+    site_alias = (reg.site_alias or "").strip() if reg else ""
+    manager_name = (reg.manager_name or "").strip() if reg else ""
+    manager_login_id = _manager_login_for_site(db, site_code)
+    site_worker_count = _attendance_worker_count_for_site(db, period.id, site_code)
+    workers = list_workers_for_user(db, user, period)
+    approval = build_site_approval_payload(db, period, site_code) if is_manager else None
+    return {
+        "role": "MANAGER" if is_manager else "TEAM_LEADER",
+        "role_label": "소장" if is_manager else "팀장",
+        "eval_scope_label": (
+            "직영 평가"
+            if is_manager and site_worker_count > TEAM_LEADER_SPLIT_THRESHOLD
+            else ("전원 평가" if is_manager else "팀원 평가")
+        ),
+        "login_id": login_id,
+        "display_name": (getattr(user, "name", None) or "").strip() or login_id,
+        "site_code": site_code,
+        "site_alias": site_alias,
+        "manager_name": manager_name,
+        "manager_login_id": manager_login_id,
+        "assigned_worker_count": len(workers),
+        "site_worker_count": site_worker_count,
+        "team_split_active": site_worker_count > TEAM_LEADER_SPLIT_THRESHOLD,
+        "split_threshold": TEAM_LEADER_SPLIT_THRESHOLD,
+        "approval": approval,
+    }
+
+
+def list_hq_evaluator_accounts(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
+    work_date = get_latest_attendance_date(db, period.id)
+    regs = {r.site_code: r for r in db.query(FunctionalEvalSiteRegistry).all()}
+    manager_logins: set[str] = set()
+    for reg in regs.values():
+        ml = (reg.manager_login_id or "").strip()
+        if not ml and reg.site_alias and reg.manager_name:
+            ml = build_eval_login_id(reg.site_alias, reg.manager_name)
+        if ml:
+            manager_logins.add(ml)
+        manager_logins.add(reg.site_code)
+
+    assignment_counts: Counter[str] = Counter()
+    if work_date:
+        for site_code in regs:
+            rrn_hashes = _attendance_rrn_hashes_for_date(db, period.id, work_date, site_code=site_code)
+            if not rrn_hashes:
+                continue
+            workers = (
+                db.query(FunctionalEvalWorker)
+                .filter(
+                    FunctionalEvalWorker.period_id == period.id,
+                    FunctionalEvalWorker.site_code == site_code,
+                    FunctionalEvalWorker.is_site_manager.is_(False),
+                    FunctionalEvalWorker.rrn_hash.in_(rrn_hashes),
+                )
+                .all()
+            )
+            for worker in workers:
+                assigned = (worker.assigned_evaluator_login_id or "").strip()
+                if assigned:
+                    assignment_counts[assigned] += 1
+
+    site_names: dict[str, str] = {}
+    for site in db.query(Site).all():
+        if site.site_code:
+            site_names[site.site_code] = site.site_name or site.site_code
+
+    items: list[dict[str, Any]] = []
+    users = (
+        db.query(User)
+        .filter(User.role == Role.SITE_FUNCTIONAL_EVAL, User.is_active.is_(True))
+        .order_by(User.login_id.asc())
+        .all()
+    )
+    for user in users:
+        site_code = _site_code_for_user(user, db)
+        if not site_code:
+            continue
+        reg = regs.get(site_code)
+        login_id = (user.login_id or "").strip()
+        is_manager = login_id in manager_logins
+        items.append(
+            {
+                "site_code": site_code,
+                "site_alias": (reg.site_alias or "").strip() if reg else "",
+                "site_name": site_names.get(site_code) or (reg.erp_site_label if reg else site_code),
+                "name": (user.name or "").strip(),
+                "login_id": login_id,
+                "role": "소장" if is_manager else "팀장",
+                "assigned_worker_count": assignment_counts.get(login_id, 0),
+                "team_split_active": _attendance_worker_count_for_site(db, period.id, site_code, work_date=work_date)
+                > TEAM_LEADER_SPLIT_THRESHOLD,
+            }
+        )
+
+    items.sort(key=lambda x: (x["site_code"], 0 if x["role"] == "소장" else 1, x["login_id"]))
+    team_leader_count = sum(1 for x in items if x["role"] == "팀장")
+    split_sites = sorted(
+        {
+            x["site_code"]
+            for x in items
+            if x["team_split_active"] and x["role"] == "팀장"
+        }
+    )
+    return {
+        "split_threshold": TEAM_LEADER_SPLIT_THRESHOLD,
+        "last_attendance_date": work_date.isoformat() if work_date else None,
+        "manager_count": sum(1 for x in items if x["role"] == "소장"),
+        "team_leader_count": team_leader_count,
+        "split_site_count": len(split_sites),
+        "items": items,
+    }
 
 
 def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
@@ -857,6 +1106,12 @@ def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker)
     if site_code != worker.site_code:
         raise ValueError("SITE_MISMATCH")
     if _is_primary_site_evaluator(db, user, site_code):
+        site_count = _attendance_worker_count_for_site(db, worker.period_id, site_code)
+        if site_count > TEAM_LEADER_SPLIT_THRESHOLD:
+            manager_login = _manager_login_for_site(db, site_code)
+            assigned = (worker.assigned_evaluator_login_id or "").strip()
+            if assigned != manager_login:
+                raise ValueError("SITE_MISMATCH")
         return
     assigned = (worker.assigned_evaluator_login_id or "").strip()
     if assigned and assigned != login_id:
@@ -868,25 +1123,26 @@ def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker)
 def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
     site_code = _site_code_for_user(user, db)
     login_id = (user.login_id or "").strip()
-    work_date = get_latest_attendance_date(db, period.id)
-    if work_date is None:
+    rows = _site_attendance_workers(db, period, site_code)
+    if not rows:
         return []
-    rrn_hashes = _attendance_rrn_hashes_for_date(db, period.id, work_date, site_code=site_code)
-    if not rrn_hashes:
-        return []
-    rows = (
-        db.query(FunctionalEvalWorker)
-        .filter(
-            FunctionalEvalWorker.period_id == period.id,
-            FunctionalEvalWorker.is_site_manager.is_(False),
-            FunctionalEvalWorker.site_code == site_code,
-            FunctionalEvalWorker.rrn_hash.in_(rrn_hashes),
-        )
-        .order_by(FunctionalEvalWorker.row_no.asc(), FunctionalEvalWorker.id.asc())
-        .all()
-    )
-    if not _is_primary_site_evaluator(db, user, site_code):
+    is_manager = _is_primary_site_evaluator(db, user, site_code)
+    site_count = len(rows)
+    if is_manager:
+        if site_count > TEAM_LEADER_SPLIT_THRESHOLD:
+            manager_login = _manager_login_for_site(db, site_code)
+            rows = [r for r in rows if (r.assigned_evaluator_login_id or "").strip() == manager_login]
+    else:
         rows = [r for r in rows if (r.assigned_evaluator_login_id or "").strip() == login_id]
+    assess_map = _assessments_map(db, [r.id for r in rows])
+    return [serialize_worker(db, row, assessments=assess_map.get(row.id, {})) for row in rows]
+
+
+def list_site_overview_for_manager(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
+    site_code = _site_code_for_user(user, db)
+    if not _is_primary_site_evaluator(db, user, site_code):
+        return []
+    rows = _site_attendance_workers(db, period, site_code)
     assess_map = _assessments_map(db, [r.id for r in rows])
     return [serialize_worker(db, row, assessments=assess_map.get(row.id, {})) for row in rows]
 
@@ -927,7 +1183,23 @@ def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any
         .all()
     )
     prior_sanctions: list[dict[str, Any]] = []
+    prior_assessments: list[dict[str, Any]] = []
     for pw in prior_workers:
+        pw_assess = _assessments_map(db, [pw.id]).get(pw.id, {})
+        functional = _serialize_assessment(pw_assess.get("FUNCTIONAL"), "FUNCTIONAL")
+        safety = _serialize_assessment(pw_assess.get("SAFETY"), "SAFETY")
+        if (functional and functional.get("is_complete")) or (safety and safety.get("is_complete")):
+            period_row = db.query(FunctionalEvalPeriod).filter(FunctionalEvalPeriod.id == pw.period_id).first()
+            prior_assessments.append(
+                {
+                    "period_id": pw.period_id,
+                    "period_title": period_row.title if period_row else f"기간 {pw.period_id}",
+                    "site_code": pw.site_code,
+                    "functional_assessment": functional,
+                    "safety_assessment": safety,
+                    "from_prior_period": True,
+                }
+            )
         rows = (
             db.query(FunctionalEvalSanction)
             .filter(FunctionalEvalSanction.worker_id == pw.id)
@@ -945,6 +1217,7 @@ def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any
         "history_visible": True,
         "sanctions": [_serialize_sanction(s, worker.name) for s in current],
         "prior_sanctions": prior_sanctions,
+        "prior_assessments": prior_assessments,
         "mileage": serialize_mileage_placeholder(worker),
     }
 
@@ -1388,6 +1661,7 @@ def save_worker_assessment(
         raise ValueError("WORKER_NOT_FOUND")
     if period_is_closed(period):
         raise ValueError("PERIOD_CLOSED")
+    approval_workflow.assert_site_editable(db, period.id, worker.site_code)
     _assert_worker_attendance_eligible(db, period, worker)
 
     computed = compute_assessment(eval_type, scores)
@@ -1581,8 +1855,16 @@ def apply_team_leader_assignments_file(
             db.flush()
 
         ordered_leaders = sorted(leaders.items(), key=lambda x: _birth_sort_key(x[1]["rrn"]))
-        for idx, (leader_name, meta) in enumerate(ordered_leaders, start=2):
-            login_id = f"{site_code}-{idx}"
+        reg = (
+            db.query(FunctionalEvalSiteRegistry)
+            .filter(FunctionalEvalSiteRegistry.site_code == site_code)
+            .first()
+        )
+        site_alias = (reg.site_alias or site_code).strip() if reg else site_code
+        for leader_name, meta in ordered_leaders.items():
+            login_id = build_eval_login_id(site_alias, leader_name)
+            if not login_id:
+                continue
             initial_pw = _rrn_front_password(meta["rrn"])
             if not initial_pw:
                 continue

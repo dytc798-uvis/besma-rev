@@ -79,12 +79,24 @@ def compute_assessment(eval_type: EvalType, scores: dict[str, str]) -> dict[str,
 
 
 def _score_to_grade(ratio: float) -> tuple[str, str]:
-    if ratio >= 0.9:
+    """엑셀 등급 수식(IF >85 S, >70 A, >50 B, >0 C)과 동일. D등급 없음."""
+    pct = ratio * 100.0
+    if pct > 85:
         return "S", "S등급"
-    if ratio >= 0.8:
+    if pct > 70:
         return "A", "A등급"
-    if ratio >= 0.7:
+    if pct > 50:
         return "B", "B등급"
-    if ratio >= 0.6:
+    if pct > 0:
         return "C", "C등급"
-    return "D", "D등급"
+    return "", ""
+
+
+def normalize_grade_code(code: str | None) -> str | None:
+    """표시·엑셀용 등급 — D는 C로 통일."""
+    text = str(code or "").strip().upper()
+    if not text:
+        return None
+    if text == "D":
+        return "C"
+    return text

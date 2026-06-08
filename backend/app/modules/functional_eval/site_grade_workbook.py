@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import re
 import shutil
 import tempfile
 from datetime import date
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import openpyxl
+from openpyxl.formula.translate import Translator
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.config.settings import BASE_DIR
@@ -63,8 +65,23 @@ def _find_sheet_name(wb: openpyxl.Workbook, needle: str) -> str:
 def _grade_code(assessment: dict[str, Any] | None) -> str | None:
     if not assessment or not assessment.get("is_complete"):
         return None
+    from app.modules.functional_eval.eval_catalog import normalize_grade_code
+
     code = str(assessment.get("grade_code") or "").strip()
-    return code or None
+    return normalize_grade_code(code)
+
+
+def _sheet1_age_or_birth(worker: dict[str, Any]) -> str:
+    """2-2/2-1 VLOOKUP(…,4) → 1.인원현황 F열(생년월일·연령 표시)."""
+    age = (worker.get("age_label") or "").strip()
+    if age:
+        return age
+    rrn = (worker.get("rrn_masked") or "").replace("-", "").strip()
+    if len(rrn) >= 6 and rrn[:6].isdigit():
+        yy, mm, dd = rrn[0:2], rrn[2:4], rrn[4:6]
+        century = "19" if int(yy) >= 30 else "20"
+        return f"{century}{yy}.{mm}.{dd}"
+    return ""
 
 
 def _clear_sheet1_data(ws: Worksheet) -> None:
@@ -79,7 +96,7 @@ def _write_sheet1_row(ws: Worksheet, row: int, seq: int, worker: dict[str, Any])
     ws.cell(row=row, column=COL_SEQ, value=seq)
     ws.cell(row=row, column=COL_SITE_NAME, value=worker.get("site_name") or "")
     ws.cell(row=row, column=COL_NAME, value=worker.get("name") or "")
-    ws.cell(row=row, column=COL_AGE, value=worker.get("age_label") or "")
+    ws.cell(row=row, column=COL_AGE, value=_sheet1_age_or_birth(worker))
     ws.cell(row=row, column=COL_RRN, value=worker.get("rrn_masked") or "")
     ws.cell(row=row, column=COL_POSITION, value=worker.get("position_name") or "")
     ws.cell(row=row, column=COL_JOB, value=worker.get("job_name") or "")
@@ -92,12 +109,27 @@ def _criteria_col_count(eval_type: Literal["FUNCTIONAL", "SAFETY"]) -> int:
     return len(get_criteria(eval_type))
 
 
-def _clear_eval_marks(ws: Worksheet, row: int, eval_type: Literal["FUNCTIONAL", "SAFETY"]) -> None:
-    count = _criteria_col_count(eval_type)
-    for i in range(count):
-        base = 8 + i * 4
-        for off in range(4):
-            ws.cell(row=row, column=base + off, value=None)
+def _eval_mark_end_column(ws: Worksheet, template_row: int, eval_type: Literal["FUNCTIONAL", "SAFETY"]) -> int:
+    """평가 O 표시 열 끝 — 카탈로그 항목 수와 템플릿 샘플 행 중 넓은 쪽."""
+    end = 8 + _criteria_col_count(eval_type) * 4 - 1
+    max_col = ws.max_column or end
+    for col in range(8, max_col + 1):
+        if ws.cell(template_row, col).value == "O":
+            end = max(end, col + 3)
+    return end
+
+
+def _clear_eval_marks(
+    ws: Worksheet,
+    row: int,
+    eval_type: Literal["FUNCTIONAL", "SAFETY"],
+    *,
+    end_col: int | None = None,
+) -> None:
+    last_col = end_col if end_col is not None else 8 + _criteria_col_count(eval_type) * 4 - 1
+    for col in range(8, last_col + 1):
+        # openpyxl: cell(..., value=None)은 기존 값을 지우지 않음
+        ws.cell(row=row, column=col).value = None
 
 
 def _write_eval_marks(
@@ -113,11 +145,11 @@ def _write_eval_marks(
         base = 8 + i * 4
         grade_key = scores.get(crit["id"]) if complete else None
         for off, key in enumerate(GRADE_KEYS):
-            ws.cell(row=row, column=base + off, value="O" if grade_key == key else None)
+            ws.cell(row=row, column=base + off).value = "O" if grade_key == key else None
 
 
 def _copy_eval_formula_row(ws: Worksheet, template_row: int, target_row: int) -> None:
-    """2-1 / 2-2 행의 VLOOKUP·합계 수식을 템플릿 7행에서 복사한다."""
+    """2-1 / 2-2 행의 VLOOKUP·합계 수식을 템플릿 7행에서 행 단위로 복사한다."""
     if target_row == template_row:
         return
     max_col = ws.max_column or 80
@@ -125,9 +157,19 @@ def _copy_eval_formula_row(ws: Worksheet, template_row: int, target_row: int) ->
         src = ws.cell(row=template_row, column=col)
         dst = ws.cell(row=target_row, column=col)
         if src.data_type == "f" and src.value:
-            dst.value = str(src.value).replace(str(template_row), str(target_row))
-        elif col <= 7:
-            dst.value = src.value
+            cell_origin = f"{src.column_letter}{template_row}"
+            cell_target = f"{dst.column_letter}{target_row}"
+            try:
+                dst.value = Translator(str(src.value), origin=cell_origin).translate_formula(cell_target)
+            except ValueError:
+                # 구형/비표준 수식 — 행 참조만 치환 (VLOOKUP 열 인덱스 보호)
+                dst.value = re.sub(
+                    rf"\$?{re.escape(src.column_letter)}{template_row}\b",
+                    f"{src.column_letter}{target_row}",
+                    str(src.value),
+                )
+        elif col <= 7 and src.data_type != "f":
+            dst.value = None
 
 
 def generate_site_grade_workbook_bytes(workers: list[dict[str, Any]]) -> bytes:
@@ -165,20 +207,23 @@ def generate_site_grade_workbook_bytes(workers: list[dict[str, Any]]) -> bytes:
         template_eval_row = SHEET_EVAL_START_ROW
         max_template_row = ws_fn.max_row or template_eval_row
 
+        fn_mark_end = _eval_mark_end_column(ws_fn, template_eval_row, "FUNCTIONAL")
+        sf_mark_end = _eval_mark_end_column(ws_sf, template_eval_row, "SAFETY")
+
         for idx in range(n):
             eval_row = SHEET_EVAL_START_ROW + idx
             if eval_row != template_eval_row:
                 _copy_eval_formula_row(ws_fn, template_eval_row, eval_row)
                 _copy_eval_formula_row(ws_sf, template_eval_row, eval_row)
             worker = sorted_workers[idx]
-            _clear_eval_marks(ws_fn, eval_row, "FUNCTIONAL")
-            _clear_eval_marks(ws_sf, eval_row, "SAFETY")
+            _clear_eval_marks(ws_fn, eval_row, "FUNCTIONAL", end_col=fn_mark_end)
+            _clear_eval_marks(ws_sf, eval_row, "SAFETY", end_col=sf_mark_end)
             _write_eval_marks(ws_fn, eval_row, worker.get("functional_assessment"), "FUNCTIONAL")
             _write_eval_marks(ws_sf, eval_row, worker.get("safety_assessment"), "SAFETY")
 
         for row in range(SHEET_EVAL_START_ROW + n, max_template_row + 1):
-            _clear_eval_marks(ws_fn, row, "FUNCTIONAL")
-            _clear_eval_marks(ws_sf, row, "SAFETY")
+            _clear_eval_marks(ws_fn, row, "FUNCTIONAL", end_col=fn_mark_end)
+            _clear_eval_marks(ws_sf, row, "SAFETY", end_col=sf_mark_end)
 
         buf = io.BytesIO()
         wb.save(buf)

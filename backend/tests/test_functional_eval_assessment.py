@@ -91,4 +91,4 @@ def test_compute_assessment_requires_all_criteria():
     scores = {c["id"]: c["grades"][0]["key"] for c in criteria}
     result = compute_assessment("FUNCTIONAL", scores)
     assert result["total_score"] > 0
-    assert result["grade_code"] in {"S", "A", "B", "C", "D"}
+    assert result["grade_code"] in {"S", "A", "B", "C"}

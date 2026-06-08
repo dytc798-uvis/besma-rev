@@ -24,6 +24,9 @@ _PROJECT_TOKENS: tuple[tuple[str, str], ...] = (
     ("제주", "제주"),
     ("노원", "노원"),
     ("대구", "대구"),
+    ("스타필드", "스타필드"),
+    ("창원", "창원"),
+    ("신세계", "신세계"),
     ("PROVIDENCE", "바이오"),
 )
 
@@ -33,7 +36,10 @@ def _contractor_short(bracket: str) -> str:
     m = re.search(r"([가-힣A-Za-z]{2,6})건설", text)
     if m:
         name = m.group(1)
-        return name[:2] if len(name) > 3 else name
+        return name[:4] if len(name) > 4 else name
+    m = re.search(r"신세계", text)
+    if m:
+        return "신세계"
     m = re.search(r"([가-힣]{2,4})", text)
     return m.group(1) if m else ""
 

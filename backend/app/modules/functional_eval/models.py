@@ -159,6 +159,34 @@ class FunctionalEvalWorker(Base):
     )
 
 
+class FunctionalEvalSiteApproval(Base):
+    """현장별 평가 승인: 소장 전체 → 안전보건실 → 대표이사."""
+
+    __tablename__ = "functional_eval_site_approvals"
+    __table_args__ = (
+        UniqueConstraint("period_id", "site_code", name="uq_fe_site_approval_period_site"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    period_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_periods.id"), nullable=False, index=True)
+    site_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="IN_PROGRESS", index=True)
+    site_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    site_submitted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    hq_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    hq_approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    ceo_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ceo_approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rejected_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    rejected_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    reject_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
 class FunctionalEvalAssessment(Base):
     """2-1(기능) / 2-2(안전) 인사고과 점수 — 근로자·유형당 1건."""
 
