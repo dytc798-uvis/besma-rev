@@ -116,3 +116,54 @@ def legacy_derivative_to_target_relative(*, instance_id: int, disk_name: str) ->
         return None
     new_name = f"{match.group('stem')}{match.group('kind')}{match.group('ext')}"
     return f"{instance_dir_relative(instance_id)}/{new_name}"
+
+
+def resolve_existing_storage_path(
+    storage_root: Path,
+    relative_path: str,
+    *,
+    instance_id: int | None = None,
+    file_name: str | None = None,
+    version_no: int | None = None,
+) -> Path | None:
+    """DB에 저장된 상대경로 → 디스크에 존재하는 파일 Path (legacy flat → by_instance 포함)."""
+    rel = (relative_path or "").strip()
+    if not rel:
+        return None
+
+    direct = storage_root / rel
+    if direct.is_file():
+        return direct
+
+    disk_name = Path(rel).name
+    candidates: list[str] = []
+
+    if instance_id is not None:
+        migrated = legacy_disk_name_to_target_relative(
+            instance_id=instance_id,
+            disk_name=disk_name,
+            file_name=file_name,
+            version_no=version_no,
+        )
+        if migrated:
+            candidates.append(migrated)
+
+        deriv = legacy_derivative_to_target_relative(instance_id=instance_id, disk_name=disk_name)
+        if deriv:
+            candidates.append(deriv)
+
+        if file_name and BY_INSTANCE_DIR not in rel.replace("\\", "/"):
+            candidates.append(
+                f"{instance_dir_relative(instance_id)}/{versioned_primary_filename(file_name, version_no or 1)}"
+            )
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        path = storage_root / candidate
+        if path.is_file():
+            return path
+
+    return None

@@ -23,7 +23,7 @@ from app.modules.document_submissions.service import (
     map_action_to_history_type,
     transition_instance_workflow_status,
 )
-from app.modules.documents.ledger_managed import assert_not_ledger_managed_document, assert_not_ledger_managed_document_type
+from app.modules.documents.storage_paths import resolve_existing_storage_path
 from app.modules.documents.feedback_loop_service import (
     apply_feedback_loop_patch,
     feedback_loop_public_dict,
@@ -976,8 +976,14 @@ def download_document_history_file(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     assert_not_ledger_managed_document(doc)
 
-    file_path = settings.storage_root / upload_history.file_path
-    if not file_path.exists():
+    file_path = resolve_existing_storage_path(
+        settings.storage_root,
+        upload_history.file_path,
+        instance_id=upload_history.instance_id or doc.instance_id,
+        file_name=upload_history.file_name,
+        version_no=upload_history.version_no,
+    )
+    if file_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="History file not found")
 
     resolved_disposition = (disposition or "attachment").strip().lower()
@@ -1697,8 +1703,14 @@ def download_document_file(
     if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
 
-    file_path = settings.storage_root / doc.file_path
-    if not file_path.exists():
+    file_path = resolve_existing_storage_path(
+        settings.storage_root,
+        doc.file_path,
+        instance_id=doc.instance_id,
+        file_name=doc.file_name,
+        version_no=doc.version_no,
+    )
+    if file_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
     resolved_disposition = (disposition or "attachment").strip().lower()
     if resolved_disposition not in {"attachment", "inline"}:
@@ -1733,8 +1745,14 @@ def _download_document_derivative(
     if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
 
-    file_path = settings.storage_root / relative_path
-    if not file_path.exists():
+    file_path = resolve_existing_storage_path(
+        settings.storage_root,
+        relative_path,
+        instance_id=doc.instance_id,
+        file_name=doc.file_name,
+        version_no=doc.version_no,
+    )
+    if file_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
     resolved_disposition = (disposition or "attachment").strip().lower()
     if resolved_disposition not in {"attachment", "inline"}:
