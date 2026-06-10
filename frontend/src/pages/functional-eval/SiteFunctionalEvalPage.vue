@@ -53,6 +53,8 @@
       </template>
     </nav>
 
+    <p v-if="saveNotice" class="save-notice" role="status">{{ saveNotice }}</p>
+
     <!-- 첫 화면: 근로자별 현재 등급 -->
     <section v-if="mainView === 'roster'" class="panel roster-panel">
       <div class="roster-toolbar">
@@ -151,7 +153,7 @@
 
     <FunctionalEvalWorkspace
       v-if="mainView === 'evaluate' && evalCriteria.length"
-      :key="`${evalSessionKey}-${activeTab}`"
+      :key="evalSessionKey"
       :workers="evaluableWorkers"
       :eval-type="currentEvalType"
       :title="evalTabTitle"
@@ -165,7 +167,7 @@
       :reload="load"
       @request-safety="onRequestSafety"
       @safety-saved="onSafetySaved"
-      @sanction-saved="sanctionPromptMessage = ''"
+      @sanction-saved="onSanctionRegistered"
       @open-history="openHistoryById"
     />
 
@@ -276,6 +278,7 @@ import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import {
   countIncompleteWorkers,
+  findNextIncompleteWorker,
   gradeDisplayClass,
   gradeDisplayLabel,
   isEvalIncomplete,
@@ -419,6 +422,8 @@ const activeTab = ref<EvalTab>("functional");
 const focusWorkerId = ref<number | null>(null);
 const evalSessionKey = ref(0);
 const sanctionPromptMessage = ref("");
+const saveNotice = ref("");
+let saveNoticeTimer: ReturnType<typeof setTimeout> | null = null;
 const evalCatalog = ref<{ FUNCTIONAL: EvalCatalogBlock; SAFETY: EvalCatalogBlock } | null>(null);
 const period = ref<Period | null>(null);
 const evaluator = ref<EvaluatorSession | null>(null);
@@ -641,9 +646,36 @@ function rosterStatusClass(w: Worker): string {
   return "pending";
 }
 
+function flashSaveNotice(message: string, durationMs = 2800) {
+  saveNotice.value = message;
+  if (saveNoticeTimer) clearTimeout(saveNoticeTimer);
+  saveNoticeTimer = setTimeout(() => {
+    saveNotice.value = "";
+    saveNoticeTimer = null;
+  }, durationMs);
+}
+
+function evalQueue(): Worker[] {
+  return [...rosterSource.value].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+}
+
+function advanceToNextWorker(afterId: number) {
+  const next = findNextIncompleteWorker(evalQueue(), afterId);
+  if (!next) {
+    flashSaveNotice("모든 근로자 평가가 완료되었습니다. 현황으로 이동합니다.");
+    window.setTimeout(() => goToRoster(), 900);
+    return;
+  }
+  focusWorkerId.value = next.id;
+  activeTab.value = isFunctionalComplete(next) ? "safety" : "functional";
+  const phase = isFunctionalComplete(next) ? "안전" : "기능";
+  flashSaveNotice(`${next.name}님 ${phase} 평가를 시작합니다.`);
+}
+
 function goToRoster() {
   router.push({ name: "site-functional-eval" });
   focusWorkerId.value = null;
+  saveNotice.value = "";
 }
 
 function startEvaluation(worker?: Worker) {
@@ -677,20 +709,36 @@ function onRosterStatusClick(w: Worker) {
 }
 
 function onSafetySaved(worker: Worker) {
-  if (!needsSanctionPrompt(worker)) return;
-  const f = gradeDisplayLabel(worker.functional_assessment);
-  const s = gradeDisplayLabel(worker.safety_assessment);
-  sanctionPromptMessage.value = `기능 ${f} · 안전 ${s} — 부족/문제(C등급)일 때만 제재를 등록하세요.`;
-  focusWorkerId.value = worker.id;
-  activeTab.value = "safety";
-  if (isMobileViewport.value) {
-    openSanction(worker);
+  flashSaveNotice(`${worker.name}님 안전 평가가 저장되었습니다.`);
+  if (needsSanctionPrompt(worker)) {
+    const f = gradeDisplayLabel(worker.functional_assessment);
+    const s = gradeDisplayLabel(worker.safety_assessment);
+    sanctionPromptMessage.value = `기능 ${f} · 안전 ${s} — 부족/문제(C등급)일 때만 제재를 등록하세요.`;
+    focusWorkerId.value = worker.id;
+    activeTab.value = "safety";
+    if (isMobileViewport.value) {
+      openSanction(worker);
+    }
+    return;
   }
+  advanceToNextWorker(worker.id);
 }
 
 function onRequestSafety(workerId: number) {
+  const worker = rosterSource.value.find((w) => w.id === workerId);
   focusWorkerId.value = workerId;
   activeTab.value = "safety";
+  flashSaveNotice(
+    worker ? `${worker.name}님 기능 평가 저장 · 안전평가로 이동합니다.` : "기능 평가 저장 · 안전평가로 이동합니다.",
+  );
+}
+
+function onSanctionRegistered() {
+  sanctionPromptMessage.value = "";
+  const workerId = focusWorkerId.value;
+  if (workerId == null) return;
+  flashSaveNotice("제재가 등록되었습니다.");
+  advanceToNextWorker(workerId);
 }
 
 watch(activeTab, () => {
@@ -1138,6 +1186,17 @@ textarea.field-control {
   min-width: auto;
   padding: 0 14px;
   background: #f8fafc;
+}
+
+.save-notice {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .roster-table-wrap {

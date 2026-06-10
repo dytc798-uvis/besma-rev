@@ -152,3 +152,20 @@ export function completionBadgeClass(label: CompletionBadge): string {
 export function countIncompleteWorkers(workers: EvalWorkerCompletion[]): number {
   return workers.filter(isEvalIncomplete).length;
 }
+
+/** 평가 큐에서 다음 미완료 근로자 (이름순, afterId 다음부터 순환) */
+export function findNextIncompleteWorker<T extends EvalWorkerCompletion & { id: number; name?: string }>(
+  workers: T[],
+  afterId: number | null,
+): T | null {
+  const list = [...workers].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ko"));
+  if (!list.length) return null;
+  const start = afterId == null ? 0 : list.findIndex((w) => w.id === afterId) + 1;
+  for (let i = start; i < list.length; i++) {
+    if (isEvalIncomplete(list[i])) return list[i];
+  }
+  for (let i = 0; afterId != null && i < start; i++) {
+    if (isEvalIncomplete(list[i])) return list[i];
+  }
+  return null;
+}

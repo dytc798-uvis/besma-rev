@@ -60,7 +60,7 @@
             variant="desktop"
             :preview="evalPreview"
             :save-label="desktopSaveLabel"
-            @save="saveEval(isMobileViewport)"
+            @save="saveEval"
             @update:scores="evalScores = $event"
           />
           <EvalSanctionInline
@@ -111,7 +111,7 @@
             variant="mobile"
             :preview="evalPreview"
             :save-label="mobileSaveLabel"
-            @save="saveEval(true)"
+            @save="saveEval"
             @close="closeEval"
             @update:scores="evalScores = $event"
         />
@@ -132,6 +132,7 @@ import {
   completionBadgeClass,
   isFunctionalComplete,
   isSafetyComplete,
+  findNextIncompleteWorker,
   isFullyComplete,
   scoreRatioToGradeLabel,
   workerRowHighlightClass,
@@ -229,21 +230,19 @@ function formatWorkerLabel(w: EvalWorker) {
   return assignment ? `${w.name} ${assignment}` : w.name;
 }
 
-const mobileSaveLabel = computed(() => {
+function saveButtonLabel(): string {
   const w = evalWorker.value;
   if (props.evalType === "FUNCTIONAL" && w && !isSafetyComplete(w)) {
     return "저장 후 안전평가";
   }
-  return nextIncompleteWorker(evalWorker.value?.id ?? null) ? "저장 후 다음" : "평가 저장";
-});
-
-const desktopSaveLabel = computed(() => {
-  const w = evalWorker.value;
-  if (props.evalType === "FUNCTIONAL" && w && !isSafetyComplete(w)) {
-    return "저장 후 안전평가";
+  if (props.evalType === "SAFETY") {
+    return findNextIncompleteWorker(filteredWorkers.value, w?.id ?? null) ? "저장 후 다음" : "저장 후 완료";
   }
   return "평가 저장";
-});
+}
+
+const mobileSaveLabel = computed(() => saveButtonLabel());
+const desktopSaveLabel = computed(() => saveButtonLabel());
 
 const evalPreview = computed(() => {
   const list = props.criteria;
@@ -260,19 +259,6 @@ const evalPreview = computed(() => {
   const ratio = max ? total / max : 0;
   return { total_score: total, max_score: max, grade_label: scoreRatioToGradeLabel(ratio) };
 });
-
-function nextIncompleteWorker(afterId: number | null): EvalWorker | null {
-  const list = filteredWorkers.value;
-  if (!list.length) return null;
-  const start = afterId == null ? 0 : list.findIndex((w) => w.id === afterId) + 1;
-  for (let i = start; i < list.length; i++) {
-    if (!isFullyComplete(list[i])) return list[i];
-  }
-  for (let i = 0; afterId != null && i < start; i++) {
-    if (!isFullyComplete(list[i])) return list[i];
-  }
-  return null;
-}
 
 async function loadScores(worker: EvalWorker) {
   evalLoading.value = true;
@@ -330,7 +316,7 @@ async function onSanctionSaved() {
   emit("sanction-saved");
 }
 
-async function saveEval(advanceOnMobile: boolean) {
+async function saveEval() {
   if (!evalWorker.value) return;
   const savedId = evalWorker.value.id;
   evalSaving.value = true;
@@ -343,20 +329,20 @@ async function saveEval(advanceOnMobile: boolean) {
     const updated = props.workers.find((w) => w.id === savedId);
     if (updated) evalWorker.value = updated;
 
-    if (props.evalType === "FUNCTIONAL" && updated && !isSafetyComplete(updated)) {
-      emit("request-safety", savedId);
+    if (props.evalType === "FUNCTIONAL" && updated) {
+      if (!isSafetyComplete(updated)) {
+        emit("request-safety", savedId);
+        return;
+      }
+      if (isFullyComplete(updated)) {
+        emit("safety-saved", updated);
+      }
       return;
     }
 
     if (props.evalType === "SAFETY" && updated) {
       emit("safety-saved", updated);
-    }
-
-    if (advanceOnMobile && isMobileViewport.value) {
-      const next = nextIncompleteWorker(savedId);
-      if (next) {
-        await selectWorker(next);
-      } else {
+      if (isMobileViewport.value) {
         closeEval();
       }
     }
@@ -452,6 +438,15 @@ watch(
     const focused = props.workers.find((w) => w.id === id);
     if (focused && evalWorker.value?.id !== id) {
       void selectWorker(focused);
+    }
+  },
+);
+
+watch(
+  () => props.evalType,
+  () => {
+    if (evalWorker.value) {
+      void loadScores(evalWorker.value);
     }
   },
 );
