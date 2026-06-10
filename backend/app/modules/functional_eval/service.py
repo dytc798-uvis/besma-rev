@@ -469,11 +469,37 @@ def _assessments_map(db: Session, worker_ids: list[int]) -> dict[int, dict[str, 
     return out
 
 
+EVAL_ASSIGNMENT_DIRECT = "DIRECT"
+EVAL_ASSIGNMENT_TEAM = "TEAM"
+EVAL_ASSIGNMENT_TEAM_LEADER = "TEAM_LEADER"
+
+EVAL_ASSIGNMENT_LABELS = {
+    EVAL_ASSIGNMENT_DIRECT: "직영",
+    EVAL_ASSIGNMENT_TEAM: "팀원",
+    EVAL_ASSIGNMENT_TEAM_LEADER: "팀장",
+}
+
+
+def _collect_team_leader_evaluator_logins(
+    rows: list[FunctionalEvalWorker],
+    manager_login: str,
+) -> set[str]:
+    """팀원에게 배정된 팀장 로그인 ID 집합."""
+    manager_login = (manager_login or "").strip()
+    logins: set[str] = set()
+    for row in rows:
+        assigned = (row.assigned_evaluator_login_id or "").strip()
+        if assigned and assigned != manager_login:
+            logins.add(assigned)
+    return logins
+
+
 def serialize_worker(
     db: Session,
     worker: FunctionalEvalWorker,
     *,
     assessments: dict[str, FunctionalEvalAssessment] | None = None,
+    team_leader_logins: set[str] | None = None,
 ) -> dict[str, Any]:
     status, status_label, count, latest = _worker_sanction_status(db, worker.id)
     permanent = _worker_is_permanently_expelled(db, worker.id)
@@ -481,6 +507,7 @@ def serialize_worker(
         assessments = _assessments_map(db, [worker.id]).get(worker.id, {})
     functional = _serialize_assessment(assessments.get("FUNCTIONAL"), "FUNCTIONAL")
     safety = _serialize_assessment(assessments.get("SAFETY"), "SAFETY")
+    eval_assignment = _worker_eval_assignment(db, worker, team_leader_logins=team_leader_logins)
     payload: dict[str, Any] = {
         "id": worker.id,
         "period_id": worker.period_id,
@@ -494,7 +521,8 @@ def serialize_worker(
         "rrn_masked": worker.rrn_masked,
         "phone_mobile": worker.phone_mobile,
         "assigned_evaluator_login_id": worker.assigned_evaluator_login_id,
-        "eval_assignment": _worker_eval_assignment(db, worker),
+        "eval_assignment": eval_assignment,
+        "eval_assignment_label": EVAL_ASSIGNMENT_LABELS.get(eval_assignment, ""),
         "is_site_manager": worker.is_site_manager,
         "is_active": worker.is_active,
         "sanction_status": status,
@@ -1166,13 +1194,30 @@ def _is_manager_user_for_site(db: Session, user: User, site_code: str) -> bool:
     return False
 
 
-def _worker_eval_assignment(db: Session, worker: FunctionalEvalWorker) -> str:
-    """DIRECT=직영(소장), TEAM=팀원(팀장)."""
+def _worker_eval_assignment(
+    db: Session,
+    worker: FunctionalEvalWorker,
+    *,
+    team_leader_logins: set[str] | None = None,
+) -> str:
+    """DIRECT=직영, TEAM_LEADER=팀장(소장 평가), TEAM=팀원(팀장 평가)."""
     manager_login = _manager_login_for_site(db, worker.site_code)
     assigned = (worker.assigned_evaluator_login_id or "").strip()
-    if worker.is_site_manager or assigned == manager_login:
-        return "DIRECT"
-    return "TEAM"
+    if worker.is_site_manager:
+        return EVAL_ASSIGNMENT_DIRECT
+    if assigned != manager_login:
+        return EVAL_ASSIGNMENT_TEAM
+    if team_leader_logins is not None:
+        reg = (
+            db.query(FunctionalEvalSiteRegistry)
+            .filter(FunctionalEvalSiteRegistry.site_code == worker.site_code)
+            .first()
+        )
+        site_alias = (reg.site_alias or "").strip() if reg else ""
+        leader_login = build_eval_login_id(site_alias, worker.name or "")
+        if leader_login and leader_login in team_leader_logins:
+            return EVAL_ASSIGNMENT_TEAM_LEADER
+    return EVAL_ASSIGNMENT_DIRECT
 
 
 def _site_attendance_workers(
@@ -1201,6 +1246,8 @@ def _site_attendance_workers(
 
 def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, site_code: str) -> dict[str, Any]:
     rows = _site_attendance_workers(db, period, site_code)
+    manager_login = _manager_login_for_site(db, site_code)
+    team_leader_logins = _collect_team_leader_evaluator_logins(rows, manager_login)
     assess_map = _assessments_map(db, [r.id for r in rows])
     complete = 0
     direct_total = 0
@@ -1208,11 +1255,16 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
     direct_complete = 0
     team_complete = 0
     for row in rows:
-        payload = serialize_worker(db, row, assessments=assess_map.get(row.id, {}))
+        payload = serialize_worker(
+            db,
+            row,
+            assessments=assess_map.get(row.id, {}),
+            team_leader_logins=team_leader_logins,
+        )
         if _is_fully_evaluated(payload):
             complete += 1
         assignment = payload.get("eval_assignment")
-        if assignment == "DIRECT":
+        if assignment in (EVAL_ASSIGNMENT_DIRECT, EVAL_ASSIGNMENT_TEAM_LEADER):
             direct_total += 1
             if _is_fully_evaluated(payload):
                 direct_complete += 1
@@ -1413,6 +1465,8 @@ def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod)
     if not rows:
         return []
     is_manager = _is_primary_site_evaluator(db, user, site_code)
+    manager_login = _manager_login_for_site(db, site_code)
+    team_leader_logins = _collect_team_leader_evaluator_logins(rows, manager_login)
     site_alias = ""
     if not is_manager:
         reg = (
@@ -1421,8 +1475,9 @@ def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod)
             .first()
         )
         site_alias = (reg.site_alias or "").strip() if reg else ""
-    site_count = len(rows)
-    if not is_manager:
+    if is_manager and len(rows) > TEAM_LEADER_SPLIT_THRESHOLD:
+        rows = [r for r in rows if (r.assigned_evaluator_login_id or "").strip() == manager_login]
+    elif not is_manager:
         rows = [
             r
             for r in rows
@@ -1430,7 +1485,10 @@ def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod)
             and not _is_team_leader_self_target(db, user, r, site_alias=site_alias)
         ]
     assess_map = _assessments_map(db, [r.id for r in rows])
-    return [serialize_worker(db, row, assessments=assess_map.get(row.id, {})) for row in rows]
+    return [
+        serialize_worker(db, row, assessments=assess_map.get(row.id, {}), team_leader_logins=team_leader_logins)
+        for row in rows
+    ]
 
 
 def list_site_overview_for_manager(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
@@ -1438,8 +1496,13 @@ def list_site_overview_for_manager(db: Session, user: User, period: FunctionalEv
     if not _is_primary_site_evaluator(db, user, site_code):
         return []
     rows = _site_attendance_workers(db, period, site_code)
+    manager_login = _manager_login_for_site(db, site_code)
+    team_leader_logins = _collect_team_leader_evaluator_logins(rows, manager_login)
     assess_map = _assessments_map(db, [r.id for r in rows])
-    return [serialize_worker(db, row, assessments=assess_map.get(row.id, {})) for row in rows]
+    return [
+        serialize_worker(db, row, assessments=assess_map.get(row.id, {}), team_leader_logins=team_leader_logins)
+        for row in rows
+    ]
 
 
 def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any]:

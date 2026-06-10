@@ -79,7 +79,7 @@
         <button type="button" class="bucket-card bucket-card--leaders" @click="selectManagerBucket('team_leaders')">
           <span class="bucket-card__label">팀장평가</span>
           <span class="bucket-card__count">{{ managerBucketCounts.teams }}</span>
-          <span class="bucket-card__hint">팀장 담당 {{ managerBucketCounts.team_workers }}명</span>
+          <span class="bucket-card__hint">팀장 {{ managerBucketCounts.team_leaders }}명 · 팀원 {{ managerBucketCounts.team_workers }}명</span>
         </button>
         <button type="button" class="bucket-card bucket-card--pending" @click="selectManagerBucket('team_incomplete')">
           <span class="bucket-card__label">팀별 평가(미완료)</span>
@@ -99,6 +99,22 @@
         </button>
         <h2 class="bucket-list-title">{{ managerBucketTitle }}</h2>
       </div>
+
+      <ul
+        v-if="showManagerBuckets && activeManagerBucket === 'team_leaders' && teamLeaderPersons.length && !activeTeamLeaderId"
+        class="site-list team-leader-person-list"
+      >
+        <li v-for="w in teamLeaderPersons" :key="`tl-${w.id}`">
+          <button type="button" class="site-list-item site-list-item--leader" @click="startEvaluation(w)">
+            <div class="site-list-item__main">
+              <strong>{{ w.name }}</strong>
+              <span class="site-list-item__meta">팀장 · 소장 평가 대상</span>
+            </div>
+            <span :class="rosterStatusClass(w)" class="status-pill">{{ rosterStatusLabel(w) }}</span>
+            <span class="chevron">›</span>
+          </button>
+        </li>
+      </ul>
 
       <ul
         v-if="showManagerBuckets && activeManagerBucket && activeManagerBucket !== 'direct' && !activeTeamLeaderId"
@@ -424,7 +440,8 @@ interface Worker {
   id: number;
   row_no: number;
   name: string;
-  eval_assignment?: "DIRECT" | "TEAM";
+  eval_assignment?: "DIRECT" | "TEAM" | "TEAM_LEADER";
+  eval_assignment_label?: string;
   assigned_evaluator_login_id?: string | null;
   sanction_status: string;
   sanction_status_label: string;
@@ -526,7 +543,13 @@ const incompleteCount = computed(() =>
   approval.value?.incomplete_count ?? countIncompleteWorkers(rosterSource.value),
 );
 
-const evaluableIncompleteCount = computed(() => rosterSource.value.filter(isEvalIncomplete).length);
+const managerEvalQueue = computed(() =>
+  isManager.value && evaluator.value?.team_split_active ? workers.value : rosterSource.value,
+);
+
+const evaluableIncompleteCount = computed(() =>
+  managerEvalQueue.value.filter((w) => isEvalIncomplete(w) && isManagerEvaluable(w)).length,
+);
 
 const canStartFromIncomplete = computed(() =>
   !Boolean(period?.value?.is_closed)
@@ -542,8 +565,6 @@ const isManager = computed(() => {
 const rosterSource = computed(() =>
   isManager.value && siteOverview.value.length ? siteOverview.value : workers.value,
 );
-const evaluatorNameKey = computed(() => (evaluator.value?.display_name || "").replace(/\s/g, "").toLowerCase());
-
 const evaluationLocked = computed(() => approval.value?.evaluation_editable === false);
 
 const evaluatorHeadline = computed(() => {
@@ -609,6 +630,10 @@ function isTeamFullyComplete(team: TeamGroup): boolean {
   return team.total > 0 && team.complete >= team.total;
 }
 
+const teamLeaderPersons = computed(() =>
+  siteOverview.value.filter((w) => w.eval_assignment === "TEAM_LEADER"),
+);
+
 const managerBucketCounts = computed(() => {
   const directWorkers = siteOverview.value.filter((w) => isDirectWorker(w));
   const directIncomplete = directWorkers.filter((w) => isEvalIncomplete(w)).length;
@@ -616,6 +641,7 @@ const managerBucketCounts = computed(() => {
   return {
     direct: directWorkers.length,
     direct_incomplete: directIncomplete,
+    team_leaders: teamLeaderPersons.value.length,
     teams: teams.length,
     team_workers: teams.reduce((sum, t) => sum + t.total, 0),
     teams_incomplete: teams.filter((t) => !isTeamFullyComplete(t)).length,
@@ -678,7 +704,12 @@ function teamLeaderLabel(loginId: string): string {
 }
 
 function isDirectWorker(w: Worker): boolean {
-  return assignmentLabel(w) === "직영" || w.eval_assignment === "DIRECT";
+  return w.eval_assignment === "DIRECT";
+}
+
+function isManagerEvaluable(w: Worker): boolean {
+  if (!isManager.value || !evaluator.value?.team_split_active) return true;
+  return w.eval_assignment === "DIRECT" || w.eval_assignment === "TEAM_LEADER";
 }
 
 function selectManagerBucket(bucket: ManagerBucket) {
@@ -713,28 +744,21 @@ function safetySanctionLineClass(w: Worker): string {
 }
 
 function assignmentLabel(w: Worker): string {
-  const assignedToEvaluator = Boolean(
-    evaluator.value?.login_id
-    && w.assigned_evaluator_login_id
-    && w.assigned_evaluator_login_id.trim() === evaluator.value.login_id.trim(),
-  );
-  if (assignedToEvaluator) {
-    return "직영";
-  }
-  if (evaluatorNameKey.value && w.name?.replace(/\s/g, "").toLowerCase() === evaluatorNameKey.value) {
-    return "직영";
-  }
-  if (isManager.value && !evaluator.value?.team_split_active) return "직영";
-  return w.eval_assignment === "TEAM" ? "팀원" : "직영";
+  if (w.eval_assignment_label) return w.eval_assignment_label;
+  if (w.eval_assignment === "TEAM") return "팀원";
+  if (w.eval_assignment === "TEAM_LEADER") return "팀장";
+  return "직영";
 }
 
 function canEvaluateWorker(w: Worker): boolean {
-  return !period.value?.is_closed;
+  if (period.value?.is_closed) return false;
+  return isManagerEvaluable(w);
 }
 
 function startEvaluationFromIncomplete() {
   if (!canStartFromIncomplete.value) return;
-  const target = rosterSource.value.find(isEvalIncomplete);
+  const queue = isManager.value && evaluator.value?.team_split_active ? workers.value : rosterSource.value;
+  const target = queue.find((w) => isEvalIncomplete(w) && isManagerEvaluable(w));
   if (!target) return;
   startEvaluation(target);
 }
@@ -869,10 +893,14 @@ async function goToRoster() {
 
 function startEvaluation(worker?: Worker) {
   const target = (() => {
-    if (worker) return worker;
-    const firstIncomplete = rosterSource.value.find(isEvalIncomplete);
+    if (worker) {
+      if (!isManagerEvaluable(worker)) return null;
+      return worker;
+    }
+    const queue = isManager.value && evaluator.value?.team_split_active ? workers.value : rosterSource.value;
+    const firstIncomplete = queue.find((w) => isEvalIncomplete(w) && isManagerEvaluable(w));
     if (firstIncomplete) return firstIncomplete;
-    return rosterSource.value[0] ?? null;
+    return queue.find((w) => isManagerEvaluable(w)) ?? null;
   })();
   if (!target) return;
 
