@@ -2,11 +2,15 @@
   <div class="fe-hq-page">
     <div class="page-head">
       <div>
-        <h1 class="page-title">기능인정제 평가 · 본사</h1>
+        <h1 class="page-title">기능인 인정제 · 본사</h1>
         <p class="page-sub">
-          출역일보 기준 평가 진행 — 상세는 현장 선택, 전체 명단은 엑셀
+          출역일보 기준 현장별 평가 현황
           <span v-if="period?.last_attendance_date" class="attendance-badge">
-            출역 반영 {{ period.last_attendance_date }} ({{ period.attendance_row_count }}명)
+            · 출역 {{ period.last_attendance_date }} ({{ period.attendance_row_count }}명)
+          </span>
+          <span v-if="period" class="attendance-badge">
+            · 마감 {{ period.deadline_date }}
+            <span :class="period.is_closed ? 'badge closed inline' : 'badge open inline'">{{ period.is_closed ? "마감" : "진행" }}</span>
           </span>
         </p>
       </div>
@@ -21,23 +25,140 @@
       </div>
     </div>
 
-    <section class="panel">
-      <h2>평가 회차</h2>
-      <div class="row">
-        <label>
-          마감일
-          <input v-model="deadlineInput" type="date" />
+    <p v-if="attendanceMessage" class="attendance-warn">{{ attendanceMessage }}</p>
+    <p v-if="gapsMissingEvaluator.length" class="attendance-warn gaps-warn">
+      출역은 있으나 BESMA 소장 계정이 없는 현장 {{ gapsMissingEvaluator.length }}곳:
+      {{ gapsMissingEvaluator.join(", ") }}
+    </p>
+    <p v-if="loadError" class="load-error">{{ loadError }}</p>
+
+    <!-- 대표·본사용 현황 대시보드 -->
+    <section v-if="!selectedSite" class="panel dashboard-panel">
+      <div v-if="!activeBucket" class="bucket-grid">
+        <button
+          type="button"
+          class="bucket-card bucket-card--progress"
+          @click="selectBucket('in_progress')"
+        >
+          <span class="bucket-card__label">진행 중 현장</span>
+          <span class="bucket-card__count">{{ bucketCounts.in_progress }}</span>
+          <span class="bucket-card__hint">평가가 일부 완료된 현장</span>
+        </button>
+        <button
+          type="button"
+          class="bucket-card bucket-card--pending"
+          @click="selectBucket('not_started')"
+        >
+          <span class="bucket-card__label">미평가 현장</span>
+          <span class="bucket-card__count">{{ bucketCounts.not_started }}</span>
+          <span class="bucket-card__hint">아직 평가가 시작되지 않음</span>
+        </button>
+        <button
+          type="button"
+          class="bucket-card bucket-card--done"
+          @click="selectBucket('completed')"
+        >
+          <span class="bucket-card__label">완료 현장</span>
+          <span class="bucket-card__count">{{ bucketCounts.completed }}</span>
+          <span class="bucket-card__hint">전원 평가 완료</span>
+        </button>
+      </div>
+
+      <div v-else class="bucket-list-panel">
+        <div class="bucket-list-head">
+          <button type="button" class="stitch-btn-secondary back-btn" @click="clearBucket">← 전체 현황</button>
+          <h2>{{ bucketTitle }}</h2>
+          <span class="bucket-list-count">{{ bucketSites.length }}곳</span>
+        </div>
+        <label class="bucket-search">
+          검색
+          <input v-model="siteSearch" type="text" placeholder="현장명·코드·소장명" class="input-md" />
         </label>
-        <button class="stitch-btn-primary" type="button" :disabled="!period" @click="saveDeadline">마감일 저장</button>
-        <span v-if="period?.is_closed" class="badge closed">마감됨</span>
-        <span v-else class="badge open">진행 중</span>
-        <span v-if="totals" class="kpi">
-          현장 {{ totals.sites }} · 근로자 {{ totals.workers }}명 · 전체완료 {{ totals.fully_complete }}
-        </span>
+        <ul v-if="bucketSites.length" class="site-list">
+          <li v-for="s in filteredBucketSites" :key="s.site_code">
+            <button type="button" class="site-list-item" @click="openSite(s)">
+              <div class="site-list-item__main">
+                <strong>{{ s.site_name }}</strong>
+                <span class="site-list-item__meta">{{ s.site_code }} · 소장 {{ s.evaluator_name }}</span>
+              </div>
+              <div class="site-list-item__progress">
+                <span class="progress-pill">{{ s.progress }}</span>
+                <div class="progress-bar" aria-hidden="true">
+                  <div class="progress-bar__fill" :style="{ width: `${s.progress_pct ?? 0}%` }" />
+                </div>
+              </div>
+              <span class="chevron">›</span>
+            </button>
+          </li>
+        </ul>
+        <p v-else class="muted empty-bucket">해당 구분의 현장이 없습니다.</p>
       </div>
     </section>
 
-    <section class="panel evaluator-accounts-panel">
+    <!-- 현장 상세: 소장 평가 화면과 동일한 등급 현황 -->
+    <section v-else class="panel site-detail-panel">
+      <div class="detail-head">
+        <button class="stitch-btn-secondary back-btn" type="button" @click="closeSite">← {{ bucketTitle || "현장 목록" }}</button>
+        <div class="detail-head-text">
+          <h2>{{ selectedSite.site_name }}</h2>
+          <p class="panel-sub">
+            {{ selectedSite.site_code }} · 소장 {{ selectedSite.evaluator_name }}
+            · 진행 <strong>{{ siteDetail?.site?.progress || selectedSite.progress }}</strong>
+            <span v-if="siteApproval?.status_label"> · {{ siteApproval.status_label }}</span>
+          </p>
+        </div>
+        <button class="stitch-btn-secondary" type="button" :disabled="exportingGrade" @click="downloadSiteGradeWorkbook(selectedSite.site_code)">
+          {{ exportingGrade ? "출력 중…" : "등급표" }}
+        </button>
+      </div>
+      <div v-if="siteApproval" class="approval-summary">
+        <span>평가 완료 {{ siteApproval.site_complete_workers }}/{{ siteApproval.site_total_workers }}명</span>
+        <span v-if="siteApproval.team_total"> · 팀원 {{ siteApproval.team_complete }}/{{ siteApproval.team_total }}</span>
+        <span v-if="siteApproval.direct_total"> · 직영 {{ siteApproval.direct_complete }}/{{ siteApproval.direct_total }}</span>
+      </div>
+      <div v-if="loadingSite" class="muted">불러오는 중...</div>
+      <div v-else class="table-scroll">
+        <table class="data-table roster-like-table">
+          <thead>
+            <tr>
+              <th>성명</th>
+              <th>상태</th>
+              <th>기능 (2-1)</th>
+              <th>안전·제재 (2-2)</th>
+              <th>비고</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in evalRows" :key="row.worker_id" :class="row.needs_highlight ? 'row-highlight--alert' : ''">
+              <td>{{ row.name }}</td>
+              <td><span :class="evalStatusClass(row.eval_status)">{{ row.eval_status_label || "—" }}</span></td>
+              <td><span :class="gradeClass(row.functional_grade)">{{ row.functional_grade }}</span></td>
+              <td><span :class="gradeClass(row.safety_grade)">{{ row.safety_grade }}</span></td>
+              <td class="remark">{{ row.remark }}</td>
+            </tr>
+            <tr v-if="!evalRows.length">
+              <td colspan="5" class="muted">출역 대상 근로자가 없습니다.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel collapsible ops-panel">
+      <button class="section-toggle" type="button" @click="showOps = !showOps">
+        {{ showOps ? "▾" : "▸" }} 승인·마감·운영
+      </button>
+      <template v-if="showOps">
+        <div class="row deadline-row">
+          <label>
+            마감일
+            <input v-model="deadlineInput" type="date" />
+          </label>
+          <button class="stitch-btn-primary" type="button" :disabled="!period" @click="saveDeadline">마감일 저장</button>
+          <span v-if="totals" class="kpi">현장 {{ totals.sites }} · 근로자 {{ totals.workers }}명</span>
+        </div>
+
+    <div class="evaluator-accounts-panel inner-section">
       <div class="evaluator-accounts-head">
         <div>
           <h2>중간 평가자(팀장) 계정</h2>
@@ -84,9 +205,9 @@
           </tbody>
         </table>
       </div>
-    </section>
+    </div>
 
-    <section class="panel approval-queue-panel">
+    <div class="approval-queue-panel inner-section">
       <h2>승인 처리</h2>
       <p class="panel-sub">소장 승인 → 안전보건실 → 대표이사(부현대표-김홍수) 최종 승인 순서입니다.</p>
       <div class="approval-queue-actions">
@@ -145,119 +266,7 @@
         </table>
       </div>
       <p v-else class="muted">대기 중인 현장이 없습니다.</p>
-    </section>
-
-    <!-- 현장 목록 -->
-    <section v-if="!selectedSite" class="panel">
-      <h2>현장별 평가 진행</h2>
-      <p class="panel-sub">현장을 선택하면 <strong>평가 완료(기능+안전)</strong>된 근로자만 표시됩니다.</p>
-      <p v-if="attendanceMessage" class="attendance-warn">{{ attendanceMessage }}</p>
-      <p v-if="gapsMissingEvaluator.length" class="attendance-warn gaps-warn">
-        출역은 있으나 BESMA 소장 계정이 없는 현장 {{ gapsMissingEvaluator.length }}곳:
-        {{ gapsMissingEvaluator.join(", ") }}
-        (출역일보 「대표」 이름으로 표시, 계정은 명부 직종1 반영 후 생성)
-      </p>
-      <p v-if="loadError" class="load-error">{{ loadError }}</p>
-      <div class="toolbar">
-        <label>
-          현장 검색
-          <input v-model="siteSearch" type="text" placeholder="현장명·코드·소장명" class="input-md" />
-        </label>
-        <label class="checkbox-label">
-          <input v-model="onlyWithProgress" type="checkbox" />
-          평가 완료 1명 이상만
-        </label>
-        <label>
-          정렬
-          <select v-model="sortBy" @change="loadOverview">
-            <option value="site_code">현장코드</option>
-            <option value="site_name">현장명</option>
-            <option value="evaluator_name">평가자</option>
-            <option value="progress">진행률</option>
-          </select>
-        </label>
-        <label>
-          방향
-          <select v-model="sortDir" @change="loadOverview">
-            <option value="asc">오름차순</option>
-            <option value="desc">내림차순</option>
-          </select>
-        </label>
-      </div>
-      <div class="table-scroll">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>현장명</th>
-              <th>평가자(소장)</th>
-              <th>평가 현황</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="s in filteredSites"
-              :key="s.site_code"
-              class="site-row"
-              :class="{ 'site-row--active': s.has_completed }"
-              @click="openSite(s)"
-            >
-              <td>{{ s.site_name }}</td>
-              <td>
-                {{ s.evaluator_name }}
-                <span v-if="s.evaluator_missing" class="tag-missing" title="소장 BESMA 계정 없음">!</span>
-              </td>
-              <td>
-                <span class="progress-pill" :class="{ done: s.fully_complete > 0 }">{{ s.progress }}</span>
-              </td>
-              <td class="chevron">›</td>
-            </tr>
-            <tr v-if="!filteredSites.length">
-              <td colspan="4" class="muted">표시할 현장이 없습니다.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- 현장 상세: 완료자만 -->
-    <section v-else class="panel">
-      <div class="detail-head">
-        <button class="stitch-btn-secondary back-btn" type="button" @click="closeSite">← 현장 목록</button>
-        <div>
-          <h2>{{ selectedSite.site_name }}</h2>
-          <p class="panel-sub">
-            평가자 {{ selectedSite.evaluator_name }} · 진행
-            <strong>{{ siteDetail?.site?.progress || selectedSite.progress }}</strong>
-          </p>
-        </div>
-      </div>
-
-      <div v-if="loadingSite" class="muted">불러오는 중...</div>
-      <template v-else>
-        <p v-if="!evalRows.length" class="empty-msg">
-          아직 평가 완료(기능+안전)된 근로자가 없습니다. 진행률은 {{ siteDetail?.site?.progress || selectedSite.progress }} 입니다.
-        </p>
-        <div v-else class="table-scroll">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>이름</th>
-                <th>안전등급</th>
-                <th>품질등급</th>
-                <th>비고</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in evalRows" :key="row.worker_id" :class="row.needs_highlight ? 'row-highlight--alert' : ''">
-                <td>{{ row.name }}</td>
-                <td><span :class="gradeClass(row.safety_grade)">{{ row.safety_grade }}</span></td>
-                <td><span :class="gradeClass(row.functional_grade)">{{ row.functional_grade }}</span></td>
-                <td class="remark">{{ row.remark }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+    </div>
       </template>
     </section>
 
@@ -425,6 +434,8 @@ interface Totals {
   incomplete: number;
 }
 
+type SiteBucket = "in_progress" | "not_started" | "completed";
+
 interface SiteRow {
   site_code: string;
   site_name: string;
@@ -433,7 +444,10 @@ interface SiteRow {
   total: number;
   fully_complete: number;
   progress: string;
+  progress_pct?: number;
   has_completed: boolean;
+  bucket?: SiteBucket;
+  bucket_label?: string;
 }
 
 interface EvalRow {
@@ -442,7 +456,19 @@ interface EvalRow {
   functional_grade: string;
   safety_grade: string;
   remark: string;
+  eval_status?: string;
+  eval_status_label?: string;
   needs_highlight?: boolean;
+}
+
+interface SiteApprovalSummary {
+  status_label?: string;
+  site_complete_workers?: number;
+  site_total_workers?: number;
+  team_total?: number;
+  team_complete?: number;
+  direct_total?: number;
+  direct_complete?: number;
 }
 
 interface DiffResult {
@@ -483,7 +509,8 @@ const period = ref<Period | null>(null);
 const totals = ref<Totals | null>(null);
 const sites = ref<SiteRow[]>([]);
 const selectedSite = ref<SiteRow | null>(null);
-const siteDetail = ref<{ site: SiteRow } | null>(null);
+const siteDetail = ref<{ site: SiteRow; approval?: SiteApprovalSummary } | null>(null);
+const siteApproval = computed(() => siteDetail.value?.approval ?? null);
 const evalRows = ref<EvalRow[]>([]);
 const loadingSite = ref(false);
 const exporting = ref(false);
@@ -492,9 +519,11 @@ const deadlineInput = ref("");
 const sortBy = ref("progress");
 const sortDir = ref("desc");
 const siteSearch = ref("");
-const onlyWithProgress = ref(false);
 const loadError = ref("");
 const showAdmin = ref(false);
+const showOps = ref(false);
+const activeBucket = ref<SiteBucket | null>(null);
+const bucketCounts = ref({ in_progress: 0, not_started: 0, completed: 0 });
 const rosterFile = ref<File | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const diffing = ref(false);
@@ -540,20 +569,53 @@ const evaluatorAccountsSummary = computed(() => {
   return `소장 ${p.manager_count}명 · 팀장 ${p.team_leader_count}명 · 팀장분산 현장 ${p.split_site_count}곳${date}`;
 });
 
-const filteredSites = computed(() => {
-  let list = sites.value;
-  if (onlyWithProgress.value) {
-    list = list.filter((s) => s.has_completed || (s.fully_complete ?? 0) > 0);
-  }
+const bucketTitle = computed(() => {
+  if (activeBucket.value === "in_progress") return "진행 중 현장";
+  if (activeBucket.value === "not_started") return "미평가 현장";
+  if (activeBucket.value === "completed") return "완료 현장";
+  return "";
+});
+
+const bucketSites = computed(() => {
+  if (!activeBucket.value) return [];
+  return sites.value.filter((s) => (s.bucket || inferBucket(s)) === activeBucket.value);
+});
+
+const filteredBucketSites = computed(() => {
   const q = siteSearch.value.trim().toLowerCase();
-  if (!q) return list;
-  return list.filter(
+  if (!q) return bucketSites.value;
+  return bucketSites.value.filter(
     (s) =>
       s.site_code.toLowerCase().includes(q) ||
       (s.site_name || "").toLowerCase().includes(q) ||
       (s.evaluator_name || "").toLowerCase().includes(q),
   );
 });
+
+function inferBucket(s: SiteRow): SiteBucket {
+  const total = s.total ?? 0;
+  const done = s.fully_complete ?? 0;
+  if (total <= 0) return "not_started";
+  if (done >= total) return "completed";
+  if (done <= 0) return "not_started";
+  return "in_progress";
+}
+
+function selectBucket(bucket: SiteBucket) {
+  activeBucket.value = bucket;
+  siteSearch.value = "";
+}
+
+function clearBucket() {
+  activeBucket.value = null;
+  siteSearch.value = "";
+}
+
+function evalStatusClass(status?: string) {
+  if (status === "completed") return "eval-status eval-status--done";
+  if (status === "in_progress") return "eval-status eval-status--progress";
+  return "eval-status eval-status--pending";
+}
 
 function gradeClass(grade: string) {
   if (grade === "미평가") return "grade pending";
@@ -650,9 +712,23 @@ async function loadOverview() {
     period.value = res.data.period;
     totals.value = res.data.totals || null;
     attendanceMessage.value = res.data.attendance_message || "";
-    gapsMissingEvaluator.value = res.data.gaps?.sites_missing_evaluator_account ?? [];
     const rows = res.data.sites ?? res.data.site_progress ?? [];
     sites.value = Array.isArray(rows) ? rows : [];
+    const buckets = res.data.site_buckets;
+    if (buckets) {
+      bucketCounts.value = {
+        in_progress: buckets.in_progress ?? 0,
+        not_started: buckets.not_started ?? 0,
+        completed: buckets.completed ?? 0,
+      };
+    } else {
+      bucketCounts.value = {
+        in_progress: sites.value.filter((s) => inferBucket(s) === "in_progress").length,
+        not_started: sites.value.filter((s) => inferBucket(s) === "not_started").length,
+        completed: sites.value.filter((s) => inferBucket(s) === "completed").length,
+      };
+    }
+    gapsMissingEvaluator.value = res.data.gaps?.sites_missing_evaluator_account ?? [];
     if (!sites.value.length && (totals.value?.workers ?? 0) > 0) {
       loadError.value = "현장 목록을 불러오지 못했습니다. 새로고침(Ctrl+F5) 후 다시 시도해 주세요.";
     }
@@ -670,6 +746,9 @@ async function loadOverview() {
 
 async function openSite(site: SiteRow) {
   selectedSite.value = site;
+  if (!activeBucket.value && site.bucket) {
+    activeBucket.value = site.bucket;
+  }
   loadingSite.value = true;
   evalRows.value = [];
   try {
@@ -938,4 +1017,81 @@ onMounted(async () => {
 .load-error { color: #991b1b; background: #fef2f2; padding: 10px 12px; border-radius: 8px; font-size: 14px; margin-bottom: 8px; }
 .data-table tbody tr.row-highlight--alert { background: #fef2f2; }
 .data-table tbody tr.row-highlight--alert:hover { background: #fee2e2; }
+.dashboard-panel { padding: 20px; }
+.bucket-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .bucket-grid { grid-template-columns: 1fr; }
+}
+.bucket-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 20px 18px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
+}
+.bucket-card:hover {
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+.bucket-card--progress { border-top: 4px solid #2563eb; }
+.bucket-card--pending { border-top: 4px solid #ea580c; }
+.bucket-card--done { border-top: 4px solid #16a34a; }
+.bucket-card__label { font-size: 15px; font-weight: 600; color: #0f172a; }
+.bucket-card__count { font-size: 36px; font-weight: 700; line-height: 1; color: #0f172a; font-variant-numeric: tabular-nums; }
+.bucket-card__hint { font-size: 13px; color: #64748b; }
+.bucket-list-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.bucket-list-head h2 { margin: 0; font-size: 18px; }
+.bucket-list-count { font-size: 14px; color: #64748b; }
+.bucket-search { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin-bottom: 12px; }
+.site-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.site-list-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.site-list-item:hover { background: #f8fafc; border-color: #cbd5e1; }
+.site-list-item__main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.site-list-item__main strong { font-size: 15px; color: #0f172a; }
+.site-list-item__meta { font-size: 13px; color: #64748b; }
+.site-list-item__progress { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 88px; }
+.progress-bar { width: 88px; height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden; }
+.progress-bar__fill { height: 100%; background: #2563eb; border-radius: 999px; }
+.site-detail-panel .detail-head-text { flex: 1; min-width: 0; }
+.approval-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 14px;
+  color: #334155;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+.eval-status { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.eval-status--done { background: #dcfce7; color: #166534; }
+.eval-status--progress { background: #dbeafe; color: #1d4ed8; }
+.eval-status--pending { background: #f1f5f9; color: #64748b; }
+.ops-panel .inner-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid #e5e7eb; }
+.deadline-row { margin-bottom: 8px; }
+.badge.inline { margin-left: 4px; vertical-align: middle; }
+.empty-bucket { padding: 24px 0; text-align: center; }
 </style>

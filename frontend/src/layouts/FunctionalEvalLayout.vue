@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div
     class="layout-root functional-eval-shell site-shell"
     :class="{
@@ -13,7 +13,7 @@
       @click="mobileDrawerOpen = false"
     />
     <aside v-if="!isMobileViewport" class="layout-sidebar">
-      <h1>기능인정제 평가</h1>
+      <h1>기능인 인정제 평가</h1>
       <nav class="layout-menu">
         <RouterLink
           class="fe-menu-highlight"
@@ -23,21 +23,21 @@
           등급현황
         </RouterLink>
         <div class="fe-sidebar-group">
-          <div class="fe-sidebar-group-title">평가</div>
+          <div class="fe-sidebar-group-title">분류</div>
           <RouterLink
             v-for="status in evalMenuStatuses"
-            :key="`eval-${status}`"
+            :key="`eval-${status.key}`"
             class="fe-menu-subitem"
-            :class="{ active: isEvalMenuActive(status) }"
-            :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status } }"
+            :class="{ active: isEvalMenuActive(status.key) }"
+            :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status.key } }"
           >
-            {{ status }}
+            {{ status.label }}
           </RouterLink>
         </div>
       </nav>
     </aside>
     <aside v-else class="layout-sidebar">
-      <h1>기능인정제 평가</h1>
+      <h1>기능인 인정제 평가</h1>
       <nav class="layout-menu">
         <RouterLink
           class="fe-menu-highlight"
@@ -48,16 +48,16 @@
           등급현황
         </RouterLink>
         <div class="fe-sidebar-group">
-          <div class="fe-sidebar-group-title">평가</div>
+          <div class="fe-sidebar-group-title">분류</div>
           <RouterLink
             v-for="status in evalMenuStatuses"
-            :key="`eval-mobile-${status}`"
+            :key="`eval-mobile-${status.key}`"
             class="fe-menu-subitem"
-            :class="{ active: isEvalMenuActive(status) }"
-            :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status } }"
+            :class="{ active: isEvalMenuActive(status.key) }"
+            :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status.key } }"
             @click="mobileDrawerOpen = false"
           >
-            {{ status }}
+            {{ status.label }}
           </RouterLink>
         </div>
       </nav>
@@ -76,12 +76,12 @@
             <span class="hamburger-glyph" aria-hidden="true">☰</span>
           </button>
           <div class="header-title-block">
-            <div class="header-title">기능인정제 평가</div>
-            <div v-if="isMobileViewport" class="header-sub">{{ auth.user?.name }} (아이디 {{ auth.user?.login_id }})</div>
+            <div class="header-title">기능인 인정제 평가</div>
+            <div v-if="isMobileViewport" class="header-sub">{{ auth.user?.name }} ({{ auth.user?.login_id }})</div>
           </div>
         </div>
         <div class="header-right">
-          <span v-if="!isMobileViewport">{{ auth.user?.name }} (아이디 {{ auth.user?.login_id }})</span>
+          <span v-if="!isMobileViewport">{{ auth.user?.name }} ({{ auth.user?.login_id }})</span>
           <button class="stitch-btn-secondary header-logout" type="button" @click="logout">로그아웃</button>
         </div>
       </header>
@@ -104,14 +104,18 @@ const route = useRoute();
 const { isMobileViewport } = useMobileViewport();
 const mobileDrawerOpen = ref(false);
 
-const evalMenuStatuses = ["미평가", "진행중", "평가완료"];
+const evalMenuStatuses = [
+  { key: "incomplete", label: "미평가" },
+  { key: "in_progress", label: "진행중" },
+  { key: "complete", label: "평가완료" },
+];
 
 const isRosterMenuActive = computed(
   () => route.name === "site-functional-eval" || route.name === "site-functional-eval-roster",
 );
 
-function isEvalMenuActive(status: string) {
-  return route.name === "site-functional-eval-evaluate" && route.query.eval_status === status;
+function isEvalMenuActive(statusKey: string) {
+  return route.name === "site-functional-eval-evaluate" && route.query.eval_status === statusKey;
 }
 
 watch(
@@ -254,3 +258,4 @@ function logout() {
   }
 }
 </style>
+

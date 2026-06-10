@@ -3,7 +3,7 @@
     <div class="head-row">
       <div>
         <div class="card-title">사고 작업리스트</div>
-        <p class="muted">최근 등록된 사고를 빠르게 열람·처리합니다. 파싱 상태 등은 상세 화면에서 확인할 수 있습니다.</p>
+        <p class="muted">등록일 최신순 최근 20건을 빠르게 열람·처리합니다. 파싱 상태 등은 상세 화면에서 확인할 수 있습니다.</p>
       </div>
       <div class="head-actions">
         <label class="prefer-toggle">
@@ -21,7 +21,7 @@
       <section class="sec">
         <div class="sec-head">
           <h3 class="sec-title">최근 등록 건</h3>
-          <span class="count-badge">{{ worklist.recent.count }}건</span>
+          <span class="count-badge">최근 {{ worklist.recent.items.length }}건 / 전체 {{ worklist.recent.count }}건</span>
         </div>
         <table class="basic-table">
           <thead>
@@ -57,7 +57,17 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
-import { fetchAccidentWorklist, type AccidentWorklistResponse } from "@/services/accidents";
+import { fetchAccidentWorklist, syncAccidents, type AccidentWorklistResponse } from "@/services/accidents";
+import {
+  ACCIDENT_LIST_RECENT_LIMIT,
+  mergeAccidentListItems,
+  readAccidentListCache,
+  readAccidentListSyncTime,
+  readWorklistCache,
+  trimAccidentListItems,
+  writeAccidentListCache,
+  writeWorklistCache,
+} from "@/utils/accidentsCache";
 import { formatAccidentDateForListRow } from "@/utils/accidentDateDisplay";
 
 const router = useRouter();
@@ -75,13 +85,48 @@ function goDetail(id: number) {
   router.push({ name: "hq-safe-accident-detail", params: { id: String(id) } });
 }
 
+function applyRecentFromCache(items: ReturnType<typeof readAccidentListCache>) {
+  if (!items?.length) return;
+  worklist.value = {
+    unverified: { count: 0, items: [] },
+    parse_review: { count: 0, items: [] },
+    missing_attachments: { count: 0, items: [] },
+    recent: { count: items.length, items: items.slice(0, ACCIDENT_LIST_RECENT_LIMIT) },
+  };
+}
+
 async function load() {
-  loading.value = true;
   errorMessage.value = "";
+  const cachedWorklist = readWorklistCache();
+  const cachedList = readAccidentListCache(true);
+  if (cachedWorklist) {
+    worklist.value = cachedWorklist;
+    loading.value = false;
+  } else if (cachedList?.length) {
+    applyRecentFromCache(cachedList);
+    loading.value = false;
+  } else {
+    loading.value = true;
+  }
+
   try {
-    worklist.value = await fetchAccidentWorklist();
+    const syncSince = readAccidentListSyncTime(true);
+    if (syncSince && cachedList?.length) {
+      const syncRes = await syncAccidents(syncSince);
+      const merged = trimAccidentListItems(
+        mergeAccidentListItems(cachedList, syncRes.upserts, true),
+        true,
+      );
+      writeAccidentListCache(true, merged, syncRes.server_time);
+    }
+
+    const fresh = await fetchAccidentWorklist();
+    worklist.value = fresh;
+    writeWorklistCache(fresh, new Date().toISOString());
   } catch {
-    errorMessage.value = "작업리스트를 불러오지 못했습니다.";
+    if (!cachedWorklist && !cachedList?.length) {
+      errorMessage.value = "작업리스트를 불러오지 못했습니다.";
+    }
   } finally {
     loading.value = false;
   }

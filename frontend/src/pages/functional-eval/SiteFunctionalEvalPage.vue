@@ -14,7 +14,7 @@
           :disabled="!canStartFromIncomplete"
           @click="startEvaluationFromIncomplete"
         >
-          미평가 {{ incompleteCount }}명
+          미완료 {{ incompleteCount }}명
         </button>
           <span v-if="period?.is_closed" class="badge closed">마감</span>
           <span v-else class="badge open">진행</span>
@@ -24,7 +24,7 @@
       </div>
       <div class="page-head-actions">
       <button
-        v-if="!evaluator || evaluator.role === 'MANAGER'"
+        v-if="!evaluator || isManager"
         class="btn-export stitch-btn-primary"
         type="button"
         :disabled="exportingGrade"
@@ -94,6 +94,7 @@
               <th v-if="isManager && evaluator?.team_split_active">구분</th>
               <th>기능 (2-1)</th>
               <th>안전·제재 (2-2)</th>
+              <th>비고</th>
               <th></th>
             </tr>
           </thead>
@@ -107,10 +108,11 @@
               </td>
               <td class="safety-sanction-cell">
                 <span :class="safetySanctionCell(w).safetyClass">{{ safetySanctionCell(w).safetyLabel }}</span>
-                <span
-                  v-if="safetySanctionCell(w).subLabel"
-                  :class="safetySanctionCell(w).subClass"
-                >{{ safetySanctionCell(w).subLabel }}</span>
+              </td>
+              <td class="remark-cell">
+                <span v-for="(line, idx) in workerRemarkLines(w)" :key="`${w.id}-${idx}`" class="remark-line">
+                  {{ line }}
+                </span>
               </td>
               <td class="actions-cell">
                 <button
@@ -122,22 +124,14 @@
                 >
                   {{ rosterStatusLabel(w) }}
                 </button>
-                <button
-                  v-if="canEvaluateWorker(w)"
-                  class="link-btn"
-                  type="button"
-                  @click="startEvaluation(w)"
-                >
-                  평가
-                </button>
-                <span v-else-if="evaluationLocked" class="muted-action">승인 중</span>
+                <span v-if="evaluationLocked" class="muted-action">승인 중</span>
                 <button
                   v-if="canOpenHistory(w)"
                   class="link-btn"
                   type="button"
                   @click="openHistory(w)"
                 >
-                  이력
+                  제재이력
                 </button>
                 <button
                   v-if="canRegisterSanction(w)"
@@ -160,7 +154,7 @@
     <FunctionalEvalWorkspace
       v-if="mainView === 'evaluate' && evalCriteria.length"
       :key="`${evalSessionKey}-${activeTab}`"
-      :workers="rosterSource"
+      :workers="evaluableWorkers"
       :eval-type="currentEvalType"
       :title="evalTabTitle"
       :criteria="evalCriteria"
@@ -292,13 +286,13 @@ import {
   isFullyComplete,
   needsSanctionPrompt,
   safetySanctionDisplay,
-  workerRowHighlightClass,
 } from "@/utils/functionalEvalCompletion";
 
 type MainView = "roster" | "evaluate";
 type EvalTab = "functional" | "safety";
 type EvalType = "FUNCTIONAL" | "SAFETY";
 type EvalStatusKey = "incomplete" | "in_progress" | "complete";
+type EvalStatusFilter = EvalStatusKey | "all";
 
 interface AssessmentBrief {
   scores: Record<string, string>;
@@ -318,6 +312,7 @@ interface EvalCatalogBlock {
 interface EvaluatorSession {
   role: "MANAGER" | "TEAM_LEADER";
   role_label: string;
+  manager_login_id?: string;
   eval_scope_label?: string;
   login_id: string;
   display_name: string;
@@ -365,8 +360,15 @@ interface Worker {
   row_no: number;
   name: string;
   eval_assignment?: "DIRECT" | "TEAM";
+  assigned_evaluator_login_id?: string | null;
   sanction_status: string;
   sanction_status_label: string;
+  sanction_count?: number;
+  latest_sanction?: {
+    id: number;
+    violation_label?: string | null;
+    sanction_result_label?: string | null;
+  } | null;
   is_permanently_expelled: boolean;
   history_visible: boolean;
   functional_assessment?: AssessmentBrief | null;
@@ -395,8 +397,10 @@ const route = useRoute();
 const router = useRouter();
 
 const evalStatusFromLabel: Record<string, EvalStatusKey> = {
-  미평가: "incomplete",
+  미완료: "incomplete",
   진행중: "in_progress",
+  완료: "complete",
+  미평가: "incomplete",
   평가완료: "complete",
   incomplete: "incomplete",
   in_progress: "in_progress",
@@ -407,9 +411,9 @@ const mainView = computed<MainView>(() =>
   route.name === "site-functional-eval-evaluate" ? "evaluate" : "roster",
 );
 
-const activeEvalStatus = computed<EvalStatusKey>(() => {
+const activeEvalStatus = computed<EvalStatusFilter>(() => {
   const q = typeof route.query.eval_status === "string" ? route.query.eval_status : "";
-  return evalStatusFromLabel[q] ?? "incomplete";
+  return evalStatusFromLabel[q] ?? "all";
 });
 
 const activeTab = ref<EvalTab>("functional");
@@ -461,25 +465,29 @@ const canStartFromIncomplete = computed(() =>
 );
 
 
-const isManager = computed(() => evaluator.value?.role === "MANAGER");
+const isManager = computed(() => {
+  if (!evaluator.value) return false;
+  return evaluator.value.role === "MANAGER";
+});
 
 const rosterSource = computed(() =>
   isManager.value && siteOverview.value.length ? siteOverview.value : workers.value,
 );
+const evaluatorNameKey = computed(() => (evaluator.value?.display_name || "").replace(/\s/g, "").toLowerCase());
 
 const evaluationLocked = computed(() => approval.value?.evaluation_editable === false);
 
 const evaluatorHeadline = computed(() => {
   if (!evaluator.value) return "";
   if (evaluator.value.eval_scope_label) return `${evaluator.value.role_label} · ${evaluator.value.eval_scope_label}`;
-  if (evaluator.value.role === "TEAM_LEADER") {
+  if (!isManager.value) {
     return `팀장 · 담당 ${evaluator.value.assigned_worker_count}명`;
   }
   return "소장 평가";
 });
 
 const evaluatorBadgeClass = computed(() =>
-  evaluator.value?.role === "TEAM_LEADER" ? "evaluator-badge--leader" : "evaluator-badge--manager",
+  isManager.value ? "evaluator-badge--manager" : "evaluator-badge--leader",
 );
 
 const evaluatorHint = computed(() => {
@@ -487,7 +495,7 @@ const evaluatorHint = computed(() => {
     return approval.value.status_label + (approval.value.reject_note ? ` — ${approval.value.reject_note}` : "");
   }
   if (!evaluator.value) return "";
-  if (evaluator.value.role === "TEAM_LEADER") {
+  if (!isManager.value) {
     return "담당 팀원만 평가할 수 있습니다. 소장이 현장 전체를 승인한 뒤 본사·대표 승인이 이어집니다.";
   }
   if (evaluator.value.team_split_active) {
@@ -498,17 +506,31 @@ const evaluatorHint = computed(() => {
 
 const rosterDescription = computed(() => evaluatorHint.value);
 
-const rosterColspan = computed(() => (isManager.value && evaluator.value?.team_split_active ? 6 : 5));
+const rosterColspan = computed(() => (isManager.value && evaluator.value?.team_split_active ? 7 : 6));
 
 const filteredWorkers = computed(() => {
-  const list =
-    route.name === "site-functional-eval-evaluate"
-      ? rosterSource.value.filter((w) => workerEvalStatusKey(w) === activeEvalStatus.value)
-      : rosterSource.value;
+  const list = activeEvalStatus.value === "all"
+    ? rosterSource.value
+    : rosterSource.value.filter((w) => workerEvalStatusKey(w) === activeEvalStatus.value);
   return [...list].sort((a, b) => a.name.localeCompare(b.name, "ko"));
 });
 
+const evaluableWorkers = computed(() =>
+  activeEvalStatus.value === "all" ? rosterSource.value : filteredWorkers.value
+);
+
 function assignmentLabel(w: Worker): string {
+  const assignedToEvaluator = Boolean(
+    evaluator.value?.login_id
+    && w.assigned_evaluator_login_id
+    && w.assigned_evaluator_login_id.trim() === evaluator.value.login_id.trim(),
+  );
+  if (assignedToEvaluator) {
+    return "직영";
+  }
+  if (evaluatorNameKey.value && w.name?.replace(/\s/g, "").toLowerCase() === evaluatorNameKey.value) {
+    return "직영";
+  }
   if (isManager.value && !evaluator.value?.team_split_active) return "직영";
   return w.eval_assignment === "TEAM" ? "팀원" : "직영";
 }
@@ -525,11 +547,30 @@ function startEvaluationFromIncomplete() {
 }
 
 function canOpenHistory(w: Worker): boolean {
-  return Boolean(w.history_visible);
+  return Boolean(hasActualSanctionHistory(w));
 }
 
 function canRegisterSanction(w: Worker): boolean {
-  return !period.value?.is_closed && !w.is_permanently_expelled && needsSanctionPrompt(w);
+  return !period.value?.is_closed && !w.is_permanently_expelled && (needsSanctionPrompt(w) || hasActualSanctionHistory(w));
+}
+
+function hasActualSanctionHistory(w: Worker): boolean {
+  return Boolean((w.sanction_count ?? 0) > 0 || w.latest_sanction);
+}
+
+function workerRemarkLines(w: Worker): string[] {
+  const lines: string[] = [];
+  if (isFullyComplete(w)) {
+    lines.push("완료");
+  } else if (!isFunctionalComplete(w) && !isSafetyComplete(w)) {
+    lines.push("미완료");
+  } else {
+    lines.push("대기");
+  }
+  if (hasActualSanctionHistory(w)) {
+    lines.push("제재이력");
+  }
+  return lines;
 }
 
 function safetySanctionCell(w: Worker) {
@@ -594,9 +635,9 @@ function requestSubmitSanction() {
 }
 
 function workerEvalStatus(w: Worker): string {
-  if (isFullyComplete(w)) return "평가완료";
+  if (isFullyComplete(w)) return "완료";
   if (isFunctionalComplete(w) || isSafetyComplete(w)) return "진행중";
-  return "미평가";
+  return "미완료";
 }
 
 function workerEvalStatusKey(w: Worker): EvalStatusKey {
@@ -604,13 +645,20 @@ function workerEvalStatusKey(w: Worker): EvalStatusKey {
 }
 
 function rosterStatusLabel(w: Worker): string {
-  return workerEvalStatus(w);
+  const status = workerEvalStatus(w);
+  if (status === "진행중") return "진행";
+  if (status === "미완료") return "대기";
+  return "완료";
 }
 
 function rosterStatusClass(w: Worker): string {
-  if (workerEvalStatus(w) === "평가완료") return "done";
+  if (workerEvalStatus(w) === "완료") return "done";
   if (workerEvalStatus(w) === "진행중") return "normal";
   return "pending";
+}
+
+function workerRowHighlightClass(w: Worker): string {
+  return hasActualSanctionHistory(w) ? "row-highlight--alert" : "";
 }
 
 function goToRoster() {
@@ -1194,9 +1242,21 @@ textarea.field-control {
 
 .safety-sanction-cell {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+}
+
+.remark-cell {
+  white-space: nowrap;
+}
+
+.remark-cell .remark-line {
+  display: block;
+  margin-top: 4px;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .roster-table .grade-pill {
@@ -1584,3 +1644,4 @@ body.fe-sheet-open-body {
   overflow: hidden;
 }
 </style>
+

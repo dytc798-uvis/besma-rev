@@ -81,6 +81,14 @@
         <p v-if="error" class="error">{{ error }}</p>
         <div class="actions">
           <button
+            class="stitch-btn-secondary touch-btn"
+            type="button"
+            :disabled="disabled || saving || !criteria.length"
+            @click="setAllNormalGrades"
+          >
+            일괄 보통 등록
+          </button>
+          <button
             v-if="variant === 'mobile'"
             class="stitch-btn-secondary touch-btn"
             type="button"
@@ -154,6 +162,25 @@ const canSave = computed(() => {
   if (!props.criteria.length) return false;
   return props.criteria.every((c) => Boolean(props.scores[c.id]));
 });
+
+function findNormalGrade(c: Criterion): string | null {
+  const byLabel = c.grades.find((g) => g.label.includes("보통"));
+  if (byLabel) return byLabel.key;
+  if (!c.grades.length) return null;
+  const normalIndex = Math.floor((c.grades.length - 1) / 2);
+  return c.grades[normalIndex]?.key ?? null;
+}
+
+function setAllNormalGrades() {
+  const next: Record<string, string> = {};
+  for (const c of props.criteria) {
+    const gradeKey = findNormalGrade(c);
+    if (gradeKey) {
+      next[c.id] = gradeKey;
+    }
+  }
+  emit("update:scores", next);
+}
 
 function pickGrade(criterionId: string, gradeKey: string) {
   emit("update:scores", { ...props.scores, [criterionId]: gradeKey });

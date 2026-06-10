@@ -112,7 +112,7 @@ export function safetySanctionDisplay(
 
 /** 제재 이력 또는 C등급 — 평가 결과 강조 */
 export function workerNeedsHighlight(w: EvalWorkerCompletion): boolean {
-  return hasSanctionRecord(w) || hasLowGrade(w);
+  return hasSanctionRecord(w);
 }
 
 export function workerRowHighlightClass(w: EvalWorkerCompletion): string {

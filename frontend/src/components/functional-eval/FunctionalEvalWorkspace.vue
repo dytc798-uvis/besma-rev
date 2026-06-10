@@ -1,6 +1,6 @@
-﻿<template>
+<template>
   <div class="fe-workspace">
-    <!-- 紐⑤컮?? 紐낅떒 ?붾㈃ (?됯? 以묒씠 ?꾨땺 ?? -->
+    <!-- 모바일 평가 화면에서 대상자 목록을 표시하는 영역 -->
     <section v-if="isMobileViewport && !evalWorker" class="panel mobile-roster">
       <div class="roster-head">
         <p class="roster-hint">평가를 시작하려면 대상자를 선택해 주세요</p>
@@ -9,7 +9,7 @@
         <li v-for="(w, idx) in filteredWorkers" :key="w.id">
           <button type="button" class="roster-item" :class="workerRowHighlightClass(w)" @click="selectWorker(w)">
             <span class="roster-no">{{ idx + 1 }}</span>
-            <span class="roster-name">{{ w.name }}</span>
+            <span class="roster-name">{{ formatWorkerLabel(w) }}</span>
             <span v-if="badgeLabel(w)" :class="badgeClass(w)">{{ badgeLabel(w) }}</span>
             <span v-else class="pending-dot" aria-label="미평가" />
           </button>
@@ -18,7 +18,7 @@
       </ul>
     </section>
 
-    <!-- PC: 醫뚯륫 紐낅떒 + ?곗륫 ?됯? -->
+    <!-- PC: 데스크톱 목록 + 평가 패널 -->
     <div v-else-if="!isMobileViewport" class="split-layout">
       <aside class="worker-rail panel">
         <ul class="rail-list">
@@ -30,18 +30,28 @@
               @click="selectWorker(w)"
             >
               <span class="rail-no">{{ idx + 1 }}</span>
-              <span class="rail-name">{{ w.name }}</span>
+              <span class="rail-name">{{ formatWorkerLabel(w) }}</span>
               <span v-if="badgeLabel(w)" :class="badgeClass(w)">{{ badgeLabel(w) }}</span>
             </button>
           </li>
         </ul>
       </aside>
       <div class="eval-main">
-        <template v-if="evalWorker && criteria.length">
+        <template v-if="evalWorker && props.criteria.length">
+          <div v-if="batchPendingWorkers > 0" class="batch-toolbar">
+            <button
+              class="stitch-btn-secondary batch-toolbar-btn touch-btn-inline"
+              type="button"
+              :disabled="batchApplyDisabled"
+              @click="applyBatchNormal"
+            >
+              일괄 보통 등록 ({{ batchPendingWorkers }}명)
+            </button>
+          </div>
           <EvalAssessmentSheet
             :worker="evalWorker"
             :title="title"
-            :criteria="criteria"
+            :criteria="props.criteria"
             :scores="evalScores"
             :loading="evalLoading"
             :saving="evalSaving"
@@ -70,7 +80,7 @@
       </div>
     </div>
 
-    <!-- 紐⑤컮?? ?됯? 紐⑤떖 -->
+    <!-- 모바일: 평가 바텀시트 -->
     <Teleport to="body">
       <div
         v-if="isMobileViewport && evalWorker"
@@ -78,23 +88,34 @@
         aria-hidden="true"
         @click="closeEval"
       />
-      <EvalAssessmentSheet
-        v-if="isMobileViewport && evalWorker && criteria.length"
-        :worker="evalWorker"
-        :title="title"
-        :criteria="criteria"
-        :scores="evalScores"
-        :loading="evalLoading"
-        :saving="evalSaving"
-        :disabled="periodClosed"
-        :error="evalError"
-        variant="mobile"
-        :preview="evalPreview"
-        :save-label="mobileSaveLabel"
-        @close="closeEval"
-        @save="saveEval(true)"
-        @update:scores="evalScores = $event"
-      />
+      <div v-if="isMobileViewport && evalWorker && props.criteria.length" class="fe-sheet fe-sheet-open">
+        <div v-if="batchPendingWorkers > 0" class="batch-toolbar">
+          <button
+            class="stitch-btn-secondary batch-toolbar-btn touch-btn-inline"
+            type="button"
+            :disabled="batchApplyDisabled"
+            @click="applyBatchNormal"
+          >
+            일괄 보통 등록 ({{ batchPendingWorkers }}명)
+          </button>
+        </div>
+        <EvalAssessmentSheet
+            :worker="evalWorker"
+            :title="title"
+            :criteria="props.criteria"
+            :scores="evalScores"
+            :loading="evalLoading"
+            :saving="evalSaving"
+            :disabled="periodClosed"
+            :error="evalError"
+            variant="mobile"
+            :preview="evalPreview"
+            :save-label="mobileSaveLabel"
+            @save="saveEval(true)"
+            @close="closeEval"
+            @update:scores="evalScores = $event"
+        />
+      </div>
     </Teleport>
   </div>
 </template>
@@ -109,6 +130,7 @@ import { api } from "@/services/api";
 import {
   completionBadge,
   completionBadgeClass,
+  isFunctionalComplete,
   isSafetyComplete,
   isFullyComplete,
   scoreRatioToGradeLabel,
@@ -130,6 +152,7 @@ export interface EvalWorker {
   id: number;
   row_no: number;
   name: string;
+  eval_assignment?: "DIRECT" | "TEAM";
   sanction_status?: string;
   sanction_status_label?: string;
   is_permanently_expelled?: boolean;
@@ -174,6 +197,13 @@ const evalLoading = ref(false);
 const evalSaving = ref(false);
 const evalError = ref("");
 
+const batchPendingWorkers = computed(() =>
+  filteredWorkers.value.filter((w) => (props.evalType === "FUNCTIONAL" ? !isFunctionalComplete(w) : !isSafetyComplete(w))).length,
+);
+const batchApplyDisabled = computed(
+  () => props.periodClosed || evalSaving.value || evalLoading.value || props.criteria.length === 0 || batchPendingWorkers.value === 0,
+);
+
 const shortTitle = computed(() => (props.evalType === "SAFETY" ? "2-2 안전·제재" : "2-1 기능"));
 
 const filteredWorkers = computed(() =>
@@ -186,6 +216,17 @@ function badgeLabel(w: EvalWorker) {
 
 function badgeClass(w: EvalWorker) {
   return completionBadgeClass(completionBadge(w));
+}
+
+function assignmentLabel(assignment?: EvalWorker["eval_assignment"]) {
+  if (assignment === "DIRECT") return "직영";
+  if (assignment === "TEAM") return "팀원";
+  return "";
+}
+
+function formatWorkerLabel(w: EvalWorker) {
+  const assignment = assignmentLabel(w.eval_assignment);
+  return assignment ? `${w.name} ${assignment}` : w.name;
 }
 
 const mobileSaveLabel = computed(() => {
@@ -244,11 +285,27 @@ async function loadScores(worker: EvalWorker) {
       scores[c.id] = existing?.[c.id] || "";
     }
     evalScores.value = scores;
-  } catch {
-    evalError.value = "?됯??쒕? 遺덈윭?ㅼ? 紐삵뻽?듬땲??";
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status;
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    evalError.value = typeof detail === "string" && detail ? formatLoadError(detail, status) : formatLoadError("LOAD_ERROR", status);
   } finally {
     evalLoading.value = false;
   }
+}
+
+function formatLoadError(detail: string, status?: number) {
+  if (detail === "CANNOT_EVALUATE_SELF") return "자기 자신은 평가할 수 없습니다.";
+  if (detail === "CANNOT_EVALUATE_SITE_MANAGER") return "소장은 평가할 수 없습니다.";
+  if (detail === "SITE_MISMATCH") return "현재 사용자에게 평가 권한이 없는 대상자입니다.";
+  if (detail === "WORKER_NOT_FOUND") return "대상자 정보를 찾을 수 없습니다.";
+  if (detail === "WORKER_NOT_ON_ATTENDANCE" || detail.includes("근태")) return "근태 정보가 없어서 평가를 시작할 수 없습니다.";
+  if (detail === "NO_ATTENDANCE_UPLOAD") return "근태 업로드가 필요합니다. 근태 업로드 후 다시 시도하세요.";
+  if (status === 403) return "권한이 없어 평가 항목을 불러올 수 없습니다.";
+  if (status === 404) return "대상자를 찾을 수 없습니다.";
+  if (status === 409) return "평가 항목 조회가 일시적으로 제한되었습니다.";
+  if (detail && detail !== "LOAD_ERROR") return detail;
+  return "평가 항목을 불러오는 중 오류가 발생했습니다.";
 }
 
 async function selectWorker(worker: EvalWorker) {
@@ -305,7 +362,65 @@ async function saveEval(advanceOnMobile: boolean) {
     }
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    evalError.value = typeof msg === "string" ? msg : "?됯? ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.";
+    evalError.value = typeof msg === "string" ? msg : "요청을 처리하는 중에 오류가 발생했습니다.";
+  } finally {
+    evalSaving.value = false;
+  }
+}
+
+function normalGradeKey(c: Criterion): string | null {
+  const byLabel = c.grades.find((g) => g.label.includes("보통"));
+  if (byLabel) return byLabel.key;
+  if (!c.grades.length) return null;
+  const index = Math.floor((c.grades.length - 1) / 2);
+  return c.grades[index]?.key ?? null;
+}
+
+function buildNormalScores(): Record<string, string> {
+  const scores: Record<string, string> = {};
+  for (const c of props.criteria) {
+    const gradeKey = normalGradeKey(c);
+    if (gradeKey) scores[c.id] = gradeKey;
+  }
+  return scores;
+}
+
+async function applyBatchNormal() {
+  if (batchApplyDisabled.value || !props.criteria.length) return;
+  const scorePayload = buildNormalScores();
+  if (!Object.keys(scorePayload).length) {
+    evalError.value = "기준값을 구성할 수 없습니다.";
+    return;
+  }
+
+  const targets = filteredWorkers.value.filter((w) =>
+    props.evalType === "FUNCTIONAL" ? !isFunctionalComplete(w) : !isSafetyComplete(w),
+  );
+  if (!targets.length) return;
+
+  evalSaving.value = true;
+  evalError.value = "";
+  try {
+    await Promise.all(
+      targets.map((target) =>
+        api.put(`/functional-eval/workers/${target.id}/assessment/${props.evalType}`, { scores: scorePayload }),
+      ),
+    );
+    await props.reload();
+    if (evalWorker.value) {
+      const refreshed = props.workers.find((w) => w.id === evalWorker.value?.id);
+      evalWorker.value = refreshed ?? evalWorker.value;
+    }
+    if (props.evalType === "FUNCTIONAL" && evalWorker.value && !isSafetyComplete(evalWorker.value)) {
+      emit("request-safety", evalWorker.value.id);
+      return;
+    }
+    if (props.evalType === "SAFETY" && evalWorker.value) {
+      emit("safety-saved", evalWorker.value);
+    }
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    evalError.value = typeof msg === "string" ? msg : "일괄 저장 중 오류가 발생했습니다.";
   } finally {
     evalSaving.value = false;
   }
@@ -544,6 +659,17 @@ watch(
   padding: 24px;
   text-align: center;
   color: #64748b;
+}
+
+.batch-toolbar {
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.batch-toolbar-btn {
+  width: fit-content;
+  min-height: 40px;
 }
 
 @media (max-width: 768px) {

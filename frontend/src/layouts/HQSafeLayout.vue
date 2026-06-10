@@ -59,6 +59,13 @@
           </RouterLink>
           <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink
+            v-if="canAccessAccidents"
+            :style="menuOrderPrimaryStyle('pdf-signing')"
+            to="/hq-safe/pdf-signing"
+          >
+            PDF 외부서명(임시)
+          </RouterLink>
+          <RouterLink
             v-for="m in dynamicMenus"
             :key="`hq-dyn-${m.slug}`"
             :style="menuOrderPrimaryStyle(`dynamic:${m.id}`)"

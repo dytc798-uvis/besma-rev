@@ -106,6 +106,7 @@ class AccidentListItem(BaseModel):
     has_attachments: bool
     nas_folder_path: str | None
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -144,8 +145,15 @@ class AccidentDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     attachments: list[AccidentAttachmentItem] = []
+    composed_line: str | None = None
+    output_fields: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
+
+
+class AccidentSyncResponse(BaseModel):
+    server_time: datetime
+    upserts: list[AccidentListItem]
 
 
 class AccidentInitialReportOutput(BaseModel):

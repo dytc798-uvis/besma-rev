@@ -3,10 +3,14 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy import exists, func, or_, select
+from sqlalchemy.orm import Session, selectinload
 
 from app.modules.accidents.models import Accident, AccidentAttachment, AccidentSiteStandard
+
+_ATTACHMENT_EXISTS = exists(
+    select(1).select_from(AccidentAttachment).where(AccidentAttachment.accident_id_fk == Accident.id)
+)
 
 
 def next_display_code(db: Session, *, year: int) -> str:
@@ -116,17 +120,18 @@ def create_accident(
     return row
 
 
-def list_accidents(
-    db: Session,
+def _apply_list_filters(
+    stmt,
     *,
     queue_keys: list[str] | None = None,
     statuses: list[str] | None = None,
     management_categories: list[str] | None = None,
     only_incomplete: bool = False,
     default_queue_only: bool = True,
-    limit: int = 500,
-) -> list[Accident]:
-    q = select(Accident)
+    parse_status_not: str | None = None,
+    missing_attachments_only: bool = False,
+    updated_since: datetime | None = None,
+):
     if queue_keys:
         queue_filters = []
         if "신규" in queue_keys:
@@ -136,21 +141,129 @@ def list_accidents(
         if "별도관리" in queue_keys:
             queue_filters.append(Accident.management_category == "별도관리")
         if queue_filters:
-            q = q.where(or_(*queue_filters))
+            stmt = stmt.where(or_(*queue_filters))
     if statuses:
-        q = q.where(Accident.status.in_(statuses))
+        stmt = stmt.where(Accident.status.in_(statuses))
     if management_categories:
-        q = q.where(Accident.management_category.in_(management_categories))
+        stmt = stmt.where(Accident.management_category.in_(management_categories))
     if only_incomplete:
-        q = q.where(Accident.is_complete.is_(False))
+        stmt = stmt.where(Accident.is_complete.is_(False))
     if default_queue_only and not statuses and not management_categories and not queue_keys:
-        q = q.where(Accident.parse_status != "success")
-    q = q.order_by(Accident.accident_datetime.desc().nullslast(), Accident.created_at.desc()).limit(limit)
+        stmt = stmt.where(Accident.parse_status != "success")
+    if parse_status_not:
+        stmt = stmt.where(Accident.parse_status != parse_status_not)
+    if missing_attachments_only:
+        stmt = stmt.where(~_ATTACHMENT_EXISTS)
+    if updated_since is not None:
+        stmt = stmt.where(Accident.updated_at > updated_since)
+    return stmt
+
+
+def list_accidents(
+    db: Session,
+    *,
+    queue_keys: list[str] | None = None,
+    statuses: list[str] | None = None,
+    management_categories: list[str] | None = None,
+    only_incomplete: bool = False,
+    default_queue_only: bool = True,
+    parse_status_not: str | None = None,
+    missing_attachments_only: bool = False,
+    updated_since: datetime | None = None,
+    order_by: str = "accident_datetime",
+    limit: int = 500,
+    with_attachments: bool = False,
+) -> list[Accident]:
+    q = select(Accident)
+    q = _apply_list_filters(
+        q,
+        queue_keys=queue_keys,
+        statuses=statuses,
+        management_categories=management_categories,
+        only_incomplete=only_incomplete,
+        default_queue_only=default_queue_only,
+        parse_status_not=parse_status_not,
+        missing_attachments_only=missing_attachments_only,
+        updated_since=updated_since,
+    )
+    if order_by == "created_at":
+        q = q.order_by(Accident.created_at.desc(), Accident.id.desc())
+    else:
+        q = q.order_by(Accident.accident_datetime.desc().nullslast(), Accident.created_at.desc())
+    if limit:
+        q = q.limit(limit)
+    if with_attachments:
+        q = q.options(selectinload(Accident.attachments))
     return list(db.scalars(q).all())
 
 
+def count_accidents(
+    db: Session,
+    *,
+    queue_keys: list[str] | None = None,
+    statuses: list[str] | None = None,
+    management_categories: list[str] | None = None,
+    only_incomplete: bool = False,
+    default_queue_only: bool = False,
+    parse_status_not: str | None = None,
+    missing_attachments_only: bool = False,
+) -> int:
+    q = select(func.count()).select_from(Accident)
+    q = _apply_list_filters(
+        q,
+        queue_keys=queue_keys,
+        statuses=statuses,
+        management_categories=management_categories,
+        only_incomplete=only_incomplete,
+        default_queue_only=default_queue_only,
+        parse_status_not=parse_status_not,
+        missing_attachments_only=missing_attachments_only,
+    )
+    return int(db.scalar(q) or 0)
+
+
+def list_accidents_with_attachment_flags(
+    db: Session,
+    *,
+    queue_keys: list[str] | None = None,
+    statuses: list[str] | None = None,
+    management_categories: list[str] | None = None,
+    only_incomplete: bool = False,
+    default_queue_only: bool = True,
+    parse_status_not: str | None = None,
+    missing_attachments_only: bool = False,
+    updated_since: datetime | None = None,
+    order_by: str = "accident_datetime",
+    limit: int = 500,
+) -> list[tuple[Accident, bool]]:
+    stmt = select(Accident, _ATTACHMENT_EXISTS.label("has_attachments"))
+    stmt = _apply_list_filters(
+        stmt,
+        queue_keys=queue_keys,
+        statuses=statuses,
+        management_categories=management_categories,
+        only_incomplete=only_incomplete,
+        default_queue_only=default_queue_only,
+        parse_status_not=parse_status_not,
+        missing_attachments_only=missing_attachments_only,
+        updated_since=updated_since,
+    )
+    if order_by == "created_at":
+        stmt = stmt.order_by(Accident.created_at.desc(), Accident.id.desc())
+    else:
+        stmt = stmt.order_by(Accident.accident_datetime.desc().nullslast(), Accident.created_at.desc())
+    if limit:
+        stmt = stmt.limit(limit)
+    return [(row, bool(has_att)) for row, has_att in db.execute(stmt).all()]
+
+
 def get_accident(db: Session, accident_id: int) -> Accident | None:
-    return db.get(Accident, accident_id)
+    stmt = (
+        select(Accident)
+        .where(Accident.id == accident_id)
+        .options(selectinload(Accident.attachments))
+    )
+    return db.scalar(stmt)
 
 
 def update_accident(db: Session, row: Accident, **fields) -> Accident:

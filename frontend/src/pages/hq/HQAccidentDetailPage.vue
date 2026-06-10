@@ -191,13 +191,13 @@ import { toDisplayedAccidentNasPath } from "@/utils/accidentNasPath";
 import {
   downloadAccidentNasFolderLauncher,
   fetchAccidentDetail,
-  fetchAccidentInitialReport,
   fetchAccidentLookups,
   type AccidentDetail,
   type AccidentInitialReportOutput,
   type AccidentLookups,
   type AccidentUpdatePayload,
 } from "@/services/accidents";
+import { readLookupsCache, writeLookupsCache } from "@/utils/accidentsCache";
 
 const route = useRoute();
 const router = useRouter();
@@ -363,12 +363,38 @@ function syncForm() {
   form.diagnosis_name = detail.value.diagnosis_name;
   form.action_taken = detail.value.action_taken;
   form.notes = detail.value.notes;
-  form.initial_report_template = detail.value.initial_report_template || output.value?.composed_line || null;
+  form.initial_report_template =
+    detail.value.initial_report_template || detail.value.composed_line || output.value?.composed_line || null;
   syncingForm.value = false;
 }
 
+function applyDetailOutput(detailRes: AccidentDetail) {
+  if (!detailRes.composed_line) {
+    output.value = null;
+    return;
+  }
+  output.value = {
+    accident_id: detailRes.id,
+    accident_code: detailRes.accident_id,
+    display_code: detailRes.display_code,
+    parse_status: detailRes.parse_status,
+    composed_line: detailRes.composed_line,
+    fields: detailRes.output_fields ?? {},
+    message_raw: detailRes.message_raw,
+  };
+}
+
+function applyLookups(lookupsRes: AccidentLookups, detailRes?: AccidentDetail | null) {
+  lookups.statuses = lookupsRes.statuses;
+  lookups.management_categories = lookupsRes.management_categories;
+  lookups.site_names = [...lookupsRes.site_names];
+  if (detailRes?.site_standard_name && !lookups.site_names.includes(detailRes.site_standard_name)) {
+    lookups.site_names.unshift(detailRes.site_standard_name);
+  }
+  writeLookupsCache(lookupsRes);
+}
+
 async function loadAll() {
-  loading.value = true;
   errorMessage.value = "";
   const id = accidentId.value;
   if (!Number.isFinite(id) || id <= 0) {
@@ -376,20 +402,20 @@ async function loadAll() {
     loading.value = false;
     return;
   }
+
+  const cachedLookups = readLookupsCache<AccidentLookups>();
+  if (cachedLookups) {
+    applyLookups(cachedLookups);
+  }
+
+  loading.value = true;
   try {
-    const [lookupsRes, detailRes, outputRes] = await Promise.all([
-      fetchAccidentLookups(),
-      fetchAccidentDetail(id),
-      fetchAccidentInitialReport(id),
-    ]);
-    lookups.statuses = lookupsRes.statuses;
-    lookups.management_categories = lookupsRes.management_categories;
-    lookups.site_names = lookupsRes.site_names;
+    const detailPromise = fetchAccidentDetail(id);
+    const lookupsPromise = cachedLookups ? Promise.resolve(cachedLookups) : fetchAccidentLookups();
+    const [lookupsRes, detailRes] = await Promise.all([lookupsPromise, detailPromise]);
     detail.value = detailRes;
-    output.value = outputRes;
-    if (detailRes.site_standard_name && !lookups.site_names.includes(detailRes.site_standard_name)) {
-      lookups.site_names.unshift(detailRes.site_standard_name);
-    }
+    applyLookups(lookupsRes, detailRes);
+    applyDetailOutput(detailRes);
     syncForm();
   } catch {
     errorMessage.value = "사고 정보를 불러오지 못했습니다.";

@@ -7,7 +7,8 @@
         </p>
         <p style="font-size: 11px; color: #64748b; margin: 0 0 10px">
           데모: 본사 <code>hq01</code> / 현장 <code>site01</code> — 비밀번호 <code>1111</code><br />
-          기능인제: ID = <strong>별칭-이름</strong> (예: 대우청라-박명식), PW = <strong>주민번호 앞 6자리</strong> (출역일보 B열)
+          기능인제 현장: ID = <strong>별칭-이름</strong> (예: 대우청라-박명식), PW = <strong>주민번호 앞 6자리</strong><br />
+          기능인제·삼성인정제 본사: ID = <strong>안전보건-이름</strong> (예: 안전보건-김복수), PW = <strong>주민번호 앞 6자리</strong>
         </p>
       <form @submit.prevent="handleLogin" style="display: flex; flex-direction: column; gap: 8px">
         <label>

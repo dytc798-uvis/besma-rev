@@ -99,7 +99,14 @@ def test_parse_and_create_and_list():
 
     r3 = client.get(f"/accidents/{aid}")
     assert r3.status_code == 200
-    assert r3.json()["message_raw"] == msg
+    detail = r3.json()
+    assert detail["message_raw"] == msg
+    assert detail.get("composed_line")
+
+    sync = client.get("/accidents/sync")
+    assert sync.status_code == 200
+    assert "server_time" in sync.json()
+    assert len(sync.json()["upserts"]) >= 1
 
     r4 = client.get(f"/accidents/{aid}/initial-report")
     assert r4.status_code == 200

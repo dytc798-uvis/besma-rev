@@ -60,7 +60,10 @@ api.interceptors.response.use(
       const skipRedirect = error.config?.skipAuthRedirect === true;
       const onLoginPage =
         typeof window !== "undefined" && window.location.pathname.startsWith("/login");
-      if (!skipRedirect && !onLoginPage) {
+      const onPublicSignPage =
+        typeof window !== "undefined" &&
+        (window.location.pathname.startsWith("/sign/") || window.location.pathname.startsWith("/temp/"));
+      if (!skipRedirect && !onLoginPage && !onPublicSignPage) {
         window.location.href = "/login";
       }
     }

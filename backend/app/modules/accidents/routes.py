@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user_with_bypass, get_db
 from app.core.enums import Role
 from app.modules.accidents import service
+from app.modules.accidents.service import ACCIDENT_LIST_RECENT_LIMIT
 from app.modules.accidents.nas_path_utils import build_explorer_bat_bytes, to_displayed_accident_nas_path
 from app.schemas.accidents import (
     AccidentDetail,
@@ -23,6 +25,7 @@ from app.schemas.accidents import (
     AccidentLookups,
     AccidentParseCreateRequest,
     AccidentParsePreviewResponse,
+    AccidentSyncResponse,
     AccidentUpdateRequest,
     AccidentWorklistResponse,
 )
@@ -75,7 +78,7 @@ def parse_and_create_accident(
         body=body,
         created_by_user_id=getattr(user, "id", None),
     )
-    return row
+    return service.serialize_accident_detail(row)
 
 
 @router.get("/lookups", response_model=AccidentLookups)
@@ -105,6 +108,8 @@ def list_accidents(
         management_categories=management_categories or None,
         only_incomplete=only_incomplete,
         default_queue_only=not show_all,
+        limit=500 if show_all else ACCIDENT_LIST_RECENT_LIMIT,
+        order_by="created_at",
     )
 
 
@@ -115,6 +120,16 @@ def get_accident_worklist(
 ):
     _require_accident_access(user)
     return service.get_worklist(db)
+
+
+@router.get("/sync", response_model=AccidentSyncResponse)
+def sync_accidents(
+    since: datetime | None = Query(default=None, description="이 시각 이후 변경된 사고만 반환"),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_with_bypass),
+):
+    _require_accident_access(user)
+    return service.sync_accidents(db, since=since)
 
 
 @router.get("/{accident_id}/initial-report", response_model=AccidentInitialReportOutput)
@@ -175,7 +190,7 @@ def get_accident(
     user=Depends(get_current_user_with_bypass),
 ):
     _require_accident_access(user)
-    return service.get_accident_or_404(db, accident_id)
+    return service.get_accident_detail_or_404(db, accident_id)
 
 
 @router.put("/{accident_id}", response_model=AccidentDetail)
@@ -186,7 +201,7 @@ def update_accident(
     user=Depends(get_current_user_with_bypass),
 ):
     _require_accident_access(user)
-    return service.update_accident(
+    service.update_accident(
         db,
         accident_id=accident_id,
         actor_user_id=getattr(user, "id", None),
@@ -207,6 +222,7 @@ def update_accident(
         notes=body.notes,
         initial_report_template=body.initial_report_template,
     )
+    return service.get_accident_detail_or_404(db, accident_id)
 
 
 @router.delete("/{accident_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -228,7 +244,7 @@ async def upload_accident_attachment(
 ):
     _require_accident_access(user)
     await service.save_attachment(db, accident_id=accident_id, upload=file)
-    return service.get_accident_or_404(db, accident_id)
+    return service.get_accident_detail_or_404(db, accident_id)
 
 
 @router.get("/attachments/{attachment_id}")

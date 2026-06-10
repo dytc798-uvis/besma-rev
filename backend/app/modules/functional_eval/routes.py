@@ -118,7 +118,7 @@ def get_worker_assessment(
         code = str(exc)
         if code == "WORKER_NOT_FOUND":
             raise HTTPException(status_code=404, detail="Worker not found") from exc
-        if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER"}:
+        if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER", "CANNOT_EVALUATE_SELF"}:
             raise HTTPException(status_code=403, detail=code) from exc
         raise HTTPException(status_code=400, detail=code) from exc
 
@@ -146,7 +146,7 @@ def save_worker_assessment(
             raise HTTPException(status_code=404, detail="Worker not found") from exc
         if code.startswith("INCOMPLETE:") or code.startswith("INVALID_GRADE:"):
             raise HTTPException(status_code=400, detail=code) from exc
-        if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER", "WORKER_INACTIVE"}:
+        if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER", "CANNOT_EVALUATE_SELF", "WORKER_INACTIVE"}:
             raise HTTPException(status_code=400, detail=code) from exc
         if code in {"WORKER_NOT_ON_ATTENDANCE", "NO_ATTENDANCE_UPLOAD"}:
             raise HTTPException(status_code=400, detail="당일 출역 명단에 없거나 출역일보가 반영되지 않았습니다.") from exc

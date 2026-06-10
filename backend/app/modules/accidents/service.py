@@ -19,11 +19,14 @@ from sqlalchemy.orm import Session
 from app.config.settings import settings
 from app.modules.accidents import repository
 from app.modules.accidents.models import Accident, AccidentAttachment
+from app.schemas.accidents import AccidentDetail, AccidentListItem
 from app.modules.accidents.parser import (
     compose_initial_report_view,
     evaluate_parse_fields,
     parse_initial_report_message,
 )
+
+ACCIDENT_LIST_RECENT_LIMIT = 20
 
 STATUS_OPTIONS = ["신규", "보완필요", "접수", "조사중", "치료중", "종결"]
 MANAGEMENT_CATEGORY_OPTIONS = ["일반", "유지", "별도관리"]
@@ -363,6 +366,27 @@ def create_from_request(db: Session, *, body, created_by_user_id: int | None) ->
     return parse_and_create(db, message_raw=body.message_raw or "", created_by_user_id=created_by_user_id)
 
 
+def to_list_item(row: Accident, *, has_attachments: bool) -> AccidentListItem:
+    return AccidentListItem(
+        id=row.id,
+        accident_id=row.accident_id,
+        display_code=row.display_code,
+        parse_status=row.parse_status,
+        site_name=row.site_name,
+        site_standard_name=row.site_standard_name,
+        injured_person_name=row.injured_person_name,
+        accident_datetime_text=row.accident_datetime_text,
+        accident_datetime=row.accident_datetime,
+        status=row.status,
+        management_category=row.management_category,
+        is_complete=row.is_complete,
+        has_attachments=has_attachments,
+        nas_folder_path=row.nas_folder_path,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
 def list_accidents(
     db: Session,
     *,
@@ -371,17 +395,33 @@ def list_accidents(
     management_categories: list[str] | None = None,
     only_incomplete: bool = False,
     default_queue_only: bool = True,
-    limit: int = 500,
-) -> list[Accident]:
-    return repository.list_accidents(
+    limit: int = ACCIDENT_LIST_RECENT_LIMIT,
+    order_by: str = "created_at",
+) -> list[AccidentListItem]:
+    rows = repository.list_accidents_with_attachment_flags(
         db,
         queue_keys=queue_keys,
         statuses=statuses,
         management_categories=management_categories,
         only_incomplete=only_incomplete,
         default_queue_only=default_queue_only,
+        order_by=order_by,
         limit=limit,
     )
+    return [to_list_item(row, has_attachments=has_att) for row, has_att in rows]
+
+
+def sync_accidents(db: Session, *, since: datetime | None) -> dict:
+    rows = repository.list_accidents_with_attachment_flags(
+        db,
+        default_queue_only=False,
+        updated_since=since,
+        limit=5000,
+    )
+    return {
+        "server_time": datetime.utcnow(),
+        "upserts": [to_list_item(row, has_attachments=has_att) for row, has_att in rows],
+    }
 
 
 def get_accident_or_404(db: Session, accident_id: int) -> Accident:
@@ -391,8 +431,8 @@ def get_accident_or_404(db: Session, accident_id: int) -> Accident:
     return row
 
 
-def initial_report_view(row: Accident) -> dict:
-    fields = {
+def _initial_report_fields(row: Accident) -> dict:
+    return {
         "site_name": row.site_standard_name or row.site_name,
         "reporter_name": row.reporter_name,
         "accident_datetime_text": row.accident_datetime_text,
@@ -406,7 +446,33 @@ def initial_report_view(row: Accident) -> dict:
         "diagnosis_name": row.diagnosis_name,
         "action_taken": row.action_taken,
     }
+
+
+def initial_report_view(row: Accident) -> dict:
+    fields = _initial_report_fields(row)
+    cached = (row.initial_report_template or "").strip()
+    if cached:
+        return {
+            "composed_line": cached,
+            "fields": fields,
+            "message_raw": row.message_raw,
+        }
     return compose_initial_report_view(fields, row.message_raw)
+
+
+def serialize_accident_detail(row: Accident) -> AccidentDetail:
+    view = initial_report_view(row)
+    base = AccidentDetail.model_validate(row)
+    return base.model_copy(
+        update={
+            "composed_line": view["composed_line"],
+            "output_fields": view["fields"],
+        }
+    )
+
+
+def get_accident_detail_or_404(db: Session, accident_id: int) -> AccidentDetail:
+    return serialize_accident_detail(get_accident_or_404(db, accident_id))
 
 
 def update_accident(
@@ -673,22 +739,35 @@ def _accident_to_master_values(row: Accident) -> dict[str, object | None]:
     }
 
 
-def get_worklist(db: Session) -> dict:
-    rows = repository.list_accidents(db, default_queue_only=False, limit=5000)
-
-    def section(items: list[Accident]) -> dict:
-        return {"count": len(items), "items": items[:20]}
-
-    unverified: list[Accident] = []
-    parse_review = [row for row in rows if row.parse_status != "success"]
-    missing_attachments = [row for row in rows if not row.has_attachments]
-    recent = sorted(rows, key=lambda row: row.created_at, reverse=True)
-
+def _worklist_section(
+    db: Session,
+    *,
+    count_kwargs: dict,
+    list_kwargs: dict,
+) -> dict:
+    rows = repository.list_accidents_with_attachment_flags(
+        db,
+        default_queue_only=False,
+        **list_kwargs,
+    )
     return {
-        "unverified": section(unverified),
-        "parse_review": section(parse_review),
-        "missing_attachments": section(missing_attachments),
-        "recent": section(recent),
+        "count": repository.count_accidents(db, default_queue_only=False, **count_kwargs),
+        "items": [to_list_item(row, has_attachments=has_att) for row, has_att in rows],
+    }
+
+
+def get_worklist(db: Session) -> dict:
+    recent = _worklist_section(
+        db,
+        count_kwargs={},
+        list_kwargs={"order_by": "created_at", "limit": ACCIDENT_LIST_RECENT_LIMIT},
+    )
+    empty = {"count": 0, "items": []}
+    return {
+        "unverified": empty,
+        "parse_review": empty,
+        "missing_attachments": empty,
+        "recent": recent,
     }
 
 
@@ -697,7 +776,7 @@ def export_master_workbook(db: Session) -> bytes:
     ws = wb.active
     ws.title = MASTER_IMPORT_SHEET
     ws.append(MASTER_HEADERS)
-    rows = repository.list_accidents(db, default_queue_only=False, limit=5000)
+    rows = repository.list_accidents(db, default_queue_only=False, limit=5000, with_attachments=True)
     for row in rows:
         accident_dt = row.accident_datetime or None
         status = row.status or "신규"
@@ -759,7 +838,7 @@ def export_verified_accidents_to_master_excel(
     if not workbook_path.is_file():
         raise FileNotFoundError(f"MASTER 파일이 없습니다: {workbook_path}")
 
-    rows = repository.list_accidents(db, default_queue_only=False, limit=5000)
+    rows = repository.list_accidents(db, default_queue_only=False, limit=5000, with_attachments=True)
     export_rows = sorted(rows, key=lambda item: _accident_id_sort_key(item.accident_id))
     excluded_count = 0
 

@@ -113,3 +113,4 @@ if [[ "${BESMA_VERIFY_OPENAPI_RISK_OVERVIEW:-0}" == "1" ]]; then
     echo "[deploy] WARN: openapi에 /dashboard/risk-db-overview 없음 — 백엔드가 프론트보다 구버전일 수 있습니다." >&2
   fi
 fi
+

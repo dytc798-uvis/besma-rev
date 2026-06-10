@@ -22,14 +22,49 @@
 }
 
 .functional-eval-shell .layout-menu a.fe-menu-highlight.router-link-active {
-  background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%);
-  color: #fff;
+  background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%) !important;
+  color: #fff !important;
   border-left-color: #fdba74;
+  box-shadow: 0 2px 8px rgba(234, 88, 12, 0.35);
+}
+
+.functional-eval-shell .layout-menu a.fe-menu-highlight.router-link-active:not(.active) {
+  background: linear-gradient(90deg, rgba(234, 88, 12, 0.14) 0%, rgba(251, 146, 60, 0.1) 100%);
+  color: #7c2d12;
+}
+
+.functional-eval-shell .layout-menu a.fe-menu-highlight:focus-visible,
+.functional-eval-shell .layout-menu a.fe-menu-highlight:hover,
+.functional-eval-shell .layout-menu a.fe-menu-subitem:focus-visible,
+.functional-eval-shell .layout-menu a.fe-menu-subitem:hover {
+  border-radius: 10px;
 }
 
 .functional-eval-shell .layout-header-fe {
   border-bottom: 3px solid #ea580c;
   background: linear-gradient(180deg, #fff7ed 0%, #ffffff 28px);
+}
+
+.functional-eval-shell .layout-menu a.fe-menu-subitem {
+  color: #475569;
+  background: transparent;
+  box-shadow: none;
+}
+
+.functional-eval-shell .layout-menu a.fe-menu-subitem.router-link-active:not(.active) {
+  color: #475569;
+  background: transparent;
+}
+
+.functional-eval-shell .layout-menu a.fe-menu-subitem.active {
+  background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%) !important;
+  color: #fff !important;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(234, 88, 12, 0.35);
+}
+
+.functional-eval-shell .layout-menu a.fe-menu-subitem.router-link-active {
+  border-left: 0;
 }
 
 /* HQ · 기능인제 메뉴 강조 (밝은 사이드바) */

@@ -365,6 +365,84 @@
           "points": 3
         }
       ]
+    },
+    {
+      "id": "c6",
+      "title": "지정장소 흡연",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 5
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 3
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 2
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 1
+        }
+      ]
+    },
+    {
+      "id": "c7",
+      "title": "작업 후 정리정돈",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 5
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 3
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 2
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 1
+        }
+      ]
+    },
+    {
+      "id": "c8",
+      "title": "근태기록, 퇴직공제부금, 무사고일지",
+      "grades": [
+        {
+          "key": "TOP",
+          "label": "우수",
+          "points": 10
+        },
+        {
+          "key": "MID",
+          "label": "보통",
+          "points": 7
+        },
+        {
+          "key": "LOW",
+          "label": "부족",
+          "points": 4
+        },
+        {
+          "key": "BOTTOM",
+          "label": "문제",
+          "points": 1
+        }
+      ]
     }
   ]
 }

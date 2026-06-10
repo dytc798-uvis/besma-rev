@@ -349,6 +349,112 @@ def _serialize_assessment(row: FunctionalEvalAssessment | None, eval_type: EvalT
     }
 
 
+def _normalize_person_name(text: str) -> str:
+    return re.sub(r"[^0-9A-Za-z가-힣]", "", (text or "").strip()).lower()
+
+
+def _normalize_login_to_name(login_id: str) -> str:
+    login_id = (login_id or "").strip()
+    if not login_id:
+        return ""
+    if "-" in login_id:
+        login_id = login_id.split("-", 1)[1]
+    return _normalize_person_name(login_id)
+
+
+def _normalize_role_identifier(text: str) -> str:
+    s = _normalize_person_name(text)
+    for suffix in ("소장", "팀장", "현장소장", "현장 팀장"):
+        s = s.replace(suffix, "")
+    return s
+
+
+def _manager_candidates_for_user(db: Session, user: User) -> set[str]:
+    login_id = (user.login_id or "").strip()
+    login_norm = _normalize_login_to_name(login_id)
+    user_name = _normalize_role_identifier(str(getattr(user, "name", "") or ""))
+    if not login_norm and not user_name:
+        return set()
+
+    candidates: set[str] = set()
+    regs = db.query(FunctionalEvalSiteRegistry).all()
+    for reg in regs:
+        site_code = (reg.site_code or "").strip()
+        if not site_code:
+            continue
+        manager_login = (reg.manager_login_id or "").strip()
+        if login_id and manager_login and login_id == manager_login:
+            candidates.add(site_code)
+            continue
+        manager_login_norm = _normalize_login_to_name(manager_login)
+        if login_norm and manager_login_norm and manager_login_norm == login_norm:
+            candidates.add(site_code)
+            continue
+        generated = build_eval_login_id((reg.site_alias or "").strip(), reg.manager_name or "")
+        if login_norm and _normalize_login_to_name(generated) == login_norm:
+            candidates.add(site_code)
+            continue
+        manager_name_norm = _normalize_role_identifier(reg.manager_name or "")
+        if user_name and manager_name_norm and user_name == manager_name_norm:
+            candidates.add(site_code)
+
+    if user_name:
+        manager_workers = (
+            db.query(FunctionalEvalWorker)
+            .filter(
+                FunctionalEvalWorker.is_site_manager.is_(True),
+                FunctionalEvalWorker.is_active.is_(True),
+                FunctionalEvalWorker.assigned_evaluator_login_id.isnot(None),
+            )
+            .all()
+        )
+        for worker in manager_workers:
+            worker_name = _normalize_role_identifier(str(worker.name or ""))
+            if worker_name and user_name == worker_name:
+                candidates.add((worker.site_code or "").strip())
+            mw_login = _normalize_login_to_name(worker.assigned_evaluator_login_id or "")
+            if login_norm and mw_login and mw_login == login_norm:
+                candidates.add((worker.site_code or "").strip())
+
+    candidates.discard("")
+    return candidates
+
+
+def _is_team_leader_self_target(
+    db: Session, user: User, worker: FunctionalEvalWorker, site_alias: str | None = None
+) -> bool:
+    """팀장 로그인의 경우 팀장 본인 대상 평가는 막는다."""
+    login_id = (user.login_id or "").strip()
+    if not login_id:
+        return False
+    user_name = _normalize_person_name(str(getattr(user, "name", "") or ""))
+    if not user_name:
+        user_name = _normalize_login_to_name(user.login_id or "")
+    if not user_name:
+        return False
+    worker_name = _normalize_person_name(str(worker.name or ""))
+    if not worker_name or user_name != worker_name:
+        return False
+    assigned = (worker.assigned_evaluator_login_id or "").strip()
+    login_norm = _normalize_login_to_name(login_id)
+    if assigned and assigned != login_id:
+        return False
+    if assigned == login_id:
+        return True
+    if not assigned:
+        return login_norm == worker_name
+    if site_alias is None:
+        reg = (
+            db.query(FunctionalEvalSiteRegistry)
+            .filter(FunctionalEvalSiteRegistry.site_code == worker.site_code)
+            .first()
+        )
+        site_alias = (reg.site_alias or "").strip() if reg else ""
+    site_alias = (site_alias or worker.site_code or "").strip()
+    expected = build_eval_login_id(site_alias, worker.name)
+    return bool(expected and _normalize_person_name(expected) == _normalize_person_name(login_id))
+
+
 def _assessments_map(db: Session, worker_ids: list[int]) -> dict[int, dict[str, FunctionalEvalAssessment]]:
     if not worker_ids:
         return {}
@@ -490,6 +596,54 @@ def _site_evaluator_map(db: Session, site_codes: set[str]) -> dict[str, str]:
     return out
 
 
+HQ_SITE_BUCKET_IN_PROGRESS = "in_progress"
+HQ_SITE_BUCKET_NOT_STARTED = "not_started"
+HQ_SITE_BUCKET_COMPLETED = "completed"
+
+
+def classify_hq_site_bucket(*, fully_complete: int, total: int) -> str:
+    """본사 대시보드 — 현장 진행 구분."""
+    total = int(total or 0)
+    fully_complete = int(fully_complete or 0)
+    if total <= 0:
+        return HQ_SITE_BUCKET_NOT_STARTED
+    if fully_complete >= total:
+        return HQ_SITE_BUCKET_COMPLETED
+    if fully_complete <= 0:
+        return HQ_SITE_BUCKET_NOT_STARTED
+    return HQ_SITE_BUCKET_IN_PROGRESS
+
+
+def _hq_site_bucket_label(bucket: str) -> str:
+    return {
+        HQ_SITE_BUCKET_IN_PROGRESS: "진행 중",
+        HQ_SITE_BUCKET_NOT_STARTED: "미평가",
+        HQ_SITE_BUCKET_COMPLETED: "완료",
+    }.get(bucket, bucket)
+
+
+def _summarize_hq_site_buckets(sites: list[dict[str, Any]]) -> dict[str, Any]:
+    counts = {
+        HQ_SITE_BUCKET_IN_PROGRESS: 0,
+        HQ_SITE_BUCKET_NOT_STARTED: 0,
+        HQ_SITE_BUCKET_COMPLETED: 0,
+    }
+    for row in sites:
+        bucket = row.get("bucket") or HQ_SITE_BUCKET_NOT_STARTED
+        if bucket in counts:
+            counts[bucket] += 1
+    return {
+        "in_progress": counts[HQ_SITE_BUCKET_IN_PROGRESS],
+        "not_started": counts[HQ_SITE_BUCKET_NOT_STARTED],
+        "completed": counts[HQ_SITE_BUCKET_COMPLETED],
+        "labels": {
+            HQ_SITE_BUCKET_IN_PROGRESS: _hq_site_bucket_label(HQ_SITE_BUCKET_IN_PROGRESS),
+            HQ_SITE_BUCKET_NOT_STARTED: _hq_site_bucket_label(HQ_SITE_BUCKET_NOT_STARTED),
+            HQ_SITE_BUCKET_COMPLETED: _hq_site_bucket_label(HQ_SITE_BUCKET_COMPLETED),
+        },
+    }
+
+
 def _hq_evaluator_site_codes(db: Session) -> set[str]:
     """본사 현장 목록 — 소장 계정(별칭-이름)이 있는 현장코드."""
     codes = {r.site_code for r in db.query(FunctionalEvalSiteRegistry.site_code).all() if r[0]}
@@ -574,7 +728,10 @@ def _aggregate_site_eval_stats(
         fc = int(row["fully_complete"])
         total = int(row["total"])
         row["progress"] = f"{fc}/{total}"
+        row["progress_pct"] = round((fc / total) * 100) if total > 0 else 0
         row["has_completed"] = fc > 0
+        row["bucket"] = classify_hq_site_bucket(fully_complete=fc, total=total)
+        row["bucket_label"] = _hq_site_bucket_label(row["bucket"])
         sites.append(row)
     return sites
 
@@ -670,6 +827,7 @@ def build_hq_sites_overview(
             "fully_complete": fully,
             "incomplete": total_workers - fully,
         },
+        "site_buckets": _summarize_hq_site_buckets(sites),
         "sites": sites,
         # 구버전 프론트( site_progress 키 ) 호환
         "site_progress": sites,
@@ -707,6 +865,18 @@ def build_hq_eval_rows(items: list[dict[str, Any]], *, completed_only: bool = Fa
         w = item["worker"]
         if completed_only and not _is_fully_evaluated(w):
             continue
+        f = w.get("functional_assessment") or {}
+        s = w.get("safety_assessment") or {}
+        fully = _is_fully_evaluated(w)
+        if fully:
+            eval_status = "completed"
+            eval_status_label = "완료"
+        elif f.get("is_complete") or s.get("is_complete"):
+            eval_status = "in_progress"
+            eval_status_label = "진행 중"
+        else:
+            eval_status = "not_started"
+            eval_status_label = "미평가"
         rows.append(
             {
                 "worker_id": w["id"],
@@ -714,12 +884,14 @@ def build_hq_eval_rows(items: list[dict[str, Any]], *, completed_only: bool = Fa
                 "site_name": w.get("site_name"),
                 "name": w.get("name"),
                 "is_active": w.get("is_active"),
-                "functional_grade": _eval_grade_label(w.get("functional_assessment")),
-                "safety_grade": _eval_grade_label(w.get("safety_assessment")),
-                "functional_score": (w.get("functional_assessment") or {}).get("total_score"),
-                "safety_score": (w.get("safety_assessment") or {}).get("total_score"),
-                "remark": _remark_for_completed_worker(w) if _is_fully_evaluated(w) else _worker_eval_remark(w),
-                "is_fully_complete": _is_fully_evaluated(w),
+                "functional_grade": _eval_grade_label(f),
+                "safety_grade": _eval_grade_label(s),
+                "functional_score": f.get("total_score"),
+                "safety_score": s.get("total_score"),
+                "remark": _remark_for_completed_worker(w) if fully else _worker_eval_remark(w),
+                "is_fully_complete": fully,
+                "eval_status": eval_status,
+                "eval_status_label": eval_status_label,
                 "needs_highlight": _worker_needs_highlight(w),
             }
         )
@@ -742,11 +914,10 @@ def list_hq_site_completed_evaluations(
         site_code=site_code,
         include_inactive=False,
     )
-    completed_items = [i for i in items if _is_fully_evaluated(i["worker"])]
     site_names = _site_name_map(db, {site_code})
     evaluators = _site_evaluator_map(db, {site_code})
     total = len(items)
-    fully = len(completed_items)
+    fully = sum(1 for i in items if _is_fully_evaluated(i["worker"]))
     first = items[0]["worker"] if items else {}
     site_row = {
         "site_code": site_code,
@@ -755,11 +926,16 @@ def list_hq_site_completed_evaluations(
         "total": total,
         "fully_complete": fully,
         "progress": f"{fully}/{total}",
+        "progress_pct": round((fully / total) * 100) if total > 0 else 0,
         "has_completed": fully > 0,
+        "bucket": classify_hq_site_bucket(fully_complete=fully, total=total),
+        "bucket_label": _hq_site_bucket_label(classify_hq_site_bucket(fully_complete=fully, total=total)),
     }
+    approval = build_site_approval_payload(db, period, site_code)
     return {
         "site": site_row,
-        "eval_rows": build_hq_eval_rows(completed_items, completed_only=True),
+        "eval_rows": build_hq_eval_rows(items, completed_only=False),
+        "approval": approval,
         "sort_by": sort_by,
         "sort_dir": sort_dir,
     }
@@ -848,9 +1024,80 @@ def _site_code_for_user(user: User, db: Session) -> str:
         site = db.query(Site).filter(Site.id == user.site_id).first()
         if site and site.site_code:
             return site.site_code
+    manager_candidates = _manager_candidates_for_user(db, user)
+    if len(manager_candidates) == 1:
+        return next(iter(manager_candidates))
     login = (user.login_id or "").strip()
     if login.isdigit():
         return login
+    login_norm = _normalize_login_to_name(login)
+    if "-" in login:
+        alias = login.split("-", 1)[0].strip()
+        alias_norm = _normalize_person_name(alias)
+        if alias_norm:
+            reg = (
+                db.query(FunctionalEvalSiteRegistry)
+                .filter(FunctionalEvalSiteRegistry.site_alias.is_not(None))
+                .all()
+            )
+            for row in reg:
+                if _normalize_person_name(str(row.site_alias or "")) == alias_norm:
+                    return row.site_code or ""
+    if login_norm:
+        regs = (
+            db.query(FunctionalEvalSiteRegistry)
+            .all()
+        )
+        direct_matches: set[str] = set()
+        manager_name_matches: set[str] = set()
+        user_name = _normalize_role_identifier(str(getattr(user, "name", "") or ""))
+        for row in regs:
+            site_code = row.site_code or ""
+            if not site_code:
+                continue
+            manager_login = (row.manager_login_id or "").strip()
+            if manager_login and _normalize_login_to_name(manager_login) == login_norm:
+                direct_matches.add(site_code)
+                continue
+            if row.site_alias and row.manager_name:
+                generated = build_eval_login_id(row.site_alias, row.manager_name)
+                if _normalize_login_to_name(generated) == login_norm:
+                    direct_matches.add(site_code)
+            site_alias = _normalize_person_name(row.site_alias or "")
+            manager_name = _normalize_role_identifier(row.manager_name or "")
+            if manager_name and (manager_name == user_name or manager_name == login_norm):
+                manager_name_matches.add(site_code)
+        if len(direct_matches) == 1:
+            return next(iter(direct_matches))
+        if len(direct_matches) > 1:
+            narrowed = set()
+            manager_workers = (
+                db.query(FunctionalEvalWorker)
+                .filter(
+                    FunctionalEvalWorker.is_site_manager.is_(True),
+                    FunctionalEvalWorker.is_active.is_(True),
+                )
+                .all()
+            )
+            for mw in manager_workers:
+                mw_name = _normalize_role_identifier((mw.name or ""))
+                if mw_name == user_name:
+                    narrowed.add(mw.site_code)
+                mw_login = _normalize_login_to_name((mw.assigned_evaluator_login_id or ""))
+                if login_norm and mw_login == login_norm:
+                    narrowed.add(mw.site_code)
+            if len(narrowed) == 1:
+                return next(iter(narrowed))
+            if not narrowed:
+                narrowed = set()
+            direct_matches = direct_matches.intersection(narrowed) if narrowed else direct_matches
+            if len(direct_matches) == 1:
+                return next(iter(direct_matches))
+            return ""
+        if len(manager_name_matches) == 1:
+            return next(iter(manager_name_matches))
+        if len(manager_candidates) == 1:
+            return next(iter(manager_candidates))
     return ""
 
 
@@ -865,11 +1112,65 @@ def _manager_login_for_site(db: Session, site_code: str) -> str:
     return site_code
 
 
+def _is_manager_user_for_site(db: Session, user: User, site_code: str) -> bool:
+    login_id = (user.login_id or "").strip()
+    login_norm = _normalize_login_to_name(login_id)
+    if not login_id and not login_norm:
+        return False
+    user_name = _normalize_role_identifier(str(getattr(user, "name", "") or ""))
+    if not user_name:
+        user_name = _normalize_login_to_name(login_id)
+
+    if login_id == site_code:
+        return True
+    if login_id == _manager_login_for_site(db, site_code):
+        return True
+
+    reg = (
+        db.query(FunctionalEvalSiteRegistry)
+        .filter(FunctionalEvalSiteRegistry.site_code == site_code)
+        .first()
+    )
+    if reg:
+        manager_name = _normalize_role_identifier((reg.manager_name or "").strip())
+        manager_login = _normalize_login_to_name(str(reg.manager_login_id or ""))
+        if login_norm and manager_login and manager_login == login_norm:
+            return True
+        if manager_name and user_name and user_name == manager_name:
+            return True
+        if login_norm:
+            site_alias = (reg.site_alias or "").strip()
+            generated = build_eval_login_id(site_alias, reg.manager_name or "")
+            if _normalize_login_to_name(generated) == login_norm:
+                return True
+        manager_candidates = _manager_candidates_for_user(db, user)
+        if manager_candidates and site_code in manager_candidates:
+            return True
+
+    manager_workers = (
+        db.query(FunctionalEvalWorker)
+        .filter(
+            FunctionalEvalWorker.site_code == site_code,
+            FunctionalEvalWorker.is_site_manager.is_(True),
+            FunctionalEvalWorker.is_active.is_(True),
+        )
+        .all()
+    )
+    for worker in manager_workers:
+        worker_name = _normalize_person_name(str(worker.name or ""))
+        worker_login = _normalize_login_to_name((worker.assigned_evaluator_login_id or "").strip())
+        if login_norm and worker_login and worker_login == login_norm:
+            return True
+        if worker_name and user_name and worker_name == user_name:
+            return True
+    return False
+
+
 def _worker_eval_assignment(db: Session, worker: FunctionalEvalWorker) -> str:
     """DIRECT=직영(소장), TEAM=팀원(팀장)."""
     manager_login = _manager_login_for_site(db, worker.site_code)
     assigned = (worker.assigned_evaluator_login_id or "").strip()
-    if assigned == manager_login or not assigned:
+    if worker.is_site_manager or assigned == manager_login:
         return "DIRECT"
     return "TEAM"
 
@@ -944,10 +1245,7 @@ def build_site_approval_payload(db: Session, period: FunctionalEvalPeriod, site_
 
 
 def _is_primary_site_evaluator(db: Session, user: User, site_code: str) -> bool:
-    login_id = (user.login_id or "").strip()
-    if login_id == site_code:
-        return True
-    return login_id == _manager_login_for_site(db, site_code)
+    return _is_manager_user_for_site(db, user, site_code)
 
 
 def _attendance_worker_count_for_site(
@@ -1016,14 +1314,6 @@ def serialize_evaluator_session(db: Session, user: User, period: FunctionalEvalP
 def list_hq_evaluator_accounts(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
     work_date = get_latest_attendance_date(db, period.id)
     regs = {r.site_code: r for r in db.query(FunctionalEvalSiteRegistry).all()}
-    manager_logins: set[str] = set()
-    for reg in regs.values():
-        ml = (reg.manager_login_id or "").strip()
-        if not ml and reg.site_alias and reg.manager_name:
-            ml = build_eval_login_id(reg.site_alias, reg.manager_name)
-        if ml:
-            manager_logins.add(ml)
-        manager_logins.add(reg.site_code)
 
     assignment_counts: Counter[str] = Counter()
     if work_date:
@@ -1064,7 +1354,7 @@ def list_hq_evaluator_accounts(db: Session, period: FunctionalEvalPeriod) -> dic
             continue
         reg = regs.get(site_code)
         login_id = (user.login_id or "").strip()
-        is_manager = login_id in manager_logins
+        is_manager = _is_manager_user_for_site(db, user, site_code)
         items.append(
             {
                 "site_code": site_code,
@@ -1106,14 +1396,9 @@ def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker)
     if site_code != worker.site_code:
         raise ValueError("SITE_MISMATCH")
     if _is_primary_site_evaluator(db, user, site_code):
-        site_count = _attendance_worker_count_for_site(db, worker.period_id, site_code)
-        if site_count > TEAM_LEADER_SPLIT_THRESHOLD:
-            manager_login = _manager_login_for_site(db, site_code)
-            assigned = (worker.assigned_evaluator_login_id or "").strip()
-            allowed_manager_logins = {site_code, manager_login}
-            if assigned and assigned not in allowed_manager_logins:
-                raise ValueError("SITE_MISMATCH")
         return
+    if _is_team_leader_self_target(db, user, worker):
+        raise ValueError("CANNOT_EVALUATE_SELF")
     assigned = (worker.assigned_evaluator_login_id or "").strip()
     if assigned and assigned != login_id:
         raise ValueError("SITE_MISMATCH")
@@ -1128,13 +1413,22 @@ def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod)
     if not rows:
         return []
     is_manager = _is_primary_site_evaluator(db, user, site_code)
+    site_alias = ""
+    if not is_manager:
+        reg = (
+            db.query(FunctionalEvalSiteRegistry)
+            .filter(FunctionalEvalSiteRegistry.site_code == site_code)
+            .first()
+        )
+        site_alias = (reg.site_alias or "").strip() if reg else ""
     site_count = len(rows)
-    if is_manager:
-        if site_count > TEAM_LEADER_SPLIT_THRESHOLD:
-            manager_login = _manager_login_for_site(db, site_code)
-            rows = [r for r in rows if (r.assigned_evaluator_login_id or "").strip() == manager_login]
-    else:
-        rows = [r for r in rows if (r.assigned_evaluator_login_id or "").strip() == login_id]
+    if not is_manager:
+        rows = [
+            r
+            for r in rows
+            if (r.assigned_evaluator_login_id or "").strip() == login_id
+            and not _is_team_leader_self_target(db, user, r, site_alias=site_alias)
+        ]
     assess_map = _assessments_map(db, [r.id for r in rows])
     return [serialize_worker(db, row, assessments=assess_map.get(row.id, {})) for row in rows]
 
@@ -1892,11 +2186,20 @@ def apply_team_leader_assignments_file(
                 db.add(user)
 
             team_workers = meta["workers"]
-            names = {r.worker_name.strip() for r in team_workers if r.worker_name.strip()}
+            leader_name_norm = leader_name.replace(" ", "")
+            names = {
+                r.worker_name.strip()
+                for r in team_workers
+                if r.worker_name.strip() and r.worker_name.strip().replace(" ", "") != leader_name_norm
+            }
             rrn_hashes: set[str] = set()
+            leader_rrn_hash = hash_rrn(meta["rrn"])
             for r in team_workers:
                 if r.worker_rrn_raw:
-                    rrn_hashes.add(hash_rrn(r.worker_rrn_raw))
+                    candidate_hash = hash_rrn(r.worker_rrn_raw)
+                    if candidate_hash == leader_rrn_hash:
+                        continue
+                    rrn_hashes.add(candidate_hash)
             q = db.query(FunctionalEvalWorker).filter(
                 FunctionalEvalWorker.period_id == period.id,
                 FunctionalEvalWorker.site_code == site_code,

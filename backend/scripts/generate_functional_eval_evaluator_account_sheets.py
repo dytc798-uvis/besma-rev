@@ -372,6 +372,14 @@ def main() -> None:
     print(f"admin:  {admin_path}")
     print(f"deploy: {deploy_path}")
 
+    from scripts.generate_hq_account_sheets import collect_hq_web_accounts, write_hq_workbooks  # noqa: WPS433
+
+    hq_accounts = collect_hq_web_accounts()
+    hq_admin, hq_deploy = write_hq_workbooks(hq_accounts, out_dir)
+    print(f"hq rows: {len(hq_accounts)}")
+    print(f"hq admin:  {hq_admin}")
+    print(f"hq deploy: {hq_deploy}")
+
 
 if __name__ == "__main__":
     main()

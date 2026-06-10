@@ -25,6 +25,7 @@ export interface AccidentListItem {
   has_attachments: boolean;
   nas_folder_path: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface AccidentDetail extends AccidentListItem {
@@ -47,6 +48,13 @@ export interface AccidentDetail extends AccidentListItem {
   updated_by_user_id: number | null;
   updated_at: string;
   attachments: AccidentAttachmentItem[];
+  composed_line?: string | null;
+  output_fields?: Record<string, unknown> | null;
+}
+
+export interface AccidentSyncResponse {
+  server_time: string;
+  upserts: AccidentListItem[];
 }
 
 export interface AccidentInitialReportOutput {
@@ -131,6 +139,13 @@ export async function fetchAccidents(params: {
 }) {
   const res = await api.get<AccidentListItem[]>("/accidents", { params });
   return res.data ?? [];
+}
+
+export async function syncAccidents(since?: string | null) {
+  const res = await api.get<AccidentSyncResponse>("/accidents/sync", {
+    params: since ? { since } : undefined,
+  });
+  return res.data;
 }
 
 export async function fetchAccidentDetail(id: number) {

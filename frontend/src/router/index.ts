@@ -61,6 +61,8 @@ import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPa
 import SiteNewSiteDeploymentPage from "@/pages/site/SiteNewSiteDeploymentPage.vue";
 import HQFunctionalEvalPage from "@/pages/hq/HQFunctionalEvalPage.vue";
 import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
+import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
+import PdfSigningPublicPage from "@/pages/pdf-signing/PdfSigningPublicPage.vue";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 
 const routes: RouteRecordRaw[] = [
@@ -73,6 +75,23 @@ const routes: RouteRecordRaw[] = [
     path: "/login",
     name: "login",
     component: LoginPage,
+  },
+  {
+    path: "/sign/:token",
+    name: "pdf-signing-public",
+    component: PdfSigningPublicPage,
+  },
+  {
+    path: "/temp/sign1",
+    name: "pdf-signing-temp-sign1",
+    component: PdfSigningPublicPage,
+    props: { fixedSlot: "sign1" },
+  },
+  {
+    path: "/temp/sign2",
+    name: "pdf-signing-temp-sign2",
+    component: PdfSigningPublicPage,
+    props: { fixedSlot: "sign2" },
   },
   {
     path: "/change-password",
@@ -136,6 +155,12 @@ const routes: RouteRecordRaw[] = [
         path: "accidents/:id/report",
         name: "hq-safe-accident-report",
         component: HQAccidentReportPage,
+        meta: { requiresAccidentAdmin: true },
+      },
+      {
+        path: "pdf-signing",
+        name: "hq-safe-pdf-signing",
+        component: PdfSigningAdminPage,
         meta: { requiresAccidentAdmin: true },
       },
       { path: "worker-voice", name: "hq-safe-worker-voice", component: WorkerVoiceBoardPage },

@@ -3,7 +3,9 @@
     <div class="head-row">
       <div>
         <div class="card-title">사고관리</div>
-        <p class="muted">기본 목록은 자동 파싱이 success가 아닌 건만 보여줍니다. 전체 보기에서 모든 사고를 확인할 수 있습니다.</p>
+        <p class="muted">
+          기본은 등록일 최신순 최근 20건(미완료·검토 대상)입니다. 전체 보기에서 더 많은 사고를 확인할 수 있습니다.
+        </p>
       </div>
       <div class="toolbar-actions">
         <RouterLink class="secondary-link" to="/hq-safe/accidents/worklist">작업리스트</RouterLink>
@@ -25,7 +27,9 @@
         <input v-model="preferWorklist" type="checkbox" @change="persistWorklistPreference" />
         <span>첫 진입 시 작업리스트 우선</span>
       </label>
-      <span class="summary-pill">현재 {{ items.length }}건</span>
+      <span class="summary-pill">
+        {{ showAll ? `전체 ${items.length}건` : `최근 ${items.length}건 · 등록일 최신순` }}
+      </span>
     </div>
 
     <table class="basic-table">
@@ -71,9 +75,18 @@ import { api } from "@/services/api";
 import {
   downloadAccidentNasFolderLauncher,
   fetchAccidents,
+  syncAccidents,
   syncAccidentsToMasterExcel,
   type AccidentListItem,
 } from "@/services/accidents";
+import {
+  latestAccidentSyncTime,
+  mergeAccidentListItems,
+  readAccidentListCache,
+  readAccidentListSyncTime,
+  trimAccidentListItems,
+  writeAccidentListCache,
+} from "@/utils/accidentsCache";
 import { formatAccidentDateForListRow } from "@/utils/accidentDateDisplay";
 
 const router = useRouter();
@@ -89,16 +102,38 @@ function persistWorklistPreference() {
   localStorage.setItem("besma_accident_prefer_worklist", String(preferWorklist.value));
 }
 
-async function load() {
+async function load(options?: { forceFull?: boolean }) {
   errorMessage.value = "";
-  loading.value = true;
+  const cached = readAccidentListCache(showAll.value);
+  const syncSince = readAccidentListSyncTime(showAll.value);
+  const hasCache = Boolean(cached?.length);
+  if (hasCache && cached) {
+    items.value = trimAccidentListItems(cached, showAll.value);
+    loading.value = false;
+  } else {
+    loading.value = true;
+  }
+
   try {
-    items.value = await fetchAccidents({
-      show_all: showAll.value,
-    });
+    if (!options?.forceFull && hasCache && syncSince) {
+      const syncRes = await syncAccidents(syncSince);
+      const merged = mergeAccidentListItems(cached ?? [], syncRes.upserts, showAll.value);
+      items.value = merged;
+      writeAccidentListCache(showAll.value, merged, syncRes.server_time);
+      return;
+    }
+
+    const fresh = trimAccidentListItems(
+      await fetchAccidents({ show_all: showAll.value }),
+      showAll.value,
+    );
+    items.value = fresh;
+    writeAccidentListCache(showAll.value, fresh, latestAccidentSyncTime(fresh) ?? new Date().toISOString());
   } catch {
-    errorMessage.value = "사고관리 목록을 불러오지 못했습니다.";
-    items.value = [];
+    if (!hasCache) {
+      errorMessage.value = "사고관리 목록을 불러오지 못했습니다.";
+      items.value = [];
+    }
   } finally {
     loading.value = false;
   }

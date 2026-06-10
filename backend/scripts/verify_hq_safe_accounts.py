@@ -10,7 +10,7 @@ sys.path.insert(0, str(BACKEND_ROOT))
 from app.config.security import verify_password  # noqa: E402
 from app.core.database import SessionLocal, init_db  # noqa: E402
 from app.modules.users.models import User  # noqa: E402
-from scripts.create_hq_safe_accounts import HQ_SAFE_ACCOUNTS  # noqa: E402
+from app.modules.users.hq_safe_accounts import HQ_SAFE_ACCOUNTS  # noqa: E402
 
 
 def main() -> None:
