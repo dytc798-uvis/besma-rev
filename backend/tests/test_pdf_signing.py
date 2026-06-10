@@ -80,6 +80,11 @@ def test_pdf_signing_token_flow(tmp_path):
     assert info_res.status_code == 200
     assert info_res.json()["status"] == "pending"
 
+    doc_res = client.get(f"/pdf-signing/public/{token}/document")
+    assert doc_res.status_code == 200
+    assert doc_res.headers["content-type"] == "application/pdf"
+    assert "inline" in doc_res.headers.get("content-disposition", "")
+
     png_b64 = base64.b64encode(_png_1x1()).decode()
     sign_res = client.post(
         f"/pdf-signing/public/{token}/sign",
@@ -94,6 +99,9 @@ def test_pdf_signing_token_flow(tmp_path):
         json={"signature_png_base64": png_b64},
     )
     assert again.status_code == 409
+
+    signed_doc = client.get(f"/pdf-signing/public/{token}/document")
+    assert signed_doc.status_code == 409
 
     list_res = client.get("/pdf-signing/requests")
     assert list_res.status_code == 200
@@ -153,6 +161,10 @@ def test_pdf_signing_temp_slot_flow(tmp_path):
 
     info_res = client.get("/pdf-signing/public/slot/sign2")
     assert info_res.status_code == 200
+
+    doc_res = client.get("/pdf-signing/public/slot/sign2/document")
+    assert doc_res.status_code == 200
+    assert doc_res.headers["content-type"] == "application/pdf"
 
     png_b64 = base64.b64encode(_png_1x1()).decode()
     sign_res = client.post(

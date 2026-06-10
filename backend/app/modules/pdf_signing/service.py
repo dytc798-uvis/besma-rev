@@ -219,6 +219,23 @@ def _ensure_active_token(row: PdfSigningRequest) -> None:
         raise ValueError("token_expired")
 
 
+def get_public_pending_document(db: Session, *, token: str | None = None, slot: str | None = None) -> PdfSigningRequest:
+    if slot:
+        row = get_by_slot(db, slot)
+    elif token:
+        row = get_by_token(db, token)
+    else:
+        raise ValueError("token_not_found")
+    if row is None:
+        raise ValueError("token_not_found")
+    if row.status == "pending" and row.expires_at < _utcnow():
+        row.status = "expired"
+        db.commit()
+    if row.status != "pending":
+        raise ValueError("document_not_available")
+    return row
+
+
 def _resolve_request(db: Session, *, token: str | None = None, slot: str | None = None) -> PdfSigningRequest:
     if slot:
         row = get_by_slot(db, slot)

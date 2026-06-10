@@ -243,6 +243,20 @@ def get_public_signing_info_by_slot(slot: str, db: DbDep):
     return _public_info_from_row(row)
 
 
+@router.get("/public/slot/{slot}/document")
+def get_public_document_by_slot(slot: str, db: DbDep):
+    try:
+        service.normalize_slot(slot)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="유효하지 않은 링크입니다.")
+    return _public_document_response(db, slot=slot)
+
+
+@router.get("/public/{token}/document")
+def get_public_document_by_token(token: str, db: DbDep):
+    return _public_document_response(db, token=token)
+
+
 @router.post("/public/slot/{slot}/sign", response_model=PdfSigningSubmitResponse)
 def submit_public_signature_by_slot(
     slot: str,
@@ -279,6 +293,26 @@ def submit_public_signature(
     db: DbDep,
 ):
     return _submit_signature(db=db, request=request, payload=payload, token=token)
+
+
+def _public_document_response(db: DbDep, *, token: str | None = None, slot: str | None = None):
+    try:
+        row = service.get_public_pending_document(db, token=token, slot=slot)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "token_not_found":
+            raise HTTPException(status_code=404, detail="유효하지 않은 링크입니다.")
+        if code == "document_not_available":
+            raise HTTPException(status_code=409, detail="확인할 수 있는 문서가 없습니다.")
+        raise
+    return FileResponse(
+        path=row.original_path,
+        media_type="application/pdf",
+        filename=row.original_filename,
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(row.original_filename)}",
+        },
+    )
 
 
 def _submit_signature(
