@@ -110,6 +110,15 @@ export function safetySanctionDisplay(
   return { safetyLabel, safetyClass, subLabel, subClass };
 }
 
+/** 현황표 안전·제재 — 한 줄 텍스트 */
+export function safetySanctionLine(
+  w: EvalWorkerCompletion & { sanction_status?: string; sanction_status_label?: string },
+): string {
+  const { safetyLabel, subLabel } = safetySanctionDisplay(w);
+  if (!subLabel || subLabel === "해당 없음") return safetyLabel;
+  return `${safetyLabel} · ${subLabel}`;
+}
+
 /** 제재 이력 또는 C등급 — 평가 결과 강조 */
 export function workerNeedsHighlight(w: EvalWorkerCompletion): boolean {
   return hasSanctionRecord(w);

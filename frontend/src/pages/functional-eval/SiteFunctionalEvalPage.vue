@@ -69,6 +69,59 @@
       </div>
       <p class="roster-desc">{{ rosterDescription }}</p>
 
+      <!-- 소장 · 11명 초과 현장: 구역별 카드 -->
+      <div v-if="showManagerBuckets && !activeManagerBucket" class="bucket-grid manager-bucket-grid">
+        <button type="button" class="bucket-card bucket-card--direct" @click="selectManagerBucket('direct')">
+          <span class="bucket-card__label">직영</span>
+          <span class="bucket-card__count">{{ managerBucketCounts.direct }}</span>
+          <span class="bucket-card__hint">소장 직접 평가 · 미완료 {{ managerBucketCounts.direct_incomplete }}명</span>
+        </button>
+        <button type="button" class="bucket-card bucket-card--leaders" @click="selectManagerBucket('team_leaders')">
+          <span class="bucket-card__label">팀장평가</span>
+          <span class="bucket-card__count">{{ managerBucketCounts.teams }}</span>
+          <span class="bucket-card__hint">팀장 담당 {{ managerBucketCounts.team_workers }}명</span>
+        </button>
+        <button type="button" class="bucket-card bucket-card--pending" @click="selectManagerBucket('team_incomplete')">
+          <span class="bucket-card__label">팀별 평가(미완료)</span>
+          <span class="bucket-card__count">{{ managerBucketCounts.teams_incomplete }}</span>
+          <span class="bucket-card__hint">평가가 끝나지 않은 팀</span>
+        </button>
+        <button type="button" class="bucket-card bucket-card--done" @click="selectManagerBucket('team_complete')">
+          <span class="bucket-card__label">팀별 평가(완료)</span>
+          <span class="bucket-card__count">{{ managerBucketCounts.teams_complete }}</span>
+          <span class="bucket-card__hint">전원 평가 완료된 팀</span>
+        </button>
+      </div>
+
+      <div v-if="showManagerBuckets && activeManagerBucket" class="bucket-list-head">
+        <button type="button" class="stitch-btn-secondary back-btn" @click="managerBucketBack">
+          ← {{ activeTeamLeaderId ? managerBucketTitle.replace(' 팀', '') + ' 팀 목록' : '전체 현황' }}
+        </button>
+        <h2 class="bucket-list-title">{{ managerBucketTitle }}</h2>
+      </div>
+
+      <ul
+        v-if="showManagerBuckets && activeManagerBucket && activeManagerBucket !== 'direct' && !activeTeamLeaderId"
+        class="site-list team-group-list"
+      >
+        <li v-for="team in visibleTeamGroups" :key="team.leaderLoginId">
+          <button type="button" class="site-list-item" @click="selectTeamGroup(team.leaderLoginId)">
+            <div class="site-list-item__main">
+              <strong>{{ team.leaderLabel }}</strong>
+              <span class="site-list-item__meta">팀원 {{ team.complete }}/{{ team.total }}명 완료</span>
+            </div>
+            <div class="site-list-item__progress">
+              <span class="progress-pill">{{ team.complete }}/{{ team.total }}</span>
+              <div class="progress-bar" aria-hidden="true">
+                <div class="progress-bar__fill" :style="{ width: `${team.progressPct}%` }" />
+              </div>
+            </div>
+            <span class="chevron">›</span>
+          </button>
+        </li>
+        <li v-if="!visibleTeamGroups.length" class="muted empty-bucket">해당 구분의 팀이 없습니다.</li>
+      </ul>
+
       <div v-if="isManager && approval" class="approval-panel">
         <div class="approval-stats">
           <span>전체 {{ approval.site_complete_workers }}/{{ approval.site_total_workers }}명 완료</span>
@@ -87,7 +140,10 @@
         </button>
       </div>
 
-      <div class="table-wrap roster-table-wrap">
+      <div
+        v-if="!showManagerBuckets || (activeManagerBucket === 'direct') || activeTeamLeaderId"
+        class="table-wrap roster-table-wrap"
+      >
         <table class="data-table roster-table">
           <thead>
             <tr>
@@ -95,12 +151,12 @@
               <th>성명</th>
               <th v-if="isManager && evaluator?.team_split_active">구분</th>
               <th>기능 (2-1)</th>
-              <th>안전·제재 (2-2)</th>
+              <th class="col-safety-sanction">안전·제재 (2-2)</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(w, idx) in filteredWorkers" :key="w.id" :class="workerRowHighlightClass(w)">
+            <tr v-for="(w, idx) in rosterDisplayWorkers" :key="w.id" :class="workerRowHighlightClass(w)">
               <td>{{ idx + 1 }}</td>
               <td>{{ w.name }}</td>
               <td v-if="isManager && evaluator?.team_split_active">{{ assignmentLabel(w) }}</td>
@@ -108,11 +164,7 @@
                 <span :class="gradeDisplayClass(w.functional_assessment)">{{ gradeDisplayLabel(w.functional_assessment) }}</span>
               </td>
               <td class="safety-sanction-cell">
-                <span :class="safetySanctionCell(w).safetyClass">{{ safetySanctionCell(w).safetyLabel }}</span>
-                <span
-                  v-if="safetySanctionCell(w).subLabel"
-                  :class="safetySanctionCell(w).subClass"
-                >{{ safetySanctionCell(w).subLabel }}</span>
+                <span :class="safetySanctionLineClass(w)">{{ safetySanctionLineText(w) }}</span>
               </td>
               <td class="actions-cell">
                 <button
@@ -143,7 +195,7 @@
                 </button>
               </td>
             </tr>
-            <tr v-if="!filteredWorkers.length">
+            <tr v-if="!rosterDisplayWorkers.length">
               <td :colspan="rosterColspan" class="empty-cell">검색 결과가 없습니다.</td>
             </tr>
           </tbody>
@@ -287,6 +339,7 @@ import {
   isFullyComplete,
   needsSanctionPrompt,
   safetySanctionDisplay,
+  safetySanctionLine,
   workerRowHighlightClass,
 } from "@/utils/functionalEvalCompletion";
 
@@ -295,6 +348,16 @@ type EvalTab = "functional" | "safety";
 type EvalType = "FUNCTIONAL" | "SAFETY";
 type EvalStatusKey = "incomplete" | "in_progress" | "complete";
 type EvalStatusFilter = EvalStatusKey | "all";
+type ManagerBucket = "direct" | "team_leaders" | "team_incomplete" | "team_complete";
+
+interface TeamGroup {
+  leaderLoginId: string;
+  leaderLabel: string;
+  workers: Worker[];
+  total: number;
+  complete: number;
+  progressPct: number;
+}
 
 interface AssessmentBrief {
   scores: Record<string, string>;
@@ -424,6 +487,8 @@ const evalSessionKey = ref(0);
 const sanctionPromptMessage = ref("");
 const saveNotice = ref("");
 let saveNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+const activeManagerBucket = ref<ManagerBucket | null>(null);
+const activeTeamLeaderId = ref<string | null>(null);
 const evalCatalog = ref<{ FUNCTIONAL: EvalCatalogBlock; SAFETY: EvalCatalogBlock } | null>(null);
 const period = ref<Period | null>(null);
 const evaluator = ref<EvaluatorSession | null>(null);
@@ -512,16 +577,140 @@ const rosterDescription = computed(() => evaluatorHint.value);
 
 const rosterColspan = computed(() => (isManager.value && evaluator.value?.team_split_active ? 6 : 5));
 
-const filteredWorkers = computed(() => {
-  const list = activeEvalStatus.value === "all"
-    ? rosterSource.value
-    : rosterSource.value.filter((w) => workerEvalStatusKey(w) === activeEvalStatus.value);
+const showManagerBuckets = computed(
+  () => isManager.value && Boolean(evaluator.value?.team_split_active) && mainView.value === "roster",
+);
+
+const teamGroups = computed((): TeamGroup[] => {
+  const map = new Map<string, Worker[]>();
+  for (const w of siteOverview.value) {
+    if (w.eval_assignment !== "TEAM") continue;
+    const key = (w.assigned_evaluator_login_id || "").trim() || "미배정";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(w);
+  }
+  return [...map.entries()]
+    .map(([leaderLoginId, members]) => {
+      const complete = members.filter((m) => isFullyComplete(m)).length;
+      const total = members.length;
+      return {
+        leaderLoginId,
+        leaderLabel: teamLeaderLabel(leaderLoginId),
+        workers: members,
+        total,
+        complete,
+        progressPct: total > 0 ? Math.round((complete / total) * 100) : 0,
+      };
+    })
+    .sort((a, b) => a.leaderLabel.localeCompare(b.leaderLabel, "ko"));
+});
+
+function isTeamFullyComplete(team: TeamGroup): boolean {
+  return team.total > 0 && team.complete >= team.total;
+}
+
+const managerBucketCounts = computed(() => {
+  const directWorkers = siteOverview.value.filter((w) => isDirectWorker(w));
+  const directIncomplete = directWorkers.filter((w) => isEvalIncomplete(w)).length;
+  const teams = teamGroups.value;
+  return {
+    direct: directWorkers.length,
+    direct_incomplete: directIncomplete,
+    teams: teams.length,
+    team_workers: teams.reduce((sum, t) => sum + t.total, 0),
+    teams_incomplete: teams.filter((t) => !isTeamFullyComplete(t)).length,
+    teams_complete: teams.filter((t) => isTeamFullyComplete(t)).length,
+  };
+});
+
+const managerBucketTitle = computed(() => {
+  if (activeTeamLeaderId.value) {
+    const team = teamGroups.value.find((t) => t.leaderLoginId === activeTeamLeaderId.value);
+    return team ? `${team.leaderLabel} 팀` : "팀 상세";
+  }
+  if (activeManagerBucket.value === "direct") return "직영 평가";
+  if (activeManagerBucket.value === "team_leaders") return "팀장평가";
+  if (activeManagerBucket.value === "team_incomplete") return "팀별 평가(미완료)";
+  if (activeManagerBucket.value === "team_complete") return "팀별 평가(완료)";
+  return "";
+});
+
+const visibleTeamGroups = computed(() => {
+  if (!activeManagerBucket.value || activeManagerBucket.value === "direct") return [];
+  let list = teamGroups.value;
+  if (activeManagerBucket.value === "team_incomplete") {
+    list = list.filter((t) => !isTeamFullyComplete(t));
+  } else if (activeManagerBucket.value === "team_complete") {
+    list = list.filter((t) => isTeamFullyComplete(t));
+  }
+  return list;
+});
+
+const rosterDisplayWorkers = computed(() => {
+  let list = rosterSource.value;
+  if (showManagerBuckets.value && activeManagerBucket.value) {
+    if (activeManagerBucket.value === "direct") {
+      list = list.filter((w) => isDirectWorker(w));
+    } else if (activeTeamLeaderId.value) {
+      list = list.filter(
+        (w) => w.eval_assignment === "TEAM" && (w.assigned_evaluator_login_id || "").trim() === activeTeamLeaderId.value,
+      );
+    } else {
+      list = [];
+    }
+  }
   return [...list].sort((a, b) => a.name.localeCompare(b.name, "ko"));
 });
 
-const evaluableWorkers = computed(() =>
-  activeEvalStatus.value === "all" ? rosterSource.value : filteredWorkers.value
-);
+/** 평가 화면 — 라우트 필터와 무관하게 항상 담당 전체 목록 */
+const evaluableWorkers = computed(() => {
+  if (isManager.value && evaluator.value?.team_split_active) {
+    return workers.value;
+  }
+  return rosterSource.value;
+});
+
+function teamLeaderLabel(loginId: string): string {
+  const trimmed = (loginId || "").trim();
+  if (!trimmed || trimmed === "미배정") return "미배정";
+  const dash = trimmed.indexOf("-");
+  return dash >= 0 ? trimmed.slice(dash + 1) : trimmed;
+}
+
+function isDirectWorker(w: Worker): boolean {
+  return assignmentLabel(w) === "직영" || w.eval_assignment === "DIRECT";
+}
+
+function selectManagerBucket(bucket: ManagerBucket) {
+  activeManagerBucket.value = bucket;
+  activeTeamLeaderId.value = null;
+}
+
+function selectTeamGroup(leaderLoginId: string) {
+  activeTeamLeaderId.value = leaderLoginId;
+}
+
+function clearManagerBucketView() {
+  activeManagerBucket.value = null;
+  activeTeamLeaderId.value = null;
+}
+
+function managerBucketBack() {
+  if (activeTeamLeaderId.value) {
+    activeTeamLeaderId.value = null;
+    return;
+  }
+  clearManagerBucketView();
+}
+
+function safetySanctionLineText(w: Worker): string {
+  return safetySanctionLine(w);
+}
+
+function safetySanctionLineClass(w: Worker): string {
+  const cell = safetySanctionDisplay(w);
+  return cell.subLabel ? `${cell.safetyClass} safety-sanction-line` : cell.safetyClass;
+}
 
 function assignmentLabel(w: Worker): string {
   const assignedToEvaluator = Boolean(
@@ -560,10 +749,6 @@ function canRegisterSanction(w: Worker): boolean {
 
 function hasActualSanctionHistory(w: Worker): boolean {
   return Boolean((w.sanction_count ?? 0) > 0 || w.latest_sanction);
-}
-
-function safetySanctionCell(w: Worker) {
-  return safetySanctionDisplay(w);
 }
 
 const groupedViolations = computed(() => {
@@ -656,14 +841,16 @@ function flashSaveNotice(message: string, durationMs = 2800) {
 }
 
 function evalQueue(): Worker[] {
-  return [...rosterSource.value].sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  const list = isManager.value && evaluator.value?.team_split_active ? workers.value : rosterSource.value;
+  return [...list].sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
-function advanceToNextWorker(afterId: number) {
+async function advanceToNextWorker(afterId: number) {
+  await load();
   const next = findNextIncompleteWorker(evalQueue(), afterId);
   if (!next) {
     flashSaveNotice("모든 근로자 평가가 완료되었습니다. 현황으로 이동합니다.");
-    window.setTimeout(() => goToRoster(), 900);
+    window.setTimeout(() => void goToRoster(), 900);
     return;
   }
   focusWorkerId.value = next.id;
@@ -672,8 +859,10 @@ function advanceToNextWorker(afterId: number) {
   flashSaveNotice(`${next.name}님 ${phase} 평가를 시작합니다.`);
 }
 
-function goToRoster() {
-  router.push({ name: "site-functional-eval" });
+async function goToRoster() {
+  await load();
+  clearManagerBucketView();
+  await router.push({ name: "site-functional-eval" });
   focusWorkerId.value = null;
   saveNotice.value = "";
 }
@@ -690,10 +879,7 @@ function startEvaluation(worker?: Worker) {
   evalSessionKey.value += 1;
   focusWorkerId.value = target.id;
   activeTab.value = isFunctionalComplete(target) ? "safety" : "functional";
-  const nextRoute = {
-    name: "site-functional-eval-evaluate" as const,
-    query: { eval_status: workerEvalStatusKey(target) },
-  };
+  const nextRoute = { name: "site-functional-eval-evaluate" as const };
 
   if (route.name === "site-functional-eval-evaluate") {
     void router.replace(nextRoute);
@@ -708,20 +894,22 @@ function onRosterStatusClick(w: Worker) {
   startEvaluation(w);
 }
 
-function onSafetySaved(worker: Worker) {
-  flashSaveNotice(`${worker.name}님 안전 평가가 저장되었습니다.`);
-  if (needsSanctionPrompt(worker)) {
-    const f = gradeDisplayLabel(worker.functional_assessment);
-    const s = gradeDisplayLabel(worker.safety_assessment);
+async function onSafetySaved(worker: Worker) {
+  await load();
+  const fresh = rosterSource.value.find((w) => w.id === worker.id) ?? workers.value.find((w) => w.id === worker.id) ?? worker;
+  flashSaveNotice(`${fresh.name}님 안전 평가가 저장되었습니다.`);
+  if (needsSanctionPrompt(fresh)) {
+    const f = gradeDisplayLabel(fresh.functional_assessment);
+    const s = gradeDisplayLabel(fresh.safety_assessment);
     sanctionPromptMessage.value = `기능 ${f} · 안전 ${s} — 부족/문제(C등급)일 때만 제재를 등록하세요.`;
-    focusWorkerId.value = worker.id;
+    focusWorkerId.value = fresh.id;
     activeTab.value = "safety";
     if (isMobileViewport.value) {
-      openSanction(worker);
+      openSanction(fresh);
     }
     return;
   }
-  advanceToNextWorker(worker.id);
+  await advanceToNextWorker(fresh.id);
 }
 
 function onRequestSafety(workerId: number) {
@@ -733,12 +921,13 @@ function onRequestSafety(workerId: number) {
   );
 }
 
-function onSanctionRegistered() {
+async function onSanctionRegistered() {
   sanctionPromptMessage.value = "";
   const workerId = focusWorkerId.value;
   if (workerId == null) return;
+  await load();
   flashSaveNotice("제재가 등록되었습니다.");
-  advanceToNextWorker(workerId);
+  await advanceToNextWorker(workerId);
 }
 
 watch(activeTab, () => {
@@ -765,14 +954,22 @@ async function loadCatalog() {
   }
 }
 
+function cloneWorkerList(rows: Worker[]): Worker[] {
+  return (rows || []).map((w) => ({
+    ...w,
+    functional_assessment: w.functional_assessment ? { ...w.functional_assessment } : w.functional_assessment,
+    safety_assessment: w.safety_assessment ? { ...w.safety_assessment } : w.safety_assessment,
+  }));
+}
+
 async function load() {
   error.value = "";
   attendanceMessage.value = "";
   const res = await api.get("/functional-eval/my-site/workers");
   period.value = res.data.period;
-  workers.value = res.data.items || [];
-  siteOverview.value = res.data.site_overview || [];
-  approval.value = res.data.approval || null;
+  workers.value = cloneWorkerList(res.data.items || []);
+  siteOverview.value = cloneWorkerList(res.data.site_overview || []);
+  approval.value = res.data.approval ? { ...res.data.approval } : null;
   evaluator.value = res.data.evaluator || null;
   attendanceMessage.value = res.data.attendance_message || "";
 }
@@ -1281,11 +1478,123 @@ textarea.field-control {
 }
 
 .safety-sanction-cell {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 6px;
   white-space: nowrap;
+  min-width: 88px;
+}
+
+.col-safety-sanction {
+  white-space: nowrap;
+  min-width: 108px;
+}
+
+.safety-sanction-line,
+.safety-sanction-cell .grade-pill {
+  white-space: nowrap;
+}
+
+.manager-bucket-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (min-width: 900px) {
+  .manager-bucket-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.bucket-grid .bucket-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px 14px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.bucket-grid .bucket-card:hover {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.bucket-card--direct { border-top: 4px solid #2563eb; }
+.bucket-card--leaders { border-top: 4px solid #7c3aed; }
+.bucket-card--pending { border-top: 4px solid #ea580c; }
+.bucket-card--done { border-top: 4px solid #16a34a; }
+
+.bucket-card__label { font-size: 14px; font-weight: 600; color: #0f172a; }
+.bucket-card__count { font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1; }
+.bucket-card__hint { font-size: 12px; color: #64748b; }
+
+.bucket-list-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.bucket-list-title {
+  margin: 0;
+  font-size: 17px;
+}
+
+.team-group-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.team-group-list .site-list-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.team-group-list .site-list-item:hover {
+  background: #f8fafc;
+}
+
+.team-group-list .site-list-item__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.team-group-list .progress-bar {
+  width: 72px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.team-group-list .progress-bar__fill {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 999px;
+}
+
+.empty-bucket {
+  padding: 16px 0;
+  text-align: center;
 }
 
 .roster-table .grade-pill {
