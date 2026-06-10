@@ -3,7 +3,8 @@
 데이터:
   - docs/월별현장별집계_*.xls (현장명·별칭·대표)
   - docs/출역일보_*.xls (팀장·당일 출역)
-  - docs/sample/site_import/raw/* (일용직 사원리스트 — 소장·주민번호 우선)
+  - docs/일용직사원리스트_*.xls (또는 docs/sample/site_import/raw/*)
+  - docs/사원리스트_*.xls — 이름→주민번호 보조
 
 Usage (from backend/):
   PYTHONPATH=. python scripts/generate_functional_eval_evaluator_account_sheets.py
@@ -42,27 +43,10 @@ from app.modules.functional_eval.roster import (  # noqa: E402
 )
 from app.modules.functional_eval.site_aggregate import parse_monthly_site_aggregate  # noqa: E402
 from app.modules.functional_eval.site_alias import build_eval_login_id  # noqa: E402
+from app.modules.functional_eval.rep_name import is_person_rep_name, resolve_team_rep_name  # noqa: E402
 from app.modules.functional_eval.service import _birth_sort_key  # noqa: E402
 from app.modules.sites.models import Site  # noqa: E402
 from app.modules.users import models as user_models  # noqa: F401, E402
-
-NON_PERSON_REP_LABELS = frozenset(
-    {
-        "직영",
-        "외주",
-        "합계",
-        "소계",
-        "미배정",
-        "없음",
-        "공무",
-        "소장",
-        "팀장",
-        "대표",
-        "미지정",
-        "해당없음",
-        "없",
-    }
-)
 
 
 @dataclass
@@ -87,35 +71,37 @@ def _latest_doc(pattern: str) -> Path:
 
 
 def _find_roster_sources() -> tuple[Path | None, Path | None]:
-    raw = REPO_ROOT / "docs" / "sample" / "site_import" / "raw"
-    employee_candidates = sorted(
-        {
-            p
-            for pattern in ("*사원리스트*.xls", "*사원리스트*.xlsx", "사원리스트*.xls")
-            for p in raw.glob(pattern)
-            if p.is_file() and not p.name.startswith("~$")
-        },
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
+    search_dirs = (
+        REPO_ROOT / "docs",
+        REPO_ROOT / "docs" / "sample" / "site_import" / "raw",
     )
-    employee_path = employee_candidates[0] if employee_candidates else None
 
-    daily_candidates = sorted(
-        {
-            p
-            for pattern in (
-                "daily_workers_raw.xls.normalized.xlsx",
-                "daily_workers_raw.xls",
-                "일용직사원리스트*.xls",
-                "일용직*.xls",
-            )
-            for p in ([raw / pattern] if "*" not in pattern else raw.glob(pattern))
-            if p.is_file() and not p.name.startswith("~$")
-        },
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
+    def _newest(patterns: tuple[str, ...]) -> Path | None:
+        candidates: list[Path] = []
+        for base in search_dirs:
+            if not base.is_dir():
+                continue
+            for pattern in patterns:
+                if "*" in pattern:
+                    paths = base.glob(pattern)
+                else:
+                    paths = [base / pattern]
+                for path in paths:
+                    if path.is_file() and not path.name.startswith("~$"):
+                        candidates.append(path)
+        if not candidates:
+            return None
+        return max(candidates, key=lambda p: p.stat().st_mtime)
+
+    employee_path = _newest(("*사원리스트*.xls", "*사원리스트*.xlsx", "사원리스트*.xls"))
+    daily_path = _newest(
+        (
+            "daily_workers_raw.xls.normalized.xlsx",
+            "daily_workers_raw.xls",
+            "일용직사원리스트*.xls",
+            "일용직*.xls",
+        )
     )
-    daily_path = daily_candidates[0] if daily_candidates else None
     return daily_path, employee_path
 
 
@@ -156,15 +142,6 @@ def _roster_name_rrn_by_site(rows: list[ParsedRosterRow]) -> dict[str, dict[str,
         if name:
             out[row.site_code][name] = row.rrn_raw
     return out
-
-
-def is_person_name(name: str) -> bool:
-    text = (name or "").strip().replace(" ", "")
-    if not text or text in NON_PERSON_REP_LABELS:
-        return False
-    if not re.fullmatch(r"[가-힣]{2,4}", text):
-        return False
-    return True
 
 
 def _global_name_rrn(employee_path: Path | None) -> dict[str, str]:
@@ -270,13 +247,15 @@ def collect_evaluator_accounts(
 
         by_rep: dict[str, list] = defaultdict(list)
         for row in workers_today:
-            rep = (row.rep_name or "").strip() or manager_name
+            rep = resolve_team_rep_name(row.rep_name, manager_name)
             by_rep[rep].append(row)
 
         for rep_name, team_rows in sorted(by_rep.items()):
             if rep_name == manager_name:
                 continue
-            if not is_person_name(rep_name):
+            if len(team_rows) < 2:
+                continue
+            if not is_person_rep_name(rep_name):
                 continue
 
             attendance_rrn = {r.name.strip(): r.rrn_raw for r in rows}

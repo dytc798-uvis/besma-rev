@@ -16,6 +16,7 @@ from app.modules.functional_eval.eval_provisioning import (
     normalize_erp_site_label,
 )
 from app.modules.functional_eval.models import FunctionalEvalPeriod, FunctionalEvalSiteRegistry
+from app.modules.functional_eval.rep_name import is_person_rep_name, resolve_team_rep_name
 from app.modules.functional_eval.site_alias import build_eval_login_id, derive_site_alias
 from app.modules.functional_eval.site_aggregate import parse_monthly_site_aggregate
 from app.modules.functional_eval.attendance import parse_attendance_report
@@ -88,3 +89,19 @@ def test_aggregate_and_attendance_flow(db_session):
 
 def test_normalize_erp_label():
     assert normalize_erp_site_label("현장명: [1.대우건설] 청라C18BL") == "[1.대우건설] 청라C18BL"
+
+
+def test_is_person_rep_name():
+    assert is_person_rep_name("김철수")
+    assert is_person_rep_name("박명식")
+    assert not is_person_rep_name("올라이트라이프")
+    assert not is_person_rep_name("한결아이앤씨")
+    assert not is_person_rep_name("직영")
+    assert not is_person_rep_name("")
+
+
+def test_resolve_team_rep_name():
+    assert resolve_team_rep_name("김철수", "박명식") == "김철수"
+    assert resolve_team_rep_name("올라이트라이프", "박명식") == "박명식"
+    assert resolve_team_rep_name("", "박명식") == "박명식"
+    assert resolve_team_rep_name("박명식", "박명식") == "박명식"

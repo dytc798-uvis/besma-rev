@@ -25,6 +25,7 @@ from app.modules.functional_eval.roster import hash_rrn, mask_rrn
 from app.modules.functional_eval.site_aggregate import parse_monthly_site_aggregate
 from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
 from app.modules.functional_eval.import_diff import entry_tuple, row_tuple, worker_needs_attendance_update
+from app.modules.functional_eval.rep_name import is_person_rep_name, resolve_team_rep_name
 from app.modules.functional_eval.site_alias import build_eval_login_id, derive_site_alias
 from app.modules.sites.models import Site
 from app.modules.users.models import User
@@ -514,11 +515,15 @@ def _provision_evaluators_from_attendance(
 
         by_rep: dict[str, list[ParsedAttendanceRow]] = defaultdict(list)
         for row in workers_today:
-            rep = (row.rep_name or "").strip() or manager_name
+            rep = resolve_team_rep_name(row.rep_name, manager_name)
             by_rep[rep].append(row)
 
         for rep_name, team_rows in by_rep.items():
             if rep_name == manager_name:
+                evaluator_login = manager_login
+                role = "직영"
+            elif len(team_rows) < 2:
+                # 팀장·팀원 합쳐 1명뿐이면 소장이 평가
                 evaluator_login = manager_login
                 role = "직영"
             else:
@@ -526,7 +531,7 @@ def _provision_evaluators_from_attendance(
                 evaluator_login = build_eval_login_id(reg.site_alias, rep_name)
                 rep_rrn = _lookup_rep_rrn(db, period.id, site_code, rep_name, name_rrn)
                 rep_pw = _rrn_front_password(rep_rrn or "")
-                if rep_pw and evaluator_login:
+                if rep_pw and evaluator_login and is_person_rep_name(rep_name):
                     _upsert_eval_user(
                         db,
                         login_id=evaluator_login,
