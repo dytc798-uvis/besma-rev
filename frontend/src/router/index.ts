@@ -65,6 +65,17 @@ import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
 import PdfSigningPublicPage from "@/pages/pdf-signing/PdfSigningPublicPage.vue";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 
+const HQ_SAFE_WORKSPACE_ROLES = new Set([
+  "HQ_SAFE",
+  "HQ_SAFE_ADMIN",
+  "SUPER_ADMIN",
+  "ACCIDENT_ADMIN",
+]);
+
+function canAccessHqSafeWorkspace(role: string | undefined) {
+  return HQ_SAFE_WORKSPACE_ROLES.has(role ?? "");
+}
+
 const routes: RouteRecordRaw[] = [
   {
     path: "/",
@@ -161,7 +172,7 @@ const routes: RouteRecordRaw[] = [
         path: "pdf-signing",
         name: "hq-safe-pdf-signing",
         component: PdfSigningAdminPage,
-        meta: { requiresAccidentAdmin: true },
+        meta: { requiresPdfSigning: true },
       },
       { path: "worker-voice", name: "hq-safe-worker-voice", component: WorkerVoiceBoardPage },
       { path: "custom-menus/:slug", name: "hq-safe-dynamic-menu", component: DynamicMenuRuntimePage },
@@ -359,6 +370,13 @@ router.beforeEach((to, _from, next) => {
     return;
   }
 
+  if (to.meta.requiresPdfSigning && !canAccessHqSafeWorkspace(auth.user?.role)) {
+    if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-dashboard" });
+    else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
+    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+    else next({ name: "login" });
+    return;
+  }
   if (to.meta.requiresAccidentAdmin && auth.user?.role !== "ACCIDENT_ADMIN") {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: "hq-safe-dashboard" });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });

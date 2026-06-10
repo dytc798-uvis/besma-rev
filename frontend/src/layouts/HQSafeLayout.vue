@@ -59,7 +59,7 @@
           </RouterLink>
           <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink
-            v-if="canAccessAccidents"
+            v-if="canAccessPdfSigning"
             :style="menuOrderPrimaryStyle('pdf-signing')"
             to="/hq-safe/pdf-signing"
           >
@@ -130,6 +130,9 @@ const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([])
 const menuOrderPrimary = ref<Record<string, number>>({});
 const menuOrderSecondary = ref<Record<string, number>>({});
 const canAccessAccidents = computed(() => auth.user?.role === "ACCIDENT_ADMIN");
+const canAccessPdfSigning = computed(() =>
+  ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
+);
 const deployIncompleteCount = ref(0);
 
 onMounted(() => {
