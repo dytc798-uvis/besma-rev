@@ -37,6 +37,35 @@ def _rrn_front_password(rrn_raw: str) -> str | None:
     return None
 
 
+def _lookup_rep_rrn(
+    db: Session,
+    period_id: int,
+    site_code: str,
+    rep_name: str,
+    name_rrn: dict[str, str],
+) -> str:
+    """팀장 RRN: 당일 출역 명단 우선, 없으면 기능인제 로스터(참조 명단)에서 조회."""
+    key = rep_name.strip()
+    if not key:
+        return ""
+    if key in name_rrn and name_rrn[key]:
+        return name_rrn[key]
+    worker = (
+        db.query(FunctionalEvalWorker)
+        .filter(
+            FunctionalEvalWorker.period_id == period_id,
+            FunctionalEvalWorker.site_code == site_code,
+            FunctionalEvalWorker.name == key,
+            FunctionalEvalWorker.is_active.is_(True),
+        )
+        .order_by(FunctionalEvalWorker.is_on_reference_roster.desc(), FunctionalEvalWorker.id.asc())
+        .first()
+    )
+    if worker and worker.rrn_masked:
+        return worker.rrn_masked
+    return ""
+
+
 def _period_is_closed(period: FunctionalEvalPeriod) -> bool:
     return utc_now().date() > period.deadline_date
 
@@ -488,37 +517,34 @@ def _provision_evaluators_from_attendance(
             rep = (row.rep_name or "").strip() or manager_name
             by_rep[rep].append(row)
 
-        attending_names = {row.name.strip() for row in rows}
-
         for rep_name, team_rows in by_rep.items():
             if rep_name == manager_name:
                 evaluator_login = manager_login
                 role = "직영"
             else:
                 role = "팀장"
-                if rep_name in attending_names:
-                    evaluator_login = build_eval_login_id(reg.site_alias, rep_name)
-                    rep_rrn = name_rrn.get(rep_name)
-                    rep_pw = _rrn_front_password(rep_rrn or "")
-                    if rep_pw and evaluator_login:
-                        _upsert_eval_user(
-                            db,
-                            login_id=evaluator_login,
-                            name=rep_name,
-                            password_plain=rep_pw,
-                            site=site,
-                        )
-                        created_accounts += 1
-                        account_rows.append(
-                            {
-                                "site_code": site_code,
-                                "site_alias": reg.site_alias,
-                                "role": role,
-                                "login_id": evaluator_login,
-                                "initial_password": rep_pw,
-                                "team_worker_count": len(team_rows),
-                            }
-                        )
+                evaluator_login = build_eval_login_id(reg.site_alias, rep_name)
+                rep_rrn = _lookup_rep_rrn(db, period.id, site_code, rep_name, name_rrn)
+                rep_pw = _rrn_front_password(rep_rrn or "")
+                if rep_pw and evaluator_login:
+                    _upsert_eval_user(
+                        db,
+                        login_id=evaluator_login,
+                        name=rep_name,
+                        password_plain=rep_pw,
+                        site=site,
+                    )
+                    created_accounts += 1
+                    account_rows.append(
+                        {
+                            "site_code": site_code,
+                            "site_alias": reg.site_alias,
+                            "role": role,
+                            "login_id": evaluator_login,
+                            "initial_password": rep_pw,
+                            "team_worker_count": len(team_rows),
+                        }
+                    )
                 else:
                     evaluator_login = manager_login
 
@@ -532,7 +558,10 @@ def _provision_evaluators_from_attendance(
                     .first()
                 )
                 if worker:
-                    worker.assigned_evaluator_login_id = evaluator_login
+                    if role == "팀장" and (row.name or "").strip() == rep_name.strip():
+                        worker.assigned_evaluator_login_id = manager_login
+                    else:
+                        worker.assigned_evaluator_login_id = evaluator_login
                     db.add(worker)
                     assigned_workers += 1
 
