@@ -33,6 +33,7 @@
 import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import { formatLoginError } from "@/utils/loginError";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 
 const loginId = ref("");
@@ -66,6 +67,8 @@ async function handleLogin() {
       router.push({ name: "worker-mobile-list" });
     } else if (auth.user?.ui_type === "HQ_SAFE") {
       router.push({ name: "hq-safe-document-explorer" });
+    } else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
+      router.push({ name: "site-functional-eval" });
     } else if (auth.user?.ui_type === "SITE") {
       router.push({ name: siteMobileOrDesktopHomeName() });
     } else if (auth.user?.ui_type === "HQ_OTHER") {
@@ -73,8 +76,8 @@ async function handleLogin() {
     } else {
       router.push({ name: "hq-safe-document-explorer" });
     }
-  } catch {
-    errorMessage.value = "로그인에 실패했습니다.";
+  } catch (err) {
+    errorMessage.value = formatLoginError(err);
   } finally {
     loading.value = false;
   }

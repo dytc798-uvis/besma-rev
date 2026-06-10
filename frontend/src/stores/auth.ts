@@ -57,21 +57,32 @@ export const useAuthStore = defineStore("auth", () => {
   });
 
   async function login(loginId: string, password: string) {
+    const normalizedId = loginId.trim();
+    const normalizedPassword = password.trim();
     const form = new URLSearchParams();
-    form.append("username", loginId);
-    form.append("password", password);
+    form.append("username", normalizedId);
+    form.append("password", normalizedPassword);
 
     const res = await api.post("/auth/login", form, {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
     token.value = res.data.access_token;
     localStorage.setItem("besma_token", token.value!);
-    await loadMe();
+    try {
+      await loadMe({ skipAuthRedirect: true });
+    } catch (err) {
+      token.value = null;
+      user.value = null;
+      localStorage.removeItem("besma_token");
+      throw err;
+    }
   }
 
-  async function loadMe() {
+  async function loadMe(options?: { skipAuthRedirect?: boolean }) {
     if (!token.value) return;
-    const res = await api.get("/auth/me");
+    const res = await api.get("/auth/me", {
+      skipAuthRedirect: options?.skipAuthRedirect ?? false,
+    });
     user.value = res.data as AuthUser;
   }
 
