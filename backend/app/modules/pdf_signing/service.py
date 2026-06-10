@@ -24,10 +24,10 @@ TEMP_SIGN_SLOT_LABELS = {
 # 사고보고서 1페이지 상단 결재란 — 공사팀 PM 칸 (A4, 이미지 PDF 기준 수동 보정)
 ACCIDENT_REPORT_PM_SIGNATURE = {
     "page_index": 0,
-    "x": 248.0,
-    "y": 698.0,
-    "width": 95.0,
-    "height": 42.0,
+    "x": 312.0,
+    "y": 692.0,
+    "width": 28.0,
+    "height": 32.0,
 }
 
 
@@ -120,7 +120,7 @@ def overlay_signature_on_pdf(original_pdf: bytes, signature_png: bytes) -> bytes
         height=sig["height"],
         mask="auto",
         preserveAspectRatio=True,
-        anchor="c",
+        anchor="sw",
     )
     overlay.save()
 
