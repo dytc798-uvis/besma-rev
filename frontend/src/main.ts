@@ -3,6 +3,7 @@ import { createPinia } from "pinia";
 import App from "./App.vue";
 import { router } from "./router";
 import { useAuthStore } from "./stores/auth";
+import { isPublicSignPath } from "./utils/publicSignRoute";
 
 import "./tailwind.css";
 import "./styles.css";
@@ -16,7 +17,9 @@ async function bootstrap() {
   app.use(pinia);
 
   const auth = useAuthStore();
-  if (auth.token && !auth.user) {
+  const onPublicSignPage =
+    typeof window !== "undefined" && isPublicSignPath(window.location.pathname);
+  if (auth.token && !auth.user && !onPublicSignPage) {
     try {
       await auth.loadMe();
     } catch {

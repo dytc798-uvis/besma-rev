@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useAuthStore } from "@/stores/auth";
+import { isPublicSignPath } from "@/utils/publicSignRoute";
 
 declare module "axios" {
   interface AxiosRequestConfig {
@@ -61,8 +62,7 @@ api.interceptors.response.use(
       const onLoginPage =
         typeof window !== "undefined" && window.location.pathname.startsWith("/login");
       const onPublicSignPage =
-        typeof window !== "undefined" &&
-        (window.location.pathname.startsWith("/sign/") || window.location.pathname.startsWith("/temp/"));
+        typeof window !== "undefined" && isPublicSignPath(window.location.pathname);
       if (!skipRedirect && !onLoginPage && !onPublicSignPage) {
         window.location.href = "/login";
       }

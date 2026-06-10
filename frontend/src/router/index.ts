@@ -64,6 +64,7 @@ import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
 import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
 import PdfSigningPublicPage from "@/pages/pdf-signing/PdfSigningPublicPage.vue";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
+import { isPublicSignPath, normalizePublicSignPath } from "@/utils/publicSignRoute";
 
 const HQ_SAFE_WORKSPACE_ROLES = new Set([
   "HQ_SAFE",
@@ -91,18 +92,21 @@ const routes: RouteRecordRaw[] = [
     path: "/sign/:token",
     name: "pdf-signing-public",
     component: PdfSigningPublicPage,
+    meta: { publicSign: true },
   },
   {
     path: "/temp/sign1",
     name: "pdf-signing-temp-sign1",
     component: PdfSigningPublicPage,
     props: { fixedSlot: "sign1" },
+    meta: { publicSign: true },
   },
   {
     path: "/temp/sign2",
     name: "pdf-signing-temp-sign2",
     component: PdfSigningPublicPage,
     props: { fixedSlot: "sign2" },
+    meta: { publicSign: true },
   },
   {
     path: "/change-password",
@@ -305,6 +309,16 @@ export const router = createRouter({
 });
 
 router.beforeEach((to, _from, next) => {
+  const normalizedPath = normalizePublicSignPath(to.path);
+  if (normalizedPath !== to.path) {
+    next({ path: normalizedPath, query: to.query, hash: to.hash, replace: true });
+    return;
+  }
+  if (to.meta.publicSign || isPublicSignPath(to.path)) {
+    next();
+    return;
+  }
+
   const auth = useAuthStore();
   const workerAccessToken =
     typeof to.query.access_token === "string" && to.query.access_token.trim().length > 0
