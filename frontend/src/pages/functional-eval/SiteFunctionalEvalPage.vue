@@ -94,7 +94,6 @@
               <th v-if="isManager && evaluator?.team_split_active">구분</th>
               <th>기능 (2-1)</th>
               <th>안전·제재 (2-2)</th>
-              <th>비고</th>
               <th></th>
             </tr>
           </thead>
@@ -108,11 +107,10 @@
               </td>
               <td class="safety-sanction-cell">
                 <span :class="safetySanctionCell(w).safetyClass">{{ safetySanctionCell(w).safetyLabel }}</span>
-              </td>
-              <td class="remark-cell">
-                <span v-for="(line, idx) in workerRemarkLines(w)" :key="`${w.id}-${idx}`" class="remark-line">
-                  {{ line }}
-                </span>
+                <span
+                  v-if="safetySanctionCell(w).subLabel"
+                  :class="safetySanctionCell(w).subClass"
+                >{{ safetySanctionCell(w).subLabel }}</span>
               </td>
               <td class="actions-cell">
                 <button
@@ -286,6 +284,7 @@ import {
   isFullyComplete,
   needsSanctionPrompt,
   safetySanctionDisplay,
+  workerRowHighlightClass,
 } from "@/utils/functionalEvalCompletion";
 
 type MainView = "roster" | "evaluate";
@@ -506,7 +505,7 @@ const evaluatorHint = computed(() => {
 
 const rosterDescription = computed(() => evaluatorHint.value);
 
-const rosterColspan = computed(() => (isManager.value && evaluator.value?.team_split_active ? 7 : 6));
+const rosterColspan = computed(() => (isManager.value && evaluator.value?.team_split_active ? 6 : 5));
 
 const filteredWorkers = computed(() => {
   const list = activeEvalStatus.value === "all"
@@ -556,21 +555,6 @@ function canRegisterSanction(w: Worker): boolean {
 
 function hasActualSanctionHistory(w: Worker): boolean {
   return Boolean((w.sanction_count ?? 0) > 0 || w.latest_sanction);
-}
-
-function workerRemarkLines(w: Worker): string[] {
-  const lines: string[] = [];
-  if (isFullyComplete(w)) {
-    lines.push("완료");
-  } else if (!isFunctionalComplete(w) && !isSafetyComplete(w)) {
-    lines.push("미완료");
-  } else {
-    lines.push("대기");
-  }
-  if (hasActualSanctionHistory(w)) {
-    lines.push("제재이력");
-  }
-  return lines;
 }
 
 function safetySanctionCell(w: Worker) {
@@ -655,10 +639,6 @@ function rosterStatusClass(w: Worker): string {
   if (workerEvalStatus(w) === "완료") return "done";
   if (workerEvalStatus(w) === "진행중") return "normal";
   return "pending";
-}
-
-function workerRowHighlightClass(w: Worker): string {
-  return hasActualSanctionHistory(w) ? "row-highlight--alert" : "";
 }
 
 function goToRoster() {
@@ -1144,6 +1124,7 @@ textarea.field-control {
   font-size: 14px;
   cursor: pointer;
   color: #334155;
+  white-space: nowrap;
 }
 
 .fe-tab.active {
@@ -1242,21 +1223,10 @@ textarea.field-control {
 
 .safety-sanction-cell {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
-}
-
-.remark-cell {
-  white-space: nowrap;
-}
-
-.remark-cell .remark-line {
-  display: block;
-  margin-top: 4px;
-  color: #991b1b;
-  font-size: 12px;
-  font-weight: 600;
 }
 
 .roster-table .grade-pill {
