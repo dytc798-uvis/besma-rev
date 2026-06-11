@@ -153,7 +153,7 @@ export interface EvalWorker {
   id: number;
   row_no: number;
   name: string;
-  eval_assignment?: "DIRECT" | "TEAM";
+  eval_assignment?: "DIRECT" | "TEAM" | "TEAM_LEADER";
   sanction_status?: string;
   sanction_status_label?: string;
   is_permanently_expelled?: boolean;
@@ -222,6 +222,7 @@ function badgeClass(w: EvalWorker) {
 function assignmentLabel(assignment?: EvalWorker["eval_assignment"]) {
   if (assignment === "DIRECT") return "직영";
   if (assignment === "TEAM") return "팀원";
+  if (assignment === "TEAM_LEADER") return "팀장";
   return "";
 }
 

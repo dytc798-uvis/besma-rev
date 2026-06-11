@@ -117,7 +117,13 @@
       </ul>
 
       <ul
-        v-if="showManagerBuckets && activeManagerBucket && activeManagerBucket !== 'direct' && !activeTeamLeaderId"
+        v-if="
+          showManagerBuckets &&
+          activeManagerBucket &&
+          activeManagerBucket !== 'direct' &&
+          activeManagerBucket !== 'team_leaders' &&
+          !activeTeamLeaderId
+        "
         class="site-list team-group-list"
       >
         <li v-for="team in visibleTeamGroups" :key="team.leaderLoginId">
