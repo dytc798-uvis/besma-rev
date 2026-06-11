@@ -76,6 +76,39 @@ def test_document_explorer_list_and_search(tmp_path: Path):
         settings.storage_root = original_storage_root
 
 
+def test_document_explorer_field_download_falls_back_to_legacy_flat(tmp_path: Path):
+    storage_root = tmp_path / "storage"
+    field_dir = storage_root / "documents"
+    field_dir.mkdir(parents=True, exist_ok=True)
+    legacy = field_dir / "instance_3_1710000000_TBM_SITE.pdf"
+    legacy.write_text("legacy-tbm", encoding="utf-8")
+
+    original_storage_root = settings.storage_root
+    settings.storage_root = storage_root
+
+    app = FastAPI()
+    app.include_router(document_explorer_router)
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=1,
+        role=Role.HQ_SAFE,
+        ui_type="HQ_SAFE",
+    )
+    client = TestClient(app)
+
+    try:
+        res = client.get(
+            "/document-explorer/file",
+            params={
+                "relative_path": "field/by_instance/3/TBM_SITE.pdf",
+                "disposition": "attachment",
+            },
+        )
+        assert res.status_code == 200
+        assert res.content == b"legacy-tbm"
+    finally:
+        settings.storage_root = original_storage_root
+
+
 def test_document_explorer_download_uses_display_filename(tmp_path: Path):
     docs_dir = tmp_path / "docs" / "base"
     storage_root = tmp_path / "storage"

@@ -9,9 +9,8 @@ BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
 
 from app.config.settings import get_settings
-from app.modules.documents.storage_paths import legacy_disk_name_to_target_relative
+from app.modules.documents.storage_paths import resolve_existing_storage_path
 
-IDS = [162, 158, 167, 169, 104]
 DB = Path("/home/ubuntu/besma-rev/database/besma.db")
 
 
@@ -21,36 +20,36 @@ def main() -> None:
     print("storage_root:", root)
     conn = sqlite3.connect(DB)
     try:
-        for hid in IDS:
-            row = conn.execute(
-                "SELECT h.id, h.document_id, h.instance_id, h.version_no, h.file_path, h.file_name, "
-                "d.file_path AS doc_path "
-                "FROM document_upload_histories h "
-                "LEFT JOIN documents d ON d.id = h.document_id "
-                "WHERE h.id = ?",
-                (hid,),
-            ).fetchone()
-            if not row:
-                print(f"id={hid}: NO ROW")
-                continue
-            _, doc_id, inst_id, ver, rel, fname, doc_path = row
-            rel = rel or ""
-            direct = root / rel if rel else None
-            print(f"\nid={hid} doc={doc_id} inst={inst_id} ver={ver}")
-            print(f"  history_path={rel!r} exists={direct.is_file() if direct else False}")
-            if rel and inst_id:
-                migrated = legacy_disk_name_to_target_relative(
-                    instance_id=int(inst_id),
-                    disk_name=Path(rel).name,
-                    file_name=fname,
-                    version_no=int(ver or 1),
-                )
-                if migrated:
-                    mig = root / migrated
-                    print(f"  migrated={migrated!r} exists={mig.is_file()}")
-            if doc_path:
-                dp = root / doc_path
-                print(f"  doc_current={doc_path!r} exists={dp.is_file()}")
+        rows = conn.execute(
+            """
+            SELECT h.id, h.document_id, h.instance_id, h.version_no, h.file_path, h.file_name,
+                   d.file_path AS doc_path, d.instance_id AS doc_instance_id
+            FROM document_upload_histories h
+            LEFT JOIN documents d ON d.id = h.document_id
+            WHERE h.file_path IS NOT NULL AND TRIM(h.file_path) != ''
+            ORDER BY h.id DESC
+            LIMIT 200
+            """
+        ).fetchall()
+        missing = 0
+        for row in rows:
+            hid, doc_id, inst_id, ver, rel, fname, doc_path, doc_inst = row
+            inst = inst_id or doc_inst
+            resolved = resolve_existing_storage_path(
+                root,
+                rel or "",
+                instance_id=int(inst) if inst else None,
+                file_name=fname,
+                version_no=int(ver or 1),
+            )
+            ok = resolved is not None
+            if not ok:
+                missing += 1
+            print(
+                f"id={hid} doc={doc_id} inst={inst} ver={ver} ok={ok} "
+                f"path={rel!r} resolved={resolved}"
+            )
+        print(f"\nMISSING: {missing} / {len(rows)} (latest 200 history rows with file_path)")
     finally:
         conn.close()
 

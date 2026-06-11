@@ -13,7 +13,9 @@ from app.modules.approvals.models import ApprovalAction, ApprovalHistory
 from app.core.enums import Role
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
 from app.modules.document_settings.models import ContractorDocumentBundleItem, DocumentRequirement
+from app.config.settings import settings
 from app.modules.documents.models import Document, DocumentComment, DocumentUploadHistory
+from app.modules.documents.storage_paths import is_storage_path_available
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.modules.workers.models import Person
@@ -1126,6 +1128,14 @@ def get_requirement_document_history(
         elif h.document_status == _STATUS_APPROVED:
             if review_snapshot and review_snapshot.get("action_at"):
                 reviewed_at = review_snapshot["action_at"]
+        hist_inst_id = h.instance_id or (doc.instance_id if doc is not None else None)
+        hist_file_ok = is_storage_path_available(
+            settings.storage_root,
+            h.file_path,
+            instance_id=hist_inst_id,
+            file_name=h.file_name,
+            version_no=h.version_no,
+        )
         rows.append(
             {
                 "history_id": h.id,
@@ -1146,8 +1156,8 @@ def get_requirement_document_history(
                     start=(doc.period_start if doc is not None else (inst.period_start if inst else None)),
                     end=(doc.period_end if doc is not None else (inst.period_end if inst else None)),
                 ),
-                "history_file_available": bool(h.file_path),
-                "file_download_url": f"/documents/history/{h.id}/file" if h.file_path else None,
+                "history_file_available": hist_file_ok,
+                "file_download_url": (f"/documents/history/{h.id}/file" if hist_file_ok else None),
                 "source_type": "upload_history",
             }
         )

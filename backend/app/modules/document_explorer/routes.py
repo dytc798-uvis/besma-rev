@@ -15,7 +15,9 @@ from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
 from app.modules.documents.storage_paths import (
     field_file_display_name,
+    instance_id_from_storage_relative_path,
     is_field_derivative_filename,
+    resolve_existing_storage_path,
 )
 from app.schemas.document_explorer import DocumentExplorerFileItem, DocumentExplorerListResponse
 
@@ -318,6 +320,16 @@ def open_or_download_document_explorer_file(
     candidate = (root_dir / remainder).resolve()
     if root_dir not in candidate.parents and candidate != root_dir:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
+    if source == "field":
+        storage_rel = f"{settings.documents_dir_name}/{remainder.replace('\\', '/')}"
+        resolved = resolve_existing_storage_path(
+            settings.storage_root,
+            storage_rel,
+            instance_id=instance_id_from_storage_relative_path(storage_rel),
+            file_name=candidate.name,
+        )
+        if resolved is not None:
+            candidate = resolved.resolve()
     if not candidate.exists() or not candidate.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
     if not _explorer_file_allowed(candidate):

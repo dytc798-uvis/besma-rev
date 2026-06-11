@@ -4,6 +4,7 @@ from app.config.settings import settings
 from app.modules.documents.storage_paths import (
     field_file_display_name,
     is_field_derivative_filename,
+    is_storage_path_available,
     legacy_disk_name_to_target_relative,
     resolve_existing_storage_path,
     versioned_primary_filename,
@@ -49,6 +50,37 @@ def test_versioned_primary_filename():
 def test_is_field_derivative_filename():
     assert is_field_derivative_filename("x__original.jpg")
     assert not is_field_derivative_filename("TBM.pdf")
+
+
+def test_resolve_existing_storage_path_by_instance_db_with_legacy_flat_disk(tmp_path):
+    """DB는 by_instance 경로인데 실제 파일만 legacy flat에 남은 과거 TBM 케이스."""
+    storage_root = tmp_path
+    original_storage_root = settings.storage_root
+    settings.storage_root = storage_root
+    try:
+        docs_dir = storage_root / settings.documents_dir_name
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        legacy = docs_dir / "instance_148_1779262223_TBM_C18BL_260609.hwp"
+        legacy.write_bytes(b"past-tbm")
+        db_rel = "documents/by_instance/148/TBM_C18BL_260609.hwp"
+        resolved = resolve_existing_storage_path(
+            storage_root,
+            db_rel,
+            instance_id=148,
+            file_name="TBM_C18BL_260609.hwp",
+            version_no=1,
+        )
+        assert resolved is not None
+        assert resolved.read_bytes() == b"past-tbm"
+        assert is_storage_path_available(
+            storage_root,
+            db_rel,
+            instance_id=148,
+            file_name="TBM_C18BL_260609.hwp",
+            version_no=1,
+        )
+    finally:
+        settings.storage_root = original_storage_root
 
 
 def test_resolve_existing_storage_path_legacy_to_by_instance(tmp_path):

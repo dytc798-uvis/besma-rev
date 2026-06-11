@@ -35,6 +35,7 @@ from app.modules.documents.models import Document, DocumentUploadHistory
 from app.modules.documents.models import DocumentStatus
 from app.modules.documents.storage_paths import (
     image_derivative_filenames,
+    resolve_existing_storage_path,
     versioned_primary_filename,
     write_instance_file,
 )
@@ -353,8 +354,14 @@ async def upload_document_for_instance(
         doc_append = db.query(Document).filter(Document.instance_id == inst_append.id).first()
         if doc_append is None or not doc_append.file_path:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document file not found")
-        base_path = settings.storage_root / doc_append.file_path
-        if not base_path.exists():
+        base_path = resolve_existing_storage_path(
+            settings.storage_root,
+            doc_append.file_path,
+            instance_id=doc_append.instance_id,
+            file_name=doc_append.file_name,
+            version_no=doc_append.version_no,
+        )
+        if base_path is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="stored file missing")
         base_bytes = base_path.read_bytes()
         if not base_bytes.startswith(b"%PDF"):
@@ -592,7 +599,8 @@ async def upload_document_for_instance(
             image_asset.optimized_bytes,
         )
 
-    doc.file_path = write_instance_file(storage_dir, inst.id, safe_name, primary_content)
+    stored_filename = versioned_primary_filename(safe_name, doc.version_no or 1)
+    doc.file_path = write_instance_file(storage_dir, inst.id, stored_filename, primary_content)
     doc.original_file_path = original_file_path
     doc.optimized_file_path = optimized_file_path
     doc.file_name = safe_name
@@ -854,8 +862,16 @@ def collect_instances(
         file_exists = False
         doc = db.query(Document).filter(Document.instance_id == inst.id).first()
         if doc and doc.file_path:
-            p = settings.storage_root / doc.file_path
-            file_exists = p.exists()
+            file_exists = (
+                resolve_existing_storage_path(
+                    settings.storage_root,
+                    doc.file_path,
+                    instance_id=doc.instance_id,
+                    file_name=doc.file_name,
+                    version_no=doc.version_no,
+                )
+                is not None
+            )
         items.append(
             {
                 "instance_id": inst.id,
@@ -909,11 +925,17 @@ def export_approved(
             doc = db.query(Document).filter(Document.instance_id == inst.id).first()
             if not doc or not doc.file_path:
                 continue
-            p = settings.storage_root / doc.file_path
-            if not p.exists():
+            resolved = resolve_existing_storage_path(
+                settings.storage_root,
+                doc.file_path,
+                instance_id=doc.instance_id,
+                file_name=doc.file_name,
+                version_no=doc.version_no,
+            )
+            if resolved is None:
                 continue
-            arcname = f"{inst.document_type_code}/{p.name}"
-            zf.write(p, arcname=arcname)
+            arcname = f"{inst.document_type_code}/{resolved.name}"
+            zf.write(resolved, arcname=arcname)
 
     return {"download_url": f"/document-submissions/exports/{zip_name}", "zip_name": zip_name}
 

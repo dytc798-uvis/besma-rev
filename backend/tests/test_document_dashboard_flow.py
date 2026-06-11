@@ -14,7 +14,7 @@ from app.core.database import Base
 from app.core.datetime_utils import utc_now
 from app.core.enums import Role
 from app.modules.approvals.models import ApprovalAction, ApprovalHistory
-from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
+from app.modules.document_generation.models import DocumentInstance, DocumentInstanceStatus, WorkflowStatus
 from app.modules.document_settings.models import DocumentRequirement, DocumentTypeMaster, SubmissionCycle
 from app.modules.document_submissions.routes import router as document_submissions_router
 from app.modules.documents.models import Document, DocumentStatus
@@ -579,3 +579,188 @@ def test_hq_document_queries_prioritize_site_id_over_site_code(tmp_path: Path):
     assert pending.status_code == 200
     assert pending.json()["count"] == 1
     assert all(item["site_id"] == actual_site_id for item in pending.json()["items"])
+
+
+def test_past_tbm_download_resolves_legacy_flat_file(tmp_path: Path):
+    """지난 TBM: DB는 by_instance 경로, 디스크는 legacy flat — 다운로드·이력 API가 실제 파일을 찾아야 한다."""
+    from app.config.settings import settings
+
+    db_file = tmp_path / "past_tbm.db"
+    storage_root = tmp_path / "storage"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.workers import models as worker_models  # noqa: F401
+    from app.modules.documents import models as document_models  # noqa: F401
+    from app.modules.approvals import models as approval_models  # noqa: F401
+    from app.modules.opinions import models as opinion_models  # noqa: F401
+    from app.modules.document_settings import models as document_settings_models  # noqa: F401
+    from app.modules.document_generation import models as document_generation_models  # noqa: F401
+    from app.modules.document_submissions import models as document_submissions_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+    original_storage_root = settings.storage_root
+    settings.storage_root = storage_root
+
+    db = TestingSessionLocal()
+    site = Site(site_code="C18BL", site_name="청라 테스트")
+    db.add(site)
+    db.flush()
+    site_id = int(site.id)
+
+    cycle = SubmissionCycle(code="DAILY", name="일간", sort_order=1, is_auto_generatable=True)
+    db.add(cycle)
+    db.flush()
+    dt = DocumentTypeMaster(
+        code="DAILY_DOC",
+        name="일일문서",
+        default_cycle_id=cycle.id,
+        generation_rule="DAILY",
+        generation_value=None,
+        due_offset_days=0,
+        is_required_default=True,
+    )
+    db.add(dt)
+    db.flush()
+    req = DocumentRequirement(
+        site_id=site_id,
+        document_type_id=dt.id,
+        code="DAILY_TBM",
+        title="TBM",
+        frequency="DAILY",
+        is_required=True,
+        is_enabled=True,
+        display_order=1,
+    )
+    db.add(req)
+    db.flush()
+    req_id = int(req.id)
+
+    past = date(2026, 6, 9)
+    inst = DocumentInstance(
+        site_id=site_id,
+        document_type_code="DAILY_TBM",
+        period_start=past,
+        period_end=past,
+        generation_anchor_date=past,
+        due_date=past,
+        status=DocumentInstanceStatus.GENERATED,
+        status_reason="OK",
+        selected_requirement_id=req_id,
+        workflow_status=WorkflowStatus.APPROVED,
+        period_basis="CYCLE",
+        rule_is_required=True,
+    )
+    db.add(inst)
+    db.flush()
+    inst_id = int(inst.id)
+
+    db_rel = f"documents/by_instance/{inst_id}/TBM_C18BL_260609.hwp"
+    docs_dir = storage_root / "documents"
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    legacy_disk = docs_dir / f"instance_{inst_id}_1779262223_TBM_C18BL_260609.hwp"
+    legacy_disk.write_bytes(b"past-tbm-bytes")
+
+    doc = Document(
+        document_no="TBM-PAST-1",
+        title="TBM past",
+        document_type="DAILY_TBM",
+        site_id=site_id,
+        submitter_user_id=1,
+        current_status=DocumentStatus.APPROVED,
+        description="",
+        source_type="MANUAL",
+        instance_id=inst_id,
+        period_start=past,
+        period_end=past,
+        file_path=db_rel,
+        file_name="TBM_C18BL_260609.hwp",
+        file_size=len(b"past-tbm-bytes"),
+        uploaded_by_user_id=1,
+        uploaded_at=utc_now(),
+        version_no=1,
+    )
+    db.add(doc)
+    db.add(
+        User(
+            id=1,
+            name="hq",
+            login_id="hq_past_tbm",
+            password_hash="x",
+            site_id=None,
+            role=Role.HQ_SAFE,
+        )
+    )
+    db.commit()
+    doc_id = int(doc.id)
+    db.close()
+
+    app = FastAPI()
+    app.include_router(documents_router)
+
+    def override_get_db():
+        session = TestingSessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=1,
+        role=Role.HQ_SAFE,
+        site_id=None,
+    )
+    client = TestClient(app)
+
+    try:
+        dl = client.get(f"/documents/{doc_id}/file")
+        assert dl.status_code == 200
+        assert dl.content == b"past-tbm-bytes"
+
+        history = client.get(
+            "/documents/history",
+            params={"site_id": site_id, "requirement_id": req_id},
+        )
+        assert history.status_code == 200
+        items = history.json()["items"]
+        assert len(items) == 0
+
+        from app.modules.documents.models import DocumentUploadHistory
+
+        with TestingSessionLocal() as session:
+            session.add(
+                DocumentUploadHistory(
+                    document_id=doc_id,
+                    instance_id=inst_id,
+                    version_no=1,
+                    action_type="UPLOAD",
+                    document_status=DocumentStatus.APPROVED,
+                    file_path=db_rel,
+                    file_name="TBM_C18BL_260609.hwp",
+                    file_size=len(b"past-tbm-bytes"),
+                    uploaded_by_user_id=1,
+                    uploaded_at=utc_now(),
+                )
+            )
+            session.commit()
+            hist_id = int(
+                session.query(DocumentUploadHistory.id)
+                .filter(DocumentUploadHistory.document_id == doc_id)
+                .scalar()
+            )
+
+        history2 = client.get(
+            "/documents/history",
+            params={"site_id": site_id, "requirement_id": req_id},
+        )
+        assert history2.status_code == 200
+        hist_items = history2.json()["items"]
+        assert len(hist_items) == 1
+        assert hist_items[0]["history_file_available"] is True
+
+        hist_dl = client.get(f"/documents/history/{hist_id}/file")
+        assert hist_dl.status_code == 200
+        assert hist_dl.content == b"past-tbm-bytes"
+    finally:
+        settings.storage_root = original_storage_root

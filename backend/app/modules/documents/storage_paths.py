@@ -118,6 +118,63 @@ def legacy_derivative_to_target_relative(*, instance_id: int, disk_name: str) ->
     return f"{instance_dir_relative(instance_id)}/{new_name}"
 
 
+def instance_id_from_storage_relative_path(relative_path: str) -> int | None:
+    """storage_root 기준 상대경로에서 instance_id 추출(by_instance·legacy flat)."""
+    rel = (relative_path or "").replace("\\", "/").strip()
+    if not rel:
+        return None
+    parts = [p for p in rel.split("/") if p]
+    if BY_INSTANCE_DIR in parts:
+        idx = parts.index(BY_INSTANCE_DIR)
+        if idx + 1 < len(parts):
+            try:
+                return int(parts[idx + 1])
+            except ValueError:
+                return None
+    legacy = _LEGACY_FIELD_DISK_NAME_RE.match(Path(rel).name)
+    if legacy:
+        return int(legacy.group("instance_id"))
+    return None
+
+
+def _legacy_flat_paths_on_disk(
+    storage_root: Path,
+    *,
+    instance_id: int,
+    file_name: str | None,
+    disk_name: str,
+) -> list[Path]:
+    """DB는 by_instance인데 디스크만 legacy flat에 남은 경우(과거 업로드) 탐색."""
+    docs_dir = documents_root(storage_root)
+    if not docs_dir.is_dir():
+        return []
+
+    names: list[str] = []
+    if file_name:
+        names.append(file_name)
+        names.append(versioned_primary_filename(file_name, 1))
+    legacy = _LEGACY_FIELD_DISK_NAME_RE.match(disk_name)
+    if legacy:
+        label = legacy.group("label")
+        if label not in names:
+            names.append(label)
+        version = legacy.group("version")
+        if version:
+            vname = versioned_primary_filename(label, int(version))
+            if vname not in names:
+                names.append(vname)
+
+    found: list[Path] = []
+    seen: set[str] = set()
+    for name in names:
+        for path in sorted(docs_dir.glob(f"instance_{instance_id}_*_{name}")):
+            key = path.as_posix()
+            if path.is_file() and key not in seen:
+                seen.add(key)
+                found.append(path)
+    return found
+
+
 def resolve_existing_storage_path(
     storage_root: Path,
     relative_path: str,
@@ -126,7 +183,7 @@ def resolve_existing_storage_path(
     file_name: str | None = None,
     version_no: int | None = None,
 ) -> Path | None:
-    """DB에 저장된 상대경로 → 디스크에 존재하는 파일 Path (legacy flat → by_instance 포함)."""
+    """DB에 저장된 상대경로 → 디스크에 존재하는 파일 Path (legacy flat ↔ by_instance 양방향)."""
     rel = (relative_path or "").strip()
     if not rel:
         return None
@@ -136,11 +193,12 @@ def resolve_existing_storage_path(
         return direct
 
     disk_name = Path(rel).name
+    resolved_instance_id = instance_id if instance_id is not None else instance_id_from_storage_relative_path(rel)
     candidates: list[str] = []
 
-    if instance_id is not None:
+    if resolved_instance_id is not None:
         migrated = legacy_disk_name_to_target_relative(
-            instance_id=instance_id,
+            instance_id=resolved_instance_id,
             disk_name=disk_name,
             file_name=file_name,
             version_no=version_no,
@@ -148,13 +206,13 @@ def resolve_existing_storage_path(
         if migrated:
             candidates.append(migrated)
 
-        deriv = legacy_derivative_to_target_relative(instance_id=instance_id, disk_name=disk_name)
+        deriv = legacy_derivative_to_target_relative(instance_id=resolved_instance_id, disk_name=disk_name)
         if deriv:
             candidates.append(deriv)
 
         if file_name and BY_INSTANCE_DIR not in rel.replace("\\", "/"):
             candidates.append(
-                f"{instance_dir_relative(instance_id)}/{versioned_primary_filename(file_name, version_no or 1)}"
+                f"{instance_dir_relative(resolved_instance_id)}/{versioned_primary_filename(file_name, version_no or 1)}"
             )
 
     seen: set[str] = set()
@@ -166,4 +224,31 @@ def resolve_existing_storage_path(
         if path.is_file():
             return path
 
+    if resolved_instance_id is not None:
+        for legacy_path in _legacy_flat_paths_on_disk(
+            storage_root,
+            instance_id=resolved_instance_id,
+            file_name=file_name,
+            disk_name=disk_name,
+        ):
+            return legacy_path
+
     return None
+
+
+def is_storage_path_available(
+    storage_root: Path,
+    relative_path: str | None,
+    *,
+    instance_id: int | None = None,
+    file_name: str | None = None,
+    version_no: int | None = None,
+) -> bool:
+    """DB file_path가 있어도 실제 파일이 없으면 False (다운로드 버튼 노출 판단용)."""
+    return resolve_existing_storage_path(
+        storage_root,
+        relative_path or "",
+        instance_id=instance_id,
+        file_name=file_name,
+        version_no=version_no,
+    ) is not None
