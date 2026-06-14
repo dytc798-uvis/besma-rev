@@ -24,6 +24,10 @@
       </button>
     </header>
 
+    <p v-if="guidePreviewMode" class="guide-preview-banner">설명서용 샘플 화면 (저장되지 않음)</p>
+    <p v-else-if="showEvalPolicyHint" class="default-grade-hint" :class="evalPolicyHintClass">
+      {{ evalPolicyHint }}
+    </p>
     <p v-if="loading" class="hint">불러오는 중…</p>
     <template v-else>
       <!-- PC: 항목별 가로 4버튼 — 한 화면에 최대한 노출 -->
@@ -39,8 +43,8 @@
             :key="g.key"
             type="button"
             class="grade-chip"
-            :class="{ selected: scores[c.id] === g.key }"
-            :disabled="disabled"
+            :class="{ selected: displayScores[c.id] === g.key }"
+            :disabled="disabled || guidePreviewMode"
             @click="pickGrade(c.id, g.key)"
           >
             <span class="grade-chip-label">{{ g.label }}</span>
@@ -64,8 +68,8 @@
                 type="radio"
                 :name="`grade-${worker.id}-${c.id}`"
                 :value="g.key"
-                :checked="scores[c.id] === g.key"
-                :disabled="disabled"
+                :checked="displayScores[c.id] === g.key"
+                :disabled="disabled || guidePreviewMode"
                 @change="pickGrade(c.id, g.key)"
               />
               <span class="grade-label">{{ g.label }}</span>
@@ -79,6 +83,9 @@
         <p v-if="preview" class="eval-preview">
           합계 <strong>{{ preview.total_score }}</strong> / {{ preview.max_score }}점
           · <strong>{{ preview.grade_label }}</strong>
+        </p>
+        <p v-else-if="guidePreviewMode" class="eval-preview eval-preview--sample">
+          합계 <strong>24</strong> / 32점 · <strong>B등급</strong> (설명서 샘플)
         </p>
         <p v-if="error" class="error">{{ error }}</p>
         <div class="actions">
@@ -116,7 +123,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, withDefaults } from "vue";
+import { buildSampleScoresForCriteria, isFeGuidePreview } from "@/utils/feGuidePreview";
+import { FE_FUNCTIONAL_EVAL_GUIDE, FE_SAFETY_EVAL_GUIDE } from "@/config/feEvalPolicyText";
 
 export interface GradeOption {
   key: string;
@@ -135,19 +144,23 @@ export interface WorkerBrief {
   name: string;
 }
 
-const props = defineProps<{
-  worker: WorkerBrief;
-  title: string;
-  criteria: Criterion[];
-  scores: Record<string, string>;
-  baselineScores: Record<string, string>;
-  loading: boolean;
-  saving: boolean;
-  disabled: boolean;
-  error: string;
-  variant: "mobile" | "desktop";
-  preview: { total_score: number; max_score: number; grade_label: string } | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    worker: WorkerBrief;
+    title: string;
+    criteria: Criterion[];
+    scores: Record<string, string>;
+    baselineScores: Record<string, string>;
+    loading: boolean;
+    saving: boolean;
+    disabled: boolean;
+    error: string;
+    variant: "mobile" | "desktop";
+    preview: { total_score: number; max_score: number; grade_label: string } | null;
+    evalKind?: "functional" | "safety";
+  }>(),
+  { evalKind: "functional" },
+);
 
 const emit = defineEmits<{
   close: [];
@@ -158,6 +171,15 @@ const emit = defineEmits<{
 const gradeHeaderLabels = computed(() => {
   const first = props.criteria[0];
   return first ? first.grades.map((g) => g.label) : [];
+});
+
+const guidePreviewMode = computed(() => isFeGuidePreview());
+
+const displayScores = computed(() => {
+  if (!guidePreviewMode.value) return props.scores;
+  const hasAny = props.criteria.some((c) => Boolean(props.scores[c.id]));
+  if (hasAny) return props.scores;
+  return buildSampleScoresForCriteria(props.criteria);
 });
 
 function scoresEqual(a: Record<string, string>, b: Record<string, string>) {
@@ -173,6 +195,18 @@ const canSave = computed(() => {
   if (!props.criteria.length) return false;
   return props.criteria.every((c) => Boolean(props.scores[c.id]));
 });
+
+const showEvalPolicyHint = computed(
+  () => !guidePreviewMode.value && !props.loading && props.criteria.length > 0,
+);
+
+const evalPolicyHint = computed(() =>
+  props.evalKind === "safety" ? FE_SAFETY_EVAL_GUIDE : FE_FUNCTIONAL_EVAL_GUIDE,
+);
+
+const evalPolicyHintClass = computed(() =>
+  props.evalKind === "safety" ? "default-grade-hint--safety" : "default-grade-hint--functional",
+);
 
 function scoresComplete(scores: Record<string, string>) {
   return props.criteria.every((c) => Boolean(scores[c.id]));
@@ -231,6 +265,7 @@ function scrollToNextCriterion(currentCriterionId: string) {
 }
 
 function setAllNormalGrades() {
+  if (guidePreviewMode.value) return;
   const next: Record<string, string> = {};
   for (const c of props.criteria) {
     const gradeKey = findNormalGrade(c);
@@ -245,6 +280,7 @@ function setAllNormalGrades() {
 }
 
 async function pickGrade(criterionId: string, gradeKey: string) {
+  if (guidePreviewMode.value) return;
   const wasComplete = canSave.value;
   const next = { ...props.scores, [criterionId]: gradeKey };
   emit("update:scores", next);
@@ -295,6 +331,40 @@ async function pickGrade(criterionId: string, gradeKey: string) {
 .eval-head-sub {
   margin: 4px 0 0;
   font-size: 13px;
+  color: #64748b;
+}
+
+.default-grade-hint {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.default-grade-hint--functional {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+.default-grade-hint--safety {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.guide-preview-banner {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.eval-preview--sample {
   color: #64748b;
 }
 

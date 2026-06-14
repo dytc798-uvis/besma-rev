@@ -163,6 +163,9 @@
           담당 팀원 {{ teamSignoff.assigned_total }}명 · {{ teamSignoff.evaluation_batch_label }}
           <span v-if="teamSignoff.signed"> · 서명 완료 ({{ teamSignoff.signed_at_label || teamSignoff.signed_at }})</span>
         </p>
+        <p v-if="teamSignoff.can_sign && teamSignoff.s_over_limit" class="attendance-warn">
+          기능/품질 S등급 20% 초과 — 서명 시 사유 입력 필요
+        </p>
         <button
           v-if="teamSignoff.can_sign"
           class="stitch-btn-primary btn-approve-site"
@@ -189,6 +192,9 @@
           <span v-if="approval.team_total"> · 팀원 {{ approval.team_complete }}/{{ approval.team_total }}</span>
         </div>
         <p class="approval-status">{{ approval.status_label }}</p>
+        <p v-if="approval.can_submit_site_approval && approval.s_over_limit" class="attendance-warn">
+          기능/품질 S등급 20% 초과 — 최종 제출 서명 시 사유 입력 필요
+        </p>
         <p v-if="!approval.team_leaders_all_signed" class="attendance-warn">
           모든 팀장의 평가완료보고서 서명 후 소장 최종 제출을 진행할 수 있습니다.
         </p>
@@ -603,6 +609,7 @@
       :title="signatureModalTitle"
       :description="signatureModalDescription"
       :submit-label="signatureModalSubmitLabel"
+      :grade-review="signatureGradeReview"
       @update:open="(v) => (signatureModalOpen = v)"
       @submit="onSignatureModalSubmit"
     />
@@ -614,6 +621,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import FunctionalEvalWorkspace from "@/components/functional-eval/FunctionalEvalWorkspace.vue";
 import FeSanctionRegisterForm from "@/components/functional-eval/FeSanctionRegisterForm.vue";
 import FeSignatureModal from "@/components/functional-eval/FeSignatureModal.vue";
+import type { GradeInflationReview } from "@/components/functional-eval/FeGradeInflationReview.vue";
 import FeGradeStatsPanel, { type GradeStatsPayload } from "@/components/functional-eval/FeGradeStatsPanel.vue";
 import type { Criterion } from "@/components/functional-eval/EvalAssessmentSheet.vue";
 import { useMobileViewport } from "@/composables/useMobileViewport";
@@ -699,6 +707,9 @@ interface ApprovalPayload {
   team_reports_all_manager_approved?: boolean;
   team_leader_reports?: TeamLeaderReportPayload[];
   reject_note?: string | null;
+  s_over_limit?: boolean;
+  no_c_grade?: boolean;
+  grade_distribution_snapshot?: GradeInflationReview["grade_distribution_snapshot"];
 }
 
 interface TeamLeaderReportPayload {
@@ -725,6 +736,9 @@ interface TeamSignoffPayload {
   signed_at?: string | null;
   signed_at_label?: string | null;
   signature_id?: number | null;
+  s_over_limit?: boolean;
+  no_c_grade?: boolean;
+  grade_distribution_snapshot?: GradeInflationReview["grade_distribution_snapshot"];
 }
 
 interface SignatureListItem {
@@ -918,6 +932,24 @@ const signatureModalDescription = computed(() => {
 const signatureModalSubmitLabel = computed(() => {
   if (signatureModalMode.value === "team") return "평가완료보고서 서명";
   return "최종 제출 및 서명";
+});
+
+const signatureGradeReview = computed((): GradeInflationReview | null => {
+  if (signatureModalMode.value === "team" && teamSignoff.value) {
+    return {
+      s_over_limit: teamSignoff.value.s_over_limit,
+      no_c_grade: teamSignoff.value.no_c_grade,
+      grade_distribution_snapshot: teamSignoff.value.grade_distribution_snapshot,
+    };
+  }
+  if (signatureModalMode.value === "site" && approval.value) {
+    return {
+      s_over_limit: approval.value.s_over_limit,
+      no_c_grade: approval.value.no_c_grade,
+      grade_distribution_snapshot: approval.value.grade_distribution_snapshot,
+    };
+  }
+  return null;
 });
 
 const teamLeaderReports = computed(() => approval.value?.team_leader_reports || []);
@@ -1893,6 +1925,8 @@ async function rejectTeamReport(loginId: string, name: string) {
 async function onSignatureModalSubmit(payload: {
   signature_data: string;
   consent_acknowledged: boolean;
+  s_over_limit_reason?: string;
+  no_c_grade_reason?: string;
 }) {
   signatureModalRef.value?.setSubmitting(true);
   error.value = "";

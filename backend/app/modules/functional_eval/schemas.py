@@ -94,6 +94,8 @@ class FunctionalEvalApprovalReject(BaseModel):
 class FunctionalEvalSignatureSubmit(BaseModel):
     signature_data: str = Field(..., min_length=32)
     consent_acknowledged: bool = False
+    s_over_limit_reason: str | None = Field(default=None, max_length=4000, description="S등급 20% 초과 사유")
+    no_c_grade_reason: str | None = Field(default=None, max_length=4000, description="C등급 0명 사유")
 
 
 class FunctionalEvalHqOfficerApprovalSubmit(FunctionalEvalSignatureSubmit):

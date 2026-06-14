@@ -311,6 +311,7 @@ def _signature_error(code: str) -> HTTPException:
         "NO_SUPPLEMENTAL_BATCH": (400, "추가평가 대상이 없습니다."),
         "MANAGER_NOT_TEAM_LEADER": (403, "팀장만 사용할 수 있습니다."),
         "MANAGER_ONLY": (403, "소장만 사용할 수 있습니다."),
+        "S_GRADE_OVER_LIMIT_REASON_REQUIRED": (400, "S등급 권장 기준(20%) 초과 사유를 10자 이상 입력해 주세요."),
     }
     status_code, detail = mapping.get(code, (400, code))
     return HTTPException(status_code=status_code, detail=detail)
@@ -385,7 +386,13 @@ def submit_team_signoff(
     period = service.get_or_create_active_period(db)
     try:
         row = signature_ops.submit_team_signoff(
-            db, current_user, period, signature_data=body.signature_data, request=request
+            db,
+            current_user,
+            period,
+            signature_data=body.signature_data,
+            s_over_limit_reason=body.s_over_limit_reason,
+            no_c_grade_reason=body.no_c_grade_reason,
+            request=request,
         )
     except ValueError as exc:
         raise _signature_error(str(exc)) from exc
@@ -464,6 +471,8 @@ def submit_site_approval(
             period,
             site_code,
             signature_data=body.signature_data,
+            s_over_limit_reason=body.s_over_limit_reason,
+            no_c_grade_reason=body.no_c_grade_reason,
             request=request,
         )
     except ValueError as exc:

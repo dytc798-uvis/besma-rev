@@ -60,6 +60,7 @@
             :error="evalError"
             variant="desktop"
             :preview="evalPreview"
+            :eval-kind="evalType === 'SAFETY' ? 'safety' : 'functional'"
             @save="saveEval"
             @update:scores="evalScores = $event"
           />
@@ -117,6 +118,7 @@
             :error="evalError"
             variant="mobile"
             :preview="evalPreview"
+            :eval-kind="evalType === 'SAFETY' ? 'safety' : 'functional'"
             @save="saveEval"
             @close="closeEval"
             @update:scores="evalScores = $event"
@@ -164,6 +166,7 @@ import {
   workerRowHighlightClass,
 } from "@/utils/functionalEvalCompletion";
 import { buildSanctionPrefillFromSafetyScores } from "@/utils/safetySanctionMapping";
+import { isFeGuidePreview } from "@/utils/feGuidePreview";
 
 export type EvalType = "FUNCTIONAL" | "SAFETY";
 
@@ -511,9 +514,15 @@ async function pickInitialWorker() {
     }
   }
   if (props.autoPickOnMount === false) return;
-  if (!isMobileViewport.value && filteredWorkers.value.length) {
-    const firstIncomplete = filteredWorkers.value.find((w) => !isFullyComplete(w));
-    await selectWorker(firstIncomplete ?? filteredWorkers.value[0]);
+  if (filteredWorkers.value.length) {
+    if (isFeGuidePreview()) {
+      await selectWorker(filteredWorkers.value[0]);
+      return;
+    }
+    if (!isMobileViewport.value) {
+      const firstIncomplete = filteredWorkers.value.find((w) => !isFullyComplete(w));
+      await selectWorker(firstIncomplete ?? filteredWorkers.value[0]);
+    }
   }
 }
 

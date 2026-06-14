@@ -11,7 +11,11 @@ from sqlalchemy.orm import Session
 from app.core.datetime_utils import format_kst_datetime_label, format_kst_datetime_short, utc_now
 from app.core.enums import Role
 from app.modules.functional_eval import approval_workflow
-from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
+from app.modules.functional_eval.grade_inflation_guard import (
+    build_grade_review_metadata,
+    compute_grade_inflation_review,
+    validate_grade_inflation_reasons,
+)
 from app.modules.functional_eval.models import (
     FunctionalEvalConsent,
     FunctionalEvalPeriod,
@@ -362,6 +366,18 @@ def _build_signature_pdf(
             signed_at=signed_at,
             site_full_name=header["site_full_name"],
             role_line=header["role_line"],
+            grade_review_metadata={
+                k: scope[k]
+                for k in (
+                    "grade_distribution_snapshot",
+                    "s_over_limit_reason",
+                    "no_c_grade_reason",
+                    "s_ratio",
+                    "s_count",
+                    "c_count",
+                )
+                if k in scope
+            },
         )
 
     if stage == STAGE_TEAM_MANAGER_APPROVE:
@@ -577,6 +593,7 @@ def get_team_signoff_status(
     workers = service.list_workers_for_user(db, user, period)
     batch = max((w.get("evaluation_batch") or 0 for w in workers), default=0)
     incomplete = [w for w in workers if not service._is_fully_evaluated(w)]
+    grade_review = compute_grade_inflation_review(workers)
     existing = _signature_exists(
         db,
         period_id=period.id,
@@ -595,6 +612,7 @@ def get_team_signoff_status(
         "signed_at": existing.signed_at.isoformat() if existing else None,
         "signed_at_label": format_kst_datetime_label(existing.signed_at) if existing else None,
         "signature_id": existing.id if existing else None,
+        **grade_review,
     }
 
 
@@ -604,6 +622,8 @@ def submit_team_signoff(
     period: FunctionalEvalPeriod,
     *,
     signature_data: str,
+    s_over_limit_reason: str | None = None,
+    no_c_grade_reason: str | None = None,
     request: Request | None = None,
 ) -> dict[str, Any]:
     from app.modules.functional_eval import service
@@ -618,8 +638,20 @@ def submit_team_signoff(
     login_id = (user.login_id or "").strip()
     batch = status["evaluation_batch"]
     workers = service.list_workers_for_user(db, user, period)
+    grade_review = compute_grade_inflation_review(workers)
+    validate_grade_inflation_reasons(
+        grade_review,
+        s_over_limit_reason=s_over_limit_reason,
+        no_c_grade_reason=no_c_grade_reason,
+    )
     worker_ids = [w["id"] for w in workers]
     scope = f"{batch_label(batch)} · 팀원 {len(workers)}명"
+    review_meta = build_grade_review_metadata(
+        grade_review,
+        s_over_limit_reason=s_over_limit_reason,
+        no_c_grade_reason=no_c_grade_reason,
+    )
+    worker_scope = {"worker_ids": worker_ids, "batch": batch, **review_meta}
     row = _persist_signature(
         db,
         period=period,
@@ -630,7 +662,7 @@ def submit_team_signoff(
         site_code=site_code,
         team_leader_login_id=login_id,
         scope_label=scope,
-        worker_scope_json={"worker_ids": worker_ids, "batch": batch},
+        worker_scope_json=worker_scope,
         request=request,
     )
     db.commit()
@@ -682,6 +714,25 @@ def all_team_reports_manager_approved(db: Session, period: FunctionalEvalPeriod,
     return True
 
 
+def _grade_flags_from_signature(sig: FunctionalEvalSignature | None) -> dict[str, Any]:
+    if sig is None or not sig.worker_scope_json:
+        return {}
+    scope = sig.worker_scope_json
+    snapshot = scope.get("grade_distribution_snapshot") or {}
+    s_ratio = scope.get("s_ratio")
+    if s_ratio is None:
+        s_ratio = snapshot.get("s_ratio")
+    c_count = scope.get("c_count")
+    if c_count is None:
+        c_count = snapshot.get("c_count")
+    return {
+        "grade_s_ratio": s_ratio,
+        "grade_c_count": c_count,
+        "grade_s_over_limit": bool(scope.get("s_over_limit_reason")),
+        "grade_no_c_grade": bool(scope.get("no_c_grade_reason")),
+    }
+
+
 def list_team_leader_report_status(
     db: Session,
     period: FunctionalEvalPeriod,
@@ -731,6 +782,7 @@ def list_team_leader_report_status(
                 "manager_approved_at_label": format_kst_datetime_label(mgr_sig.signed_at) if mgr_sig else None,
                 "can_manager_approve": False,
                 "manager_approval_signature_id": mgr_sig.id if mgr_sig else None,
+                **_grade_flags_from_signature(team_sig),
             }
         )
     return result
@@ -850,6 +902,17 @@ def active_site_batches(db: Session, period: FunctionalEvalPeriod, site_code: st
     return batches or [0]
 
 
+def _site_workers_payloads_for_batch(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    site_code: str,
+    batch: int,
+) -> list[dict[str, Any]]:
+    from app.modules.functional_eval import service
+
+    return service.site_worker_payloads_for_batch(db, period, site_code, batch)
+
+
 def submit_site_approval_with_signature(
     db: Session,
     user: User,
@@ -857,6 +920,8 @@ def submit_site_approval_with_signature(
     site_code: str,
     *,
     signature_data: str,
+    s_over_limit_reason: str | None = None,
+    no_c_grade_reason: str | None = None,
     request: Request | None = None,
 ) -> dict[str, Any]:
     from app.modules.functional_eval import service
@@ -868,6 +933,18 @@ def submit_site_approval_with_signature(
         raise ValueError("TEAM_LEADERS_NOT_SIGNED")
     if summary["incomplete_count"] > 0:
         raise ValueError("INCOMPLETE_EVALUATIONS")
+    workers = _site_workers_payloads_for_batch(db, period, site_code, batch)
+    grade_review = compute_grade_inflation_review(workers)
+    validate_grade_inflation_reasons(
+        grade_review,
+        s_over_limit_reason=s_over_limit_reason,
+        no_c_grade_reason=no_c_grade_reason,
+    )
+    review_meta = build_grade_review_metadata(
+        grade_review,
+        s_over_limit_reason=s_over_limit_reason,
+        no_c_grade_reason=no_c_grade_reason,
+    )
     scope = f"{batch_label(batch)} · 현장 전체 {summary['site_total_workers']}명"
     _persist_signature(
         db,
@@ -879,7 +956,12 @@ def submit_site_approval_with_signature(
         site_code=site_code,
         team_leader_login_id=SCOPE_EMPTY,
         scope_label=scope,
-        worker_scope_json={"site_code": site_code, "batch": batch, "worker_count": summary["site_total_workers"]},
+        worker_scope_json={
+            "site_code": site_code,
+            "batch": batch,
+            "worker_count": summary["site_total_workers"],
+            **review_meta,
+        },
         request=request,
     )
     approval = approval_workflow.submit_site_approval(

@@ -1699,6 +1699,31 @@ def _site_attendance_workers(
     return workers
 
 
+def site_worker_payloads_for_batch(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    site_code: str,
+    batch: int,
+) -> list[dict[str, Any]]:
+    rows = _site_attendance_workers(db, period, site_code)
+    manager_login = _manager_login_for_site(db, site_code)
+    team_leader_logins = _collect_team_leader_evaluator_logins(rows, manager_login)
+    assess_map = _assessments_map(db, [r.id for r in rows])
+    payloads: list[dict[str, Any]] = []
+    for row in rows:
+        if (row.evaluation_batch or 0) != batch:
+            continue
+        payloads.append(
+            serialize_worker(
+                db,
+                row,
+                assessments=assess_map.get(row.id, {}),
+                team_leader_logins=team_leader_logins,
+            )
+        )
+    return payloads
+
+
 def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, site_code: str) -> dict[str, Any]:
     rows = _site_attendance_workers(db, period, site_code)
     manager_login = _manager_login_for_site(db, site_code)
@@ -1729,6 +1754,12 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
                 team_complete += 1
     approval_row = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
     status = approval_row.status
+    batches = sorted({r.evaluation_batch or 0 for r in rows})
+    batch = batches[-1] if batches else 0
+    from app.modules.functional_eval.grade_inflation_guard import compute_grade_inflation_review
+
+    site_workers = site_worker_payloads_for_batch(db, period, site_code, batch)
+    grade_review = compute_grade_inflation_review(site_workers)
     return {
         "site_total_workers": len(rows),
         "site_complete_workers": complete,
@@ -1740,6 +1771,7 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
         "can_submit_site_approval": complete == len(rows) and len(rows) > 0
         and approval_workflow.is_site_evaluation_editable(status),
         "evaluation_editable": approval_workflow.is_site_evaluation_editable(status),
+        **grade_review,
     }
 
 

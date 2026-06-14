@@ -520,6 +520,28 @@ def _draw_meta_lines(
     return y
 
 
+def _draw_grade_review_block(
+    c: canvas.Canvas,
+    *,
+    font: str,
+    y: float,
+    metadata: dict[str, Any],
+    size: float = 11,
+) -> float:
+    snap = metadata.get("grade_distribution_snapshot") or {}
+    grades = snap.get("grades") or {}
+    lines = ["■ 등급 분포 검토 (기능/품질 2-1)"]
+    lines.append("기능/품질: 기본 B · S 20% 권장 | 안전 2-2: 감점형(지적 이력 기반, S/C 비율 제한 없음)")
+    total = snap.get("evaluated_total") or 0
+    lines.append(f"총 평가대상: {snap.get('workers_total', total)}명 · 평가완료 {total}명")
+    for code in ("S", "A", "B", "C"):
+        bucket = grades.get(code) or {}
+        lines.append(f"{code}등급: {bucket.get('count', 0)}명, {bucket.get('pct', 0)}%")
+    if metadata.get("s_over_limit_reason"):
+        lines.append(f"기능/품질 S등급 권장 기준 초과 사유: {metadata['s_over_limit_reason']}")
+    return _draw_meta_lines(c, font=font, lines=lines, y=y, size=size)
+
+
 def generate_team_completion_report_pdf(
     *,
     period_title: str,
@@ -533,6 +555,7 @@ def generate_team_completion_report_pdf(
     report_subtitle: str | None = None,
     site_full_name: str | None = None,
     role_line: str | None = None,
+    grade_review_metadata: dict[str, Any] | None = None,
 ) -> bytes:
     """팀장 평가완료보고서 — 팀원 등급표 + 결재(팀장 작성 · 소장 최종)."""
     font = ensure_korean_font()
@@ -579,6 +602,16 @@ def generate_team_completion_report_pdf(
         title_size=table_title_size,
         body_size=table_body_size,
     )
+
+    grade_review = (grade_review_metadata or {}) if grade_review_metadata else {}
+    if grade_review.get("grade_distribution_snapshot"):
+        y = _draw_grade_review_block(
+            c,
+            font=font,
+            y=y - 2 * mm,
+            metadata=grade_review,
+            size=meta_size,
+        )
 
     manager_name = (manager_approval or {}).get("signer_name", "")
     manager_signed = bool(manager_approval and manager_approval.get("signature_data"))

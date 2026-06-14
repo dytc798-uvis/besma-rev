@@ -42,6 +42,12 @@
               <textarea v-model="directorComment" rows="3" class="fe-sign-textarea" />
             </label>
           </div>
+          <FeGradeInflationReview
+            v-if="gradeReview"
+            :review="gradeReview"
+            :s-reason="sOverLimitReason"
+            @update:s-reason="sOverLimitReason = $event"
+          />
           <SignaturePad ref="padRef" :width="560" :height="200" :disabled="signaturePadDisabled" />
           <p v-if="error" class="fe-sign-error">{{ error }}</p>
           <footer class="fe-sign-footer">
@@ -59,6 +65,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import SignaturePad from "@/components/SignaturePad.vue";
+import FeGradeInflationReview, { type GradeInflationReview } from "@/components/functional-eval/FeGradeInflationReview.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -74,6 +81,7 @@ const props = withDefaults(
     reviewMode?: "officer" | "director" | "both" | "none";
     officerCommentLabel?: string;
     directorCommentLabel?: string;
+    gradeReview?: GradeInflationReview | null;
   }>(),
   {
     title: "전자 서명",
@@ -85,6 +93,7 @@ const props = withDefaults(
     reviewMode: "none",
     officerCommentLabel: "안전보건 담당자 검토 코멘트",
     directorCommentLabel: "안전보건실장 최종 코멘트",
+    gradeReview: null,
   },
 );
 
@@ -97,6 +106,7 @@ const emit = defineEmits<{
     read_completed_at?: string;
     officer_comment?: string;
     director_comment?: string;
+    s_over_limit_reason?: string;
   }): void;
   (e: "cancel"): void;
 }>();
@@ -106,6 +116,7 @@ const consentBodyRef = ref<HTMLElement | null>(null);
 const ackChecked = ref(false);
 const officerComment = ref("");
 const directorComment = ref("");
+const sOverLimitReason = ref("");
 const submitting = ref(false);
 const error = ref("");
 const scrollCompleted = ref(false);
@@ -135,6 +146,7 @@ const scrollHintText = computed(() =>
 const canSubmit = computed(() => {
   if (props.requireConsentScroll && props.consentText && !scrollCompleted.value) return false;
   if (props.requireConsentCheck && !ackChecked.value) return false;
+  if (props.gradeReview?.s_over_limit && sOverLimitReason.value.trim().length < 10) return false;
   return true;
 });
 
@@ -158,8 +170,11 @@ function onConsentScroll() {
 async function refreshConsentScrollState() {
   scrollCompleted.value = false;
   readCompletedAt.value = null;
-  if (!props.requireConsentScroll || !props.consentText) {
+  if (!props.requireConsentScroll) {
     scrollCompleted.value = true;
+    return;
+  }
+  if (!props.consentText) {
     return;
   }
   await nextTick();
@@ -178,6 +193,7 @@ watch(
       ackChecked.value = false;
       officerComment.value = "";
       directorComment.value = "";
+      sOverLimitReason.value = "";
       error.value = "";
       submitting.value = false;
       padRef.value?.clear();
@@ -208,6 +224,10 @@ function onSubmit() {
     error.value = "동의서 확인 체크가 필요합니다.";
     return;
   }
+  if (props.gradeReview?.s_over_limit && sOverLimitReason.value.trim().length < 10) {
+    error.value = "기능/품질 S등급 권장 기준 초과 사유를 10자 이상 입력해 주세요.";
+    return;
+  }
   const dataUrl = padRef.value?.toDataUrl() || "";
   if (!dataUrl || dataUrl.length < 100) {
     error.value = "서명을 입력해 주세요.";
@@ -220,6 +240,7 @@ function onSubmit() {
     read_completed_at: props.requireConsentScroll ? readCompletedAt.value ?? undefined : undefined,
     officer_comment: showOfficerComment.value ? officerComment.value.trim() : undefined,
     director_comment: showDirectorComment.value ? directorComment.value.trim() : undefined,
+    s_over_limit_reason: props.gradeReview?.s_over_limit ? sOverLimitReason.value.trim() : undefined,
   });
 }
 
@@ -260,7 +281,7 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   border-radius: 8px;
   padding: 12px;
   margin: 0 0 8px;
-  max-height: 240px;
+  max-height: 160px;
   overflow-y: auto;
 }
 
