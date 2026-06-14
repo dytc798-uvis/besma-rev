@@ -488,8 +488,15 @@ async function applyBatchNormal() {
       emit("safety-saved", evalWorker.value);
     }
   } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status;
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    evalError.value = typeof msg === "string" ? msg : "일괄 저장 중 오류가 발생했습니다.";
+    if (status === 401) {
+      evalError.value = "로그인이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.";
+    } else if (msg === "EVALUATION_SIGNATURE_LOCKED") {
+      evalError.value = "서명 완료 후에는 평가를 수정할 수 없습니다.";
+    } else {
+      evalError.value = typeof msg === "string" ? msg : "일괄 저장 중 오류가 발생했습니다.";
+    }
   } finally {
     evalSaving.value = false;
   }
