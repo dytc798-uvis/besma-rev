@@ -17,10 +17,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "functional_eval_periods",
-        sa.Column("grade_stats_live_from", sa.Date(), nullable=True),
-    )
+    with op.batch_alter_table("functional_eval_periods") as batch:
+        batch.add_column(sa.Column("grade_stats_live_from", sa.Date(), nullable=True))
     op.execute(
         sa.text(
             "UPDATE functional_eval_periods SET grade_stats_live_from = '2026-06-16' "
@@ -30,4 +28,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("functional_eval_periods", "grade_stats_live_from")
+    with op.batch_alter_table("functional_eval_periods") as batch:
+        batch.drop_column("grade_stats_live_from")
