@@ -5,7 +5,12 @@ storage/
 manual-system/
 handoff-besma/
 archive-for-notebook/
+migration-snapshots/
+assets/
 deploy/
 scripts/
+frontend/node_modules/
 *.pem
+*.db
+*.db.*
 .git/
