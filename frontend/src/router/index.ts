@@ -59,6 +59,7 @@ import FunctionalEvalLayout from "@/layouts/FunctionalEvalLayout.vue";
 import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPage.vue";
 import SiteNewSiteDeploymentPage from "@/pages/site/SiteNewSiteDeploymentPage.vue";
 import HQFunctionalEvalPage from "@/pages/hq/HQFunctionalEvalPage.vue";
+import HQFunctionalEvalGradeReportPage from "@/pages/hq/HQFunctionalEvalGradeReportPage.vue";
 import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
 import HQSystemBackupPage from "@/pages/hq/HQSystemBackupPage.vue";
 import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
@@ -211,6 +212,11 @@ const routes: RouteRecordRaw[] = [
       },
       { path: "user-guide", name: "hq-safe-user-guide", component: UserGuidePage },
       { path: "functional-eval", name: "hq-safe-functional-eval", component: HQFunctionalEvalPage },
+      {
+        path: "functional-eval/grade-report",
+        name: "hq-safe-functional-eval-grade-report",
+        component: HQFunctionalEvalGradeReportPage,
+      },
       { path: "new-site-deployment", name: "hq-safe-new-site-deployment", component: HQNewSiteDeploymentPage },
       { path: "system-backup", name: "hq-safe-system-backup", component: HQSystemBackupPage },
     ],

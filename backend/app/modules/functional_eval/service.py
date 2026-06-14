@@ -1693,23 +1693,10 @@ def _site_attendance_workers(
     period: FunctionalEvalPeriod,
     site_code: str,
 ) -> list[FunctionalEvalWorker]:
-    work_date = get_latest_attendance_date(db, period.id)
-    if work_date is None:
-        return []
-    rrn_hashes = _attendance_rrn_hashes_for_date(db, period.id, work_date, site_code=site_code)
-    if not rrn_hashes:
-        return []
-    return (
-        db.query(FunctionalEvalWorker)
-        .filter(
-            FunctionalEvalWorker.period_id == period.id,
-            FunctionalEvalWorker.is_site_manager.is_(False),
-            FunctionalEvalWorker.site_code == site_code,
-            FunctionalEvalWorker.rrn_hash.in_(rrn_hashes),
-        )
-        .order_by(FunctionalEvalWorker.row_no.asc(), FunctionalEvalWorker.id.asc())
-        .all()
-    )
+    """기간 내 출역 이력이 있는 현장 근로자(퇴사·재출역 포함, 평가·승인·서명 대상)."""
+    workers = _attendance_target_workers(db, period, site_code=site_code)
+    workers.sort(key=lambda w: (w.row_no or 0, w.id or 0))
+    return workers
 
 
 def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, site_code: str) -> dict[str, Any]:
@@ -2713,7 +2700,7 @@ def apply_daily_roster_diff(
     for rrn_hash, worker in by_hash.items():
         if rrn_hash in incoming_hashes:
             continue
-        if not worker.is_on_reference_roster and not worker.is_active:
+        if not worker.is_on_reference_roster:
             continue
         worker.is_on_reference_roster = False
         worker.is_active = False

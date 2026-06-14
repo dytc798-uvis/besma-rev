@@ -4,6 +4,7 @@ from datetime import date
 
 from app.modules.functional_eval.grade_stats_cache import (
     _allocate_grade_counts,
+    _resolve_workers_total,
     _synthetic_grade_distribution,
     is_demo_grade_stats,
 )
@@ -37,3 +38,9 @@ def test_is_demo_grade_stats_before_live_from():
     )
     assert is_demo_grade_stats(period, today=date(2026, 6, 15)) is True
     assert is_demo_grade_stats(period, today=date(2026, 6, 16)) is False
+
+
+def test_resolve_workers_total_prefers_attendance():
+    assert _resolve_workers_total(erp_total=1211, attendance_count=1099) == 1099
+    assert _resolve_workers_total(erp_total=1211, attendance_count=0) == 1211
+    assert _resolve_workers_total(erp_total=0, attendance_count=50) == 50

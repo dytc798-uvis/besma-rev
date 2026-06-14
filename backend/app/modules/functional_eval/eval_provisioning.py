@@ -378,6 +378,12 @@ def apply_attendance_report_diff(
             worker.updated_at = now
             db.add(worker)
             touched_sites.add(site_code)
+        elif not worker.is_active or worker.removed_at is not None:
+            worker.is_active = True
+            worker.removed_at = None
+            worker.updated_at = now
+            db.add(worker)
+            touched_sites.add(site_code)
 
         if site_code not in row_counters:
             row_counters[site_code] = _next_row_no(db, period.id, site_code) - 1

@@ -69,9 +69,9 @@
             <td>{{ activeBlock.graded_total }}명</td>
             <td>100%</td>
           </tr>
-          <tr v-if="activeBlock?.attendance_workers != null && activeBlock.attendance_workers !== activeBlock.workers_total">
+          <tr v-if="erpHeadcount != null && erpHeadcount !== activeBlock?.workers_total">
             <td colspan="3" class="muted fe-grade-stats__foot-note">
-              출역 반영 {{ activeBlock.attendance_workers }}명 / ERP 인원 {{ activeBlock.workers_total }}명
+              출역 기준 {{ activeBlock?.workers_total }}명 / ERP 인원 {{ erpHeadcount }}명
             </td>
           </tr>
           <tr v-if="activeBlock?.ungraded_count">
@@ -94,6 +94,7 @@ export type GradeBucket = {
 export type GradeStatBlock = {
   workers_total?: number;
   attendance_workers?: number;
+  erp_headcount?: number | null;
   graded_total: number;
   ungraded_count: number;
   grades: Record<string, GradeBucket>;
@@ -142,6 +143,14 @@ const displayWorkersTotal = computed(() => {
   const block = activeBlock.value;
   if (!block) return 0;
   return Number(block.workers_total ?? block.graded_total ?? 0);
+});
+
+const erpHeadcount = computed(() => {
+  const block = activeBlock.value;
+  if (!block) return null;
+  const erp = block.erp_headcount;
+  if (erp == null || erp === 0) return null;
+  return Number(erp);
 });
 
 const hasDisplayData = computed(() => displayWorkersTotal.value > 0 || (activeBlock.value?.graded_total ?? 0) > 0);

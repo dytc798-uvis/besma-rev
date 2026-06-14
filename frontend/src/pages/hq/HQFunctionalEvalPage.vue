@@ -15,6 +15,14 @@
         </p>
       </div>
       <div class="head-actions">
+        <button
+          v-if="canPrintGradeReport"
+          class="stitch-btn-primary"
+          type="button"
+          @click="openGradeReport"
+        >
+          등급 통계 보고서 출력
+        </button>
         <button class="stitch-btn-primary" type="button" :disabled="exportingGrade" @click="downloadSiteGradeWorkbook()">
           {{ exportingGrade ? "출력 중..." : "현장별 기능인등급 출력" }}
         </button>
@@ -769,6 +777,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import HqEvalWorkerActions from "@/components/functional-eval/HqEvalWorkerActions.vue";
 import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
 import FeSignatureModal from "@/components/functional-eval/FeSignatureModal.vue";
@@ -776,10 +785,13 @@ import FeGradeStatsPanel, { type GradeStatsPayload } from "@/components/function
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst, todayKst } from "@/utils/datetime";
+import { saveFeGradeReportCache } from "@/utils/feGradeReportCache";
 
 const auth = useAuthStore();
+const router = useRouter();
 const HQ_OFFICER_LOGIN = "안전보건-정상익";
 const HQ_DIRECTOR_LOGIN = "안전보건-조동문";
+const CEO_LOGIN = "부현대표-김홍수";
 
 interface Period {
   id: number;
@@ -978,16 +990,17 @@ const teamGradeStats = computed(() => gradeStats.value?.by_team ?? []);
 
 const gradeStatsOverallSubtitle = computed(() => {
   const fn = gradeStats.value?.overall?.functional;
-  const erpTotal = Number(gradeStats.value?.erp_headcount_total ?? fn?.workers_total ?? 0);
-  const attendance = fn?.attendance_workers;
+  const workersTotal = Number(fn?.workers_total ?? 0);
+  const erpTotal = Number(gradeStats.value?.erp_headcount_total ?? fn?.erp_headcount ?? 0);
   const demo = gradeStats.value?.grade_stats_mode === "demo";
   if (demo) {
-    return `근로자 ${erpTotal}명 · 전원 평가완료(가상)`;
+    const suffix = erpTotal > 0 && erpTotal !== workersTotal ? ` · ERP ${erpTotal}명` : "";
+    return `출역 ${workersTotal}명 · 전원 평가완료(가상)${suffix}`;
   }
-  if (attendance != null && attendance !== erpTotal) {
-    return `ERP ${erpTotal}명 · 출역 ${attendance}명`;
+  if (erpTotal > 0 && erpTotal !== workersTotal) {
+    return `출역 ${workersTotal}명 · ERP ${erpTotal}명`;
   }
-  return `근로자 ${erpTotal}명`;
+  return `출역 ${workersTotal}명`;
 });
 
 function teamStatsPayload(team: Record<string, unknown>): GradeStatsPayload {
@@ -1120,6 +1133,27 @@ const canDirectorApprove = computed(
 );
 const canBulkOfficerApprove = computed(() => canOfficerApprove.value);
 const canBulkDirectorApprove = computed(() => canDirectorApprove.value);
+const canPrintGradeReport = computed(
+  () =>
+    loginId.value === HQ_OFFICER_LOGIN ||
+    loginId.value === HQ_DIRECTOR_LOGIN ||
+    loginId.value === CEO_LOGIN ||
+    hqRole.value === "admin",
+);
+
+function openGradeReport() {
+  if (gradeStats.value) {
+    saveFeGradeReportCache(
+      gradeStats.value as Record<string, unknown>,
+      (period.value as Record<string, unknown> | null) ?? null,
+    );
+  }
+  const href = router.resolve({
+    name: "hq-safe-functional-eval-grade-report",
+    query: { autoPrint: "1" },
+  }).href;
+  window.open(href, "_blank", "noopener,noreferrer");
+}
 
 const signatureReviewMode = computed(() => {
   if (hqSignatureMode.value === "officer-all" || hqSignatureMode.value === "officer-site") return "officer";

@@ -87,28 +87,37 @@ def _synthetic_grade_stats_block(
 
 def _apply_demo_grade_overlay(payload: dict[str, Any], period: FunctionalEvalPeriod) -> dict[str, Any]:
     live_from = _live_from_date(period)
-    overall_total = int(payload.get("erp_headcount_total") or 0)
+    overall_erp = int(payload.get("erp_headcount_total") or 0)
     overall_att = int((payload.get("overall") or {}).get("functional", {}).get("attendance_workers") or 0)
+    overall_total = overall_att if overall_att > 0 else overall_erp
 
     payload["overall"] = _synthetic_grade_stats_block([], workers_total=overall_total)
     payload["overall"]["functional"]["attendance_workers"] = overall_att
+    payload["overall"]["functional"]["erp_headcount"] = overall_erp
     payload["overall"]["safety"]["attendance_workers"] = overall_att
+    payload["overall"]["safety"]["erp_headcount"] = overall_erp
 
     for row in payload.get("by_site") or []:
-        erp_total = int(row.get("erp_headcount") or row.get("functional", {}).get("workers_total") or 0)
+        erp_total = int(row.get("erp_headcount") or 0)
         att = int((row.get("functional") or {}).get("attendance_workers") or 0)
-        block = _synthetic_grade_stats_block([], workers_total=erp_total)
+        workers_total = att if att > 0 else erp_total
+        block = _synthetic_grade_stats_block([], workers_total=workers_total)
         block["functional"]["attendance_workers"] = att
+        block["functional"]["erp_headcount"] = erp_total
         block["safety"]["attendance_workers"] = att
+        block["safety"]["erp_headcount"] = erp_total
         row["functional"] = block["functional"]
         row["safety"] = block["safety"]
 
     for row in payload.get("by_team") or []:
         erp_total = int(row.get("erp_headcount") or 0)
         att = int((row.get("functional") or {}).get("attendance_workers") or 0)
-        block = _synthetic_grade_stats_block([], workers_total=erp_total)
+        workers_total = att if att > 0 else erp_total
+        block = _synthetic_grade_stats_block([], workers_total=workers_total)
         block["functional"]["attendance_workers"] = att
+        block["functional"]["erp_headcount"] = erp_total
         block["safety"]["attendance_workers"] = att
+        block["safety"]["erp_headcount"] = erp_total
         row["functional"] = block["functional"]
         row["safety"] = block["safety"]
 
@@ -153,9 +162,12 @@ def erp_headcount_total(db: Session) -> int:
 
 
 def _resolve_workers_total(*, erp_total: int, attendance_count: int) -> int:
+    """평가·통계 모집단 = 기간 내 실제 출역 인원 (ERP 인원은 참고용)."""
+    if attendance_count > 0:
+        return attendance_count
     if erp_total > 0:
         return erp_total
-    return attendance_count
+    return 0
 
 
 def _grade_distribution(
@@ -188,9 +200,11 @@ def _grade_distribution(
             "count": count,
             "pct": round(100.0 * count / graded_total, 1) if graded_total else 0.0,
         }
+    erp = int(workers_total or 0)
     return {
         "workers_total": total,
         "attendance_workers": attendance_workers,
+        "erp_headcount": erp if erp != total else None,
         "graded_total": graded_total,
         "ungraded_count": ungraded,
         "grades": grades,

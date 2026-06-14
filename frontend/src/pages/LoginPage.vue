@@ -2,11 +2,6 @@
   <div style="display: flex; justify-content: center; align-items: center; height: 100vh">
     <div class="card" style="width: 360px">
       <div class="card-title">BESMA CSMS 안전보건플랫폼 로그인</div>
-        <p style="font-size: 11px; color: #64748b; margin: 0 0 10px">
-          데모: 본사 <code>hq01</code> / 현장 <code>site01</code> — 비밀번호 <code>1111</code><br />
-          기능인제 현장: ID = <strong>별칭-이름</strong> (예: 대우청라-박명식), PW = <strong>주민번호 앞 6자리</strong><br />
-          기능인제·삼성인정제 본사: ID = <strong>안전보건-이름</strong> (예: 안전보건-김복수), PW = <strong>주민번호 앞 6자리</strong>
-        </p>
       <form @submit.prevent="handleLogin" style="display: flex; flex-direction: column; gap: 8px">
         <label>
           <div style="font-size: 12px; margin-bottom: 2px">로그인 ID</div>

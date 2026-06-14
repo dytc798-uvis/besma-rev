@@ -1154,7 +1154,8 @@ def test_hq_grade_stats(tmp_path: Path):
     assert res.status_code == 200
     body = res.json()
     assert body["overall"]["functional"]["graded_total"] == 1
-    assert body["overall"]["functional"]["workers_total"] == 32
+    assert body["overall"]["functional"]["workers_total"] == 1
+    assert body["overall"]["functional"]["erp_headcount"] == 32
     assert body["overall"]["functional"]["grades"]["S"]["pct"] == 100.0
     assert body["by_team"][0]["team_no"] == 1
     assert body["by_site"][0]["site_code"] == "24025"
