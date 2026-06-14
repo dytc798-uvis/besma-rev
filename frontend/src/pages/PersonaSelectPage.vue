@@ -22,13 +22,14 @@
 import { useRouter } from "vue-router";
 import { useAuthStore, type TestPersona } from "@/stores/auth";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
+import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
 
 const auth = useAuthStore();
 const router = useRouter();
 
 function routeByPersona(persona: TestPersona) {
   if (persona === "HQ_ADMIN") {
-    router.push({ name: "hq-safe-document-explorer" });
+    router.push({ name: hqSafeHomeRouteName() });
     return;
   }
   if (persona === "SITE_MANAGER") {
@@ -51,7 +52,7 @@ function logout() {
 function goDefault() {
   auth.clearPersona();
   if (auth.user?.ui_type === "HQ_SAFE") {
-    router.push({ name: "hq-safe-document-explorer" });
+    router.push({ name: hqSafeHomeRouteName() });
     return;
   }
   if (auth.user?.ui_type === "SITE") {

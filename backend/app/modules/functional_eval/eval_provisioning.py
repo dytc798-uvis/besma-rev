@@ -163,6 +163,9 @@ def apply_monthly_site_aggregate_file(
                 site_alias=site_alias,
                 manager_name=row.manager_name,
                 manager_login_id=manager_login_id,
+                erp_headcount=row.erp_headcount,
+                erp_man_days=row.erp_man_days,
+                erp_work_days=row.erp_work_days,
             )
             db.add(reg)
             registry_added += 1
@@ -172,12 +175,18 @@ def apply_monthly_site_aggregate_file(
                 or reg.site_alias != site_alias
                 or reg.manager_name != row.manager_name
                 or reg.manager_login_id != manager_login_id
+                or reg.erp_headcount != row.erp_headcount
+                or reg.erp_man_days != row.erp_man_days
+                or reg.erp_work_days != row.erp_work_days
             )
             if changed:
                 reg.erp_site_label = erp_label
                 reg.site_alias = site_alias
                 reg.manager_name = row.manager_name
                 reg.manager_login_id = manager_login_id
+                reg.erp_headcount = row.erp_headcount
+                reg.erp_man_days = row.erp_man_days
+                reg.erp_work_days = row.erp_work_days
                 db.add(reg)
                 registry_updated += 1
             else:
@@ -195,6 +204,10 @@ def apply_monthly_site_aggregate_file(
 
     db.commit()
     account_rows.sort(key=lambda x: x["site_code"])
+    erp_headcount_total = sum(int(r.erp_headcount or 0) for r in parsed)
+    from app.modules.functional_eval import grade_stats_cache
+
+    grade_stats_cache.rebuild_and_persist(db, period)
     return {
         "sites_added": sites_added,
         "sites_updated": sites_updated,
@@ -205,6 +218,7 @@ def apply_monthly_site_aggregate_file(
         "sites_upserted": sites_added + sites_updated,
         "registry_upserted": registry_added + registry_updated,
         "site_count": len(parsed),
+        "erp_headcount_total": erp_headcount_total,
         "account_rows": account_rows,
     }
 
@@ -428,6 +442,10 @@ def apply_attendance_report_diff(
     db.add(period)
     db.add(batch)
     db.commit()
+
+    from app.modules.functional_eval import grade_stats_cache
+
+    grade_stats_cache.rebuild_and_persist(db, period)
 
     return {
         "batch_id": batch.id,

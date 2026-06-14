@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from fastapi import Request
 from sqlalchemy.orm import Session
 
-from app.core.datetime_utils import utc_now
+from app.core.datetime_utils import format_kst_datetime_label, format_kst_datetime_short, utc_now
 from app.core.enums import Role
 from app.modules.functional_eval import approval_workflow
 from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
@@ -23,6 +24,7 @@ from app.modules.functional_eval.signature_service import (
     CONSENT_VERSION,
     STAGE_CEO,
     STAGE_HQ,
+    STAGE_HQ_OFFICER,
     STAGE_SITE,
     STAGE_TEAM_LEADER,
     STAGE_TEAM_MANAGER_APPROVE,
@@ -63,13 +65,75 @@ def _site_display_name(db: Session, site_code: str) -> str:
     return site_code
 
 
+def _site_field_label(db: Session, site_code: str) -> str:
+    """문서 부제용 — 예: 대우청라현장"""
+    reg = (
+        db.query(FunctionalEvalSiteRegistry)
+        .filter(FunctionalEvalSiteRegistry.site_code == site_code)
+        .first()
+    )
+    base = (reg.site_alias or "").strip() if reg else ""
+    if not base:
+        base = _site_display_name(db, site_code).strip()
+    if base.endswith("현장"):
+        return base
+    return f"{base}현장"
+
+
+def _build_consent_subtitle(db: Session, user: User) -> str:
+    return _build_document_header(db, user)["role_line"]
+
+
+def _build_document_header(db: Session, user: User, *, site_code: str | None = None) -> dict[str, str]:
+    from app.modules.functional_eval import service
+
+    login_id = (user.login_id or "").strip()
+    signer_name = (user.name or "").strip() or login_id
+    if service._is_hq_safety_user(user):
+        return {
+            "site_full_name": "본사 기능인 인정제",
+            "role_line": f"본사 - {signer_name}" + (f" ({login_id})" if login_id else ""),
+        }
+    site_code = site_code or service._site_code_for_user(user, db)
+    site_full = _site_display_name(db, site_code)
+    site_field = _site_field_label(db, site_code)
+    if service._is_primary_site_evaluator(db, user, site_code):
+        role_line = f"{site_field} - {signer_name} 소장"
+    else:
+        role_line = f"{site_field} - {signer_name}"
+    return {"site_full_name": site_full, "role_line": role_line}
+
+
+def _build_report_header_for_site(
+    db: Session,
+    site_code: str,
+    person_name: str,
+    *,
+    is_manager: bool = False,
+) -> dict[str, str]:
+    name = (person_name or "").strip()
+    site_full = _site_display_name(db, site_code)
+    site_field = _site_field_label(db, site_code)
+    suffix = " 소장" if is_manager else ""
+    return {
+        "site_full_name": site_full,
+        "role_line": f"{site_field} - {name}{suffix}",
+    }
+
+
 def get_consent_status(db: Session, user: User) -> dict[str, Any]:
     row = db.query(FunctionalEvalConsent).filter(FunctionalEvalConsent.user_id == user.id).first()
+    team_label = _build_consent_subtitle(db, user)
+    header = _build_document_header(db, user)
     return {
         "required": row is None,
         "consent_version": CONSENT_VERSION,
         "consent_body": CONSENT_BODY,
+        "site_full_name": header["site_full_name"],
+        "team_label": team_label,
+        "role_line": header["role_line"],
         "signed_at": row.signed_at.isoformat() if row else None,
+        "signed_at_label": format_kst_datetime_label(row.signed_at) if row else None,
     }
 
 
@@ -91,12 +155,15 @@ def submit_consent(
     login_id = (user.login_id or "").strip()
     signer_name = (user.name or "").strip() or login_id
     ip, ua = _signer_meta(request)
+    header = _build_document_header(db, user)
     pdf = generate_consent_pdf(
         signer_name=signer_name,
         signer_login_id=login_id,
         consent_body=CONSENT_BODY,
         signature_data=signature_data,
         signed_at=now,
+        site_full_name=header["site_full_name"],
+        role_line=header["role_line"],
     )
     doc_path = save_pdf_document(prefix=f"consent_{login_id}", pdf_bytes=pdf)
     row = FunctionalEvalConsent(
@@ -113,7 +180,11 @@ def submit_consent(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return {"signed_at": row.signed_at.isoformat(), "consent_version": row.consent_version}
+    return {
+        "signed_at": row.signed_at.isoformat(),
+        "signed_at_label": format_kst_datetime_label(row.signed_at),
+        "consent_version": row.consent_version,
+    }
 
 
 def assert_consent_signed(db: Session, user: User) -> None:
@@ -234,8 +305,8 @@ def _build_site_report_sections(
                     )
                     for row in members
                 ],
-                "team_leader_signed_at": team_sig.signed_at.strftime("%Y-%m-%d %H:%M") if team_sig else None,
-                "manager_approved_at": mgr_sig.signed_at.strftime("%Y-%m-%d %H:%M") if mgr_sig else None,
+                "team_leader_signed_at": format_kst_datetime_short(team_sig.signed_at) if team_sig else None,
+                "manager_approved_at": format_kst_datetime_short(mgr_sig.signed_at) if mgr_sig else None,
             }
         )
     direct_workers = [
@@ -274,14 +345,18 @@ def _build_signature_pdf(
     if stage == STAGE_TEAM_LEADER:
         leader_login = (team_leader_login_id or login_id).strip()
         workers = _workers_payload_for_team_leader(db, period, site_code or "", leader_login, batch)
+        leader_name = signer_name
+        header = _build_report_header_for_site(db, site_code or "", leader_name, is_manager=False)
         return generate_team_completion_report_pdf(
             period_title=period.title,
             site_name=site_name or site_code or "",
-            team_leader_name=signer_name,
+            team_leader_name=leader_name,
             team_leader_login=leader_login,
             workers=workers,
             signature_data=signature_data,
             signed_at=signed_at,
+            site_full_name=header["site_full_name"],
+            role_line=header["role_line"],
         )
 
     if stage == STAGE_TEAM_MANAGER_APPROVE:
@@ -297,6 +372,7 @@ def _build_signature_pdf(
         if team_sig is None:
             raise ValueError("TEAM_LEADER_NOT_SIGNED")
         workers = _workers_payload_for_team_leader(db, period, site_code or "", leader_login, batch)
+        header = _build_report_header_for_site(db, site_code or "", team_sig.signer_name, is_manager=False)
         return generate_team_completion_report_pdf(
             period_title=period.title,
             site_name=site_name or site_code or "",
@@ -308,12 +384,15 @@ def _build_signature_pdf(
             manager_approval={
                 "signer_name": signer_name,
                 "signature_data": signature_data,
-                "signed_at": signed_at.strftime("%Y-%m-%d %H:%M"),
+                "signed_at": format_kst_datetime_short(signed_at),
             },
+            site_full_name=header["site_full_name"],
+            role_line=header["role_line"],
         )
 
     if stage == STAGE_SITE:
         sections, direct_workers = _build_site_report_sections(db, period, site_code or "", batch)
+        header = _build_report_header_for_site(db, site_code or "", signer_name, is_manager=True)
         return generate_site_completion_report_pdf(
             period_title=period.title,
             site_name=site_name or site_code or "",
@@ -324,17 +403,34 @@ def _build_signature_pdf(
             direct_workers=direct_workers,
             signature_data=signature_data,
             signed_at=signed_at,
+            site_full_name=header["site_full_name"],
+            role_line=header["role_line"],
+        )
+
+    if stage == STAGE_HQ_OFFICER:
+        site_codes = scope.get("site_codes") or ([site_code] if site_code else [])
+        return generate_hq_review_report_pdf(
+            period_title=period.title,
+            site_summaries=[{"site_code": c} for c in site_codes],
+            officer_comment=str(scope.get("officer_comment") or ""),
+            director_comment="",
+            signature_data=signature_data,
+            signer_name=signer_name,
+            signed_at=signed_at,
+            report_title="안전보건 담당 검토·승인",
         )
 
     if stage == STAGE_HQ:
+        site_codes = scope.get("site_codes") or ([site_code] if site_code else [])
         return generate_hq_review_report_pdf(
             period_title=period.title,
-            site_summaries=[{"site_code": c} for c in scope.get("site_codes") or []],
+            site_summaries=[{"site_code": c} for c in site_codes],
             officer_comment=str(scope.get("officer_comment") or ""),
             director_comment=str(scope.get("director_comment") or ""),
             signature_data=signature_data,
             signer_name=signer_name,
             signed_at=signed_at,
+            report_title="안전보건실장 최종 승인",
         )
 
     if stage == STAGE_CEO:
@@ -492,6 +588,7 @@ def get_team_signoff_status(
         "can_sign": len(workers) > 0 and len(incomplete) == 0 and existing is None,
         "signed": existing is not None,
         "signed_at": existing.signed_at.isoformat() if existing else None,
+        "signed_at_label": format_kst_datetime_label(existing.signed_at) if existing else None,
         "signature_id": existing.id if existing else None,
     }
 
@@ -620,15 +717,77 @@ def list_team_leader_report_status(
                 "team_leader_name": _leader_display_name(db, leader),
                 "team_worker_count": member_count,
                 "team_leader_signed": team_sig is not None,
-                "team_leader_signed_at": team_sig.signed_at.isoformat() if team_sig else None,
-                "manager_approved": mgr_sig is not None,
-                "manager_approved_at": mgr_sig.signed_at.isoformat() if mgr_sig else None,
-                "can_manager_approve": team_sig is not None and mgr_sig is None,
+                "team_leader_signed_at": format_kst_datetime_short(team_sig.signed_at) if team_sig else None,
+                "team_leader_signed_at_label": format_kst_datetime_label(team_sig.signed_at) if team_sig else None,
+                "can_manager_reject": team_sig is not None,
                 "team_leader_signature_id": team_sig.id if team_sig else None,
+                "manager_approved": mgr_sig is not None,
+                "manager_approved_at": format_kst_datetime_short(mgr_sig.signed_at) if mgr_sig else None,
+                "manager_approved_at_label": format_kst_datetime_label(mgr_sig.signed_at) if mgr_sig else None,
+                "can_manager_approve": False,
                 "manager_approval_signature_id": mgr_sig.id if mgr_sig else None,
             }
         )
     return result
+
+
+def _delete_signature_record(db: Session, row: FunctionalEvalSignature) -> None:
+    from app.config.settings import settings
+
+    if row.signed_document_path:
+        raw = Path(row.signed_document_path)
+        path = raw if raw.is_absolute() else settings.storage_root / raw
+        if path.is_file():
+            path.unlink(missing_ok=True)
+    db.delete(row)
+
+
+def reject_team_leader_report(
+    db: Session,
+    user: User,
+    period: FunctionalEvalPeriod,
+    site_code: str,
+    team_leader_login_id: str,
+    *,
+    reject_note: str | None = None,
+) -> dict[str, Any]:
+    """소장 — 팀장 평가완료보고서 반려 (점수 재작업, 포상·제재 근거는 유지)."""
+    from app.modules.functional_eval import service
+
+    assert_consent_signed(db, user)
+    if not service._is_primary_site_evaluator(db, user, site_code):
+        raise ValueError("MANAGER_ONLY")
+    approval_workflow.assert_site_editable(db, period.id, site_code)
+    leader_login = team_leader_login_id.strip()
+    batch = max(active_site_batches(db, period, site_code))
+    team_sig = _signature_exists(
+        db,
+        period_id=period.id,
+        batch=batch,
+        stage=STAGE_TEAM_LEADER,
+        site_code=site_code,
+        team_leader_login_id=leader_login,
+    )
+    if team_sig is None:
+        raise ValueError("TEAM_LEADER_NOT_SIGNED")
+    mgr_sig = _signature_exists(
+        db,
+        period_id=period.id,
+        batch=batch,
+        stage=STAGE_TEAM_MANAGER_APPROVE,
+        site_code=site_code,
+        team_leader_login_id=leader_login,
+    )
+    if mgr_sig is not None:
+        _delete_signature_record(db, mgr_sig)
+    _delete_signature_record(db, team_sig)
+    db.commit()
+    return {
+        "team_leader_login_id": leader_login,
+        "team_leader_name": _leader_display_name(db, leader_login),
+        "reject_note": (reject_note or "").strip() or None,
+        "rejected": True,
+    }
 
 
 def submit_team_manager_approval(
@@ -702,8 +861,6 @@ def submit_site_approval_with_signature(
     batch = max(active_site_batches(db, period, site_code))
     if not all_team_leaders_signed(db, period, site_code, batch):
         raise ValueError("TEAM_LEADERS_NOT_SIGNED")
-    if not all_team_reports_manager_approved(db, period, site_code, batch):
-        raise ValueError("TEAM_REPORTS_NOT_MANAGER_APPROVED")
     if summary["incomplete_count"] > 0:
         raise ValueError("INCOMPLETE_EVALUATIONS")
     scope = f"{batch_label(batch)} · 현장 전체 {summary['site_total_workers']}명"
@@ -770,8 +927,6 @@ def submit_supplemental_site_signoff(
         raise ValueError("INCOMPLETE_EVALUATIONS")
     if not all_team_leaders_signed(db, period, site_code, target_batch):
         raise ValueError("TEAM_LEADERS_NOT_SIGNED")
-    if not all_team_reports_manager_approved(db, period, site_code, target_batch):
-        raise ValueError("TEAM_REPORTS_NOT_MANAGER_APPROVED")
     scope = f"{batch_label(target_batch)} · 추가평가 {len(rows)}명"
     row = _persist_signature(
         db,
@@ -791,19 +946,154 @@ def submit_supplemental_site_signoff(
     return serialize_signature(row)
 
 
-def approve_hq_all_with_signature(
+def approve_hq_officer_site_with_signature(
+    db: Session,
+    user: User,
+    period: FunctionalEvalPeriod,
+    site_code: str,
+    *,
+    signature_data: str,
+    officer_comment: str | None = None,
+    request: Request | None = None,
+) -> dict[str, Any]:
+    approval_workflow.assert_hq_officer_approver(user)
+    assert_consent_signed(db, user)
+    site_code = site_code.strip()
+    scope = f"현장 {site_code} · 담당 검토"
+    _persist_signature(
+        db,
+        period=period,
+        batch=0,
+        stage=STAGE_HQ_OFFICER,
+        user=user,
+        signature_data=signature_data,
+        site_code=site_code,
+        team_leader_login_id="",
+        scope_label=scope,
+        worker_scope_json={
+            "site_codes": [site_code],
+            "officer_comment": (officer_comment or "").strip(),
+        },
+        request=request,
+    )
+    approval = approval_workflow.approve_hq_officer(
+        db,
+        period=period,
+        site_code=site_code,
+        user=user,
+        officer_comment=officer_comment,
+    )
+    return approval
+
+
+def approve_hq_officer_all_with_signature(
     db: Session,
     user: User,
     period: FunctionalEvalPeriod,
     *,
     signature_data: str,
     officer_comment: str | None = None,
+    request: Request | None = None,
+) -> dict[str, Any]:
+    approval_workflow.assert_hq_officer_approver(user)
+    assert_consent_signed(db, user)
+    pending = approval_workflow.list_pending_hq_officer_approvals(db, period)
+    if not pending:
+        raise ValueError("NO_PENDING_APPROVALS")
+    if _signature_exists(
+        db,
+        period_id=period.id,
+        batch=0,
+        stage=STAGE_HQ_OFFICER,
+        site_code="",
+        team_leader_login_id="",
+    ):
+        raise ValueError("SIGNATURE_ALREADY_EXISTS")
+    site_codes = [item["site_code"] for item in pending]
+    scope = f"전 현장 {len(site_codes)}개소 · 담당 일괄 검토"
+    _persist_signature(
+        db,
+        period=period,
+        batch=0,
+        stage=STAGE_HQ_OFFICER,
+        user=user,
+        signature_data=signature_data,
+        site_code="",
+        team_leader_login_id="",
+        scope_label=scope,
+        worker_scope_json={
+            "site_codes": site_codes,
+            "officer_comment": (officer_comment or "").strip(),
+        },
+        request=request,
+    )
+    results = []
+    for item in pending:
+        code = item["site_code"]
+        results.append(
+            approval_workflow.approve_hq_officer(
+                db,
+                period=period,
+                site_code=code,
+                user=user,
+                officer_comment=officer_comment,
+            )
+        )
+    db.commit()
+    return {"approved_count": len(results), "site_codes": site_codes}
+
+
+def approve_hq_director_site_with_signature(
+    db: Session,
+    user: User,
+    period: FunctionalEvalPeriod,
+    site_code: str,
+    *,
+    signature_data: str,
     director_comment: str | None = None,
     request: Request | None = None,
 ) -> dict[str, Any]:
-    approval_workflow.assert_hq_approver(user)
+    approval_workflow.assert_hq_director_approver(user)
     assert_consent_signed(db, user)
-    pending = approval_workflow.list_pending_hq_approvals(db, period)
+    site_code = site_code.strip()
+    row = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
+    officer_comment = row.hq_officer_comment or ""
+    scope = f"현장 {site_code} · 실장 최종 승인"
+    _persist_signature(
+        db,
+        period=period,
+        batch=0,
+        stage=STAGE_HQ,
+        user=user,
+        signature_data=signature_data,
+        site_code=site_code,
+        team_leader_login_id="",
+        scope_label=scope,
+        worker_scope_json={
+            "site_codes": [site_code],
+            "officer_comment": officer_comment,
+            "director_comment": (director_comment or "").strip(),
+        },
+        request=request,
+    )
+    approval = approval_workflow.approve_hq_director(
+        db, period=period, site_code=site_code, user=user
+    )
+    return approval
+
+
+def approve_hq_director_all_with_signature(
+    db: Session,
+    user: User,
+    period: FunctionalEvalPeriod,
+    *,
+    signature_data: str,
+    director_comment: str | None = None,
+    request: Request | None = None,
+) -> dict[str, Any]:
+    approval_workflow.assert_hq_director_approver(user)
+    assert_consent_signed(db, user)
+    pending = approval_workflow.list_pending_hq_director_approvals(db, period)
     if not pending:
         raise ValueError("NO_PENDING_APPROVALS")
     if _signature_exists(
@@ -816,9 +1106,7 @@ def approve_hq_all_with_signature(
     ):
         raise ValueError("SIGNATURE_ALREADY_EXISTS")
     site_codes = [item["site_code"] for item in pending]
-    scope = f"전 현장 {len(site_codes)}개소 · {', '.join(site_codes[:8])}" + (
-        f" 외 {len(site_codes) - 8}개소" if len(site_codes) > 8 else ""
-    )
+    scope = f"전 현장 {len(site_codes)}개소 · 실장 일괄 승인"
     _persist_signature(
         db,
         period=period,
@@ -831,7 +1119,6 @@ def approve_hq_all_with_signature(
         scope_label=scope,
         worker_scope_json={
             "site_codes": site_codes,
-            "officer_comment": (officer_comment or "").strip(),
             "director_comment": (director_comment or "").strip(),
         },
         request=request,
@@ -840,10 +1127,41 @@ def approve_hq_all_with_signature(
     for item in pending:
         code = item["site_code"]
         results.append(
-            approval_workflow.approve_hq(db, period=period, site_code=code, user=user)
+            approval_workflow.approve_hq_director(db, period=period, site_code=code, user=user)
         )
     db.commit()
     return {"approved_count": len(results), "site_codes": site_codes}
+
+
+def approve_hq_all_with_signature(
+    db: Session,
+    user: User,
+    period: FunctionalEvalPeriod,
+    *,
+    signature_data: str,
+    officer_comment: str | None = None,
+    director_comment: str | None = None,
+    request: Request | None = None,
+) -> dict[str, Any]:
+    """하위 호환 — 로그인 역할에 따라 담당/실장 일괄 승인."""
+    role = approval_workflow.resolve_hq_approval_role(user)
+    if role in {"officer", "admin"} and approval_workflow.list_pending_hq_officer_approvals(db, period):
+        return approve_hq_officer_all_with_signature(
+            db,
+            user,
+            period,
+            signature_data=signature_data,
+            officer_comment=officer_comment or director_comment,
+            request=request,
+        )
+    return approve_hq_director_all_with_signature(
+        db,
+        user,
+        period,
+        signature_data=signature_data,
+        director_comment=director_comment,
+        request=request,
+    )
 
 
 def approve_ceo_all_with_signature(
@@ -914,6 +1232,7 @@ def list_my_signatures(db: Session, user: User, period: FunctionalEvalPeriod) ->
                 "stage_label": "최초 로그인 동의",
                 "signer_login_id": consent.login_id,
                 "signed_at": consent.signed_at.isoformat(),
+                "signed_at_label": format_kst_datetime_label(consent.signed_at),
                 "has_document": bool(consent.signed_document_path),
             }
         )
@@ -982,10 +1301,9 @@ def build_signoff_payload_for_session(
     is_manager = service._is_primary_site_evaluator(db, user, site_code)
     batch = max(active_site_batches(db, period, site_code))
     team_signed = all_team_leaders_signed(db, period, site_code, batch)
-    manager_approved = all_team_reports_manager_approved(db, period, site_code, batch)
     payload: dict[str, Any] = {
         "team_leaders_all_signed": team_signed,
-        "team_reports_all_manager_approved": manager_approved,
+        "team_reports_all_manager_approved": True,
         "active_evaluation_batch": batch,
         "active_evaluation_batch_label": batch_label(batch),
     }
@@ -995,8 +1313,6 @@ def build_signoff_payload_for_session(
         payload["team_signoff"] = None
         payload["team_leader_reports"] = list_team_leader_report_status(db, period, site_code, batch)
         payload["can_submit_site_approval"] = bool(
-            approval_summary.get("can_submit_site_approval")
-            and team_signed
-            and manager_approved
+            approval_summary.get("can_submit_site_approval") and team_signed
         )
     return payload

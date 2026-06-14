@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import csv
 import io
 import re
@@ -17,11 +18,16 @@ from app.core.datetime_utils import utc_now
 from app.core.permissions import HQ_SAFE_WORKSPACE_ROLES
 from app.modules.functional_eval.eval_catalog import (
     EvalType,
+    apply_score_point_adjustments,
+    assessment_has_bottom,
     build_lowest_grade_scores,
+    build_safety_scores_with_bottom_for_violation,
     catalog_for_api,
     compute_assessment,
     get_criteria,
     normalize_grade_code,
+    violation_safety_criterion_ids,
+    violation_safety_targets_already_bottom,
 )
 from app.modules.functional_eval.attendance import ParsedAttendanceRow, parse_attendance_report_xlsx
 from app.modules.functional_eval.models import (
@@ -29,6 +35,7 @@ from app.modules.functional_eval.models import (
     FunctionalEvalAssessmentRevision,
     FunctionalEvalAttendanceEntry,
     FunctionalEvalAttendanceImportBatch,
+    FunctionalEvalCustomerReward,
     FunctionalEvalPeriod,
     FunctionalEvalRosterImportBatch,
     FunctionalEvalSanction,
@@ -46,10 +53,20 @@ from app.modules.functional_eval.sanctions import (
     SANCTION_RESULT_LABELS,
     VIOLATION_BY_CODE,
     VIOLATION_CATALOG,
+    build_sanction_display_label,
+    institutional_sanction_label,
     is_permanent_sanction,
     resolve_sanction,
+    sanction_outcome_label,
     worker_status_from_sanctions,
 )
+from app.modules.functional_eval.customer_rewards import CUSTOMER_REWARD_NOTE, REWARD_STATUS_APPROVED, REWARD_STATUS_PENDING
+from app.modules.functional_eval.sanction_evidence import (
+    DEFAULT_SANCTION_PENALTY_POINTS,
+    EVIDENCE_COMMENT,
+    EVIDENCE_PHOTO,
+)
+from app.config.settings import settings
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.utils.file_ingestion import parse_excel_with_fallback
@@ -114,6 +131,9 @@ def get_or_create_active_period(db: Session) -> FunctionalEvalPeriod:
         deadline_date=DEFAULT_DEADLINE,
         is_active=True,
     )
+    from app.modules.functional_eval.constants import DEFAULT_GRADE_STATS_LIVE_FROM
+
+    period.grade_stats_live_from = DEFAULT_GRADE_STATS_LIVE_FROM
     db.add(period)
     db.commit()
     db.refresh(period)
@@ -307,12 +327,54 @@ def _user_brief(db: Session, user_id: int | None) -> tuple[str | None, str | Non
     return (row.name or "").strip() or None, (row.login_id or "").strip() or None
 
 
-def _serialize_sanction(row: FunctionalEvalSanction, worker_name: str, db: Session | None = None) -> dict[str, Any]:
+def _worker_ids_same_person(db: Session, worker: FunctionalEvalWorker) -> list[int]:
+    return [
+        row.id
+        for row in db.query(FunctionalEvalWorker.id).filter(FunctionalEvalWorker.rrn_hash == worker.rrn_hash).all()
+    ]
+
+
+def _strike_sequence_for_person(db: Session, rrn_hash: str) -> dict[int, int]:
+    """동일인·동일 위반코드 기준 누적 차수(기간 무관)."""
+    worker_ids = [
+        row.id for row in db.query(FunctionalEvalWorker.id).filter(FunctionalEvalWorker.rrn_hash == rrn_hash).all()
+    ]
+    if not worker_ids:
+        return {}
+    rows = (
+        db.query(FunctionalEvalSanction)
+        .filter(FunctionalEvalSanction.worker_id.in_(worker_ids))
+        .order_by(FunctionalEvalSanction.created_at.asc(), FunctionalEvalSanction.id.asc())
+        .all()
+    )
+    per_code: dict[str, int] = {}
+    out: dict[int, int] = {}
+    for row in rows:
+        per_code[row.violation_code] = per_code.get(row.violation_code, 0) + 1
+        out[row.id] = per_code[row.violation_code]
+    return out
+
+
+def _effective_strike_number(row: FunctionalEvalSanction, strike_sequence: dict[int, int] | None) -> int:
+    if strike_sequence and row.id in strike_sequence:
+        return strike_sequence[row.id]
+    return row.strike_number
+
+
+def _serialize_sanction(
+    row: FunctionalEvalSanction,
+    worker_name: str,
+    db: Session | None = None,
+    *,
+    strike_sequence: dict[int, int] | None = None,
+) -> dict[str, Any]:
     item = VIOLATION_BY_CODE.get(row.violation_code)
     reporter_name: str | None = None
     reporter_login: str | None = None
     if db is not None:
         reporter_name, reporter_login = _user_brief(db, row.reported_by_user_id)
+    strike = _effective_strike_number(row, strike_sequence)
+    display_label = build_sanction_display_label(row.violation_code, strike, row.sanction_result)
     return {
         "id": row.id,
         "period_id": row.period_id,
@@ -323,10 +385,28 @@ def _serialize_sanction(row: FunctionalEvalSanction, worker_name: str, db: Sessi
         "violation_label": item.label if item else row.violation_code,
         "violation_category": row.violation_category,
         "violation_category_label": item.category_label if item else row.violation_category,
-        "strike_number": row.strike_number,
+        "strike_number": strike,
         "sanction_result": row.sanction_result,
         "sanction_result_label": SANCTION_RESULT_LABELS.get(row.sanction_result, row.sanction_result),
+        "institutional_sanction_label": institutional_sanction_label(row.sanction_result),
+        "outcome_label": sanction_outcome_label(row.sanction_result),
+        "sanction_display_label": display_label,
+        "is_hiring_ban": is_permanent_sanction(row.sanction_result),
         "note": row.note,
+        "evidence_type": row.evidence_type or EVIDENCE_COMMENT,
+        "evidence_type_label": "사진" if (row.evidence_type or EVIDENCE_COMMENT) == EVIDENCE_PHOTO else "코멘트",
+        "evidence_photo_url": (
+            f"/functional-eval/sanctions/{row.id}/evidence-photo"
+            if row.evidence_photo_path
+            else None
+        ),
+        "penalty_points": int(row.penalty_points if row.penalty_points is not None else DEFAULT_SANCTION_PENALTY_POINTS),
+        "has_signature": bool((row.signature_data or "").strip()),
+        "signature_url": (
+            f"/functional-eval/sanctions/{row.id}/signature"
+            if (row.signature_data or "").strip()
+            else None
+        ),
         "reported_by_user_id": row.reported_by_user_id,
         "reported_by_name": reporter_name,
         "reported_by_login_id": reporter_login,
@@ -370,13 +450,23 @@ def _worker_sanction_status(db: Session, worker_id: int) -> tuple[str, str, int,
     rows = _worker_sanction_rows(db, worker_id)
     if not rows:
         return "NONE", "해당 없음", 0, None
+    worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
+    strike_sequence = _strike_sequence_for_person(db, worker.rrn_hash) if worker else None
     results = [r.sanction_result for r in rows]
     status = worker_status_from_sanctions(results)
-    label = SANCTION_RESULT_LABELS.get(status, status if status != "NONE" else "해당 없음")
+    display_row = next((r for r in rows if r.sanction_result == status), rows[0])
+    strike = _effective_strike_number(display_row, strike_sequence)
+    label = build_sanction_display_label(display_row.violation_code, strike, display_row.sanction_result)
     return status, label, len(rows), rows[0]
 
 
-def _serialize_assessment(row: FunctionalEvalAssessment | None, eval_type: EvalType) -> dict[str, Any] | None:
+def _serialize_assessment(
+    row: FunctionalEvalAssessment | None,
+    eval_type: EvalType,
+    *,
+    bonus_points: int = 0,
+    penalty_points: int = 0,
+) -> dict[str, Any] | None:
     if row is None:
         return None
     required = len(get_criteria(eval_type))
@@ -385,16 +475,39 @@ def _serialize_assessment(row: FunctionalEvalAssessment | None, eval_type: EvalT
     grade_label = row.grade_label or ""
     if grade_code and grade_label.endswith("등급"):
         grade_label = f"{grade_code}등급"
-    return {
+    total_score = int(row.total_score or 0)
+    max_score = int(row.max_score or 0)
+    payload: dict[str, Any] = {
         "eval_type": row.eval_type,
         "scores": scores,
-        "total_score": row.total_score,
-        "max_score": row.max_score,
+        "total_score": total_score,
+        "max_score": max_score,
         "grade_code": grade_code,
         "grade_label": grade_label,
         "is_complete": len(scores) >= required and required > 0,
         "updated_at": row.updated_at,
     }
+    if (
+        eval_type == "SAFETY"
+        and payload["is_complete"]
+        and max_score > 0
+        and (bonus_points > 0 or penalty_points > 0)
+    ):
+        adjusted_total, adj_code, adj_label = apply_score_point_adjustments(
+            total_score,
+            max_score,
+            bonus=bonus_points,
+            penalty=penalty_points,
+        )
+        adj_code = normalize_grade_code(adj_code) or adj_code
+        payload["base_total_score"] = total_score
+        payload["base_grade_code"] = grade_code
+        payload["total_score"] = adjusted_total
+        payload["grade_code"] = adj_code
+        payload["grade_label"] = f"{adj_code}등급" if adj_code else adj_label
+        payload["adjustment_bonus"] = bonus_points
+        payload["adjustment_penalty"] = penalty_points
+    return payload
 
 
 def _normalize_person_name(text: str) -> str:
@@ -551,10 +664,18 @@ def serialize_worker(
 ) -> dict[str, Any]:
     status, status_label, count, latest = _worker_sanction_status(db, worker.id)
     permanent = _worker_is_permanently_expelled(db, worker.id)
+    strike_sequence = _strike_sequence_for_person(db, worker.rrn_hash)
     if assessments is None:
         assessments = _assessments_map(db, [worker.id]).get(worker.id, {})
+    penalty_total = _worker_penalty_points_total(db, worker.id)
+    bonus_total = _worker_bonus_points_total(db, worker.id)
     functional = _serialize_assessment(assessments.get("FUNCTIONAL"), "FUNCTIONAL")
-    safety = _serialize_assessment(assessments.get("SAFETY"), "SAFETY")
+    safety = _serialize_assessment(
+        assessments.get("SAFETY"),
+        "SAFETY",
+        bonus_points=bonus_total,
+        penalty_points=penalty_total,
+    )
     eval_assignment = _worker_eval_assignment(db, worker, team_leader_logins=team_leader_logins)
     payload: dict[str, Any] = {
         "id": worker.id,
@@ -578,14 +699,53 @@ def serialize_worker(
         "sanction_count": count,
         "is_permanently_expelled": permanent,
         "history_visible": not permanent,
-        "latest_sanction": _serialize_sanction(latest, worker.name, db) if latest and not permanent else None,
-        "mileage": serialize_mileage_placeholder(worker),
+        "latest_sanction": (
+            _serialize_sanction(latest, worker.name, db, strike_sequence=strike_sequence)
+            if latest and not permanent
+            else None
+        ),
+        "mileage": serialize_worker_adjustments(db, worker),
+        "adjustments": serialize_worker_adjustments(db, worker),
+        "penalty_points_total": penalty_total,
+        "bonus_points_total": bonus_total,
         "functional_assessment": functional,
         "safety_assessment": safety,
         "mileage_note": worker.mileage_note,
         "evaluation_batch": worker.evaluation_batch or 0,
         "evaluation_batch_label": batch_label(worker.evaluation_batch or 0),
     }
+    payload["remark"] = build_worker_remark(db, worker, payload, include_eval_status=True)
+    payload["note"] = payload["remark"]
+    approved = (
+        db.query(FunctionalEvalCustomerReward)
+        .filter(
+            FunctionalEvalCustomerReward.worker_id == worker.id,
+            FunctionalEvalCustomerReward.status == REWARD_STATUS_APPROVED,
+        )
+        .order_by(FunctionalEvalCustomerReward.reviewed_at.desc())
+        .first()
+    )
+    pending = (
+        db.query(FunctionalEvalCustomerReward)
+        .filter(
+            FunctionalEvalCustomerReward.worker_id == worker.id,
+            FunctionalEvalCustomerReward.status == REWARD_STATUS_PENDING,
+        )
+        .order_by(FunctionalEvalCustomerReward.created_at.desc())
+        .first()
+    )
+    reward = approved or pending
+    if reward is not None:
+        payload["customer_reward"] = {
+            "id": reward.id,
+            "status": reward.status,
+            "bonus_points": reward.bonus_points,
+            "photo_url": f"/functional-eval/customer-rewards/{reward.id}/photo",
+        }
+        if approved is not None:
+            full = settings.storage_root / approved.photo_path
+            if full.is_file():
+                payload["reward_photo_path"] = str(full)
     return payload
 
 
@@ -624,22 +784,78 @@ def _worker_needs_highlight(worker_payload: dict[str, Any]) -> bool:
     return False
 
 
-def _worker_eval_remark(worker_payload: dict[str, Any]) -> str:
+def _worker_sanction_remark_lines(db: Session, worker_id: int, *, permanent: bool) -> list[str]:
+    worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
+    strike_sequence = _strike_sequence_for_person(db, worker.rrn_hash) if worker else None
+    rows = (
+        db.query(FunctionalEvalSanction)
+        .filter(FunctionalEvalSanction.worker_id == worker_id)
+        .order_by(FunctionalEvalSanction.created_at.asc(), FunctionalEvalSanction.id.asc())
+        .all()
+    )
+    if permanent and rows:
+        rows = rows[-1:]
+    lines: list[str] = []
+    for row in rows:
+        strike = _effective_strike_number(row, strike_sequence)
+        inst = build_sanction_display_label(row.violation_code, strike, row.sanction_result)
+        penalty = int(row.penalty_points if row.penalty_points is not None else DEFAULT_SANCTION_PENALTY_POINTS)
+        reason = (row.note or "").strip()
+        if penalty > 0:
+            if reason:
+                lines.append(f"제재:{inst}(-{penalty}):{reason}")
+            else:
+                lines.append(f"제재:{inst}(-{penalty})")
+        elif reason:
+            lines.append(f"제재:{inst}:{reason}")
+        else:
+            lines.append(f"제재:{inst}")
+    return lines
+
+
+def build_worker_remark(
+    db: Session,
+    worker: FunctionalEvalWorker,
+    worker_payload: dict[str, Any],
+    *,
+    include_eval_status: bool = True,
+) -> str:
     parts: list[str] = []
-    f = worker_payload.get("functional_assessment") or {}
-    s = worker_payload.get("safety_assessment") or {}
-    if not f.get("is_complete"):
-        parts.append("기능미완")
-    if not s.get("is_complete"):
-        parts.append("안전미완")
-    if (worker_payload.get("sanction_count") or 0) > 0:
-        label = worker_payload.get("sanction_status_label") or ""
-        if label and label != "해당 없음":
-            parts.append(f"제재:{label}")
-    note = (worker_payload.get("mileage_note") or "").strip()
-    if note:
-        parts.append(note)
+    if include_eval_status:
+        f = worker_payload.get("functional_assessment") or {}
+        s = worker_payload.get("safety_assessment") or {}
+        if not f.get("is_complete"):
+            parts.append("기능미완")
+        if not s.get("is_complete"):
+            parts.append("안전미완")
+
+    mileage_note = (worker.mileage_note or "").strip()
+    bonus = _worker_bonus_points_total(db, worker.id)
+    if bonus > 0:
+        parts.append(f"고객사포상(+{bonus})")
+    elif mileage_note == CUSTOMER_REWARD_NOTE:
+        parts.append("고객사포상")
+
+    penalty_total = _worker_penalty_points_total(db, worker.id)
+    if penalty_total > 0:
+        parts.append(f"감점(-{penalty_total})")
+
+    parts.extend(
+        _worker_sanction_remark_lines(
+            db,
+            worker.id,
+            permanent=bool(worker_payload.get("is_permanently_expelled")),
+        )
+    )
     return " · ".join(parts) if parts else "—"
+
+
+def _worker_eval_remark(db: Session, worker: FunctionalEvalWorker, worker_payload: dict[str, Any]) -> str:
+    return build_worker_remark(db, worker, worker_payload, include_eval_status=True)
+
+
+def _remark_for_completed_worker(db: Session, worker: FunctionalEvalWorker, worker_payload: dict[str, Any]) -> str:
+    return build_worker_remark(db, worker, worker_payload, include_eval_status=False)
 
 
 def _site_name_map(db: Session, site_codes: set[str]) -> dict[str, str]:
@@ -647,6 +863,43 @@ def _site_name_map(db: Session, site_codes: set[str]) -> dict[str, str]:
         return {}
     rows = db.query(Site).filter(Site.site_code.in_(site_codes)).all()
     return {s.site_code: s.site_name for s in rows if s.site_code}
+
+
+def _registry_erp_label_map(db: Session, site_codes: set[str]) -> dict[str, str]:
+    if not site_codes:
+        return {}
+    from app.modules.functional_eval.eval_provisioning import normalize_erp_site_label
+    from app.modules.functional_eval.models import FunctionalEvalSiteRegistry
+
+    rows = (
+        db.query(FunctionalEvalSiteRegistry)
+        .filter(FunctionalEvalSiteRegistry.site_code.in_(site_codes))
+        .all()
+    )
+    return {
+        row.site_code: normalize_erp_site_label(row.erp_site_label)
+        for row in rows
+        if row.site_code and (row.erp_site_label or "").strip()
+    }
+
+
+def _resolve_worker_site_display_name(
+    site_code: str,
+    *,
+    worker_site_name: str | None,
+    site_names: dict[str, str],
+    erp_labels: dict[str, str],
+) -> str:
+    erp = erp_labels.get(site_code) or ""
+    registered = (site_names.get(site_code) or "").strip()
+    if erp:
+        return erp
+    worker_label = (worker_site_name or "").strip()
+    if worker_label and not worker_label.startswith(f"현장 {site_code}"):
+        return worker_label
+    if registered and not registered.startswith(f"현장 {site_code}"):
+        return registered
+    return registered or worker_label or f"현장 {site_code}"
 
 
 def _site_evaluator_map(db: Session, site_codes: set[str]) -> dict[str, str]:
@@ -696,7 +949,7 @@ def _hq_site_bucket_label(bucket: str) -> str:
     return {
         HQ_SITE_BUCKET_IN_PROGRESS: "진행 중",
         HQ_SITE_BUCKET_NOT_STARTED: "미평가",
-        HQ_SITE_BUCKET_COMPLETED: "완료",
+        HQ_SITE_BUCKET_COMPLETED: "평가 완료",
     }.get(bucket, bucket)
 
 
@@ -834,6 +1087,115 @@ def _attendance_target_workers(
     return q.all()
 
 
+def _list_eval_complete_site_submit_blockers(
+    db: Session,
+    period: FunctionalEvalPeriod,
+) -> list[dict[str, Any]]:
+    """전원 평가 완료였으나 본사 검토·서명 전인 현장 — 차단 사유."""
+    from app.modules.functional_eval import approval_workflow, signature_ops
+    from app.modules.functional_eval.constants import (
+        APPROVAL_STATUS_CEO_APPROVED,
+        APPROVAL_STATUS_HQ_APPROVED,
+        APPROVAL_STATUS_HQ_OFFICER_APPROVED,
+        APPROVAL_STATUS_SITE_APPROVED,
+    )
+
+    workers = _attendance_target_workers(db, period)
+    site_codes = sorted({w.site_code for w in workers if w.site_code})
+    site_names = _site_name_map(db, set(site_codes))
+    blockers: list[dict[str, Any]] = []
+
+    for site_code in site_codes:
+        summary = serialize_site_approval_summary(db, period, site_code)
+        total = int(summary.get("site_total_workers") or 0)
+        complete = int(summary.get("site_complete_workers") or 0)
+        if total <= 0 or complete < total:
+            continue
+
+        approval = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
+        if approval.status in {
+            APPROVAL_STATUS_SITE_APPROVED,
+            APPROVAL_STATUS_HQ_OFFICER_APPROVED,
+            APPROVAL_STATUS_HQ_APPROVED,
+            APPROVAL_STATUS_CEO_APPROVED,
+        }:
+            continue
+
+        batches = signature_ops.active_site_batches(db, period, site_code)
+        batch = max(batches) if batches else 0
+        team_signed = signature_ops.all_team_leaders_signed(db, period, site_code, batch)
+        if not team_signed:
+            blocker_label = "팀장 평가완료보고서 미서명"
+            blocker_stage = "team_leader_signoff"
+        elif approval_workflow.is_site_evaluation_editable(approval.status):
+            blocker_label = "소장 최종 제출 대기"
+            blocker_stage = "site_manager_submit"
+        else:
+            continue
+
+        blockers.append(
+            {
+                "site_code": site_code,
+                "site_name": site_names.get(site_code) or f"현장 {site_code}",
+                "blocker_label": blocker_label,
+                "blocker_stage": blocker_stage,
+                "team_leaders_all_signed": team_signed,
+                "site_complete_workers": complete,
+                "site_total_workers": total,
+            }
+        )
+    return blockers
+
+
+def build_hq_review_queue(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
+    """본사 검토·승인 대기 건수 (포상 승인 + 소장 제출 완료 현장)."""
+    from app.modules.functional_eval import approval_workflow, customer_rewards as reward_service
+
+    pending_rewards = reward_service.list_pending_customer_rewards(db, period)
+    pending_officer = approval_workflow.list_pending_hq_officer_approvals(db, period)
+    pending_director = approval_workflow.list_pending_hq_director_approvals(db, period)
+    pending_ceo = approval_workflow.list_pending_ceo_approvals(db, period)
+    site_submit_blockers = _list_eval_complete_site_submit_blockers(db, period)
+
+    workers = _attendance_target_workers(db, period)
+    worker_ids = [w.id for w in workers]
+    sites_with_evidence: set[str] = set()
+    if worker_ids:
+        sanctioned_ids = {
+            wid
+            for (wid,) in db.query(FunctionalEvalSanction.worker_id)
+            .filter(FunctionalEvalSanction.worker_id.in_(worker_ids))
+            .distinct()
+            .all()
+        }
+        reward_ids = {
+            wid
+            for (wid,) in db.query(FunctionalEvalCustomerReward.worker_id)
+            .filter(
+                FunctionalEvalCustomerReward.period_id == period.id,
+                FunctionalEvalCustomerReward.worker_id.in_(worker_ids),
+            )
+            .distinct()
+            .all()
+        }
+        evidence_worker_ids = sanctioned_ids | reward_ids
+        for w in workers:
+            if w.id in evidence_worker_ids and w.site_code:
+                sites_with_evidence.add(w.site_code)
+
+    return {
+        "pending_reward_count": len(pending_rewards),
+        "pending_hq_officer_site_count": len(pending_officer),
+        "pending_hq_director_site_count": len(pending_director),
+        "pending_hq_site_count": len(pending_officer) + len(pending_director),
+        "pending_ceo_site_count": len(pending_ceo),
+        "total_hq_action_count": len(pending_rewards) + len(pending_officer) + len(pending_director),
+        "sites_with_evidence_count": len(sites_with_evidence),
+        "eval_complete_not_submitted_count": len(site_submit_blockers),
+        "site_submit_blockers": site_submit_blockers,
+    }
+
+
 def build_hq_sites_overview(
     db: Session,
     period: FunctionalEvalPeriod,
@@ -906,6 +1268,7 @@ def build_hq_sites_overview(
             "incomplete": total_workers - fully,
         },
         "site_buckets": _summarize_hq_site_buckets(sites),
+        "review_queue": build_hq_review_queue(db, period),
         "sites": sites,
         # 구버전 프론트( site_progress 키 ) 호환
         "site_progress": sites,
@@ -923,18 +1286,6 @@ def _worker_assess_payload(
         "functional_assessment": _serialize_assessment(assessments.get("FUNCTIONAL"), "FUNCTIONAL"),
         "safety_assessment": _serialize_assessment(assessments.get("SAFETY"), "SAFETY"),
     }
-
-
-def _remark_for_completed_worker(worker_payload: dict[str, Any]) -> str:
-    parts: list[str] = []
-    if (worker_payload.get("sanction_count") or 0) > 0:
-        label = worker_payload.get("sanction_status_label") or ""
-        if label and label != "해당 없음":
-            parts.append(f"제재:{label}")
-    note = (worker_payload.get("mileage_note") or "").strip()
-    if note:
-        parts.append(note)
-    return " · ".join(parts) if parts else "—"
 
 
 def build_hq_eval_rows(items: list[dict[str, Any]], *, completed_only: bool = False) -> list[dict[str, Any]]:
@@ -968,7 +1319,7 @@ def build_hq_eval_rows(items: list[dict[str, Any]], *, completed_only: bool = Fa
                 "safety_grade": _eval_grade_label(s),
                 "functional_score": f.get("total_score"),
                 "safety_score": s.get("total_score"),
-                "remark": _remark_for_completed_worker(w) if fully else _worker_eval_remark(w),
+                "remark": w.get("remark") or "—",
                 "is_fully_complete": fully,
                 "eval_status": eval_status,
                 "eval_status_label": eval_status_label,
@@ -1021,14 +1372,27 @@ def list_hq_site_completed_evaluations(
     }
 
 
-def list_hq_eval_export_rows(db: Session, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
-    items = list_hq_summary(db, period, sort_by="site_code", sort_dir="asc", include_inactive=False)
+def list_hq_eval_export_rows(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    *,
+    site_code: str | None = None,
+) -> list[dict[str, Any]]:
+    items = list_hq_summary(
+        db,
+        period,
+        sort_by="site_code",
+        sort_dir="asc",
+        include_inactive=False,
+        site_code=site_code,
+    )
     rows: list[dict[str, Any]] = []
     site_codes = {item["worker"].get("site_code") for item in items if item["worker"].get("site_code")}
     evaluators = _site_evaluator_map(db, site_codes)
     for item in items:
         w = item["worker"]
         code = w.get("site_code") or ""
+        fully = _is_fully_evaluated(w)
         rows.append(
             {
                 "site_code": code,
@@ -1037,8 +1401,9 @@ def list_hq_eval_export_rows(db: Session, period: FunctionalEvalPeriod) -> list[
                 "name": w.get("name"),
                 "functional_grade": _eval_grade_label(w.get("functional_assessment")),
                 "safety_grade": _eval_grade_label(w.get("safety_assessment")),
-                "fully_complete": "Y" if _is_fully_evaluated(w) else "N",
-                "remark": _worker_eval_remark(w),
+                "eval_status": w.get("eval_status_label") or ("완료" if fully else "미완료"),
+                "fully_complete": "Y" if fully else "N",
+                "remark": w.get("remark") or "—",
             }
         )
     return rows
@@ -1090,13 +1455,62 @@ def build_hq_summary_totals(items: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
-def serialize_mileage_placeholder(worker: FunctionalEvalWorker) -> dict[str, Any]:
-    return {
-        "status": "PREPARED",
-        "points": worker.mileage_points,
-        "note": worker.mileage_note,
-        "message": "우수 의견 마일리지 제도 운영 준비 중입니다.",
+def _worker_penalty_points_total(db: Session, worker_id: int) -> int:
+    from sqlalchemy import func
+
+    total = (
+        db.query(func.coalesce(func.sum(FunctionalEvalSanction.penalty_points), 0))
+        .filter(FunctionalEvalSanction.worker_id == worker_id)
+        .scalar()
+    )
+    return int(total or 0)
+
+
+def _worker_bonus_points_total(db: Session, worker_id: int) -> int:
+    from sqlalchemy import func
+
+    from app.modules.functional_eval.customer_rewards import REWARD_STATUS_APPROVED
+
+    total = (
+        db.query(func.coalesce(func.sum(FunctionalEvalCustomerReward.bonus_points), 0))
+        .filter(
+            FunctionalEvalCustomerReward.worker_id == worker_id,
+            FunctionalEvalCustomerReward.status == REWARD_STATUS_APPROVED,
+        )
+        .scalar()
+    )
+    return int(total or 0)
+
+
+def serialize_worker_adjustments(db: Session, worker: FunctionalEvalWorker) -> dict[str, Any]:
+    """제재 감점·포상 가점 — 마일리지 제도와 별도, 건별 기록 합산."""
+    penalty = _worker_penalty_points_total(db, worker.id)
+    bonus = _worker_bonus_points_total(db, worker.id)
+    payload: dict[str, Any] = {
+        "penalty_points": penalty,
+        "bonus_points": bonus,
     }
+    if penalty > 0:
+        payload["penalty_label"] = f"감점 -{penalty}점"
+    if bonus > 0:
+        payload["bonus_label"] = f"가점 +{bonus}점"
+    if penalty > 0:
+        payload["status"] = "PENALTY"
+        payload["points"] = -penalty
+        payload["label"] = payload["penalty_label"]
+    elif bonus > 0:
+        payload["status"] = "BONUS"
+        payload["points"] = bonus
+        payload["label"] = payload["bonus_label"]
+    else:
+        payload["status"] = "NONE"
+        payload["points"] = 0
+    return payload
+
+
+def serialize_mileage_placeholder(db: Session, worker: FunctionalEvalWorker) -> dict[str, Any]:
+    """하위 호환 — `/mileage` 엔드포인트. 실제로는 제재·포상 가감점 합산."""
+    return serialize_worker_adjustments(db, worker)
 
 
 def _site_code_for_user(user: User, db: Session) -> str:
@@ -1256,6 +1670,8 @@ def _worker_eval_assignment(
     manager_login = _manager_login_for_site(db, worker.site_code)
     assigned = (worker.assigned_evaluator_login_id or "").strip()
     if worker.is_site_manager:
+        return EVAL_ASSIGNMENT_DIRECT
+    if not assigned:
         return EVAL_ASSIGNMENT_DIRECT
     if assigned != manager_login:
         return EVAL_ASSIGNMENT_TEAM
@@ -1492,6 +1908,21 @@ def list_hq_evaluator_accounts(db: Session, period: FunctionalEvalPeriod) -> dic
     }
 
 
+def _worker_assignment_for_site(
+    db: Session,
+    worker: FunctionalEvalWorker,
+    *,
+    period: FunctionalEvalPeriod | None = None,
+) -> str:
+    period_row = period or db.query(FunctionalEvalPeriod).filter(FunctionalEvalPeriod.id == worker.period_id).first()
+    if period_row is None:
+        return EVAL_ASSIGNMENT_DIRECT
+    rows = _site_attendance_workers(db, period_row, worker.site_code)
+    manager_login = _manager_login_for_site(db, worker.site_code)
+    team_leader_logins = _collect_team_leader_evaluator_logins(rows, manager_login)
+    return _worker_eval_assignment(db, worker, team_leader_logins=team_leader_logins)
+
+
 def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
     if user.role != Role.SITE_FUNCTIONAL_EVAL:
         return
@@ -1503,6 +1934,43 @@ def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker)
         return
     if _is_team_leader_self_target(db, user, worker):
         raise ValueError("CANNOT_EVALUATE_SELF")
+    assigned = (worker.assigned_evaluator_login_id or "").strip()
+    if assigned and assigned != login_id:
+        raise ValueError("SITE_MISMATCH")
+    if not assigned:
+        raise ValueError("SITE_MISMATCH")
+
+
+def _assert_worker_score_save_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
+    """기능·안전 점수 저장 — 소장은 팀원(팀장 담당) 점수 수정 불가."""
+    if user.role != Role.SITE_FUNCTIONAL_EVAL:
+        return
+    site_code = _site_code_for_user(user, db)
+    if site_code != worker.site_code:
+        raise ValueError("SITE_MISMATCH")
+    if _is_primary_site_evaluator(db, user, site_code):
+        if _worker_assignment_for_site(db, worker) == EVAL_ASSIGNMENT_TEAM:
+            raise ValueError("MANAGER_CANNOT_EDIT_TEAM_SCORES")
+        return
+    _assert_worker_access(db, user, worker)
+
+
+def _assert_worker_evidence_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
+    """포상·제재 등록 — 소장은 현장 전체, 팀장은 담당 팀원만."""
+    if _is_hq_safety_user(user):
+        return
+    if user.role != Role.SITE_FUNCTIONAL_EVAL:
+        raise ValueError("SITE_MISMATCH")
+    site_code = _site_code_for_user(user, db)
+    if site_code != worker.site_code:
+        raise ValueError("SITE_MISMATCH")
+    if _is_primary_site_evaluator(db, user, site_code):
+        if _is_team_leader_self_target(db, user, worker):
+            raise ValueError("CANNOT_EVALUATE_SELF")
+        return
+    if _is_team_leader_self_target(db, user, worker):
+        raise ValueError("CANNOT_EVALUATE_SELF")
+    login_id = (user.login_id or "").strip()
     assigned = (worker.assigned_evaluator_login_id or "").strip()
     if assigned and assigned != login_id:
         raise ValueError("SITE_MISMATCH")
@@ -1524,25 +1992,41 @@ def _assert_worker_view_access(db: Session, user: User, worker: FunctionalEvalWo
     _assert_worker_access(db, user, worker)
 
 
+def _worker_has_safety_bottom(db: Session, worker_id: int) -> bool:
+    row = (
+        db.query(FunctionalEvalAssessment)
+        .filter(
+            FunctionalEvalAssessment.worker_id == worker_id,
+            FunctionalEvalAssessment.eval_type == "SAFETY",
+        )
+        .first()
+    )
+    if row is None:
+        return False
+    required = len(get_criteria("SAFETY"))
+    scores = dict(row.scores_json or {})
+    if len(scores) < required or required <= 0:
+        return False
+    return assessment_has_bottom("SAFETY", scores)
+
+
+def _worker_sanction_count(db: Session, worker_id: int) -> int:
+    return (
+        db.query(FunctionalEvalSanction)
+        .filter(FunctionalEvalSanction.worker_id == worker_id)
+        .count()
+    )
+
+
 def _assert_sanction_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
-    """제재 등록 — 소장은 현장 전체, 팀장은 담당만, 본사는 전체."""
+    """제재 등록 — 소장은 현장 전체, 팀장은 담당 팀원만."""
     if _is_hq_safety_user(user):
         return
-    if user.role != Role.SITE_FUNCTIONAL_EVAL:
-        raise ValueError("SITE_MISMATCH")
-    site_code = _site_code_for_user(user, db)
-    if site_code != worker.site_code:
-        raise ValueError("SITE_MISMATCH")
-    if _is_primary_site_evaluator(db, user, site_code):
-        return
-    if _is_team_leader_self_target(db, user, worker):
-        raise ValueError("CANNOT_EVALUATE_SELF")
-    login_id = (user.login_id or "").strip()
-    assigned = (worker.assigned_evaluator_login_id or "").strip()
-    if assigned and assigned != login_id:
-        raise ValueError("SITE_MISMATCH")
-    if not assigned:
-        raise ValueError("SITE_MISMATCH")
+    _assert_worker_evidence_access(db, user, worker)
+
+
+def _assert_sanction_register(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
+    _assert_sanction_access(db, user, worker)
 
 
 def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
@@ -1608,9 +2092,13 @@ def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any
     )
     revision_payload = [_serialize_assessment_revision(r, db) for r in revisions]
 
+    strike_sequence = _strike_sequence_for_person(db, worker.rrn_hash)
+
     if permanent:
         latest = _worker_sanction_rows(db, worker.id)
-        summary = _serialize_sanction(latest[0], worker.name, db) if latest else None
+        summary = (
+            _serialize_sanction(latest[0], worker.name, db, strike_sequence=strike_sequence) if latest else None
+        )
         return {
             "worker": worker_payload,
             "history_visible": False,
@@ -1660,7 +2148,7 @@ def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any
             .all()
         )
         for row in rows:
-            item = _serialize_sanction(row, pw.name, db)
+            item = _serialize_sanction(row, pw.name, db, strike_sequence=strike_sequence)
             item["period_id"] = pw.period_id
             item["from_prior_period"] = True
             prior_sanctions.append(item)
@@ -1668,11 +2156,12 @@ def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any
     return {
         "worker": worker_payload,
         "history_visible": True,
-        "sanctions": [_serialize_sanction(s, worker.name, db) for s in current],
+        "sanctions": [_serialize_sanction(s, worker.name, db, strike_sequence=strike_sequence) for s in current],
         "prior_sanctions": prior_sanctions,
         "prior_assessments": prior_assessments,
         "assessment_revisions": revision_payload,
-        "mileage": serialize_mileage_placeholder(worker),
+        "mileage": serialize_worker_adjustments(db, worker),
+        "adjustments": serialize_worker_adjustments(db, worker),
     }
 
 
@@ -1737,18 +2226,39 @@ def _upsert_assessment_with_revision(
     return _serialize_assessment(existing, eval_type)
 
 
-def _apply_safety_c_grade_from_sanction(
+def _apply_safety_bottom_from_violation(
     db: Session,
     *,
     worker: FunctionalEvalWorker,
     user: User,
     sanction_row: FunctionalEvalSanction,
+    violation_code: str,
     violation_label: str,
     note: str,
 ) -> None:
-    scores = build_lowest_grade_scores("SAFETY")
+    """추가 제재 — 해당 위반에 대응하는 안전(2-2) 항목만 「문제」로 자동 반영."""
+    existing = (
+        db.query(FunctionalEvalAssessment)
+        .filter(
+            FunctionalEvalAssessment.worker_id == worker.id,
+            FunctionalEvalAssessment.eval_type == "SAFETY",
+        )
+        .first()
+    )
+    before = dict(existing.scores_json) if existing and existing.scores_json else None
+    if violation_safety_targets_already_bottom(violation_code, before):
+        return
+    scores = build_safety_scores_with_bottom_for_violation(violation_code, before)
+    criterion_ids = violation_safety_criterion_ids(violation_code)
+    if not criterion_ids:
+        return
+    titles = []
+    for crit in get_criteria("SAFETY"):
+        if str(crit["id"]) in criterion_ids:
+            titles.append(str(crit.get("title") or crit["id"]))
+    target_label = ", ".join(titles) if titles else violation_label
     reason = (
-        f"제재 등록에 따른 안전(2-2) C등급 자동 반영 — {violation_label}"
+        f"제재 등록 — {violation_label} · {target_label} 「문제」 자동 반영"
         f" ({note.strip()})"
     )
     _upsert_assessment_with_revision(
@@ -1770,35 +2280,58 @@ def record_sanction(
     user: User,
     worker_id: int,
     violation_code: str,
+    evidence_type: str,
     note: str | None,
+    evidence_photo_path: str | None = None,
+    evidence_photo_original_filename: str | None = None,
+    signature_data: str,
+    penalty_points: int = DEFAULT_SANCTION_PENALTY_POINTS,
 ) -> dict[str, Any]:
+    from app.modules.functional_eval.signature_service import validate_signature_data
+
     assert_period_editable(period)
     if violation_code not in VIOLATION_BY_CODE:
         raise ValueError("UNKNOWN_VIOLATION")
+
+    ev_type = (evidence_type or "").strip().upper()
+    if ev_type not in {EVIDENCE_COMMENT, EVIDENCE_PHOTO}:
+        raise ValueError("INVALID_EVIDENCE_TYPE")
+
     note_text = (note or "").strip()
-    if not note_text:
-        raise ValueError("SANCTION_NOTE_REQUIRED")
+    if ev_type == EVIDENCE_COMMENT and not note_text:
+        raise ValueError("SANCTION_EVIDENCE_COMMENT_REQUIRED")
+    if ev_type == EVIDENCE_PHOTO and not evidence_photo_path:
+        raise ValueError("SANCTION_EVIDENCE_PHOTO_REQUIRED")
+
+    try:
+        _, sig_raw = validate_signature_data(signature_data)
+    except ValueError as exc:
+        raise ValueError("SANCTION_SIGNATURE_REQUIRED") from exc
+    signature_hash = hashlib.sha256(sig_raw).hexdigest()
 
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
     if worker is None or worker.period_id != period.id:
         raise ValueError("WORKER_NOT_FOUND")
     if worker.is_site_manager:
         raise ValueError("CANNOT_SANCTION_SITE_MANAGER")
-    _assert_sanction_access(db, user, worker)
+    _assert_sanction_register(db, user, worker)
     if not _is_hq_safety_user(user):
         _assert_worker_attendance_eligible(db, period, worker)
 
     prior_count = (
         db.query(FunctionalEvalSanction)
         .filter(
-            FunctionalEvalSanction.period_id == period.id,
-            FunctionalEvalSanction.worker_id == worker.id,
+            FunctionalEvalSanction.worker_id.in_(_worker_ids_same_person(db, worker)),
             FunctionalEvalSanction.violation_code == violation_code,
         )
         .count()
     )
     sanction_result, strike = resolve_sanction(violation_code, prior_count)
     item = VIOLATION_BY_CODE[violation_code]
+    if prior_count > 0:
+        points = max(1, min(int(penalty_points or DEFAULT_SANCTION_PENALTY_POINTS), 100))
+    else:
+        points = 0
 
     row = FunctionalEvalSanction(
         period_id=period.id,
@@ -1808,22 +2341,32 @@ def record_sanction(
         violation_category=item.category,
         strike_number=strike,
         sanction_result=sanction_result,
-        note=note_text,
+        note=note_text or None,
+        evidence_type=ev_type,
+        evidence_photo_path=evidence_photo_path,
+        evidence_photo_original_filename=evidence_photo_original_filename,
+        signature_data=signature_data.strip(),
+        signature_hash=signature_hash,
+        penalty_points=points,
         reported_by_user_id=user.id,
     )
     db.add(row)
     db.flush()
-    _apply_safety_c_grade_from_sanction(
+
+    display_note = note_text or ("사진 근거" if ev_type == EVIDENCE_PHOTO else "")
+    _apply_safety_bottom_from_violation(
         db,
         worker=worker,
         user=user,
         sanction_row=row,
+        violation_code=violation_code,
         violation_label=item.label,
-        note=note_text,
+        note=display_note,
     )
     db.commit()
     db.refresh(row)
-    return _serialize_sanction(row, worker.name, db)
+    strike_sequence = _strike_sequence_for_person(db, worker.rrn_hash)
+    return _serialize_sanction(row, worker.name, db, strike_sequence=strike_sequence)
 
 
 def list_hq_summary(
@@ -1857,10 +2400,13 @@ def list_hq_summary(
         visible_sanctions = sanctions
         if worker_payload["is_permanently_expelled"]:
             visible_sanctions = sanctions[-1:] if sanctions else []
+        strike_sequence = _strike_sequence_for_person(db, worker.rrn_hash)
         items.append(
             {
                 "worker": worker_payload,
-                "sanctions": [_serialize_sanction(s, worker.name, db) for s in visible_sanctions],
+                "sanctions": [
+                    _serialize_sanction(s, worker.name, db, strike_sequence=strike_sequence) for s in visible_sanctions
+                ],
                 "sanction_count_total": len(sanctions),
             }
         )
@@ -1885,6 +2431,84 @@ def list_hq_summary(
 
     items.sort(key=_key, reverse=reverse)
     return items
+
+
+GRADE_STAT_CODES: tuple[str, ...] = ("S", "A", "B", "C")
+
+
+def _grade_distribution(workers: list[dict[str, Any]], *, assessment_field: str) -> dict[str, Any]:
+    counts = {code: 0 for code in GRADE_STAT_CODES}
+    ungraded = 0
+    for worker in workers:
+        assessment = worker.get(assessment_field)
+        if not assessment or not assessment.get("is_complete"):
+            ungraded += 1
+            continue
+        code = normalize_grade_code(str(assessment.get("grade_code") or "")) or ""
+        if code in counts:
+            counts[code] += 1
+        else:
+            ungraded += 1
+    graded_total = sum(counts.values())
+    grades: dict[str, dict[str, float | int]] = {}
+    for code in GRADE_STAT_CODES:
+        count = counts[code]
+        grades[code] = {
+            "count": count,
+            "pct": round(100.0 * count / graded_total, 1) if graded_total else 0.0,
+        }
+    return {
+        "workers_total": len(workers),
+        "graded_total": graded_total,
+        "ungraded_count": ungraded,
+        "grades": grades,
+    }
+
+
+def _grade_stats_block(workers: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "functional": _grade_distribution(workers, assessment_field="functional_assessment"),
+        "safety": _grade_distribution(workers, assessment_field="safety_assessment"),
+    }
+
+
+def _attendance_worker_payloads(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    *,
+    site_code: str | None = None,
+) -> list[dict[str, Any]]:
+    workers = _attendance_target_workers(db, period, site_code=site_code)
+    site_codes = {w.site_code for w in workers if w.site_code}
+    site_names = _site_name_map(db, site_codes)
+    _, attendance_labels, _ = _attendance_site_meta(db, period.id)
+    registry_labels = _registry_erp_label_map(db, site_codes)
+    erp_labels = {**registry_labels, **attendance_labels}
+    assess_map = _assessments_map(db, [w.id for w in workers])
+    payloads: list[dict[str, Any]] = []
+    for worker in workers:
+        payload = serialize_worker(db, worker, assessments=assess_map.get(worker.id, {}))
+        code = str(worker.site_code or "")
+        payload["site_name"] = _resolve_worker_site_display_name(
+            code,
+            worker_site_name=payload.get("site_name"),
+            site_names=site_names,
+            erp_labels=erp_labels,
+        )
+        payloads.append(payload)
+    return payloads
+
+
+def build_hq_grade_stats(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
+    from app.modules.functional_eval import grade_stats_cache
+
+    return grade_stats_cache.get_hq_grade_stats(db, period)
+
+
+def build_site_grade_stats(db: Session, period: FunctionalEvalPeriod, site_code: str) -> dict[str, Any]:
+    from app.modules.functional_eval import grade_stats_cache
+
+    return grade_stats_cache.get_site_grade_stats(db, period, site_code)
 
 
 def build_hq_summary_response(
@@ -2114,6 +2738,10 @@ def apply_daily_roster_diff(
     db.add(batch)
     db.commit()
 
+    from app.modules.functional_eval import grade_stats_cache
+
+    grade_stats_cache.rebuild_and_persist(db, period)
+
     return {
         "batch_id": batch.id,
         "total_rows": len(parsed_rows),
@@ -2192,11 +2820,18 @@ def get_worker_assessment(db: Session, user: User, worker_id: int, eval_type: Ev
         )
         .first()
     )
+    bonus = _worker_bonus_points_total(db, worker_id) if eval_type == "SAFETY" else 0
+    penalty = _worker_penalty_points_total(db, worker_id) if eval_type == "SAFETY" else 0
     return {
         "worker_id": worker_id,
         "eval_type": eval_type,
         "catalog": catalog_for_api()[eval_type],
-        "assessment": _serialize_assessment(row, eval_type),
+        "assessment": _serialize_assessment(
+            row,
+            eval_type,
+            bonus_points=bonus,
+            penalty_points=penalty,
+        ),
     }
 
 
@@ -2210,7 +2845,7 @@ def save_worker_assessment(
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
     if worker is None:
         raise ValueError("WORKER_NOT_FOUND")
-    _assert_worker_access(db, user, worker)
+    _assert_worker_score_save_access(db, user, worker)
     if worker.is_site_manager:
         raise ValueError("CANNOT_EVALUATE_SITE_MANAGER")
     period = db.query(FunctionalEvalPeriod).filter(FunctionalEvalPeriod.id == worker.period_id).first()
@@ -2255,7 +2890,12 @@ def save_worker_assessment(
         db.add(row)
     db.commit()
     db.refresh(row)
-    return _serialize_assessment(row, eval_type)
+    from app.modules.functional_eval import grade_stats_cache
+
+    grade_stats_cache.rebuild_and_persist(db, period)
+    bonus = _worker_bonus_points_total(db, worker_id) if eval_type == "SAFETY" else 0
+    penalty = _worker_penalty_points_total(db, worker_id) if eval_type == "SAFETY" else 0
+    return _serialize_assessment(row, eval_type, bonus_points=bonus, penalty_points=penalty)
 
 
 def save_hq_assessment_override(
@@ -2293,6 +2933,9 @@ def save_hq_assessment_override(
         source="HQ_OVERRIDE",
     )
     db.commit()
+    from app.modules.functional_eval import grade_stats_cache
+
+    grade_stats_cache.rebuild_and_persist(db, period)
     return {"assessment": assessment}
 
 

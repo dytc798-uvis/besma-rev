@@ -43,6 +43,15 @@ VIOLATION_CATALOG: tuple[ViolationItem, ...] = (
     ViolationItem("INST_WALKING", "SAFETY_INSTRUCTION", "안전 지시 불이행", "이동·소통 수칙 위반(주머니·휴대폰·이어폰)", "THREE_STRIKE", 305),
     ViolationItem("INST_SMOKING_AREA", "SAFETY_INSTRUCTION", "안전 지시 불이행", "지정 흡연구역 외 흡연", "THREE_STRIKE", 306),
     ViolationItem("INST_HOUSEKEEPING", "SAFETY_INSTRUCTION", "안전 지시 불이행", "작업 후 정리정돈·출결·무재해 기록 미준수", "THREE_STRIKE", 307),
+    # ── 3-1. 도급사 안전수칙 (삼진아웃) ──
+    ViolationItem(
+        "SUBCONTRACTOR_SAFETY_RULE",
+        "SUBCONTRACTOR_SAFETY",
+        "도급사 안전수칙",
+        "도급사 안전수칙 위반",
+        "THREE_STRIKE",
+        308,
+    ),
     # ── 4. 일반 안전수칙(2회제): 1 경고 → 2 퇴출 ──
     ViolationItem("GEN_BASIC_SAFETY", "GENERAL_SAFETY", "일반 안전수칙", "기초 안전수칙 위반", "TWO_STRIKE", 401),
     ViolationItem("GEN_INAPPROPRIATE", "GENERAL_SAFETY", "일반 안전수칙", "부적절한 언행·태도", "TWO_STRIKE", 402),
@@ -70,6 +79,52 @@ SANCTION_RESULT_LABELS: dict[str, str] = {
     "SITE_PERMANENT_BAN": "즉시 퇴출 및 영구 출입 금지",
     "COMPANY_PERMANENT_EXPULSION": "부현전기 영구 퇴출",
 }
+
+# 본 제도 표시용 — 쓰리아웃 / 현장퇴출 / 영구퇴출
+INSTITUTIONAL_SANCTION_LABELS: dict[str, str] = {
+    "VERBAL_WARNING": "쓰리아웃",
+    "WARNING": "쓰리아웃",
+    "SAFETY_TRAINING_2H": "쓰리아웃",
+    "SAME_DAY_EXPULSION": "현장퇴출",
+    "SITE_PERMANENT_EXPULSION": "영구퇴출",
+    "SITE_PERMANENT_BAN": "영구퇴출",
+    "COMPANY_PERMANENT_EXPULSION": "영구퇴출",
+}
+
+DEFAULT_SANCTION_VIOLATION_CODE = "SUBCONTRACTOR_SAFETY_RULE"
+
+
+def institutional_sanction_label(result: str) -> str:
+    return INSTITUTIONAL_SANCTION_LABELS.get(result, SANCTION_RESULT_LABELS.get(result, result))
+
+
+def strike_max_for_rule(rule: SanctionRuleType) -> int:
+    if rule == "THREE_STRIKE":
+        return 3
+    if rule == "TWO_STRIKE":
+        return 2
+    return 1
+
+
+def sanction_outcome_label(result: str) -> str:
+    """UI 표시용 — 쓰리아웃 / 현장퇴출 / 채용금지."""
+    if is_permanent_sanction(result):
+        return "채용금지"
+    if result in {"VERBAL_WARNING", "WARNING", "SAFETY_TRAINING_2H"}:
+        return "쓰리아웃"
+    if result == "SAME_DAY_EXPULSION":
+        return "현장퇴출"
+    return institutional_sanction_label(result)
+
+
+def build_sanction_display_label(violation_code: str, strike_number: int, sanction_result: str) -> str:
+    """제재 이력·명단 — 쓰리아웃 (1/3), 현장퇴출, 채용금지 (3/3) 등."""
+    item = VIOLATION_BY_CODE.get(violation_code)
+    max_strikes = strike_max_for_rule(item.sanction_rule) if item else 1
+    outcome = sanction_outcome_label(sanction_result)
+    if max_strikes <= 1:
+        return outcome
+    return f"{outcome} ({strike_number}/{max_strikes})"
 
 
 def resolve_sanction(violation_code: str, prior_strike_count: int) -> tuple[str, int]:

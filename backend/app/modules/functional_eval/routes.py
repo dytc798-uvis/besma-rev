@@ -1,29 +1,41 @@
 from __future__ import annotations
 
+import io
 import uuid
 from datetime import date
 from pathlib import Path
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 
 from app.core.auth import DbDep
 from app.core.enums import Role
 from app.core.permissions import CurrentUserDep, assert_hq_safe_workspace
 from app.modules.functional_eval import approval_workflow, service, signature_ops
-from app.modules.functional_eval.models import FunctionalEvalPeriod
+from app.modules.functional_eval.constants import (
+    APPROVAL_STATUS_HQ_OFFICER_APPROVED,
+    APPROVAL_STATUS_SITE_APPROVED,
+)
+from app.modules.functional_eval.models import FunctionalEvalPeriod, FunctionalEvalWorker
 from app.modules.functional_eval.schemas import (
     FunctionalEvalApprovalReject,
     FunctionalEvalAssessmentSave,
     FunctionalEvalConsentSubmit,
+    FunctionalEvalCustomerRewardApprove,
+    FunctionalEvalCustomerRewardReject,
     FunctionalEvalHqAssessmentOverride,
     FunctionalEvalHqApprovalSubmit,
+    FunctionalEvalHqDirectorApprovalSubmit,
+    FunctionalEvalHqOfficerApprovalSubmit,
     FunctionalEvalPeriodDeadlineUpdate,
     FunctionalEvalSanctionCreate,
     FunctionalEvalSignatureSubmit,
+    FunctionalEvalTeamReportReject,
 )
+from app.modules.functional_eval.sanctions import DEFAULT_SANCTION_VIOLATION_CODE
+from app.modules.functional_eval import customer_rewards as reward_service
 from app.modules.functional_eval.site_grade_workbook import site_grade_export_filename
 
 router = APIRouter(prefix="/functional-eval", tags=["functional-eval"])
@@ -99,7 +111,10 @@ def export_hq_site_grade_workbook(
 
 @router.get("/violation-catalog")
 def get_violation_catalog(current_user: CurrentUserDep):
-    return {"items": service.violation_catalog_public()}
+    return {
+        "items": service.violation_catalog_public(),
+        "default_violation_code": DEFAULT_SANCTION_VIOLATION_CODE,
+    }
 
 
 @router.get("/eval-catalog")
@@ -152,6 +167,8 @@ def save_worker_assessment(
             raise HTTPException(status_code=400, detail=code) from exc
         if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER", "CANNOT_EVALUATE_SELF", "WORKER_INACTIVE"}:
             raise HTTPException(status_code=400, detail=code) from exc
+        if code == "MANAGER_CANNOT_EDIT_TEAM_SCORES":
+            raise HTTPException(status_code=403, detail="소장은 팀장 담당 근로자의 점수를 수정할 수 없습니다. 반려만 가능합니다.") from exc
         if code in {"WORKER_NOT_ON_ATTENDANCE", "NO_ATTENDANCE_UPLOAD"}:
             raise HTTPException(status_code=400, detail="당일 출역 명단에 없거나 출역일보가 반영되지 않았습니다.") from exc
         if code == "SITE_APPROVAL_LOCKED":
@@ -372,6 +389,31 @@ def submit_team_signoff(
     return {"signature": row}
 
 
+@router.post("/my-site/team-leader/{team_leader_login_id}/reject-report")
+def reject_team_leader_report(
+    team_leader_login_id: str,
+    body: FunctionalEvalTeamReportReject,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    """소장 — 팀장 평가완료보고서 반려 (점수 재작업)."""
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    site_code = service._site_code_for_user(current_user, db)
+    try:
+        result = signature_ops.reject_team_leader_report(
+            db,
+            current_user,
+            period,
+            site_code,
+            team_leader_login_id,
+            reject_note=body.reject_note,
+        )
+    except ValueError as exc:
+        raise _signature_error(str(exc)) from exc
+    return result
+
+
 @router.post("/my-site/team-leader/{team_leader_login_id}/approve-report")
 def approve_team_leader_report(
     team_leader_login_id: str,
@@ -461,18 +503,137 @@ def submit_supplemental_site_signoff(
 
 @router.get("/hq/approvals/pending")
 def list_hq_pending_approvals(db: DbDep, current_user: CurrentUserDep):
-    """안전보건실 — 소장 승인 완료 현장 목록."""
+    """안전보건실 — 담당/실장 검토 대기 현장 목록."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
+    officer_items = approval_workflow.list_pending_hq_officer_approvals(db, period)
+    director_items = approval_workflow.list_pending_hq_director_approvals(db, period)
+    hq_role = approval_workflow.resolve_hq_approval_role(current_user)
+    items = officer_items if hq_role in {"officer", "admin"} else director_items
+    if hq_role == "admin" and not items:
+        items = director_items or officer_items
     return {
         "period": service.serialize_period(period, db),
-        "items": approval_workflow.list_pending_hq_approvals(db, period),
+        "hq_role": hq_role,
+        "officer_items": officer_items,
+        "director_items": director_items,
+        "items": items,
     }
+
+
+@router.post("/hq/approvals/officer/approve-all")
+def approve_all_hq_officer(
+    body: FunctionalEvalHqOfficerApprovalSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    """안전보건 담당 — 대기 현장 전체 검토·승인 + 서명."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        return signature_ops.approve_hq_officer_all_with_signature(
+            db,
+            current_user,
+            period,
+            signature_data=body.signature_data,
+            officer_comment=body.officer_comment,
+            request=request,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "HQ_OFFICER_APPROVER_ONLY":
+            raise HTTPException(status_code=403, detail="안전보건 담당(차장) 권한이 필요합니다.") from exc
+        raise _signature_error(code) from exc
+
+
+@router.post("/hq/approvals/officer/{site_code}/approve")
+def approve_site_hq_officer(
+    site_code: str,
+    body: FunctionalEvalHqOfficerApprovalSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    """안전보건 담당 — 현장별 검토·승인 + 서명."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        approval = signature_ops.approve_hq_officer_site_with_signature(
+            db,
+            current_user,
+            period,
+            site_code.strip(),
+            signature_data=body.signature_data,
+            officer_comment=body.officer_comment,
+            request=request,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "HQ_OFFICER_APPROVER_ONLY":
+            raise HTTPException(status_code=403, detail="안전보건 담당(차장) 권한이 필요합니다.") from exc
+        raise _signature_error(code) from exc
+    return {"approval": approval}
+
+
+@router.post("/hq/approvals/director/approve-all")
+def approve_all_hq_director(
+    body: FunctionalEvalHqDirectorApprovalSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    """안전보건실장 — 담당 승인 완료 현장 전체 최종승인 + 서명."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        return signature_ops.approve_hq_director_all_with_signature(
+            db,
+            current_user,
+            period,
+            signature_data=body.signature_data,
+            director_comment=body.director_comment,
+            request=request,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "HQ_DIRECTOR_APPROVER_ONLY":
+            raise HTTPException(status_code=403, detail="안전보건실장(전무) 권한이 필요합니다.") from exc
+        raise _signature_error(code) from exc
+
+
+@router.post("/hq/approvals/director/{site_code}/approve")
+def approve_site_hq_director(
+    site_code: str,
+    body: FunctionalEvalHqDirectorApprovalSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    """안전보건실장 — 현장별 최종승인 + 서명."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        approval = signature_ops.approve_hq_director_site_with_signature(
+            db,
+            current_user,
+            period,
+            site_code.strip(),
+            signature_data=body.signature_data,
+            director_comment=body.director_comment,
+            request=request,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "HQ_DIRECTOR_APPROVER_ONLY":
+            raise HTTPException(status_code=403, detail="안전보건실장(전무) 권한이 필요합니다.") from exc
+        raise _signature_error(code) from exc
+    return {"approval": approval}
 
 
 @router.post("/hq/approvals/approve-all")
 def approve_all_hq(body: FunctionalEvalHqApprovalSubmit, request: Request, db: DbDep, current_user: CurrentUserDep):
-    """안전보건실 — 대기 현장 전체 일괄 승인 + 서명."""
+    """하위 호환 — 로그인 역할에 따라 담당/실장 일괄 승인."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     try:
@@ -495,40 +656,64 @@ def approve_all_hq(body: FunctionalEvalHqApprovalSubmit, request: Request, db: D
 @router.post("/hq/approvals/{site_code}/approve")
 def approve_site_hq(
     site_code: str,
-    body: FunctionalEvalSignatureSubmit,
+    body: FunctionalEvalHqApprovalSubmit,
     request: Request,
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """안전보건실 승인."""
+    """하위 호환 — 로그인 역할에 따라 담당/실장 현장별 승인."""
     assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    code = site_code.strip()
+    row = approval_workflow.get_or_create_site_approval(db, period.id, code)
     try:
-        approval_workflow.assert_hq_approver(current_user)
-        period = service.get_or_create_active_period(db)
-        approval = approval_workflow.approve_hq(db, period=period, site_code=site_code.strip(), user=current_user)
+        if row.status == APPROVAL_STATUS_SITE_APPROVED:
+            approval = signature_ops.approve_hq_officer_site_with_signature(
+                db,
+                current_user,
+                period,
+                code,
+                signature_data=body.signature_data,
+                officer_comment=body.officer_comment,
+                request=request,
+            )
+        elif row.status == APPROVAL_STATUS_HQ_OFFICER_APPROVED:
+            approval = signature_ops.approve_hq_director_site_with_signature(
+                db,
+                current_user,
+                period,
+                code,
+                signature_data=body.signature_data,
+                director_comment=body.director_comment,
+                request=request,
+            )
+        else:
+            raise ValueError("INVALID_APPROVAL_TRANSITION")
     except ValueError as exc:
         code = str(exc)
         if code == "INVALID_APPROVAL_TRANSITION":
-            raise HTTPException(status_code=409, detail="소장 승인 대기 상태가 아닙니다.") from exc
-        if code == "HQ_APPROVER_ONLY":
-            raise HTTPException(status_code=403, detail="안전보건실 권한이 필요합니다.") from exc
-        raise HTTPException(status_code=400, detail=code) from exc
+            raise HTTPException(status_code=409, detail="승인 가능한 상태가 아닙니다.") from exc
+        if code in {"HQ_OFFICER_APPROVER_ONLY", "HQ_DIRECTOR_APPROVER_ONLY"}:
+            raise HTTPException(status_code=403, detail="승인 권한이 없습니다.") from exc
+        raise _signature_error(code) from exc
     return {"approval": approval}
 
 
 @router.post("/hq/approvals/{site_code}/reject")
 def reject_site_hq(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep, current_user: CurrentUserDep):
-    """안전보건실 반려."""
+    """안전보건실 반려 — 로그인 역할에 따라 담당/실장 단계."""
     assert_hq_safe_workspace(current_user)
     try:
         approval_workflow.assert_hq_approver(current_user)
         period = service.get_or_create_active_period(db)
+        role = approval_workflow.resolve_hq_approval_role(current_user)
+        stage = "HQ_OFFICER" if role in {"officer", "admin"} else "HQ_DIRECTOR"
         approval = approval_workflow.reject_approval(
             db,
             period=period,
             site_code=site_code.strip(),
             user=current_user,
-            stage="HQ",
+            stage=stage,
             note=body.note,
         )
     except ValueError as exc:
@@ -540,17 +725,21 @@ def reject_site_hq(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep
 
 @router.get("/hq/ceo-approvals/pending")
 def list_ceo_pending_approvals(db: DbDep, current_user: CurrentUserDep):
-    """대표이사 — 안전보건실 승인 완료 현장 목록."""
+    """대표이사 — 안전보건실 승인 완료 현장 목록. 비대표 계정은 빈 목록."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
     try:
         approval_workflow.assert_ceo_approver(current_user)
-    except ValueError as exc:
-        if str(exc) == "CEO_APPROVER_ONLY":
-            raise HTTPException(status_code=403, detail="대표이사(최고관리자) 권한이 필요합니다.") from exc
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    period = service.get_or_create_active_period(db)
+    except ValueError:
+        return {
+            "period": service.serialize_period(period, db),
+            "items": [],
+            "ceo_eligible": False,
+        }
     return {
         "period": service.serialize_period(period, db),
         "items": approval_workflow.list_pending_ceo_approvals(db, period),
+        "ceo_eligible": True,
     }
 
 
@@ -635,7 +824,7 @@ def worker_history(worker_id: int, db: DbDep, current_user: CurrentUserDep):
 
 @router.get("/workers/{worker_id}/mileage")
 def worker_mileage_placeholder(worker_id: int, db: DbDep, current_user: CurrentUserDep):
-    """우수 의견 마일리지 — 운영 준비용 API (적립 로직 미구현)."""
+    """하위 호환 — 제재 감점·포상 가점 합산 (`/workers/{id}/adjustments`와 동일)."""
     from app.modules.functional_eval.models import FunctionalEvalWorker
 
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
@@ -645,27 +834,53 @@ def worker_mileage_placeholder(worker_id: int, db: DbDep, current_user: CurrentU
         service._assert_worker_access(db, current_user, worker)
     except ValueError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
-    return service.serialize_mileage_placeholder(worker)
+    return service.serialize_worker_adjustments(db, worker)
 
 
 @router.post("/sanctions")
-def create_sanction(body: FunctionalEvalSanctionCreate, db: DbDep, current_user: CurrentUserDep):
+async def create_sanction(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    worker_id: int = Form(...),
+    violation_code: str = Form(...),
+    evidence_type: str = Form(default="COMMENT"),
+    note: str | None = Form(default=None),
+    signature_data: str = Form(...),
+    photo: UploadFile | None = File(default=None),
+):
+    from app.modules.functional_eval import sanction_evidence as evidence_service
+
     if _role_value(current_user) not in {
         Role.SITE_FUNCTIONAL_EVAL.value,
         Role.HQ_SAFE.value,
         Role.HQ_SAFE_ADMIN.value,
         Role.SUPER_ADMIN.value,
+        Role.ACCIDENT_ADMIN.value,
     }:
         raise HTTPException(status_code=403, detail="Not allowed")
     period = service.get_or_create_active_period(db)
+    photo_path: str | None = None
+    photo_original: str | None = None
     try:
+        ev_type = (evidence_type or "COMMENT").strip().upper()
+        if ev_type == evidence_service.EVIDENCE_PHOTO:
+            if photo is None:
+                raise ValueError("SANCTION_EVIDENCE_PHOTO_REQUIRED")
+            photo_path, photo_original = await evidence_service.save_sanction_evidence_photo(
+                period_id=period.id,
+                file=photo,
+            )
         row = service.record_sanction(
             db,
             period=period,
             user=current_user,
-            worker_id=body.worker_id,
-            violation_code=body.violation_code,
-            note=body.note,
+            worker_id=worker_id,
+            violation_code=violation_code.strip(),
+            evidence_type=ev_type,
+            note=note,
+            evidence_photo_path=photo_path,
+            evidence_photo_original_filename=photo_original,
+            signature_data=signature_data,
         )
     except ValueError as exc:
         code = str(exc)
@@ -680,10 +895,120 @@ def create_sanction(body: FunctionalEvalSanctionCreate, db: DbDep, current_user:
             ) from exc
         if code == "UNKNOWN_VIOLATION":
             raise HTTPException(status_code=400, detail="알 수 없는 위반 항목입니다.") from exc
-        if code == "SANCTION_NOTE_REQUIRED":
-            raise HTTPException(status_code=400, detail="제재 등록 사유를 입력하세요.") from exc
+        mapping = {
+            "SANCTION_EVIDENCE_COMMENT_REQUIRED": "제재 근거 코멘트를 입력하세요.",
+            "SANCTION_EVIDENCE_PHOTO_REQUIRED": "제재 근거 사진을 첨부하세요.",
+            "SANCTION_SIGNATURE_REQUIRED": "제재 등록을 위해 서명이 필요합니다.",
+            "INVALID_EVIDENCE_TYPE": "근거 유형이 올바르지 않습니다.",
+            "INVALID_SANCTION_PHOTO_TYPE": "jpg, png, webp 이미지만 업로드할 수 있습니다.",
+            "EMPTY_SANCTION_PHOTO": "빈 파일입니다.",
+            "SANCTION_PHOTO_TOO_LARGE": "8MB 이하 이미지만 업로드할 수 있습니다.",
+        }
+        if code in mapping:
+            raise HTTPException(status_code=400, detail=mapping[code]) from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return row
+
+
+@router.get("/sanctions/{sanction_id}/evidence-photo")
+def get_sanction_evidence_photo(sanction_id: int, db: DbDep, current_user: CurrentUserDep):
+    from app.modules.functional_eval import sanction_evidence as evidence_service
+    from app.modules.functional_eval.models import FunctionalEvalSanction
+
+    row = db.query(FunctionalEvalSanction).filter(FunctionalEvalSanction.id == sanction_id).first()
+    if row is None or not row.evidence_photo_path:
+        raise HTTPException(status_code=404, detail="EVIDENCE_NOT_FOUND")
+    worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == row.worker_id).first()
+    if worker is None:
+        raise HTTPException(status_code=404, detail="WORKER_NOT_FOUND")
+    try:
+        if _role_value(current_user) in {
+            Role.HQ_SAFE.value,
+            Role.HQ_SAFE_ADMIN.value,
+            Role.SUPER_ADMIN.value,
+            Role.ACCIDENT_ADMIN.value,
+        }:
+            pass
+        elif _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
+            service._assert_worker_view_access(db, current_user, worker)
+        else:
+            raise HTTPException(status_code=403, detail="Not allowed")
+        path = evidence_service.get_sanction_evidence_photo_path(row.evidence_photo_path)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="PHOTO_NOT_FOUND")
+    return FileResponse(path)
+
+
+@router.get("/sanctions/{sanction_id}/signature")
+def get_sanction_signature_image(sanction_id: int, db: DbDep, current_user: CurrentUserDep):
+    from app.modules.functional_eval.models import FunctionalEvalSanction
+    from app.modules.functional_eval.signature_service import validate_signature_data
+
+    row = db.query(FunctionalEvalSanction).filter(FunctionalEvalSanction.id == sanction_id).first()
+    if row is None or not (row.signature_data or "").strip():
+        raise HTTPException(status_code=404, detail="SIGNATURE_NOT_FOUND")
+    worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == row.worker_id).first()
+    if worker is None:
+        raise HTTPException(status_code=404, detail="WORKER_NOT_FOUND")
+    try:
+        if _role_value(current_user) in {
+            Role.HQ_SAFE.value,
+            Role.HQ_SAFE_ADMIN.value,
+            Role.SUPER_ADMIN.value,
+            Role.ACCIDENT_ADMIN.value,
+        }:
+            pass
+        elif _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
+            service._assert_worker_view_access(db, current_user, worker)
+        else:
+            raise HTTPException(status_code=403, detail="Not allowed")
+        _, png_bytes = validate_signature_data(row.signature_data)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    from fastapi.responses import Response
+
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@router.get("/hq/grade-stats")
+def hq_grade_stats(db: DbDep, current_user: CurrentUserDep):
+    """본사 — 전체·팀별·현장별 등급 분포."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    return service.build_hq_grade_stats(db, period)
+
+
+@router.get("/hq/sites/{site_code}/grade-stats")
+def hq_site_grade_stats(site_code: str, db: DbDep, current_user: CurrentUserDep):
+    """본사 — 특정 현장 등급 분포."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        return service.build_site_grade_stats(db, period, site_code.strip())
+    except ValueError as exc:
+        if str(exc) in {"NO_ATTENDANCE_WORKERS", "NO_SITE_IN_REGISTRY"}:
+            raise HTTPException(status_code=404, detail="출역 대상 근로자가 없습니다.") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/my-site/grade-stats")
+def my_site_grade_stats(db: DbDep, current_user: CurrentUserDep):
+    """현장 — 당 현장 등급 분포."""
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    site_code = service._site_code_for_user(current_user, db)
+    try:
+        return service.build_site_grade_stats(db, period, site_code)
+    except ValueError as exc:
+        if str(exc) in {"NO_ATTENDANCE_WORKERS", "NO_SITE_IN_REGISTRY"}:
+            raise HTTPException(status_code=404, detail="출역 대상 근로자가 없습니다.") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/hq/summary")
@@ -865,8 +1190,9 @@ async def import_roster_legacy(
 def export_hq_evaluations_excel(
     db: DbDep,
     current_user: CurrentUserDep,
+    site_code: str | None = Query(default=None),
 ):
-    """전체 평가 현황 엑셀 (미평가 포함, 본사 일괄 조회용)."""
+    """평가 현황 엑셀 — 전체 또는 현장별 근로자 평가상태표."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
 
@@ -883,19 +1209,21 @@ def export_hq_evaluations_excel(
             "현장명",
             "평가자(소장)",
             "성명",
+            "평가상태",
             "품질등급",
             "안전등급",
             "전체완료",
             "비고",
         ]
     )
-    for row in service.list_hq_eval_export_rows(db, period):
+    for row in service.list_hq_eval_export_rows(db, period, site_code=site_code):
         ws.append(
             [
                 row["site_code"],
                 row["site_name"],
                 row["evaluator_name"],
                 row["name"],
+                row["eval_status"],
                 row["functional_grade"],
                 row["safety_grade"],
                 row["fully_complete"],
@@ -906,7 +1234,8 @@ def export_hq_evaluations_excel(
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    filename = f"functional_eval_grades_{period.id}.xlsx"
+    suffix = f"_{site_code.strip()}" if site_code and site_code.strip() else ""
+    filename = f"functional_eval_status_{period.id}{suffix}.xlsx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -990,3 +1319,157 @@ def export_hq_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/workers/{worker_id}/customer-rewards")
+async def submit_customer_reward(
+    worker_id: int,
+    db: DbDep,
+    current_user: CurrentUserDep,
+    photo: UploadFile = File(...),
+    bonus_points: int = Query(default=5, ge=1, le=100),
+):
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        photo_path, original = await reward_service.save_reward_photo(period_id=period.id, file=photo)
+        return reward_service.submit_customer_reward(
+            db,
+            period=period,
+            user=current_user,
+            worker_id=worker_id,
+            photo_path=photo_path,
+            original_filename=original,
+            bonus_points=bonus_points,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        mapping = {
+            "WORKER_NOT_FOUND": (404, "Worker not found"),
+            "SITE_ONLY": (403, "현장 계정만 제출할 수 있습니다."),
+            "REWARD_ALREADY_PENDING": (409, "승인 대기 중인 포상 제출이 있습니다."),
+            "REWARD_ALREADY_SUBMITTED": (409, "이미 제출된 포상 사진은 회수·변경할 수 없습니다."),
+            "INVALID_REWARD_PHOTO_TYPE": (400, "jpg, png, webp 이미지만 업로드할 수 있습니다."),
+            "EMPTY_REWARD_PHOTO": (400, "빈 파일입니다."),
+            "REWARD_PHOTO_TOO_LARGE": (400, "8MB 이하 이미지만 업로드할 수 있습니다."),
+            "PERIOD_CLOSED": (409, "마감일이 지나 수정할 수 없습니다."),
+        }
+        if code in mapping:
+            status_code, detail = mapping[code]
+            raise HTTPException(status_code=status_code, detail=detail) from exc
+        if code == "SITE_MISMATCH":
+            raise HTTPException(status_code=403, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+
+
+@router.get("/hq/customer-rewards/pending")
+def list_pending_customer_rewards(db: DbDep, current_user: CurrentUserDep):
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    return {"items": reward_service.list_pending_customer_rewards(db, period)}
+
+
+@router.post("/hq/customer-rewards/{reward_id}/approve")
+def approve_customer_reward(
+    reward_id: int,
+    body: FunctionalEvalCustomerRewardApprove,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        return reward_service.approve_customer_reward(
+            db,
+            period=period,
+            user=current_user,
+            reward_id=reward_id,
+            bonus_points=body.bonus_points,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "REWARD_NOT_FOUND":
+            raise HTTPException(status_code=404, detail=code) from exc
+        if code in {"REWARD_NOT_PENDING", "PERIOD_CLOSED"}:
+            raise HTTPException(status_code=409, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+
+
+@router.post("/hq/customer-rewards/{reward_id}/reject")
+def reject_customer_reward(
+    reward_id: int,
+    body: FunctionalEvalCustomerRewardReject,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        return reward_service.reject_customer_reward(
+            db,
+            period=period,
+            reward_id=reward_id,
+            user=current_user,
+            reject_note=body.reject_note,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "REWARD_NOT_FOUND":
+            raise HTTPException(status_code=404, detail=code) from exc
+        if code in {"REWARD_NOT_PENDING", "PERIOD_CLOSED"}:
+            raise HTTPException(status_code=409, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+
+
+@router.get("/customer-rewards/{reward_id}/photo")
+def get_customer_reward_photo(reward_id: int, db: DbDep, current_user: CurrentUserDep):
+    from app.modules.functional_eval.models import FunctionalEvalCustomerReward, FunctionalEvalWorker
+
+    row = db.query(FunctionalEvalCustomerReward).filter(FunctionalEvalCustomerReward.id == reward_id).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="REWARD_NOT_FOUND")
+    worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == row.worker_id).first()
+    if worker is None:
+        raise HTTPException(status_code=404, detail="WORKER_NOT_FOUND")
+    try:
+        if _role_value(current_user) in {
+            Role.HQ_SAFE.value,
+            Role.HQ_SAFE_ADMIN.value,
+            Role.SUPER_ADMIN.value,
+            Role.ACCIDENT_ADMIN.value,
+        }:
+            pass
+        elif _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
+            service._assert_worker_view_access(db, current_user, worker)
+        else:
+            raise HTTPException(status_code=403, detail="Not allowed")
+        path = reward_service.get_reward_photo_path(db, reward_id)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="PHOTO_NOT_FOUND")
+    return FileResponse(path)
+
+
+@router.get("/workers/{worker_id}/customer-rewards")
+def list_worker_customer_rewards(worker_id: int, db: DbDep, current_user: CurrentUserDep):
+    worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
+    if worker is None:
+        raise HTTPException(status_code=404, detail="WORKER_NOT_FOUND")
+    try:
+        if _role_value(current_user) in {
+            Role.HQ_SAFE.value,
+            Role.HQ_SAFE_ADMIN.value,
+            Role.SUPER_ADMIN.value,
+            Role.ACCIDENT_ADMIN.value,
+        }:
+            pass
+        elif _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
+            service._assert_worker_view_access(db, current_user, worker)
+        else:
+            raise HTTPException(status_code=403, detail="Not allowed")
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return {"items": reward_service.list_worker_customer_rewards(db, worker_id)}

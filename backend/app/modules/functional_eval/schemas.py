@@ -52,6 +52,11 @@ class FunctionalEvalSanctionOut(BaseModel):
     sanction_result: str
     sanction_result_label: str
     note: str | None
+    evidence_type: str | None = None
+    evidence_type_label: str | None = None
+    evidence_photo_url: str | None = None
+    penalty_points: int | None = None
+    has_signature: bool | None = None
     reported_by_user_id: int | None
     reported_by_name: str | None = None
     reported_by_login_id: str | None = None
@@ -91,6 +96,14 @@ class FunctionalEvalSignatureSubmit(BaseModel):
     consent_acknowledged: bool = False
 
 
+class FunctionalEvalHqOfficerApprovalSubmit(FunctionalEvalSignatureSubmit):
+    officer_comment: str | None = Field(default=None, max_length=4000, description="안전보건 담당 검토 코멘트")
+
+
+class FunctionalEvalHqDirectorApprovalSubmit(FunctionalEvalSignatureSubmit):
+    director_comment: str | None = Field(default=None, max_length=4000, description="안전보건실장 코멘트")
+
+
 class FunctionalEvalHqApprovalSubmit(FunctionalEvalSignatureSubmit):
     officer_comment: str | None = Field(default=None, max_length=4000, description="안전보건 담당자 검토 코멘트")
     director_comment: str | None = Field(default=None, max_length=4000, description="안전보건실장 최종 코멘트")
@@ -99,6 +112,18 @@ class FunctionalEvalHqApprovalSubmit(FunctionalEvalSignatureSubmit):
 class FunctionalEvalConsentSubmit(BaseModel):
     signature_data: str = Field(..., min_length=32)
     consent_acknowledged: bool = Field(..., description="동의서 확인 체크")
+
+
+class FunctionalEvalTeamReportReject(BaseModel):
+    reject_note: str | None = Field(default=None, max_length=2000)
+
+
+class FunctionalEvalCustomerRewardApprove(BaseModel):
+    bonus_points: int | None = Field(default=None, ge=1, le=100)
+
+
+class FunctionalEvalCustomerRewardReject(BaseModel):
+    reject_note: str | None = Field(default=None, max_length=2000)
 
 
 class FunctionalEvalAssessmentOut(BaseModel):

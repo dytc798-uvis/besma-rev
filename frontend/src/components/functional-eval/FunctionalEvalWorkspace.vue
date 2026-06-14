@@ -53,13 +53,13 @@
             :title="title"
             :criteria="props.criteria"
             :scores="evalScores"
+            :baseline-scores="loadedScores"
             :loading="evalLoading"
             :saving="evalSaving"
             :disabled="periodClosed"
             :error="evalError"
             variant="desktop"
             :preview="evalPreview"
-            :save-label="desktopSaveLabel"
             @save="saveEval"
             @update:scores="evalScores = $event"
           />
@@ -69,9 +69,18 @@
             :grouped-violations="groupedViolations"
             :period-closed="periodClosed"
             :prompt-message="sanctionPromptMessage"
-            :default-violation-code="defaultViolationCode"
+            :default-violation-code="inlineDefaultViolationCode"
+            :default-note="inlineDefaultNote"
+            :prefill-token="sanctionPrefillToken"
             @saved="onSanctionSaved"
             @open-history="emit('open-history', evalWorker.id)"
+          />
+          <EvalRewardInline
+            v-if="evalType === 'SAFETY'"
+            :worker="evalWorker"
+            :period-closed="periodClosed"
+            :evaluation-locked="evaluationLocked"
+            @saved="onRewardSaved"
           />
         </template>
         <div v-else class="eval-placeholder panel">
@@ -101,13 +110,13 @@
             :title="title"
             :criteria="props.criteria"
             :scores="evalScores"
+            :baseline-scores="loadedScores"
             :loading="evalLoading"
             :saving="evalSaving"
             :disabled="periodClosed"
             :error="evalError"
             variant="mobile"
             :preview="evalPreview"
-            :save-label="mobileSaveLabel"
             @save="saveEval"
             @close="closeEval"
             @update:scores="evalScores = $event"
@@ -118,9 +127,18 @@
             :grouped-violations="groupedViolations"
             :period-closed="periodClosed"
             :prompt-message="sanctionPromptMessage"
-            :default-violation-code="defaultViolationCode"
+            :default-violation-code="inlineDefaultViolationCode"
+            :default-note="inlineDefaultNote"
+            :prefill-token="sanctionPrefillToken"
             @saved="onSanctionSaved"
             @open-history="emit('open-history', evalWorker.id)"
+          />
+          <EvalRewardInline
+            v-if="evalType === 'SAFETY'"
+            :worker="evalWorker"
+            :period-closed="periodClosed"
+            :evaluation-locked="evaluationLocked"
+            @saved="onRewardSaved"
           />
         </div>
       </template>
@@ -132,6 +150,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import EvalAssessmentSheet from "@/components/functional-eval/EvalAssessmentSheet.vue";
 import EvalSanctionInline from "@/components/functional-eval/EvalSanctionInline.vue";
+import EvalRewardInline from "@/components/functional-eval/EvalRewardInline.vue";
 import type { Criterion } from "@/components/functional-eval/EvalAssessmentSheet.vue";
 import { useMobileViewport } from "@/composables/useMobileViewport";
 import { api } from "@/services/api";
@@ -140,11 +159,11 @@ import {
   completionBadgeClass,
   isFunctionalComplete,
   isSafetyComplete,
-  findNextIncompleteWorker,
   isFullyComplete,
   scoreRatioToGradeLabel,
   workerRowHighlightClass,
 } from "@/utils/functionalEvalCompletion";
+import { buildSanctionPrefillFromSafetyScores } from "@/utils/safetySanctionMapping";
 
 export type EvalType = "FUNCTIONAL" | "SAFETY";
 
@@ -167,6 +186,7 @@ export interface EvalWorker {
   is_permanently_expelled?: boolean;
   functional_assessment?: AssessmentBrief | null;
   safety_assessment?: AssessmentBrief | null;
+  customer_reward?: { id: number; status: string; bonus_points?: number } | null;
 }
 
 interface ViolationGroup {
@@ -181,6 +201,7 @@ const props = defineProps<{
   title: string;
   criteria: Criterion[];
   periodClosed: boolean;
+  evaluationLocked?: boolean;
   reload: () => Promise<void>;
   focusWorkerId: number | null;
   autoPickOnMount?: boolean;
@@ -192,7 +213,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   "request-safety": [workerId: number];
   "safety-saved": [worker: EvalWorker];
+  "revision-saved": [worker: EvalWorker];
   "sanction-saved": [];
+  "reward-saved": [];
   "open-history": [workerId: number];
 }>();
 
@@ -202,9 +225,17 @@ const { isMobileViewport } = useMobileViewport();
 
 const evalWorker = ref<EvalWorker | null>(null);
 const evalScores = ref<Record<string, string>>({});
+const loadedScores = ref<Record<string, string>>({});
 const evalLoading = ref(false);
 const evalSaving = ref(false);
 const evalError = ref("");
+const sanctionPrefillToken = ref(0);
+const inlineSanctionPrefill = ref<{ violationCode: string; note: string } | null>(null);
+
+const inlineDefaultViolationCode = computed(
+  () => inlineSanctionPrefill.value?.violationCode || props.defaultViolationCode || "",
+);
+const inlineDefaultNote = computed(() => inlineSanctionPrefill.value?.note || "");
 
 const batchPendingWorkers = computed(() =>
   filteredWorkers.value.filter((w) => (props.evalType === "FUNCTIONAL" ? !isFunctionalComplete(w) : !isSafetyComplete(w))).length,
@@ -239,20 +270,6 @@ function formatWorkerLabel(w: EvalWorker) {
   return assignment ? `${w.name} ${assignment}` : w.name;
 }
 
-function saveButtonLabel(): string {
-  const w = evalWorker.value;
-  if (props.evalType === "FUNCTIONAL" && w && !isSafetyComplete(w)) {
-    return "저장 후 안전평가";
-  }
-  if (props.evalType === "SAFETY") {
-    return findNextIncompleteWorker(filteredWorkers.value, w?.id ?? null) ? "저장 후 다음" : "저장 후 완료";
-  }
-  return "평가 저장";
-}
-
-const mobileSaveLabel = computed(() => saveButtonLabel());
-const desktopSaveLabel = computed(() => saveButtonLabel());
-
 const evalPreview = computed(() => {
   const list = props.criteria;
   if (!list.length) return null;
@@ -269,6 +286,20 @@ const evalPreview = computed(() => {
   return { total_score: total, max_score: max, grade_label: scoreRatioToGradeLabel(ratio) };
 });
 
+function applyInlineSanctionPrefill(scores: Record<string, string>) {
+  if (props.evalType !== "SAFETY") {
+    inlineSanctionPrefill.value = null;
+    return;
+  }
+  const prefill = buildSanctionPrefillFromSafetyScores(scores, props.criteria);
+  if (prefill) {
+    inlineSanctionPrefill.value = prefill;
+    sanctionPrefillToken.value += 1;
+  } else {
+    inlineSanctionPrefill.value = null;
+  }
+}
+
 async function loadScores(worker: EvalWorker) {
   evalLoading.value = true;
   evalError.value = "";
@@ -280,6 +311,8 @@ async function loadScores(worker: EvalWorker) {
       scores[c.id] = existing?.[c.id] || "";
     }
     evalScores.value = scores;
+    loadedScores.value = { ...scores };
+    applyInlineSanctionPrefill(scores);
   } catch (e: unknown) {
     const status = (e as { response?: { status?: number } })?.response?.status;
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -314,29 +347,66 @@ async function selectWorker(worker: EvalWorker) {
 function closeEval() {
   evalWorker.value = null;
   evalScores.value = {};
+  loadedScores.value = {};
   evalError.value = "";
+  inlineSanctionPrefill.value = null;
   document.body.classList.remove("fe-sheet-open-body");
 }
 
 async function onSanctionSaved() {
   await props.reload();
   const updated = props.workers.find((w) => w.id === evalWorker.value?.id);
-  if (updated) evalWorker.value = updated;
+  if (updated) {
+    evalWorker.value = updated;
+    if (props.evalType === "SAFETY") {
+      await loadScores(updated);
+    }
+  }
   emit("sanction-saved");
 }
 
-async function saveEval() {
-  if (!evalWorker.value) return;
+async function onRewardSaved() {
+  await props.reload();
+  const updated = props.workers.find((w) => w.id === evalWorker.value?.id);
+  if (updated) {
+    evalWorker.value = updated;
+  }
+  emit("reward-saved");
+}
+
+async function saveEval(scoresOverride?: Record<string, string>) {
+  if (!evalWorker.value || evalSaving.value) return;
+  const scores = scoresOverride ?? evalScores.value;
+  if (scoresOverride) {
+    evalScores.value = scoresOverride;
+  }
   const savedId = evalWorker.value.id;
+  const wasFunctionalDone = isFunctionalComplete(evalWorker.value);
+  const wasSafetyDone = isSafetyComplete(evalWorker.value);
+  const isRevision =
+    props.evalType === "FUNCTIONAL" ? wasFunctionalDone : wasSafetyDone;
   evalSaving.value = true;
   evalError.value = "";
   try {
     await api.put(`/functional-eval/workers/${evalWorker.value.id}/assessment/${props.evalType}`, {
-      scores: evalScores.value,
+      scores,
     });
     await props.reload();
     const updated = props.workers.find((w) => w.id === savedId);
     if (updated) evalWorker.value = updated;
+    loadedScores.value = { ...scores };
+    applyInlineSanctionPrefill(scores);
+
+    if (isRevision) {
+      if (updated) {
+        if (props.evalType === "SAFETY") {
+          emit("safety-saved", updated);
+        } else {
+          emit("revision-saved", updated);
+        }
+      }
+      return;
+    }
 
     if (props.evalType === "FUNCTIONAL" && updated) {
       if (!isSafetyComplete(updated)) {
@@ -357,7 +427,11 @@ async function saveEval() {
     }
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    evalError.value = typeof msg === "string" ? msg : "요청을 처리하는 중에 오류가 발생했습니다.";
+    if (msg === "EVALUATION_SIGNATURE_LOCKED") {
+      evalError.value = "서명 완료 후에는 평가를 수정할 수 없습니다.";
+    } else {
+      evalError.value = typeof msg === "string" ? msg : "요청을 처리하는 중에 오류가 발생했습니다.";
+    }
   } finally {
     evalSaving.value = false;
   }

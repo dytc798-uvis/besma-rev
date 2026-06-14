@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, JSON
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -15,6 +15,9 @@ class FunctionalEvalPeriod(Base):
     deadline_date: Mapped[date] = mapped_column(Date, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     last_attendance_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    hq_grade_stats_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    hq_grade_stats_computed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    grade_stats_live_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now, nullable=False
@@ -85,6 +88,9 @@ class FunctionalEvalSiteRegistry(Base):
     site_alias: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     manager_name: Mapped[str] = mapped_column(String(100), nullable=False)
     manager_login_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    erp_headcount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    erp_man_days: Mapped[float | None] = mapped_column(Float, nullable=True)
+    erp_work_days: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now, nullable=False
@@ -161,6 +167,31 @@ class FunctionalEvalWorker(Base):
     assessment_revisions: Mapped[list["FunctionalEvalAssessmentRevision"]] = relationship(
         "FunctionalEvalAssessmentRevision", back_populates="worker"
     )
+    customer_rewards: Mapped[list["FunctionalEvalCustomerReward"]] = relationship(
+        "FunctionalEvalCustomerReward", back_populates="worker"
+    )
+
+
+class FunctionalEvalCustomerReward(Base):
+    """현장 고객사 포상 — 사진 제출 · 본사 승인 시 가점."""
+
+    __tablename__ = "functional_eval_customer_rewards"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    period_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_periods.id"), nullable=False, index=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_workers.id"), nullable=False, index=True)
+    site_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    photo_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True)
+    bonus_points: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    submitted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reject_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+    worker: Mapped["FunctionalEvalWorker"] = relationship("FunctionalEvalWorker", back_populates="customer_rewards")
 
 
 class FunctionalEvalSiteApproval(Base):
@@ -177,6 +208,9 @@ class FunctionalEvalSiteApproval(Base):
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="IN_PROGRESS", index=True)
     site_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     site_submitted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    hq_officer_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    hq_officer_approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    hq_officer_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     hq_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     hq_approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     ceo_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -251,6 +285,12 @@ class FunctionalEvalSanction(Base):
     strike_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     sanction_result: Mapped[str] = mapped_column(String(50), nullable=False)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_type: Mapped[str] = mapped_column(String(20), nullable=False, default="COMMENT")
+    evidence_photo_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    evidence_photo_original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    signature_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signature_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    penalty_points: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
     reported_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 

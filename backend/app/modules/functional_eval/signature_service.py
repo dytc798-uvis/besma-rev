@@ -13,17 +13,18 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
-from app.core.datetime_utils import utc_now
+from app.core.datetime_utils import format_kst_datetime_label, format_kst_datetime_short, utc_now
 
 PNG_DATA_PREFIX = "data:image/png;base64,"
 SIGNATURE_MIN_BYTES = 20
 SIGNATURE_MAX_BYTES = 512_000
-CONSENT_VERSION = "2026-06-14-v1"
+CONSENT_VERSION = "2026-06-14-v6"
 
 STAGE_CONSENT = "CONSENT"
 STAGE_TEAM_LEADER = "TEAM_LEADER"
 STAGE_TEAM_MANAGER_APPROVE = "TEAM_MANAGER_APPROVE"
 STAGE_SITE = "SITE"
+STAGE_HQ_OFFICER = "HQ_OFFICER"
 STAGE_HQ = "HQ"
 STAGE_CEO = "CEO"
 
@@ -31,16 +32,20 @@ STAGE_ROLE_LABELS = {
     STAGE_TEAM_LEADER: "팀장 평가완료보고서",
     STAGE_TEAM_MANAGER_APPROVE: "소장 팀장보고서 승인",
     STAGE_SITE: "소장 평가완료보고서",
+    STAGE_HQ_OFFICER: "안전보건 담당 검토·승인",
     STAGE_HQ: "안전보건실장 승인",
     STAGE_CEO: "대표이사 최종승인",
 }
 
 CONSENT_BODY = """
-본인은 기능인인정제(기능·안전 인사고과) 평가 업무를 수행함에 있어,
-관련 규정과 평가 기준을 확인하였으며, 입력·승인하는 평가 내용의
+본인은 부현전기 모든 근로자가 안전하게 일할 수 있도록 노력할 것에 동의합니다.
+
+본인은 기능인인정제(기능 · 안전 인사고과)
+평가 업무를 수행함에 있어, 관련 규정과 평가 기준을 확인하였으며,
+입력 · 승인하는 평가 내용의
 사실성과 정확성에 대한 책임을 이해하고 이에 동의합니다.
-전자서명은 본인의 의사 표시로서 서면 서명과 동일한 효력을 갖는다는
-점에 동의합니다.
+
+전자서명은 본인의 의사 표시로서 서면 서명과 동일한 효력을 갖는다는 점에 동의합니다.
 """.strip()
 
 
@@ -129,7 +134,7 @@ def generate_signature_pdf(
         f"단계: {stage_label}",
         f"서명자: {signer_name} ({signer_login_id})",
         f"평가대상: {scope_label}",
-        f"서명일시: {signed_at.strftime('%Y-%m-%d %H:%M')}",
+        f"서명일시: {format_kst_datetime_short(signed_at)}",
     ]:
         c.drawString(25 * mm, y, line)
         y -= 6 * mm
@@ -197,7 +202,9 @@ def build_approval_rows_for_site(db: Session, period_id: int, site_code: str, ba
             FunctionalEvalSignature.period_id == period_id,
             FunctionalEvalSignature.evaluation_batch == batch,
             FunctionalEvalSignature.site_code == site_code,
-            FunctionalEvalSignature.stage.in_([STAGE_TEAM_LEADER, STAGE_SITE, STAGE_HQ, STAGE_CEO]),
+            FunctionalEvalSignature.stage.in_(
+                [STAGE_TEAM_LEADER, STAGE_SITE, STAGE_HQ_OFFICER, STAGE_HQ, STAGE_CEO]
+            ),
         )
         .all()
     )
@@ -213,6 +220,11 @@ def build_approval_rows_for_site(db: Session, period_id: int, site_code: str, ba
             "role": "소장",
             "name": (by_stage.get(STAGE_SITE).signer_name if STAGE_SITE in by_stage else ""),
             "signed": STAGE_SITE in by_stage,
+        },
+        {
+            "role": "안전보건 담당",
+            "name": (by_stage.get(STAGE_HQ_OFFICER).signer_name if STAGE_HQ_OFFICER in by_stage else ""),
+            "signed": STAGE_HQ_OFFICER in by_stage,
         },
         {
             "role": "안전보건실장",
@@ -241,5 +253,6 @@ def serialize_signature(row) -> dict[str, Any]:
         "signer_name": row.signer_name,
         "scope_label": row.scope_label,
         "signed_at": row.signed_at.isoformat() if row.signed_at else None,
+        "signed_at_label": format_kst_datetime_label(row.signed_at),
         "has_document": bool(row.signed_document_path),
     }

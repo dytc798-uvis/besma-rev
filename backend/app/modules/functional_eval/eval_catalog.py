@@ -78,7 +78,7 @@ def compute_assessment(eval_type: EvalType, scores: dict[str, str]) -> dict[str,
     }
 
 
-def _score_to_grade(ratio: float) -> tuple[str, str]:
+def score_ratio_to_grade(ratio: float) -> tuple[str, str]:
     """엑셀 등급 수식(IF >85 S, >70 A, >50 B, >0 C)과 동일. D등급 없음."""
     pct = ratio * 100.0
     if pct > 85:
@@ -90,6 +90,25 @@ def _score_to_grade(ratio: float) -> tuple[str, str]:
     if pct > 0:
         return "C", "C등급"
     return "", ""
+
+
+def _score_to_grade(ratio: float) -> tuple[str, str]:
+    return score_ratio_to_grade(ratio)
+
+
+def apply_score_point_adjustments(
+    total_score: int,
+    max_score: int,
+    *,
+    bonus: int = 0,
+    penalty: int = 0,
+) -> tuple[int, str, str]:
+    """제재 감점·포상 가점을 반영한 총점·등급."""
+    cap = max(int(max_score or 0), 0)
+    base = int(total_score or 0)
+    adjusted = max(0, min(base + int(bonus or 0) - int(penalty or 0), cap))
+    ratio = adjusted / cap if cap else 0.0
+    return adjusted, *_score_to_grade(ratio)
 
 
 def normalize_grade_code(code: str | None) -> str | None:
@@ -112,3 +131,119 @@ def build_lowest_grade_scores(eval_type: EvalType) -> dict[str, str]:
         lowest = min(grades, key=lambda g: int(g["points"]))
         scores[str(crit["id"])] = str(lowest["key"])
     return scores
+
+
+def _top_grade_key(crit: dict[str, Any]) -> str | None:
+    grades = crit.get("grades") or []
+    if not grades:
+        return None
+    return str(max(grades, key=lambda g: int(g["points"]))["key"])
+
+
+def build_top_grade_scores(eval_type: EvalType) -> dict[str, str]:
+    """항목별 최고 점수(우수/TOP)."""
+    scores: dict[str, str] = {}
+    for crit in get_criteria(eval_type):
+        top = _top_grade_key(crit)
+        if top:
+            scores[str(crit["id"])] = top
+    return scores
+
+
+def assessment_has_issue(eval_type: EvalType, scores: dict[str, str]) -> bool:
+    """평가표 항목 중 하나라도 최고점(우수) 미만이면 True."""
+    if not scores:
+        return False
+    by_id = {c["id"]: c for c in get_criteria(eval_type)}
+    for cid, grade_key in scores.items():
+        crit = by_id.get(cid)
+        if crit is None:
+            continue
+        top_key = _top_grade_key(crit)
+        if top_key is None:
+            continue
+        if str(grade_key) != top_key:
+            return True
+    return False
+
+
+def assessment_has_bottom(eval_type: EvalType, scores: dict[str, str]) -> bool:
+    """평가표 항목 중 「문제」(BOTTOM)가 하나라도 있으면 True."""
+    if not scores:
+        return False
+    return any(str(v) == "BOTTOM" for v in scores.values())
+
+
+def _bottom_grade_key(crit: dict[str, Any]) -> str | None:
+    grades = crit.get("grades") or []
+    if not grades:
+        return None
+    return str(min(grades, key=lambda g: int(g["points"]))["key"])
+
+
+SAFETY_CRITERION_VIOLATION: dict[str, str] = {
+    "c1": "INST_TBM",
+    "c2": "INST_QR_ACTIVITY",
+    "c3": "INST_PPE",
+    "c4": "INST_TOOL",
+    "c5": "INST_WALKING",
+    "c6": "INST_SMOKING_AREA",
+    "c7": "INST_HOUSEKEEPING",
+    "c8": "INST_HOUSEKEEPING",
+}
+
+
+def violation_safety_criterion_ids(violation_code: str) -> list[str]:
+    from app.modules.functional_eval.sanctions import DEFAULT_SANCTION_VIOLATION_CODE
+
+    if violation_code == DEFAULT_SANCTION_VIOLATION_CODE:
+        return ["c2"]
+    out: list[str] = []
+    for cid, vcode in SAFETY_CRITERION_VIOLATION.items():
+        if vcode == violation_code and cid not in out:
+            out.append(cid)
+    return out
+
+
+def build_safety_scores_with_bottom_for_violation(
+    violation_code: str,
+    existing_scores: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """추가 제재 등록 시 — 해당 위반에 대응하는 안전 평가 항목만 「문제」로 반영."""
+    criteria = get_criteria("SAFETY")
+    scores: dict[str, str] = dict(existing_scores or {})
+    for crit in criteria:
+        cid = str(crit["id"])
+        if cid not in scores:
+            top = _top_grade_key(crit)
+            if top:
+                scores[cid] = top
+    for cid in violation_safety_criterion_ids(violation_code):
+        crit = next((c for c in criteria if str(c["id"]) == cid), None)
+        if crit is None:
+            continue
+        bottom = _bottom_grade_key(crit)
+        if bottom:
+            scores[cid] = bottom
+    return scores
+
+
+def violation_safety_targets_already_bottom(
+    violation_code: str,
+    existing_scores: dict[str, str] | None,
+) -> bool:
+    """추가 제재 대상 항목이 이미 모두 「문제」(BOTTOM)이면 True."""
+    criterion_ids = violation_safety_criterion_ids(violation_code)
+    if not criterion_ids:
+        return True
+    scores = dict(existing_scores or {})
+    criteria = get_criteria("SAFETY")
+    by_id = {str(c["id"]): c for c in criteria}
+    for cid in criterion_ids:
+        crit = by_id.get(cid)
+        if crit is None:
+            continue
+        bottom = _bottom_grade_key(crit)
+        if bottom and scores.get(cid) != bottom:
+            return False
+    return True

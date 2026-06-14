@@ -1,5 +1,7 @@
+import { formatDateKst, formatDateTimeKst, isInstantKstMidnight, toDate } from "@/utils/datetime";
+
 /**
- * 사고일시 표시: ISO가 자정(로컬)이면 날짜만, 시간이 있으면 일시.
+ * 사고일시 표시: ISO가 KST 자정이면 날짜만, 시간이 있으면 일시.
  * 원문(text)만 있는 경우도 동일 규칙; 자유 서술은 그대로 반환.
  */
 export function formatAccidentMoment(
@@ -10,28 +12,25 @@ export function formatAccidentMoment(
   const text = (accidentDatetimeText ?? "").trim();
 
   if (iso) {
-    const d = new Date(iso);
-    if (!Number.isNaN(d.getTime())) {
-      if (isLocalMidnight(d)) {
-        return d.toLocaleDateString("ko-KR", { year: "numeric", month: "numeric", day: "numeric" });
+    const d = toDate(iso);
+    if (d) {
+      if (isInstantKstMidnight(iso)) {
+        return formatDateKst(iso, "—");
       }
-      return d.toLocaleString("ko-KR");
+      return formatDateTimeKst(iso, "—");
     }
   }
 
   if (text) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-      const d = new Date(`${text}T00:00:00`);
-      if (!Number.isNaN(d.getTime())) {
-        return d.toLocaleDateString("ko-KR", { year: "numeric", month: "numeric", day: "numeric" });
-      }
+      return formatDateKst(text, text);
     }
-    const d2 = new Date(text);
-    if (!Number.isNaN(d2.getTime())) {
-      if (isLocalMidnight(d2)) {
-        return d2.toLocaleDateString("ko-KR", { year: "numeric", month: "numeric", day: "numeric" });
+    const d2 = toDate(text);
+    if (d2) {
+      if (isInstantKstMidnight(text)) {
+        return formatDateKst(text, text);
       }
-      return d2.toLocaleString("ko-KR");
+      return formatDateTimeKst(text, text);
     }
     return text;
   }
@@ -50,11 +49,5 @@ export function formatAccidentDateForListRow(
   if (iso || text) return formatAccidentMoment(accidentDatetime, accidentDatetimeText);
   const c = (createdAt ?? "").trim();
   if (!c) return "—";
-  const d = new Date(c);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("ko-KR", { year: "numeric", month: "numeric", day: "numeric" });
-}
-
-function isLocalMidnight(d: Date): boolean {
-  return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
+  return formatDateKst(c, "—");
 }

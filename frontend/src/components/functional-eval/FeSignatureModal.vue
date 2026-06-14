@@ -1,36 +1,42 @@
 <template>
-  <div v-if="open" class="fe-sign-overlay" @click.self="onCancel">
-    <div class="fe-sign-modal" role="dialog" aria-modal="true">
-      <header class="fe-sign-header">
-        <h2>{{ title }}</h2>
-        <p v-if="description" class="fe-sign-desc">{{ description }}</p>
-      </header>
-      <div v-if="consentText" class="fe-sign-consent">
-        <pre class="fe-sign-consent-body">{{ consentText }}</pre>
-        <label class="fe-sign-check">
-          <input v-model="ackChecked" type="checkbox" />
-          <span>{{ consentCheckLabel }}</span>
-        </label>
+  <div v-if="open">
+    <Teleport to="body">
+      <div class="fe-sign-overlay" @click.self="onCancel">
+        <div class="fe-sign-modal" role="dialog" aria-modal="true">
+          <header class="fe-sign-header">
+            <h2>{{ title }}</h2>
+            <p v-if="description" class="fe-sign-desc">{{ description }}</p>
+          </header>
+          <div v-if="consentText" class="fe-sign-consent">
+            <pre class="fe-sign-consent-body">{{ consentText }}</pre>
+            <label class="fe-sign-check">
+              <input v-model="ackChecked" type="checkbox" />
+              <span>{{ consentCheckLabel }}</span>
+            </label>
+          </div>
+          <div v-if="showOfficerComment" class="fe-sign-review">
+            <label class="fe-sign-review-label">
+              <span>{{ officerCommentLabel }}</span>
+              <textarea v-model="officerComment" rows="3" class="fe-sign-textarea" />
+            </label>
+          </div>
+          <div v-if="showDirectorComment" class="fe-sign-review">
+            <label class="fe-sign-review-label">
+              <span>{{ directorCommentLabel }}</span>
+              <textarea v-model="directorComment" rows="3" class="fe-sign-textarea" />
+            </label>
+          </div>
+          <SignaturePad ref="padRef" :width="560" :height="200" />
+          <p v-if="error" class="fe-sign-error">{{ error }}</p>
+          <footer class="fe-sign-footer">
+            <button type="button" class="stitch-btn-secondary" :disabled="submitting" @click="onCancel">취소</button>
+            <button type="button" class="stitch-btn-primary" :disabled="submitting || !canSubmit" @click="onSubmit">
+              {{ submitting ? "저장 중…" : submitLabel }}
+            </button>
+          </footer>
+        </div>
       </div>
-      <div v-if="showReviewFields" class="fe-sign-review">
-        <label class="fe-sign-review-label">
-          <span>{{ officerCommentLabel }}</span>
-          <textarea v-model="officerComment" rows="3" class="fe-sign-textarea" />
-        </label>
-        <label class="fe-sign-review-label">
-          <span>{{ directorCommentLabel }}</span>
-          <textarea v-model="directorComment" rows="3" class="fe-sign-textarea" />
-        </label>
-      </div>
-      <SignaturePad ref="padRef" :width="560" :height="200" />
-      <p v-if="error" class="fe-sign-error">{{ error }}</p>
-      <footer class="fe-sign-footer">
-        <button type="button" class="stitch-btn-secondary" :disabled="submitting" @click="onCancel">취소</button>
-        <button type="button" class="stitch-btn-primary" :disabled="submitting || !canSubmit" @click="onSubmit">
-          {{ submitting ? "저장 중…" : submitLabel }}
-        </button>
-      </footer>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -48,6 +54,7 @@ const props = withDefaults(
     requireConsentCheck?: boolean;
     submitLabel?: string;
     showReviewFields?: boolean;
+    reviewMode?: "officer" | "director" | "both" | "none";
     officerCommentLabel?: string;
     directorCommentLabel?: string;
   }>(),
@@ -57,6 +64,7 @@ const props = withDefaults(
     consentCheckLabel: "위 내용을 확인하였으며 동의합니다.",
     requireConsentCheck: false,
     showReviewFields: false,
+    reviewMode: "none",
     officerCommentLabel: "안전보건 담당자 검토 코멘트",
     directorCommentLabel: "안전보건실장 최종 코멘트",
   },
@@ -79,6 +87,15 @@ const officerComment = ref("");
 const directorComment = ref("");
 const submitting = ref(false);
 const error = ref("");
+
+const showOfficerComment = computed(() => {
+  if (props.reviewMode === "officer" || props.reviewMode === "both") return true;
+  return props.showReviewFields;
+});
+const showDirectorComment = computed(() => {
+  if (props.reviewMode === "director" || props.reviewMode === "both") return true;
+  return false;
+});
 
 const canSubmit = computed(() => {
   if (props.requireConsentCheck && !ackChecked.value) return false;
@@ -118,8 +135,8 @@ function onSubmit() {
   emit("submit", {
     signature_data: dataUrl,
     consent_acknowledged: ackChecked.value || !props.requireConsentCheck,
-    officer_comment: props.showReviewFields ? officerComment.value.trim() : undefined,
-    director_comment: props.showReviewFields ? directorComment.value.trim() : undefined,
+    officer_comment: showOfficerComment.value ? officerComment.value.trim() : undefined,
+    director_comment: showDirectorComment.value ? directorComment.value.trim() : undefined,
   });
 }
 
@@ -135,27 +152,6 @@ defineExpose({ setSubmitting, setError });
 </script>
 
 <style scoped>
-.fe-sign-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  background: rgba(15, 23, 42, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-}
-
-.fe-sign-modal {
-  width: min(640px, 100%);
-  max-height: 90vh;
-  overflow: auto;
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-}
-
 .fe-sign-header h2 {
   margin: 0 0 8px;
   font-size: 18px;
@@ -225,5 +221,30 @@ defineExpose({ setSubmitting, setError });
   font-family: inherit;
   font-size: 13px;
   resize: vertical;
+}
+</style>
+
+<style>
+.fe-sign-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.fe-sign-modal {
+  width: min(640px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  color: #0f172a;
 }
 </style>

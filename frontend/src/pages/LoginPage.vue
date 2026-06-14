@@ -33,6 +33,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { formatLoginError } from "@/utils/loginError";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
+import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
 
 const loginId = ref("");
 const password = ref("");
@@ -58,7 +59,7 @@ async function handleLogin() {
     } else if (auth.user?.role === "WORKER") {
       router.push({ name: "worker-mobile-list" });
     } else if (auth.user?.ui_type === "HQ_SAFE") {
-      router.push({ name: "hq-safe-document-explorer" });
+      router.push({ name: hqSafeHomeRouteName() });
     } else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
       router.push({ name: "site-functional-eval" });
     } else if (auth.user?.ui_type === "SITE") {
@@ -66,7 +67,7 @@ async function handleLogin() {
     } else if (auth.user?.ui_type === "HQ_OTHER") {
       router.push({ name: "hq-other-dashboard" });
     } else {
-      router.push({ name: "hq-safe-document-explorer" });
+      router.push({ name: hqSafeHomeRouteName() });
     }
   } catch (err) {
     errorMessage.value = formatLoginError(err);

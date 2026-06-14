@@ -187,6 +187,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { formatAccidentMoment } from "@/utils/accidentDateDisplay";
+import { formatDateTimeKst } from "@/utils/datetime";
 import { toDisplayedAccidentNasPath } from "@/utils/accidentNasPath";
 import {
   downloadAccidentNasFolderLauncher,
@@ -338,11 +339,7 @@ function resetFollowupChecklist() {
 }
 
 function formatDt(value: string) {
-  try {
-    return new Date(value).toLocaleString("ko-KR");
-  } catch {
-    return value;
-  }
+  return formatDateTimeKst(value, value);
 }
 
 function syncForm() {

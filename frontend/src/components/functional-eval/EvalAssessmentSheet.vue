@@ -99,13 +99,16 @@
             취소
           </button>
           <button
+            v-if="isDirty && canSave"
             class="stitch-btn-primary touch-btn save-btn"
             type="button"
-            :disabled="disabled || saving || !canSave"
-            @click="emit('save')"
+            :disabled="disabled || saving"
+            @click="emit('save', scores)"
           >
-            {{ saving ? "저장 중…" : saveLabel }}
+            {{ saving ? "저장 중…" : "수정 저장" }}
           </button>
+          <p v-else-if="saving" class="saving-hint" aria-live="polite">저장 중…</p>
+          <p v-else-if="canSave && !isDirty" class="saved-hint">저장됨</p>
         </div>
       </footer>
     </template>
@@ -132,26 +135,23 @@ export interface WorkerBrief {
   name: string;
 }
 
-const props = withDefaults(
-  defineProps<{
-    worker: WorkerBrief;
-    title: string;
-    criteria: Criterion[];
-    scores: Record<string, string>;
-    loading: boolean;
-    saving: boolean;
-    disabled: boolean;
-    error: string;
-    variant: "mobile" | "desktop";
-    preview: { total_score: number; max_score: number; grade_label: string } | null;
-    saveLabel?: string;
-  }>(),
-  { saveLabel: "평가 저장" },
-);
+const props = defineProps<{
+  worker: WorkerBrief;
+  title: string;
+  criteria: Criterion[];
+  scores: Record<string, string>;
+  baselineScores: Record<string, string>;
+  loading: boolean;
+  saving: boolean;
+  disabled: boolean;
+  error: string;
+  variant: "mobile" | "desktop";
+  preview: { total_score: number; max_score: number; grade_label: string } | null;
+}>();
 
 const emit = defineEmits<{
   close: [];
-  save: [];
+  save: [scores: Record<string, string>];
   "update:scores": [value: Record<string, string>];
 }>();
 
@@ -160,10 +160,35 @@ const gradeHeaderLabels = computed(() => {
   return first ? first.grades.map((g) => g.label) : [];
 });
 
+function scoresEqual(a: Record<string, string>, b: Record<string, string>) {
+  for (const c of props.criteria) {
+    if ((a[c.id] || "") !== (b[c.id] || "")) return false;
+  }
+  return true;
+}
+
+const isDirty = computed(() => !scoresEqual(props.scores, props.baselineScores));
+
 const canSave = computed(() => {
   if (!props.criteria.length) return false;
   return props.criteria.every((c) => Boolean(props.scores[c.id]));
 });
+
+function scoresComplete(scores: Record<string, string>) {
+  return props.criteria.every((c) => Boolean(scores[c.id]));
+}
+
+function tryAutoSave(next: Record<string, string>, wasComplete: boolean) {
+  if (!scoresComplete(next) || props.disabled || props.saving || props.loading) {
+    return false;
+  }
+  const dirty = !scoresEqual(next, props.baselineScores);
+  if (!wasComplete || dirty) {
+    emit("save", next);
+    return true;
+  }
+  return false;
+}
 
 function findNormalGrade(c: Criterion): string | null {
   const byLabel = c.grades.find((g) => g.label.includes("보통"));
@@ -214,10 +239,16 @@ function setAllNormalGrades() {
     }
   }
   emit("update:scores", next);
+  if (!props.disabled && !props.saving && scoresComplete(next) && !scoresEqual(next, props.baselineScores)) {
+    emit("save", next);
+  }
 }
 
 async function pickGrade(criterionId: string, gradeKey: string) {
-  emit("update:scores", { ...props.scores, [criterionId]: gradeKey });
+  const wasComplete = canSave.value;
+  const next = { ...props.scores, [criterionId]: gradeKey };
+  emit("update:scores", next);
+  if (tryAutoSave(next, wasComplete)) return;
   if (props.variant !== "mobile") return;
   await nextTick();
   scrollToNextCriterion(criterionId);
@@ -439,6 +470,27 @@ async function pickGrade(criterionId: string, gradeKey: string) {
 .actions {
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.saving-hint {
+  margin: 0;
+  flex: 1;
+  min-width: 5rem;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.saved-hint {
+  margin: 0;
+  flex: 1;
+  min-width: 5rem;
+  text-align: right;
+  font-size: 13px;
+  color: #64748b;
 }
 
 .save-btn {

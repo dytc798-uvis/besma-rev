@@ -61,7 +61,9 @@ def _client_for_user(tmp_path: Path, user_ns: SimpleNamespace, setup_fn) -> Test
 
 
 def test_consent_submit_once(tmp_path: Path):
-    user_ns = SimpleNamespace(id=1, login_id="alias-mgr", name="Mgr", role=Role.SITE_FUNCTIONAL_EVAL)
+    user_ns = SimpleNamespace(
+        id=1, login_id="alias-mgr", name="Mgr", role=Role.SITE_FUNCTIONAL_EVAL, site_id=1
+    )
 
     def setup(db):
         site = Site(site_code="S01", site_name="Test")

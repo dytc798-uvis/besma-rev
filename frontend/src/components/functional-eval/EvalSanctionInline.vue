@@ -5,43 +5,37 @@
       <button class="link-btn" type="button" @click="emit('open-history')">이력</button>
     </div>
     <p v-if="promptMessage" class="sanction-hint">{{ promptMessage }}</p>
+    <p v-else-if="showSanctionForm && hasBottomPrefill" class="sanction-hint">
+      「문제」로 평가한 항목이 선택되었습니다. 근거 코멘트를 확인·보완한 뒤 제재를 등록하세요. (첫 제재는 별도 감점 없음)
+    </p>
     <p v-else-if="showSanctionForm" class="sanction-hint">
-      안전·기능 등급에 따라 제재 등록이 필요할 수 있습니다.
+      평가 완료 후에도 제재를 등록할 수 있습니다. 첫 제재는 해당 안전 항목 「문제」 반영, 같은 위반 재발 시 -5점 감점(등급 반영)입니다.
     </p>
     <p class="sanction-status">
       현재 상태:
       <span :class="['status-pill', statusClass(worker.sanction_status)]">{{ worker.sanction_status_label }}</span>
     </p>
-    <template v-if="showSanctionForm">
-      <label class="field">
-        <span class="field-label">위반 항목</span>
-        <select v-model="violationCode" class="field-control" :disabled="disabled">
-          <optgroup v-for="group in groupedViolations" :key="group.category" :label="group.label">
-            <option v-for="item in group.items" :key="item.code" :value="item.code">{{ item.label }}</option>
-          </optgroup>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field-label">등록 사유 <span class="req">*</span></span>
-        <textarea v-model="note" class="field-control" rows="2" placeholder="위반 상황·등록 사유" :disabled="disabled" />
-      </label>
-      <button
-        class="stitch-btn-primary touch-btn sanction-submit"
-        type="button"
-        :disabled="disabled || saving || !violationCode || !note.trim()"
-        @click="submit"
-      >
-        {{ saving ? "등록 중…" : "제재 등록" }}
-      </button>
-      <p v-if="error" class="error">{{ error }}</p>
-    </template>
+    <FeSanctionRegisterForm
+      v-if="showSanctionForm"
+      :key="`${worker.id}-${prefillToken}`"
+      :worker-id="worker.id"
+      :worker-name="worker.name"
+      :grouped-violations="groupedViolations"
+      :default-violation-code="defaultViolationCode"
+      :default-note="defaultNote"
+      :disabled="disabled"
+      :show-cancel="false"
+      :focus-comment="hasBottomPrefill"
+      @saved="emit('saved')"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { api } from "@/services/api";
-import { needsSanctionPrompt, type EvalWorkerCompletion } from "@/utils/functionalEvalCompletion";
+import { computed } from "vue";
+import FeSanctionRegisterForm from "@/components/functional-eval/FeSanctionRegisterForm.vue";
+import type { EvalWorkerCompletion } from "@/utils/functionalEvalCompletion";
+import { hasSafetyBottomScores } from "@/utils/safetySanctionMapping";
 
 interface ViolationItem {
   code: string;
@@ -56,8 +50,8 @@ interface Worker extends EvalWorkerCompletion {
   sanction_status: string;
   sanction_status_label: string;
   is_permanently_expelled: boolean;
-  functional_assessment?: { grade_code?: string; grade_label?: string; is_complete?: boolean } | null;
-  safety_assessment?: { grade_code?: string; grade_label?: string; is_complete?: boolean } | null;
+  functional_assessment?: { grade_code?: string; grade_label?: string; is_complete?: boolean; scores?: Record<string, string> } | null;
+  safety_assessment?: { grade_code?: string; grade_label?: string; is_complete?: boolean; scores?: Record<string, string> } | null;
 }
 
 const props = defineProps<{
@@ -66,6 +60,8 @@ const props = defineProps<{
   periodClosed: boolean;
   promptMessage?: string;
   defaultViolationCode?: string;
+  defaultNote?: string;
+  prefillToken?: number;
 }>();
 
 const emit = defineEmits<{
@@ -73,62 +69,23 @@ const emit = defineEmits<{
   "open-history": [];
 }>();
 
-const violationCode = ref(props.defaultViolationCode || "");
-const note = ref("");
-const saving = ref(false);
-const error = ref("");
-
 const disabled = computed(() => props.periodClosed || props.worker.is_permanently_expelled);
 
 const showSanctionForm = computed(
-  () => needsSanctionPrompt(props.worker) || props.promptMessage,
+  () => !disabled.value || Boolean(props.promptMessage),
 );
 
-watch(
-  () => props.defaultViolationCode,
-  (code) => {
-    if (code && !violationCode.value) violationCode.value = code;
-  },
-  { immediate: true },
-);
+const hasBottomPrefill = computed(() => {
+  if (props.defaultNote && props.defaultViolationCode) return true;
+  return hasSafetyBottomScores(props.worker.safety_assessment?.scores);
+});
 
-watch(
-  () => props.worker.id,
-  () => {
-    note.value = "";
-    error.value = "";
-  },
-);
+const prefillToken = computed(() => props.prefillToken ?? 0);
 
 function statusClass(status: string) {
   if (status.includes("EXPULSION") || status.includes("BAN")) return "danger";
   if (status.includes("WARNING") || status.includes("TRAINING")) return "warn";
   return "normal";
-}
-
-async function submit() {
-  if (!violationCode.value) return;
-  const item = props.groupedViolations.flatMap((g) => g.items).find((v) => v.code === violationCode.value);
-  const ok = window.confirm(
-    `${props.worker.name} 근로자\n위반: ${item?.label || violationCode.value}\n\n제재를 등록하시겠습니까?`,
-  );
-  if (!ok) return;
-  saving.value = true;
-  error.value = "";
-  try {
-    await api.post("/functional-eval/sanctions", {
-      worker_id: props.worker.id,
-      violation_code: violationCode.value,
-      note: note.value.trim(),
-    });
-    note.value = "";
-    emit("saved");
-  } catch (e: unknown) {
-    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    error.value = typeof msg === "string" ? msg : "제재 등록에 실패했습니다.";
-  } finally {
-    saving.value = false;
-  }
 }
 </script>
 
@@ -171,33 +128,6 @@ async function submit() {
   color: #475569;
 }
 
-.field {
-  display: block;
-  margin-top: 10px;
-}
-
-.field-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.field-control {
-  width: 100%;
-  box-sizing: border-box;
-  font-size: 15px;
-  padding: 10px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-}
-
-.sanction-submit {
-  width: 100%;
-  margin-top: 12px;
-  min-height: 44px;
-}
-
 .status-pill {
   display: inline-block;
   padding: 3px 10px;
@@ -219,16 +149,6 @@ async function submit() {
 .status-pill.normal {
   background: #f1f5f9;
   color: #475569;
-}
-
-.req {
-  color: #dc2626;
-}
-
-.error {
-  color: #b91c1c;
-  margin-top: 8px;
-  font-size: 13px;
 }
 
 .link-btn {

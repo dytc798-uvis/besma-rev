@@ -67,6 +67,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api } from "@/services/api";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 interface CommunicationAttachment {
   id: number;
@@ -110,11 +111,7 @@ async function loadPreviews(item: CommunicationItem | null) {
 }
 
 function formatDate(value: string) {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(
-    d.getHours(),
-  ).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return formatDateTimeKst(value, value);
 }
 
 async function loadList() {

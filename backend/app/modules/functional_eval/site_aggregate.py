@@ -14,6 +14,25 @@ class ParsedSiteAggregateRow:
     site_code: str
     erp_site_name: str
     manager_name: str
+    erp_man_days: float | None = None
+    erp_work_days: float | None = None
+    erp_headcount: int | None = None
+
+
+def _parse_numeric_cell(value) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(str(value).strip().replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_headcount_cell(value) -> int | None:
+    num = _parse_numeric_cell(value)
+    if num is None:
+        return None
+    return int(round(num))
 
 
 def _normalize_site_code(value) -> str:
@@ -46,6 +65,9 @@ def parse_monthly_site_aggregate(path: Path) -> list[ParsedSiteAggregateRow]:
                 site_code=code,
                 erp_site_name=name,
                 manager_name=manager,
+                erp_man_days=_parse_numeric_cell(raw[4]) if len(raw) > 4 else None,
+                erp_work_days=_parse_numeric_cell(raw[5]) if len(raw) > 5 else None,
+                erp_headcount=_parse_headcount_cell(raw[6]) if len(raw) > 6 else None,
             )
         )
 

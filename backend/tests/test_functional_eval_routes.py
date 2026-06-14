@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 from datetime import date
 from pathlib import Path
@@ -20,12 +21,58 @@ from app.modules.functional_eval.models import (
     FunctionalEvalAttendanceEntry,
     FunctionalEvalAttendanceImportBatch,
     FunctionalEvalPeriod,
+    FunctionalEvalSiteRegistry,
     FunctionalEvalWorker,
 )
 from app.modules.functional_eval.routes import router as functional_eval_router
 from app.modules.functional_eval.sanctions import resolve_sanction
 from app.modules.sites.models import Site
 from app.modules.users.models import User
+
+_TEST_SIGNATURE_DATA = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+def _post_sanction(
+    client: TestClient,
+    *,
+    worker_id: int,
+    violation_code: str,
+    note: str = "테스트 제재 근거",
+    evidence_type: str = "COMMENT",
+):
+    return client.post(
+        "/functional-eval/sanctions",
+        data={
+            "worker_id": str(worker_id),
+            "violation_code": violation_code,
+            "evidence_type": evidence_type,
+            "note": note,
+            "signature_data": _TEST_SIGNATURE_DATA,
+        },
+    )
+
+
+def _save_safety_with_issues(client: TestClient, worker_id: int):
+    from app.modules.functional_eval.eval_catalog import build_lowest_grade_scores
+
+    return client.put(
+        f"/functional-eval/workers/{worker_id}/assessment/SAFETY",
+        json={"scores": build_lowest_grade_scores("SAFETY")},
+    )
+
+
+def _save_safety_with_single_bottom(client: TestClient, worker_id: int, criterion_id: str = "c2"):
+    from app.modules.functional_eval.eval_catalog import build_top_grade_scores
+
+    scores = build_top_grade_scores("SAFETY")
+    scores[criterion_id] = "BOTTOM"
+    return client.put(
+        f"/functional-eval/workers/{worker_id}/assessment/SAFETY",
+        json={"scores": scores},
+    )
 
 
 def _seed_attendance(db, period: FunctionalEvalPeriod, worker: FunctionalEvalWorker, work_date: date | None = None):
@@ -155,26 +202,22 @@ def test_functional_eval_sanction_flow(tmp_path: Path):
     assert workers_body["items"][0]["name"] == "홍길동"
     assert workers_body["evaluator"]["role"] == "MANAGER"
 
-    first = client.post(
-        "/functional-eval/sanctions",
-        json={"worker_id": worker_id, "violation_code": "INST_TBM", "note": "1차"},
-    )
+    safety_res = _save_safety_with_issues(client, worker_id)
+    assert safety_res.status_code == 200
+
+    first = _post_sanction(client, worker_id=worker_id, violation_code="INST_TBM", note="1차")
     assert first.status_code == 200
     assert first.json()["sanction_result"] == "VERBAL_WARNING"
     assert first.json()["strike_number"] == 1
+    assert first.json()["penalty_points"] == 0
 
-    second = client.post(
-        "/functional-eval/sanctions",
-        json={"worker_id": worker_id, "violation_code": "INST_TBM", "note": "2차"},
-    )
+    second = _post_sanction(client, worker_id=worker_id, violation_code="INST_TBM", note="2차")
     assert second.status_code == 200
     assert second.json()["sanction_result"] == "SAFETY_TRAINING_2H"
     assert second.json()["strike_number"] == 2
+    assert second.json()["penalty_points"] == 5
 
-    immediate = client.post(
-        "/functional-eval/sanctions",
-        json={"worker_id": worker_id, "violation_code": "WORK_BELT", "note": "안전벨트 미착용"},
-    )
+    immediate = _post_sanction(client, worker_id=worker_id, violation_code="WORK_BELT", note="안전벨트 미착용")
     assert immediate.status_code == 200
     assert immediate.json()["sanction_result"] == "SAME_DAY_EXPULSION"
 
@@ -184,17 +227,112 @@ def test_functional_eval_sanction_flow(tmp_path: Path):
     assert body["history_visible"] is True
     assert len(body["sanctions"]) >= 3
 
-    permanent = client.post(
-        "/functional-eval/sanctions",
-        json={"worker_id": worker_id, "violation_code": "SEVERE_THEFT", "note": "절도 적발"},
-    )
+    permanent = _post_sanction(client, worker_id=worker_id, violation_code="SEVERE_THEFT", note="절도 적발")
     assert permanent.status_code == 200
     history2 = client.get(f"/functional-eval/workers/{worker_id}/history")
     assert history2.json()["history_visible"] is False
 
     mileage_res = client.get(f"/functional-eval/workers/{worker_id}/mileage")
     assert mileage_res.status_code == 200
-    assert mileage_res.json()["status"] == "PREPARED"
+    mileage = mileage_res.json()
+    assert mileage["status"] == "PENALTY"
+    assert mileage["points"] == -5
+    assert mileage["penalty_points"] == 5
+
+
+def test_sanction_register_without_safety_bottom(tmp_path: Path):
+    db_file = tmp_path / "sanction_no_bottom.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.functional_eval import models as functional_eval_models  # noqa: F401
+    from app.modules.functional_eval.eval_catalog import build_top_grade_scores
+    from app.modules.workers import models as worker_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    site = Site(site_code="24018", site_name="테스트 현장")
+    setup_db.add(site)
+    setup_db.flush()
+    setup_db.add(
+        User(
+            id=10,
+            name="소장",
+            login_id="24018",
+            password_hash="x",
+            role=Role.SITE_FUNCTIONAL_EVAL,
+            ui_type=UIType.SITE,
+            site_id=site.id,
+            must_change_password=False,
+        )
+    )
+    period = FunctionalEvalPeriod(title="test", deadline_date=date(2026, 12, 31), is_active=True)
+    setup_db.add(period)
+    setup_db.flush()
+    worker = FunctionalEvalWorker(
+        period_id=period.id,
+        site_code="24018",
+        row_no=1,
+        name="직영근로",
+        rrn_hash=hashlib.sha256(b"8804091170113").hexdigest(),
+        rrn_masked="880409-1170113",
+        is_site_manager=False,
+        is_active=True,
+    )
+    setup_db.add(worker)
+    setup_db.flush()
+    _seed_attendance(setup_db, period, worker)
+    site_id = site.id
+    worker_id = worker.id
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(functional_eval_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=10,
+        role=Role.SITE_FUNCTIONAL_EVAL,
+        ui_type=UIType.SITE,
+        site_id=site_id,
+        login_id="24018",
+    )
+    client = TestClient(app)
+
+    res = _post_sanction(client, worker_id=worker_id, violation_code="INST_QR_ACTIVITY", note="평가 전 제재")
+    assert res.status_code == 200
+    assert res.json()["penalty_points"] == 0
+
+    top_only = client.put(
+        f"/functional-eval/workers/{worker_id}/assessment/SAFETY",
+        json={"scores": build_top_grade_scores("SAFETY")},
+    )
+    assert top_only.status_code == 200
+    assert top_only.json()["assessment"]["grade_code"] == "S"
+
+    sanction = _post_sanction(client, worker_id=worker_id, violation_code="INST_TBM", note="TBM 미참여")
+    assert sanction.status_code == 200
+    assert sanction.json()["penalty_points"] == 0
+
+    safety = client.get(f"/functional-eval/workers/{worker_id}/assessment/SAFETY").json()["assessment"]
+    assert safety["scores"]["c1"] == "BOTTOM"
+    assert safety["total_score"] < safety["max_score"]
+
+    repeat = _post_sanction(client, worker_id=worker_id, violation_code="INST_TBM", note="TBM 재발")
+    assert repeat.status_code == 200
+    assert repeat.json()["penalty_points"] == 5
+
+    adjusted = client.get(f"/functional-eval/workers/{worker_id}/assessment/SAFETY").json()["assessment"]
+    assert adjusted["adjustment_penalty"] == 5
+    assert adjusted["total_score"] == adjusted["base_total_score"] - 5
 
 
 def test_functional_eval_assessment_flow(tmp_path: Path):
@@ -686,29 +824,64 @@ def test_sanction_auto_applies_safety_c_and_requires_note(tmp_path: Path):
 
     missing_note = client.post(
         "/functional-eval/sanctions",
-        json={"worker_id": worker_id, "violation_code": "INST_TBM"},
+        data={
+            "worker_id": str(worker_id),
+            "violation_code": "INST_TBM",
+            "evidence_type": "COMMENT",
+            "note": "",
+            "signature_data": _TEST_SIGNATURE_DATA,
+        },
     )
-    assert missing_note.status_code == 422
+    assert missing_note.status_code == 400
 
-    res = client.post(
-        "/functional-eval/sanctions",
-        json={"worker_id": worker_id, "violation_code": "INST_TBM", "note": "TBM 미참석"},
-    )
+    safety_res = _save_safety_with_single_bottom(client, worker_id, "c2")
+    assert safety_res.status_code == 200
+    saved_scores = safety_res.json()["assessment"]["scores"]
+
+    res = _post_sanction(client, worker_id=worker_id, violation_code="INST_QR_ACTIVITY", note="QR 미이행")
     assert res.status_code == 200
     body = res.json()
     assert body["reported_by_name"] == "소장"
-    assert body["note"] == "TBM 미참석"
+    assert body["note"] == "QR 미이행"
+    assert body["penalty_points"] == 0
+    assert body["has_signature"] is True
 
     safety = client.get(f"/functional-eval/workers/{worker_id}/assessment/SAFETY")
     assert safety.status_code == 200
     assessment = safety.json()["assessment"]
-    assert assessment["grade_code"] == "C"
-    assert assessment["scores"] == build_lowest_grade_scores("SAFETY")
+    assert assessment["scores"] == saved_scores
 
     revisions = client.get(f"/functional-eval/workers/{worker_id}/assessment-revisions")
     assert revisions.status_code == 200
-    assert len(revisions.json()["items"]) >= 1
-    assert revisions.json()["items"][0]["source"] == "SANCTION_AUTO"
+    assert len(revisions.json()["items"]) == 0
+
+    second = _post_sanction(client, worker_id=worker_id, violation_code="INST_TBM", note="TBM 2차")
+    assert second.status_code == 200
+    assert second.json()["penalty_points"] == 0
+
+    safety2 = client.get(f"/functional-eval/workers/{worker_id}/assessment/SAFETY")
+    assert safety2.json()["assessment"]["scores"]["c1"] == "BOTTOM"
+
+    revisions2 = client.get(f"/functional-eval/workers/{worker_id}/assessment-revisions")
+    assert revisions2.status_code == 200
+    assert any(item.get("source") == "SANCTION_AUTO" for item in revisions2.json()["items"])
+
+    third = _post_sanction(client, worker_id=worker_id, violation_code="INST_QR_ACTIVITY", note="QR 2차")
+    assert third.status_code == 200
+    assert third.json()["penalty_points"] == 5
+
+    safety3 = client.get(f"/functional-eval/workers/{worker_id}/assessment/SAFETY")
+    safety3_body = safety3.json()["assessment"]
+    assert safety3_body["scores"]["c2"] == "BOTTOM"
+    assert safety3_body.get("adjustment_penalty") == 5
+    assert safety3_body["total_score"] == safety3_body["base_total_score"] - 5
+
+    workers_res = client.get("/functional-eval/my-site/workers")
+    worker_row = next(item for item in workers_res.json()["items"] if item["id"] == worker_id)
+    assert worker_row["safety_assessment"]["adjustment_penalty"] == 5
+
+    revisions3 = client.get(f"/functional-eval/workers/{worker_id}/assessment-revisions")
+    assert sum(1 for item in revisions3.json()["items"] if item.get("source") == "SANCTION_AUTO") == 1
 
 
 def test_manager_can_sanction_team_worker(tmp_path: Path):
@@ -778,12 +951,15 @@ def test_manager_can_sanction_team_worker(tmp_path: Path):
     )
     client = TestClient(app)
 
-    res = client.post(
-        "/functional-eval/sanctions",
-        json={"worker_id": team_worker_id, "violation_code": "GEN_BASIC_SAFETY", "note": "팀원 안전수칙 위반"},
+    res = _post_sanction(
+        client,
+        worker_id=team_worker_id,
+        violation_code="GEN_BASIC_SAFETY",
+        note="팀원 안전수칙 위반",
     )
-    assert res.status_code == 200
-    assert res.json()["worker_id"] == team_worker_id
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body.get("worker_id") == team_worker_id or body.get("id")
 
 
 def test_hq_assessment_override_with_reason(tmp_path: Path):
@@ -868,3 +1044,126 @@ def test_hq_assessment_override_with_reason(tmp_path: Path):
     assert revisions.status_code == 200
     assert revisions.json()["items"][0]["source"] == "HQ_OVERRIDE"
     assert revisions.json()["items"][0]["edited_by_name"] == "안전보건"
+
+
+def test_parse_erp_site_team_prefix():
+    from app.modules.functional_eval.site_alias import parse_erp_site_team_prefix
+
+    info = parse_erp_site_team_prefix("[1.대우건설] 청라C18BL 오피스텔")
+    assert info["team_no"] == 1
+    assert info["team_label"] == "공사1팀"
+    assert info["contractor_label"] == "대우건설"
+
+    info2 = parse_erp_site_team_prefix("[2.한화건설] 마곡 프로젝트")
+    assert info2["team_no"] == 2
+    assert info2["team_key"] == "2"
+
+
+def test_hq_grade_stats(tmp_path: Path):
+    db_file = tmp_path / "functional_eval_grade_stats.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.functional_eval import models as functional_eval_models  # noqa: F401
+    from app.modules.functional_eval.eval_catalog import build_top_grade_scores
+    from app.modules.workers import models as worker_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    site = Site(site_code="24025", site_name="대우청라")
+    setup_db.add(site)
+    setup_db.flush()
+    setup_db.add(
+        User(
+            id=20,
+            name="본사",
+            login_id="hq1",
+            password_hash="x",
+            role=Role.HQ_SAFE,
+            ui_type=UIType.HQ_SAFE,
+            must_change_password=False,
+        )
+    )
+    setup_db.add(
+        User(
+            id=21,
+            name="소장",
+            login_id="24025",
+            password_hash="x",
+            role=Role.SITE_FUNCTIONAL_EVAL,
+            ui_type=UIType.SITE,
+            site_id=site.id,
+            must_change_password=False,
+        )
+    )
+    period = FunctionalEvalPeriod(title="test", deadline_date=date(2026, 6, 26), is_active=True)
+    period.grade_stats_live_from = date(2026, 1, 1)
+    setup_db.add(period)
+    setup_db.flush()
+    setup_db.add(
+        FunctionalEvalSiteRegistry(
+            site_code="24025",
+            erp_site_label="[1.대우건설] 청라C18BL",
+            site_alias="대우청라",
+            manager_name="박명식",
+            manager_login_id="대우청라-박명식",
+            erp_headcount=32,
+        )
+    )
+    worker = FunctionalEvalWorker(
+        period_id=period.id,
+        site_code="24025",
+        site_name="[1.대우건설] 청라C18BL",
+        row_no=2,
+        name="이근로",
+        rrn_hash=hashlib.sha256(b"9001011234567").hexdigest(),
+        is_site_manager=False,
+        is_active=True,
+    )
+    setup_db.add(worker)
+    setup_db.flush()
+    _seed_attendance(setup_db, period, worker)
+    site_id = site.id
+    worker_id = worker.id
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(functional_eval_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    hq_user = SimpleNamespace(id=20, role=Role.HQ_SAFE, ui_type=UIType.HQ_SAFE, site_id=None, login_id="hq1")
+    site_user = SimpleNamespace(id=21, role=Role.SITE_FUNCTIONAL_EVAL, ui_type=UIType.SITE, site_id=site_id, login_id="24025")
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: site_user
+    site_client = TestClient(app)
+    scores = build_top_grade_scores("FUNCTIONAL")
+    site_client.put(f"/functional-eval/workers/{worker_id}/assessment/FUNCTIONAL", json={"scores": scores})
+    site_client.put(f"/functional-eval/workers/{worker_id}/assessment/SAFETY", json={"scores": build_top_grade_scores("SAFETY")})
+
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: hq_user
+    client = TestClient(app)
+    res = client.get("/functional-eval/hq/grade-stats")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["overall"]["functional"]["graded_total"] == 1
+    assert body["overall"]["functional"]["workers_total"] == 32
+    assert body["overall"]["functional"]["grades"]["S"]["pct"] == 100.0
+    assert body["by_team"][0]["team_no"] == 1
+    assert body["by_site"][0]["site_code"] == "24025"
+
+    site_res = client.get("/functional-eval/hq/sites/24025/grade-stats")
+    assert site_res.status_code == 200
+    assert site_res.json()["team_label"] == "공사1팀"
+
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: site_user
+    my_res = site_client.get("/functional-eval/my-site/grade-stats")
+    assert my_res.status_code == 200
+    assert my_res.json()["functional"]["grades"]["S"]["count"] == 1

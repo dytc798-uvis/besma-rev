@@ -7,6 +7,13 @@
 
         <div class="hq-menu-group">
           <p class="hq-menu-section-label">주요업무</p>
+          <RouterLink
+            class="hq-fe-menu-highlight"
+            :style="menuOrderPrimaryStyle('functional-eval')"
+            to="/hq-safe/functional-eval"
+          >
+            기능인정제 평가
+          </RouterLink>
           <RouterLink :class="hqMenuEmphasisClass('notices')" :style="menuOrderPrimaryStyle('notices')" to="/hq-safe/notices">공지사항</RouterLink>
           <RouterLink
             :class="hqMenuEmphasisClass('safety-policy-goals')"
@@ -42,21 +49,6 @@
             <span v-if="unreadCommunicationCount > 0" class="hq-menu-count-badge">{{ unreadCommunicationCount }}</span>
           </RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('safety-education')" to="/hq-safe/safety-education">안전교육 및 안전점검</RouterLink>
-          <RouterLink
-            class="hq-deploy-menu-highlight"
-            :style="menuOrderPrimaryStyle('new-site-deployment')"
-            to="/hq-safe/new-site-deployment"
-          >
-            신규현장 배포 현황
-            <span v-if="deployIncompleteCount > 0" class="hq-menu-count-badge">{{ deployIncompleteCount }}</span>
-          </RouterLink>
-          <RouterLink
-            class="hq-fe-menu-highlight"
-            :style="menuOrderPrimaryStyle('functional-eval')"
-            to="/hq-safe/functional-eval"
-          >
-            기능인정제 평가
-          </RouterLink>
           <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink
             v-for="m in dynamicMenus"
@@ -65,6 +57,14 @@
             :to="`/hq-safe/custom-menus/${m.slug}`"
           >
             {{ m.title }}
+          </RouterLink>
+          <RouterLink
+            class="hq-deploy-menu-highlight"
+            :style="menuOrderPrimaryStyle('new-site-deployment')"
+            to="/hq-safe/new-site-deployment"
+          >
+            신규현장 배포 현황
+            <span v-if="deployIncompleteCount > 0" class="hq-menu-count-badge">{{ deployIncompleteCount }}</span>
           </RouterLink>
         </div>
 

@@ -3,8 +3,9 @@
  * 라우트 경로·키 문자열은 기존 HQSafeLayout과 동일해야 한다.
  */
 
-/** 주요업무 기본 순서: 강조 메뉴(공지·방침·위평DB·문서탐색·취합·소통) → 안전교육 → 사고 (근로자의견·부적합은 문서 취합에 통합) */
+/** 주요업무 기본 순서: 기능인제 → 강조 메뉴 → 안전교육 → 사고 → 신규현장 배포(맨 아래) */
 export const HQ_SIDEBAR_PRIMARY_KEYS = [
+  "functional-eval",
   "notices",
   "safety-policy-goals",
   "risk-library",
@@ -13,7 +14,7 @@ export const HQ_SIDEBAR_PRIMARY_KEYS = [
   "approvals-history",
   "safety-education",
   "accidents",
-  "functional-eval",
+  "new-site-deployment",
 ] as const;
 
 /** 현장 SITE `menu-link-primary`와 동일 정책: 주요 업무 강조 */

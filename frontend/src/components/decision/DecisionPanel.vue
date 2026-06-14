@@ -93,6 +93,7 @@ import {
   formatScopePageIntentMarkdown,
 } from "@/services/decisionCursorExport";
 import DecisionItem from "./DecisionItem.vue";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 const props = defineProps<{
   scope: string;
@@ -127,15 +128,7 @@ const pageIntentFeedback = ref("");
 const savedPageIntentAt = computed(() => {
   const at = scopePageNotesByScope.value[props.scope]?.updated_at;
   if (!at) return "";
-  try {
-    return new Date(at).toLocaleString("ko-KR", {
-      dateStyle: "short",
-      timeStyle: "short",
-      timeZone: "Asia/Seoul",
-    });
-  } catch {
-    return at;
-  }
+  return formatDateTimeKst(at, at);
 });
 
 watch(

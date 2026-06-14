@@ -84,6 +84,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/services/api";
 import { feedbackLoopLabelKo } from "@/utils/feedbackLoopLabels";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 interface CommunicationItemRow {
   item_key: string;
@@ -111,11 +112,7 @@ const displayed = computed(() =>
 );
 
 function formatDate(value: string) {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(
-    d.getHours(),
-  ).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return formatDateTimeKst(value, value);
 }
 
 function isRead(itemKey: string) {

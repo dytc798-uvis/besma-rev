@@ -31,6 +31,44 @@ _PROJECT_TOKENS: tuple[tuple[str, str], ...] = (
 )
 
 
+def _clean_erp_site_label(site_name: str) -> str:
+    text = (site_name or "").strip()
+    if text.startswith("현장명:"):
+        text = text.split(":", 1)[1].strip()
+    return text
+
+
+def parse_erp_site_team_prefix(site_name: str) -> dict[str, str | int | None]:
+    """ERP 현장명 접두 [N.시공사] → 공사 N팀 (현장 소장 1명 = 현장 1곳)."""
+    text = _clean_erp_site_label(site_name)
+    m = re.match(r"^\[(\d+)\.([^\]]+)\]\s*(.*)", text, re.DOTALL)
+    if m:
+        team_no = int(m.group(1))
+        contractor = m.group(2).strip()
+        return {
+            "team_no": team_no,
+            "team_key": str(team_no),
+            "team_label": f"공사{team_no}팀",
+            "contractor_label": contractor,
+            "project_name": m.group(3).strip(),
+        }
+    if text.startswith("[관급]"):
+        return {
+            "team_no": None,
+            "team_key": "관급",
+            "team_label": "관급",
+            "contractor_label": "관급",
+            "project_name": text[4:].strip(),
+        }
+    return {
+        "team_no": None,
+        "team_key": "unknown",
+        "team_label": "기타",
+        "contractor_label": None,
+        "project_name": text,
+    }
+
+
 def _contractor_short(bracket: str) -> str:
     text = bracket.strip()
     m = re.search(r"([가-힣A-Za-z]{2,6})건설", text)
@@ -46,9 +84,7 @@ def _contractor_short(bracket: str) -> str:
 
 def derive_site_alias(erp_site_name: str) -> str:
     """ERP 현장명 → 로그인 접두 별칭 (예: [1.대우건설] 청라C18… → 대우청라)."""
-    text = (erp_site_name or "").strip()
-    if text.startswith("현장명:"):
-        text = text.replace("현장명:", "", 1).strip()
+    text = _clean_erp_site_label(erp_site_name)
 
     contractor = ""
     project = text

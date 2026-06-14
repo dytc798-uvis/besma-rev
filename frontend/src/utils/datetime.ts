@@ -73,6 +73,21 @@ export function todayKst() {
   return toKstDateKey(new Date());
 }
 
+/** UTC naive ISO 등을 KST 기준 자정(00:00:00)인지 판별 */
+export function isInstantKstMidnight(value: string | Date | null | undefined) {
+  const parsed = toDate(value);
+  if (!parsed) return false;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(parsed);
+  const num = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? NaN);
+  return num("hour") === 0 && num("minute") === 0 && num("second") === 0;
+}
+
 /** `<input type="month">` 초기값 등 — 한국 날짜 기준 YYYY-MM */
 export function yearMonthKst(d: Date = new Date()) {
   return toKstDateKey(d).slice(0, 7);

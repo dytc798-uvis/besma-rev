@@ -81,6 +81,7 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import { fetchAccidentDetail, type AccidentDetail } from "@/services/accidents";
 import { formatAccidentMoment } from "@/utils/accidentDateDisplay";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 const route = useRoute();
 const detail = ref<AccidentDetail | null>(null);
@@ -96,12 +97,7 @@ function nz(value: string | null | undefined) {
 }
 
 function formatDateTime(value: string | null | undefined) {
-  if (!value) return "—";
-  try {
-    return new Date(value).toLocaleString("ko-KR");
-  } catch {
-    return value;
-  }
+  return formatDateTimeKst(value, "—");
 }
 
 function previewPrint() {

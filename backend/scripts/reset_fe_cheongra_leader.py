@@ -1,4 +1,8 @@
-"""대우청라 김팀장 — 깨진 PDF·서명·평가 초기화 (로컬 데모용).
+"""대우청라 김팀장 평가완료(서명) 삭제 + 타 평가자 평가보고서 null (로컬 데모용).
+
+- 김팀장: TEAM_LEADER·TEAM_MANAGER_APPROVE 서명·PDF 삭제 (팀원 평가 데이터는 유지)
+- 그 외: functional_eval_signatures 전부 삭제 (평가보고서 null 상태)
+- 동의서(FunctionalEvalConsent)는 유지
 
 Usage:
   cd backend && PYTHONPATH=. python scripts/reset_fe_cheongra_leader.py
@@ -15,70 +19,57 @@ from app.config.settings import settings  # noqa: E402
 from app.core.database import SessionLocal  # noqa: E402
 from app.modules.functional_eval import models as fe_models  # noqa: F401
 from app.modules.functional_eval.models import (  # noqa: E402
-    FunctionalEvalAssessment,
-    FunctionalEvalAssessmentRevision,
-    FunctionalEvalConsent,
     FunctionalEvalSignature,
-    FunctionalEvalWorker,
 )
 from app.modules.sites.models import Site  # noqa: F401
 from app.modules.users.models import User  # noqa: F401
 
-CHEONGRA_CODE = "24025"
 LEADER_LOGIN = "대우청라-김팀장"
 
 
-def main() -> None:
+def _delete_signature_pdfs() -> int:
     sig_dir = settings.storage_root / "functional_eval" / "signatures"
-    deleted_files = 0
+    deleted = 0
     if sig_dir.is_dir():
         for pdf in sig_dir.glob("*.pdf"):
             pdf.unlink(missing_ok=True)
-            deleted_files += 1
+            deleted += 1
+    return deleted
+
+
+def reset_eval_signatures(db) -> tuple[int, int]:
+    """김팀장 평가완료 + 전체 평가보고서 서명 초기화."""
+    leader_rows = (
+        db.query(FunctionalEvalSignature)
+        .filter(FunctionalEvalSignature.team_leader_login_id == LEADER_LOGIN)
+        .all()
+    )
+    leader_deleted = len(leader_rows)
+    for row in leader_rows:
+        db.delete(row)
+
+    other_deleted = (
+        db.query(FunctionalEvalSignature)
+        .filter(
+            (FunctionalEvalSignature.team_leader_login_id.is_(None))
+            | (FunctionalEvalSignature.team_leader_login_id != LEADER_LOGIN)
+        )
+        .delete(synchronize_session=False)
+    )
+    return leader_deleted, other_deleted
+
+
+def main() -> None:
+    deleted_files = _delete_signature_pdfs()
 
     db = SessionLocal()
     try:
-        consent_rows = db.query(FunctionalEvalConsent).all()
-        consent_deleted = len(consent_rows)
-        for row in consent_rows:
-            db.delete(row)
-
-        sig_rows = db.query(FunctionalEvalSignature).all()
-        sig_deleted = len(sig_rows)
-        for row in sig_rows:
-            db.delete(row)
-
-        leader_workers = (
-            db.query(FunctionalEvalWorker)
-            .filter(
-                FunctionalEvalWorker.site_code == CHEONGRA_CODE,
-                FunctionalEvalWorker.assigned_evaluator_login_id == LEADER_LOGIN,
-            )
-            .all()
-        )
-        worker_ids = [w.id for w in leader_workers]
-
-        rev_deleted = 0
-        assess_deleted = 0
-        if worker_ids:
-            rev_deleted = (
-                db.query(FunctionalEvalAssessmentRevision)
-                .filter(FunctionalEvalAssessmentRevision.worker_id.in_(worker_ids))
-                .delete(synchronize_session=False)
-            )
-            assess_deleted = (
-                db.query(FunctionalEvalAssessment)
-                .filter(FunctionalEvalAssessment.worker_id.in_(worker_ids))
-                .delete(synchronize_session=False)
-            )
-
+        leader_deleted, other_deleted = reset_eval_signatures(db)
         db.commit()
-        print(f"PDF 삭제: {deleted_files}개 ({sig_dir})")
-        print(f"동의서 DB 삭제: {consent_deleted}건")
-        print(f"서명 DB 삭제: {sig_deleted}건")
-        print(f"김팀장 팀원 평가 삭제: {assess_deleted}건 (수정이력 {rev_deleted}건)")
-        print(f"김팀장 담당 근로자 {len(worker_ids)}명 - 다시 평가 가능")
-        print(f"로그인: {LEADER_LOGIN} / 750101")
+        print(f"PDF 삭제: {deleted_files}개")
+        print(f"김팀장 평가완료(서명) 삭제: {leader_deleted}건")
+        print(f"기타 평가자 평가보고서(null): {other_deleted}건")
+        print(f"팀원 평가 데이터는 유지 - {LEADER_LOGIN} / 750101")
     finally:
         db.close()
 

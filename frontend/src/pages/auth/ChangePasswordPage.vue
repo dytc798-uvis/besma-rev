@@ -49,6 +49,7 @@ import axios from "axios";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
+import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -94,7 +95,7 @@ async function handleChangePassword() {
     }
 
     if (auth.user?.ui_type === "HQ_SAFE") {
-      router.replace({ name: "hq-safe-document-explorer" });
+      router.replace({ name: hqSafeHomeRouteName() });
       return;
     }
 

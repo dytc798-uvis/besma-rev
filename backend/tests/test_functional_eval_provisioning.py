@@ -61,6 +61,7 @@ def test_parse_monthly_aggregate_sample():
     c18 = next(r for r in rows if "C18BL" in r.erp_site_name)
     assert c18.site_code == "24025"
     assert c18.manager_name == "박명식"
+    assert c18.erp_headcount is not None and c18.erp_headcount > 0
 
 
 def test_aggregate_and_attendance_flow(db_session):

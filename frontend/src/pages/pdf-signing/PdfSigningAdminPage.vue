@@ -65,6 +65,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { api } from "@/services/api";
+import { formatDateTimeKst } from "@/utils/datetime";
 
 type Row = {
   id: number;
@@ -100,7 +101,7 @@ function onFileChange(slot: string, e: Event) {
 }
 
 function formatDt(v: string) {
-  return new Date(v).toLocaleString("ko-KR");
+  return formatDateTimeKst(v, "—");
 }
 
 async function loadSlots() {

@@ -106,6 +106,68 @@ def main() -> None:
                 cur.execute(ddl)
                 changes.append(f"functional_eval_attendance_entries.{col}")
 
+    if _has_table(cur, "functional_eval_sanctions"):
+        for col, ddl in [
+            ("evidence_type", "ALTER TABLE functional_eval_sanctions ADD COLUMN evidence_type VARCHAR(20) NOT NULL DEFAULT 'COMMENT'"),
+            ("evidence_photo_path", "ALTER TABLE functional_eval_sanctions ADD COLUMN evidence_photo_path VARCHAR(500)"),
+            (
+                "evidence_photo_original_filename",
+                "ALTER TABLE functional_eval_sanctions ADD COLUMN evidence_photo_original_filename VARCHAR(255)",
+            ),
+            ("signature_data", "ALTER TABLE functional_eval_sanctions ADD COLUMN signature_data TEXT"),
+            ("signature_hash", "ALTER TABLE functional_eval_sanctions ADD COLUMN signature_hash VARCHAR(64)"),
+            ("penalty_points", "ALTER TABLE functional_eval_sanctions ADD COLUMN penalty_points INTEGER NOT NULL DEFAULT 5"),
+        ]:
+            if not _has_column(cur, "functional_eval_sanctions", col):
+                cur.execute(ddl)
+                changes.append(f"functional_eval_sanctions.{col}")
+
+    if not _has_table(cur, "functional_eval_customer_rewards"):
+        cur.execute(
+            """
+            CREATE TABLE functional_eval_customer_rewards (
+                id INTEGER PRIMARY KEY,
+                period_id INTEGER NOT NULL REFERENCES functional_eval_periods(id),
+                worker_id INTEGER NOT NULL REFERENCES functional_eval_workers(id),
+                site_code VARCHAR(50) NOT NULL,
+                photo_path VARCHAR(500) NOT NULL,
+                original_filename VARCHAR(255) NOT NULL DEFAULT '',
+                status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                bonus_points INTEGER NOT NULL DEFAULT 5,
+                submitted_by_user_id INTEGER REFERENCES users(id),
+                reviewed_by_user_id INTEGER REFERENCES users(id),
+                reviewed_at DATETIME,
+                reject_note TEXT,
+                created_at DATETIME NOT NULL
+            )
+            """
+        )
+        changes.append("functional_eval_customer_rewards (created)")
+
+    if _has_table(cur, "functional_eval_site_registry"):
+        for col, ddl in [
+            ("erp_headcount", "ALTER TABLE functional_eval_site_registry ADD COLUMN erp_headcount INTEGER"),
+            ("erp_man_days", "ALTER TABLE functional_eval_site_registry ADD COLUMN erp_man_days REAL"),
+            ("erp_work_days", "ALTER TABLE functional_eval_site_registry ADD COLUMN erp_work_days REAL"),
+        ]:
+            if not _has_column(cur, "functional_eval_site_registry", col):
+                cur.execute(ddl)
+                changes.append(f"functional_eval_site_registry.{col}")
+
+    if _has_table(cur, "functional_eval_periods"):
+        for col, ddl in [
+            ("hq_grade_stats_json", "ALTER TABLE functional_eval_periods ADD COLUMN hq_grade_stats_json JSON"),
+            ("hq_grade_stats_computed_at", "ALTER TABLE functional_eval_periods ADD COLUMN hq_grade_stats_computed_at DATETIME"),
+            ("grade_stats_live_from", "ALTER TABLE functional_eval_periods ADD COLUMN grade_stats_live_from DATE"),
+        ]:
+            if not _has_column(cur, "functional_eval_periods", col):
+                cur.execute(ddl)
+                changes.append(f"functional_eval_periods.{col}")
+        cur.execute(
+            "UPDATE functional_eval_periods SET grade_stats_live_from = '2026-06-16' "
+            "WHERE grade_stats_live_from IS NULL"
+        )
+
     conn.commit()
     conn.close()
     if changes:

@@ -2,6 +2,7 @@ export interface EvalAssessmentBrief {
   is_complete?: boolean;
   grade_code?: string;
   grade_label?: string;
+  scores?: Record<string, string>;
 }
 
 export interface EvalWorkerCompletion {
@@ -128,16 +129,23 @@ export function workerRowHighlightClass(w: EvalWorkerCompletion): string {
   return workerNeedsHighlight(w) ? "row-highlight--alert" : "";
 }
 
-/** 안전 평가 저장 후 제재 입력 유도 (부족/문제 상태인 C등급만) */
+/** 안전(2-2) 평가표 — 항목 중 하나라도 우수(TOP) 미만 */
+export function hasSafetyAssessmentIssue(w: EvalWorkerCompletion): boolean {
+  const assessment = w.safety_assessment;
+  if (!assessment?.is_complete || !assessment.scores) return false;
+  return Object.values(assessment.scores).some((key) => Boolean(key) && key !== "TOP");
+}
+
+/** 안전(2-2) 평가표 — 「문제」(BOTTOM) 항목 존재 */
+export function hasSafetyBottomIssue(w: EvalWorkerCompletion): boolean {
+  const assessment = w.safety_assessment;
+  if (!assessment?.is_complete || !assessment.scores) return false;
+  return Object.values(assessment.scores).some((key) => key === "BOTTOM");
+}
+
+/** 안전 평가 저장 후 제재 입력 유도 — 「문제」(BOTTOM) 항목이 있을 때만 */
 export function needsSanctionPrompt(w: EvalWorkerCompletion): boolean {
-  if (!isFullyComplete(w)) return false;
-  const codes = [
-    w.functional_assessment?.grade_code,
-    w.safety_assessment?.grade_code,
-  ]
-    .filter(Boolean)
-    .map((c) => normalizeGradeCode(c)) as string[];
-  return codes.some((c) => c === "C");
+  return isSafetyComplete(w) && hasSafetyBottomIssue(w);
 }
 
 export type CompletionBadge = "전체완료" | "기능완료" | "안전완료" | null;
