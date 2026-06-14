@@ -7,6 +7,8 @@
       <button type="button" class="secondary" @click="previewPrint">프린터로 출력</button>
     </div>
 
+    <p v-if="printPreparing" class="print-preparing no-print">인쇄 미리보기 준비 중… 잠시만 기다려 주세요.</p>
+
     <p v-if="loading" class="muted">불러오는 중…</p>
     <p v-else-if="errorMessage" class="error">{{ errorMessage }}</p>
 
@@ -129,6 +131,7 @@ type SiteStatRow = Record<string, unknown> & {
 
 const route = useRoute();
 const loading = ref(true);
+const printPreparing = ref(false);
 const errorMessage = ref("");
 const gradeStats = ref<Record<string, unknown> | null>(null);
 const period = ref<PeriodInfo | null>(null);
@@ -210,16 +213,32 @@ function previewPrint() {
   window.print();
 }
 
-async function waitForPaint() {
+async function waitForPrintReady() {
   await nextTick();
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
+  if (document.fonts?.ready) {
+    try {
+      await document.fonts.ready;
+    } catch {
+      /* ignore */
+    }
+  }
+  // 팀·현장 SVG·표가 많을 때 레이아웃 안정화
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 200);
+  });
 }
 
 async function triggerAutoPrint() {
-  await waitForPaint();
-  window.print();
+  printPreparing.value = true;
+  try {
+    await waitForPrintReady();
+    window.print();
+  } finally {
+    printPreparing.value = false;
+  }
 }
 
 async function loadFromApi() {
@@ -242,14 +261,16 @@ async function load() {
     } else {
       await loadFromApi();
     }
-    if (shouldAutoPrint.value) {
-      await triggerAutoPrint();
-    }
   } catch {
     errorMessage.value = "등급 통계 보고서 데이터를 불러오지 못했습니다.";
     gradeStats.value = null;
   } finally {
     loading.value = false;
+  }
+
+  // DOM에 report-print-root가 그려진 뒤에만 인쇄 (loading 중 autoPrint 시 빈 화면 방지)
+  if (shouldAutoPrint.value && gradeStats.value) {
+    await triggerAutoPrint();
   }
 }
 
@@ -402,6 +423,16 @@ onMounted(() => {
 }
 .error {
   color: #b91c1c;
+  font-weight: 600;
+}
+.print-preparing {
+  margin: 0;
+  padding: 10px 12px;
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  color: #1d4ed8;
+  font-size: 14px;
   font-weight: 600;
 }
 @media (max-width: 1024px) {
