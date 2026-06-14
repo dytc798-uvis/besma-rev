@@ -71,7 +71,7 @@
           운영 아이디어 제안
         </RouterLink>
         <RouterLink :class="menuLinkClass('info', '/site/info')" :style="menuOrderStyle('info')" to="/site/info">설정</RouterLink>
-        <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" :style="menuOrderStyle('user-guide')" to="/site/user-guide">사용설명서</RouterLink>
+        <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" :style="menuOrderStyle('user-guide')" to="/site/user-guide">기능인인정제 설명</RouterLink>
       </nav>
       <nav v-else class="layout-menu layout-menu-mobile-site">
         <RouterLink :class="menuLinkClass('mobile', '/site/mobile')" to="/site/mobile" @click="closeMobileDrawer">
@@ -128,7 +128,7 @@
         <RouterLink class="menu-link menu-link-secondary" to="/change-password" @click="closeMobileDrawer">비밀번호 변경</RouterLink>
         <RouterLink :class="menuLinkClass('info', '/site/info')" to="/site/info" @click="closeMobileDrawer">설정</RouterLink>
         <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" to="/site/user-guide" @click="closeMobileDrawer">
-          사용설명서
+          기능인인정제 설명
         </RouterLink>
       </nav>
     </aside>

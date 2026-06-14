@@ -305,7 +305,7 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
     { key: "communications", label: "소통자료" },
     { key: "opinions", label: "운영 아이디어 제안" },
     { key: "info", label: "설정" },
-    { key: "user-guide", label: "사용설명서" },
+    { key: "user-guide", label: "기능인인정제 설명" },
   ],
   HQ_SAFE: [
     { key: "risk-library", label: "위험성평가 DB 조회" },
@@ -320,7 +320,7 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
     { key: "sites", label: "현장 관리" },
     { key: "users", label: "사용자 관리" },
     { key: "settings", label: "안전문서 설정관리" },
-    { key: "user-guide", label: "사용설명서" },
+    { key: "user-guide", label: "기능인인정제 설명" },
     { key: "pdf-signing", label: "PDF 외부서명(임시)" },
   ],
 };

@@ -1,7 +1,7 @@
 <template>
   <div class="guide-page">
     <aside class="guide-menu">
-      <h2>사용설명서</h2>
+      <h2>기능인인정제 설명</h2>
       <button
         v-for="section in sections"
         :key="section.title"
@@ -13,8 +13,19 @@
       </button>
     </aside>
     <section class="guide-content">
-      <h1>{{ currentSection?.title || "사용설명서" }}</h1>
-      <div class="content-box">{{ currentSection?.body || "불러오는 중..." }}</div>
+      <h1>{{ currentSection?.title || "기능인인정제 설명" }}</h1>
+
+      <div v-if="showPdfDownloads" class="pdf-panel">
+        <h3>역할별 A4 PDF</h3>
+        <ul class="pdf-list">
+          <li v-for="pdf in pdfDownloads" :key="pdf.href">
+            <a :href="pdf.href" target="_blank" rel="noopener noreferrer">{{ pdf.label }}</a>
+          </li>
+        </ul>
+      </div>
+
+      <div class="content-box" v-html="renderedBody" />
+
       <div v-if="canManageGuideShots" class="upload-panel">
         <h3>화면 예시 업로드</h3>
         <div class="upload-row">
@@ -27,7 +38,8 @@
         <p class="upload-hint">업로드 시 서버에서 크기를 줄이고 JPEG로 변환해 저장합니다.</p>
         <p v-if="uploadMessage" class="upload-message">{{ uploadMessage }}</p>
       </div>
-      <div class="shot-wrap">
+
+      <div v-if="currentShots.length" class="shot-wrap">
         <h3>화면 예시</h3>
         <div class="shot-grid">
           <article v-for="shot in currentShots" :key="shot.src" class="shot-card">
@@ -41,15 +53,9 @@
             />
             <div v-else class="shot-placeholder">
               <strong>스크린샷 준비중</strong>
-              <span>{{ shot.src }}</span>
-              <span>{{ shot.guide }}</span>
             </div>
           </article>
         </div>
-      </div>
-      <div v-if="canManageGuideShots" class="capture-tip">
-        <strong>촬영 팁</strong>
-        <p>헤더/사이드바/핵심 버튼이 함께 보이도록 1장, 상세 동작(등록/저장/업로드) 1장을 권장합니다.</p>
       </div>
     </section>
   </div>
@@ -65,6 +71,14 @@ interface GuideSection {
   body: string;
 }
 
+const GUIDE_PATH = "/FE_FUNCTIONAL_EVAL_GUIDE.md";
+
+const pdfDownloads = [
+  { href: "/fe-guide/기능인인정제_팀장용_운영설명서.pdf", label: "팀장용 운영설명서 (PDF)" },
+  { href: "/fe-guide/기능인인정제_소장용_운영설명서.pdf", label: "소장용 운영설명서 (PDF)" },
+  { href: "/fe-guide/기능인인정제_본사대표용_운영설명서.pdf", label: "본사·대표님용 운영설명서 (PDF)" },
+];
+
 const sections = ref<GuideSection[]>([]);
 const selectedTitle = ref("");
 const failedImageMap = ref<Record<string, boolean>>({});
@@ -74,44 +88,69 @@ const uploadFile = ref<File | null>(null);
 const uploadLoading = ref(false);
 const uploadMessage = ref("");
 const auth = useAuthStore();
-/** 사용설명서 스크린샷 업로드·촬영팁은 지정 편집 계정(hq01) 전용 */
+
 const canManageGuideShots = computed(
   () => (auth.user?.login_id || "").trim().toLowerCase() === "hq01",
 );
 
 const currentSection = computed(() => sections.value.find((s) => s.title === selectedTitle.value) ?? sections.value[0]);
-const screenshotConfig: Record<string, Array<{ src: string; label: string; guide: string }>> = {
-  "대시보드": [
-    { src: "/guide-shots/dashboard-overview.png", label: "대시보드 개요", guide: "KPI 카드와 주요 버튼이 보이게 촬영" },
-    { src: "/guide-shots/dashboard-filter.png", label: "대시보드 필터", guide: "필터 적용 전/후 화면 중 1개 촬영" },
-  ],
-  "공지사항": [
-    { src: "/guide-shots/notices-list.png", label: "공지사항 목록", guide: "목록 + 작성 버튼이 보이게 촬영" },
-    { src: "/guide-shots/notices-detail-comment.png", label: "공지사항 상세/댓글", guide: "댓글 입력 영역 포함 촬영" },
-  ],
-  "안전보건 방침 및 목표": [
-    { src: "/guide-shots/policy-goals-hq.png", label: "HQ 업로드 화면", guide: "방침/목표 2패널이 보이게 촬영" },
-    { src: "/guide-shots/policy-goals-site.png", label: "SITE 조회 화면", guide: "현장/본사 전환 버튼 포함 촬영" },
-  ],
-  "근로자의견청취": [
-    { src: "/guide-shots/worker-voice-list.png", label: "의견청취 목록", guide: "상태칩/액션버튼이 보이게 촬영" },
-    { src: "/guide-shots/worker-voice-upload.png", label: "의견청취 업로드", guide: "파일 선택 + 업로드 버튼 포함 촬영" },
-  ],
-  "동적 메뉴(본사 설정)": [
-    { src: "/guide-shots/dynamic-menu-settings.png", label: "동적 메뉴 설정", guide: "드래그앤드롭 순서 영역 포함 촬영" },
-    { src: "/guide-shots/dynamic-menu-runtime.png", label: "동적 메뉴 실행 화면", guide: "게시판형 또는 표형 화면 촬영" },
-  ],
-  "구글설문 연동 운영(A안)": [
-    { src: "/guide-shots/google-form-csv-download.png", label: "구글설문 CSV 다운로드", guide: "응답 다운로드 메뉴가 보이게 촬영" },
-    { src: "/guide-shots/worker-voice-csv-upload.png", label: "BESMA CSV 업로드", guide: "근로자의견청취 업로드 단계 촬영" },
-  ],
-};
+
+const showPdfDownloads = computed(() => currentSection.value?.title === "PDF 다운로드");
+
 const currentShots = computed(() => {
   const title = currentSection.value?.title || "";
-  const uploaded = uploadedShotsMap.value[title] || [];
-  const defaults = screenshotConfig[title] || [{ src: "/guide-shots/default.png", label: "기본 화면", guide: "해당 메뉴 대표 화면 1장을 배치하세요." }];
-  return [...uploaded, ...defaults];
+  return uploadedShotsMap.value[title] || [];
 });
+
+function escapeHtml(text: string) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatGuideBody(body: string) {
+  const lines = body.split(/\r?\n/);
+  const html: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      html.push("<br />");
+      continue;
+    }
+    if (trimmed.startsWith("### ")) {
+      html.push(`<h3 class="guide-h3">${escapeHtml(trimmed.slice(4))}</h3>`);
+      continue;
+    }
+    if (trimmed.startsWith("- ")) {
+      html.push(`<p class="guide-li">• ${escapeHtml(trimmed.slice(2))}</p>`);
+      continue;
+    }
+    const withLinks = escapeHtml(trimmed).replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+    );
+    html.push(`<p class="guide-p">${withLinks}</p>`);
+  }
+  return html.join("\n");
+}
+
+const renderedBody = computed(() => formatGuideBody(currentSection.value?.body || ""));
+
+function defaultSectionTitle(all: GuideSection[]) {
+  const ui = auth.user?.ui_type;
+  if (ui === "HQ_SAFE") {
+    return all.find((s) => s.title.includes("본사"))?.title ?? all[0]?.title ?? "";
+  }
+  if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
+    return all.find((s) => s.title.includes("소장"))?.title
+      ?? all.find((s) => s.title.includes("팀장"))?.title
+      ?? all[0]?.title
+      ?? "";
+  }
+  return all[0]?.title ?? "";
+}
 
 function markImageFailed(src: string) {
   failedImageMap.value = { ...failedImageMap.value, [src]: true };
@@ -190,10 +229,10 @@ onMounted(async () => {
   if (!auth.user) {
     await auth.loadMe();
   }
-  const res = await fetch("/BESMA_USER_GUIDE.md", { cache: "no-cache" });
+  const res = await fetch(GUIDE_PATH, { cache: "no-cache" });
   const text = await res.text();
   sections.value = parseSections(text);
-  selectedTitle.value = sections.value[0]?.title ?? "";
+  selectedTitle.value = defaultSectionTitle(sections.value);
   if (selectedTitle.value) {
     await loadUploadedShots(selectedTitle.value);
   }
@@ -213,7 +252,16 @@ watch(selectedTitle, (title) => {
 .menu-btn.active { background:#eff6ff; border-color:#93c5fd; color:#1d4ed8; font-weight:600; }
 .guide-content { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
 .guide-content h1 { margin:0 0 10px; font-size:20px; }
-.content-box { white-space:pre-wrap; line-height:1.7; color:#1f2937; }
+.content-box { line-height:1.7; color:#1f2937; }
+.content-box :deep(.guide-h3) { margin:16px 0 8px; font-size:15px; font-weight:700; color:#0f172a; }
+.content-box :deep(.guide-p) { margin:0 0 8px; }
+.content-box :deep(.guide-li) { margin:0 0 6px; padding-left:4px; }
+.content-box :deep(a) { color:#2563eb; text-decoration:underline; }
+.pdf-panel { margin-bottom:14px; padding:12px; border:1px solid #dbeafe; border-radius:10px; background:#f8fafc; }
+.pdf-panel h3 { margin:0 0 8px; font-size:15px; }
+.pdf-list { margin:0; padding-left:20px; }
+.pdf-list li { margin-bottom:6px; }
+.pdf-list a { color:#2563eb; font-weight:600; }
 .upload-panel { margin-top: 14px; padding: 10px; border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc; }
 .upload-panel h3 { margin:0 0 8px; font-size: 15px; }
 .upload-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
@@ -227,12 +275,8 @@ watch(selectedTitle, (title) => {
 .shot-title { margin:0 0 8px; font-size:13px; font-weight:700; color:#334155; }
 .shot-image { width:100%; border-radius:8px; border:1px solid #e2e8f0; background:#fff; }
 .shot-placeholder { display:grid; gap:6px; min-height:120px; padding:10px; border:1px dashed #cbd5e1; border-radius:8px; background:#fff; color:#64748b; font-size:12px; }
-.capture-tip { margin-top: 12px; padding: 10px 12px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; }
-.capture-tip strong { font-size:13px; color:#0f172a; }
-.capture-tip p { margin:4px 0 0; font-size:12px; color:#64748b; }
 @media (max-width: 900px) {
   .guide-page { grid-template-columns: 1fr; }
   .guide-menu { max-height: none; }
 }
 </style>
-

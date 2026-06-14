@@ -14,6 +14,12 @@
           >
             기능인정제 평가
           </RouterLink>
+          <RouterLink
+            :style="menuOrderPrimaryStyle('user-guide')"
+            to="/hq-safe/user-guide"
+          >
+            기능인인정제 설명
+          </RouterLink>
           <RouterLink :class="hqMenuEmphasisClass('notices')" :style="menuOrderPrimaryStyle('notices')" to="/hq-safe/notices">공지사항</RouterLink>
           <RouterLink
             :class="hqMenuEmphasisClass('safety-policy-goals')"
@@ -59,7 +65,6 @@
             {{ m.title }}
           </RouterLink>
           <RouterLink
-            class="hq-deploy-menu-highlight"
             :style="menuOrderPrimaryStyle('new-site-deployment')"
             to="/hq-safe/new-site-deployment"
           >
@@ -72,7 +77,6 @@
           <p class="hq-menu-section-label">부가 메뉴</p>
           <RouterLink :style="menuOrderSecondaryStyle('site-search')" to="/hq-safe/site-search">현장 검색</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('opinions')" to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
-          <RouterLink :style="menuOrderSecondaryStyle('user-guide')" to="/hq-safe/user-guide">사용설명서</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('settings')" to="/hq-safe/settings">안전문서 설정관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>

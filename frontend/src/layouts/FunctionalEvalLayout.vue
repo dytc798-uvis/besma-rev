@@ -34,6 +34,9 @@
             {{ status.label }}
           </RouterLink>
         </div>
+        <RouterLink class="fe-menu-subitem fe-menu-guide" :to="{ name: 'site-user-guide' }">
+          기능인인정제 설명
+        </RouterLink>
       </nav>
     </aside>
     <aside v-else class="layout-sidebar">
@@ -60,6 +63,13 @@
             {{ status.label }}
           </RouterLink>
         </div>
+        <RouterLink
+          class="fe-menu-subitem fe-menu-guide"
+          :to="{ name: 'site-user-guide' }"
+          @click="mobileDrawerOpen = false"
+        >
+          기능인인정제 설명
+        </RouterLink>
       </nav>
     </aside>
     <section class="layout-content">

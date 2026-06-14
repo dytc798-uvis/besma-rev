@@ -3,9 +3,10 @@
  * 라우트 경로·키 문자열은 기존 HQSafeLayout과 동일해야 한다.
  */
 
-/** 주요업무 기본 순서: 기능인제 → 강조 메뉴 → 안전교육 → 사고 → 신규현장 배포(맨 아래) */
+/** 주요업무 기본 순서: 기능인제 → 기능인제 설명 → 강조 메뉴 → … → 신규현장 배포(맨 아래) */
 export const HQ_SIDEBAR_PRIMARY_KEYS = [
   "functional-eval",
+  "user-guide",
   "notices",
   "safety-policy-goals",
   "risk-library",
@@ -30,7 +31,6 @@ export const HQ_SIDEBAR_EMPHASIS_KEYS = [
 export const HQ_SIDEBAR_SECONDARY_KEYS = [
   "site-search",
   "opinions",
-  "user-guide",
   "settings",
   "sites",
   "users",
