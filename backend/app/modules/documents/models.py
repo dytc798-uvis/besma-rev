@@ -123,6 +123,21 @@ class DocumentComment(Base):
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
 
 
+class DocumentCommentSiteAck(Base):
+    """현장 단위 코멘트 확인 — 한 명이 확인/응답하면 동일 현장 관리자 전원에게 반영."""
+
+    __tablename__ = "document_comment_site_acks"
+    __table_args__ = (UniqueConstraint("site_id", "comment_id", name="uq_doc_comment_site_ack"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), nullable=False, index=True)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("document_comments.id"), nullable=False, index=True)
+    acknowledged_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ack_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    acknowledged_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
 class DocumentCommunicationRead(Base):
     __tablename__ = "document_communication_reads"
     __table_args__ = (UniqueConstraint("user_id", "item_key", name="uq_doc_comm_read_user_item"),)

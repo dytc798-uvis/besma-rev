@@ -73,6 +73,7 @@ import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst } from "@/utils/datetime";
 import { isLedgerManagedDocumentType, LEDGER_MANAGED_UX_MESSAGE } from "@/utils/ledgerManagedDocument";
+import { notifyDocCommentTickerChanged } from "@/utils/documentCommentTickerRead";
 
 interface DocumentCommentItem {
   id: number;
@@ -167,6 +168,9 @@ async function submitComment() {
     });
     draft.value = "";
     await loadComments();
+    if (auth.user?.role === "SITE") {
+      notifyDocCommentTickerChanged();
+    }
   } catch {
     submitError.value = "코멘트 등록에 실패했습니다. 잠시 후 다시 시도해 주세요.";
   } finally {

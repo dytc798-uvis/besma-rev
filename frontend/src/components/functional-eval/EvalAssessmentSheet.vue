@@ -4,14 +4,11 @@
     :class="{
       'eval-panel--mobile': variant === 'mobile',
       'eval-panel--desktop': variant === 'desktop',
-      'fe-sheet': variant === 'mobile',
-      'fe-sheet-open': variant === 'mobile',
     }"
     :role="variant === 'mobile' ? 'dialog' : undefined"
     :aria-modal="variant === 'mobile' ? true : undefined"
     :aria-label="variant === 'mobile' ? `${worker.name} ${title}` : undefined"
   >
-    <div v-if="variant === 'mobile'" class="fe-sheet-handle" aria-hidden="true" />
     <header class="eval-head">
       <div>
         <h2 class="eval-head-title">{{ worker.name }}</h2>
@@ -53,8 +50,13 @@
       </div>
 
       <!-- 모바일: 항목별 세로 라디오 -->
-      <div v-else class="criteria-mobile">
-        <div v-for="c in criteria" :key="c.id" class="criterion-block">
+      <div v-else ref="criteriaMobileRef" class="criteria-mobile">
+        <div
+          v-for="c in criteria"
+          :key="c.id"
+          :ref="(el) => setCriterionBlockRef(c.id, el as Element | null)"
+          class="criterion-block"
+        >
           <div class="criterion-title">{{ c.title }}</div>
           <div class="grade-options">
             <label v-for="g in c.grades" :key="g.key" class="grade-option">
@@ -111,7 +113,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, nextTick, ref } from "vue";
 
 export interface GradeOption {
   key: string;
@@ -171,6 +173,38 @@ function findNormalGrade(c: Criterion): string | null {
   return c.grades[normalIndex]?.key ?? null;
 }
 
+const criteriaMobileRef = ref<HTMLElement | null>(null);
+const criterionBlockRefs = new Map<string, HTMLElement>();
+
+function setCriterionBlockRef(criterionId: string, el: Element | null) {
+  if (el instanceof HTMLElement) {
+    criterionBlockRefs.set(criterionId, el);
+  } else {
+    criterionBlockRefs.delete(criterionId);
+  }
+}
+
+function scrollToNextCriterion(currentCriterionId: string) {
+  const container = criteriaMobileRef.value;
+  if (!container) return;
+
+  const currentIndex = props.criteria.findIndex((c) => c.id === currentCriterionId);
+  if (currentIndex < 0 || currentIndex >= props.criteria.length - 1) return;
+
+  const nextBlock = criterionBlockRefs.get(props.criteria[currentIndex + 1].id);
+  if (!nextBlock) return;
+
+  const containerRect = container.getBoundingClientRect();
+  const blockRect = nextBlock.getBoundingClientRect();
+  const padding = 8;
+  const fullyVisible =
+    blockRect.top >= containerRect.top + padding && blockRect.bottom <= containerRect.bottom - padding;
+  if (fullyVisible) return;
+
+  const scrollTop = container.scrollTop + (blockRect.top - containerRect.top) - padding;
+  container.scrollTo({ top: Math.max(0, scrollTop), behavior: "smooth" });
+}
+
 function setAllNormalGrades() {
   const next: Record<string, string> = {};
   for (const c of props.criteria) {
@@ -182,8 +216,11 @@ function setAllNormalGrades() {
   emit("update:scores", next);
 }
 
-function pickGrade(criterionId: string, gradeKey: string) {
+async function pickGrade(criterionId: string, gradeKey: string) {
   emit("update:scores", { ...props.scores, [criterionId]: gradeKey });
+  if (props.variant !== "mobile") return;
+  await nextTick();
+  scrollToNextCriterion(criterionId);
 }
 </script>
 
@@ -202,6 +239,10 @@ function pickGrade(criterionId: string, gradeKey: string) {
 
 .eval-panel--mobile.panel,
 .eval-panel--mobile {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   background: #fff;
 }
 
@@ -317,6 +358,7 @@ function pickGrade(criterionId: string, gradeKey: string) {
 .criterion-block {
   border-top: 1px solid #e2e8f0;
   padding: 12px 0;
+  scroll-margin-top: 8px;
 }
 
 .criterion-title {

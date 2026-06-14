@@ -14,10 +14,19 @@ from sqlalchemy.orm import Session
 from app.config.security import get_password_hash
 from app.core.enums import Role, UIType
 from app.core.datetime_utils import utc_now
-from app.modules.functional_eval.eval_catalog import EvalType, catalog_for_api, compute_assessment, get_criteria, normalize_grade_code
+from app.core.permissions import HQ_SAFE_WORKSPACE_ROLES
+from app.modules.functional_eval.eval_catalog import (
+    EvalType,
+    build_lowest_grade_scores,
+    catalog_for_api,
+    compute_assessment,
+    get_criteria,
+    normalize_grade_code,
+)
 from app.modules.functional_eval.attendance import ParsedAttendanceRow, parse_attendance_report_xlsx
 from app.modules.functional_eval.models import (
     FunctionalEvalAssessment,
+    FunctionalEvalAssessmentRevision,
     FunctionalEvalAttendanceEntry,
     FunctionalEvalAttendanceImportBatch,
     FunctionalEvalPeriod,
@@ -46,6 +55,7 @@ from app.modules.users.models import User
 from app.utils.file_ingestion import parse_excel_with_fallback
 
 from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
+from app.modules.functional_eval.signature_service import batch_label
 from app.modules.functional_eval.site_alias import build_eval_login_id
 from app.modules.functional_eval import approval_workflow
 from app.modules.functional_eval.legacy_site_grade import apply_legacy_assessments
@@ -283,8 +293,26 @@ def violation_catalog_public() -> list[dict[str, Any]]:
     ]
 
 
-def _serialize_sanction(row: FunctionalEvalSanction, worker_name: str) -> dict[str, Any]:
+def _is_hq_safety_user(user: User) -> bool:
+    role = user.role if isinstance(user.role, Role) else Role(str(user.role))
+    return role in HQ_SAFE_WORKSPACE_ROLES
+
+
+def _user_brief(db: Session, user_id: int | None) -> tuple[str | None, str | None]:
+    if not user_id:
+        return None, None
+    row = db.query(User).filter(User.id == user_id).first()
+    if row is None:
+        return None, None
+    return (row.name or "").strip() or None, (row.login_id or "").strip() or None
+
+
+def _serialize_sanction(row: FunctionalEvalSanction, worker_name: str, db: Session | None = None) -> dict[str, Any]:
     item = VIOLATION_BY_CODE.get(row.violation_code)
+    reporter_name: str | None = None
+    reporter_login: str | None = None
+    if db is not None:
+        reporter_name, reporter_login = _user_brief(db, row.reported_by_user_id)
     return {
         "id": row.id,
         "period_id": row.period_id,
@@ -300,6 +328,26 @@ def _serialize_sanction(row: FunctionalEvalSanction, worker_name: str) -> dict[s
         "sanction_result_label": SANCTION_RESULT_LABELS.get(row.sanction_result, row.sanction_result),
         "note": row.note,
         "reported_by_user_id": row.reported_by_user_id,
+        "reported_by_name": reporter_name,
+        "reported_by_login_id": reporter_login,
+        "created_at": row.created_at,
+    }
+
+
+def _serialize_assessment_revision(row: FunctionalEvalAssessmentRevision, db: Session) -> dict[str, Any]:
+    editor_name, editor_login = _user_brief(db, row.edited_by_user_id)
+    return {
+        "id": row.id,
+        "worker_id": row.worker_id,
+        "eval_type": row.eval_type,
+        "before_grade_code": normalize_grade_code(row.before_grade_code) or row.before_grade_code,
+        "after_grade_code": normalize_grade_code(row.after_grade_code) or row.after_grade_code,
+        "reason": row.reason,
+        "source": row.source,
+        "sanction_id": row.sanction_id,
+        "edited_by_user_id": row.edited_by_user_id,
+        "edited_by_name": editor_name,
+        "edited_by_login_id": editor_login,
         "created_at": row.created_at,
     }
 
@@ -530,11 +578,13 @@ def serialize_worker(
         "sanction_count": count,
         "is_permanently_expelled": permanent,
         "history_visible": not permanent,
-        "latest_sanction": _serialize_sanction(latest, worker.name) if latest and not permanent else None,
+        "latest_sanction": _serialize_sanction(latest, worker.name, db) if latest and not permanent else None,
         "mileage": serialize_mileage_placeholder(worker),
         "functional_assessment": functional,
         "safety_assessment": safety,
         "mileage_note": worker.mileage_note,
+        "evaluation_batch": worker.evaluation_batch or 0,
+        "evaluation_batch_label": batch_label(worker.evaluation_batch or 0),
     }
     return payload
 
@@ -912,6 +962,8 @@ def build_hq_eval_rows(items: list[dict[str, Any]], *, completed_only: bool = Fa
                 "site_name": w.get("site_name"),
                 "name": w.get("name"),
                 "is_active": w.get("is_active"),
+                "is_permanently_expelled": w.get("is_permanently_expelled"),
+                "sanction_count": w.get("sanction_count") or 0,
                 "functional_grade": _eval_grade_label(f),
                 "safety_grade": _eval_grade_label(s),
                 "functional_score": f.get("total_score"),
@@ -1458,6 +1510,41 @@ def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker)
         raise ValueError("SITE_MISMATCH")
 
 
+def _assert_worker_view_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
+    """이력·조회 — 소장은 현장 전체, 팀장은 담당만, 본사는 전체."""
+    if _is_hq_safety_user(user):
+        return
+    if user.role != Role.SITE_FUNCTIONAL_EVAL:
+        raise ValueError("SITE_MISMATCH")
+    site_code = _site_code_for_user(user, db)
+    if site_code != worker.site_code:
+        raise ValueError("SITE_MISMATCH")
+    if _is_primary_site_evaluator(db, user, site_code):
+        return
+    _assert_worker_access(db, user, worker)
+
+
+def _assert_sanction_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
+    """제재 등록 — 소장은 현장 전체, 팀장은 담당만, 본사는 전체."""
+    if _is_hq_safety_user(user):
+        return
+    if user.role != Role.SITE_FUNCTIONAL_EVAL:
+        raise ValueError("SITE_MISMATCH")
+    site_code = _site_code_for_user(user, db)
+    if site_code != worker.site_code:
+        raise ValueError("SITE_MISMATCH")
+    if _is_primary_site_evaluator(db, user, site_code):
+        return
+    if _is_team_leader_self_target(db, user, worker):
+        raise ValueError("CANNOT_EVALUATE_SELF")
+    login_id = (user.login_id or "").strip()
+    assigned = (worker.assigned_evaluator_login_id or "").strip()
+    if assigned and assigned != login_id:
+        raise ValueError("SITE_MISMATCH")
+    if not assigned:
+        raise ValueError("SITE_MISMATCH")
+
+
 def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
     site_code = _site_code_for_user(user, db)
     login_id = (user.login_id or "").strip()
@@ -1509,18 +1596,26 @@ def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
     if worker is None:
         raise ValueError("WORKER_NOT_FOUND")
-    _assert_worker_access(db, user, worker)
+    _assert_worker_view_access(db, user, worker)
 
     permanent = _worker_is_permanently_expelled(db, worker.id)
     worker_payload = serialize_worker(db, worker)
+    revisions = (
+        db.query(FunctionalEvalAssessmentRevision)
+        .filter(FunctionalEvalAssessmentRevision.worker_id == worker.id)
+        .order_by(FunctionalEvalAssessmentRevision.created_at.desc(), FunctionalEvalAssessmentRevision.id.desc())
+        .all()
+    )
+    revision_payload = [_serialize_assessment_revision(r, db) for r in revisions]
 
     if permanent:
         latest = _worker_sanction_rows(db, worker.id)
-        summary = _serialize_sanction(latest[0], worker.name) if latest else None
+        summary = _serialize_sanction(latest[0], worker.name, db) if latest else None
         return {
             "worker": worker_payload,
             "history_visible": False,
             "sanctions": [],
+            "assessment_revisions": revision_payload,
             "summary": summary,
             "message": "영구 퇴출 대상은 상세 이력을 표시하지 않습니다.",
         }
@@ -1565,7 +1660,7 @@ def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any
             .all()
         )
         for row in rows:
-            item = _serialize_sanction(row, pw.name)
+            item = _serialize_sanction(row, pw.name, db)
             item["period_id"] = pw.period_id
             item["from_prior_period"] = True
             prior_sanctions.append(item)
@@ -1573,11 +1668,99 @@ def get_worker_history(db: Session, user: User, worker_id: int) -> dict[str, Any
     return {
         "worker": worker_payload,
         "history_visible": True,
-        "sanctions": [_serialize_sanction(s, worker.name) for s in current],
+        "sanctions": [_serialize_sanction(s, worker.name, db) for s in current],
         "prior_sanctions": prior_sanctions,
         "prior_assessments": prior_assessments,
+        "assessment_revisions": revision_payload,
         "mileage": serialize_mileage_placeholder(worker),
     }
+
+
+def _upsert_assessment_with_revision(
+    db: Session,
+    *,
+    worker: FunctionalEvalWorker,
+    eval_type: EvalType,
+    scores: dict[str, str],
+    user: User,
+    reason: str,
+    source: str,
+    sanction_id: int | None = None,
+) -> dict[str, Any]:
+    computed = compute_assessment(eval_type, scores)
+    existing = (
+        db.query(FunctionalEvalAssessment)
+        .filter(
+            FunctionalEvalAssessment.worker_id == worker.id,
+            FunctionalEvalAssessment.eval_type == eval_type,
+        )
+        .first()
+    )
+    before_scores = dict(existing.scores_json) if existing else None
+    before_grade = normalize_grade_code(existing.grade_code) if existing else None
+
+    if existing is None:
+        existing = FunctionalEvalAssessment(
+            worker_id=worker.id,
+            eval_type=eval_type,
+            scores_json=computed["scores"],
+            total_score=computed["total_score"],
+            max_score=computed["max_score"],
+            grade_code=computed["grade_code"],
+            grade_label=computed["grade_label"],
+            updated_by_user_id=user.id,
+        )
+        db.add(existing)
+    else:
+        existing.scores_json = computed["scores"]
+        existing.total_score = computed["total_score"]
+        existing.max_score = computed["max_score"]
+        existing.grade_code = computed["grade_code"]
+        existing.grade_label = computed["grade_label"]
+        existing.updated_by_user_id = user.id
+        db.add(existing)
+
+    revision = FunctionalEvalAssessmentRevision(
+        worker_id=worker.id,
+        eval_type=eval_type,
+        before_scores_json=before_scores,
+        after_scores_json=computed["scores"],
+        before_grade_code=before_grade,
+        after_grade_code=computed["grade_code"],
+        reason=reason.strip(),
+        source=source,
+        sanction_id=sanction_id,
+        edited_by_user_id=user.id,
+    )
+    db.add(revision)
+    db.flush()
+    return _serialize_assessment(existing, eval_type)
+
+
+def _apply_safety_c_grade_from_sanction(
+    db: Session,
+    *,
+    worker: FunctionalEvalWorker,
+    user: User,
+    sanction_row: FunctionalEvalSanction,
+    violation_label: str,
+    note: str,
+) -> None:
+    scores = build_lowest_grade_scores("SAFETY")
+    reason = (
+        f"제재 등록에 따른 안전(2-2) C등급 자동 반영 — {violation_label}"
+        f" ({note.strip()})"
+    )
+    _upsert_assessment_with_revision(
+        db,
+        worker=worker,
+        eval_type="SAFETY",
+        scores=scores,
+        user=user,
+        reason=reason,
+        source="SANCTION_AUTO",
+        sanction_id=sanction_row.id,
+    )
 
 
 def record_sanction(
@@ -1592,14 +1775,18 @@ def record_sanction(
     assert_period_editable(period)
     if violation_code not in VIOLATION_BY_CODE:
         raise ValueError("UNKNOWN_VIOLATION")
+    note_text = (note or "").strip()
+    if not note_text:
+        raise ValueError("SANCTION_NOTE_REQUIRED")
 
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
     if worker is None or worker.period_id != period.id:
         raise ValueError("WORKER_NOT_FOUND")
     if worker.is_site_manager:
         raise ValueError("CANNOT_SANCTION_SITE_MANAGER")
-    _assert_worker_attendance_eligible(db, period, worker)
-    _assert_worker_access(db, user, worker)
+    _assert_sanction_access(db, user, worker)
+    if not _is_hq_safety_user(user):
+        _assert_worker_attendance_eligible(db, period, worker)
 
     prior_count = (
         db.query(FunctionalEvalSanction)
@@ -1621,13 +1808,22 @@ def record_sanction(
         violation_category=item.category,
         strike_number=strike,
         sanction_result=sanction_result,
-        note=(note or "").strip() or None,
+        note=note_text,
         reported_by_user_id=user.id,
     )
     db.add(row)
+    db.flush()
+    _apply_safety_c_grade_from_sanction(
+        db,
+        worker=worker,
+        user=user,
+        sanction_row=row,
+        violation_label=item.label,
+        note=note_text,
+    )
     db.commit()
     db.refresh(row)
-    return _serialize_sanction(row, worker.name)
+    return _serialize_sanction(row, worker.name, db)
 
 
 def list_hq_summary(
@@ -1664,7 +1860,7 @@ def list_hq_summary(
         items.append(
             {
                 "worker": worker_payload,
-                "sanctions": [_serialize_sanction(s, worker.name) for s in visible_sanctions],
+                "sanctions": [_serialize_sanction(s, worker.name, db) for s in visible_sanctions],
                 "sanction_count_total": len(sanctions),
             }
         )
@@ -1982,7 +2178,10 @@ def get_worker_assessment(db: Session, user: User, worker_id: int, eval_type: Ev
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
     if worker is None:
         raise ValueError("WORKER_NOT_FOUND")
-    _assert_worker_access(db, user, worker)
+    if _is_hq_safety_user(user):
+        _assert_worker_view_access(db, user, worker)
+    else:
+        _assert_worker_access(db, user, worker)
     if worker.is_site_manager:
         raise ValueError("CANNOT_EVALUATE_SITE_MANAGER")
     row = (
@@ -2020,6 +2219,9 @@ def save_worker_assessment(
     if period_is_closed(period):
         raise ValueError("PERIOD_CLOSED")
     approval_workflow.assert_site_editable(db, period.id, worker.site_code)
+    from app.modules.functional_eval import signature_ops
+
+    signature_ops.assert_worker_not_signature_locked(db, user, worker)
     _assert_worker_attendance_eligible(db, period, worker)
 
     computed = compute_assessment(eval_type, scores)
@@ -2054,6 +2256,58 @@ def save_worker_assessment(
     db.commit()
     db.refresh(row)
     return _serialize_assessment(row, eval_type)
+
+
+def save_hq_assessment_override(
+    db: Session,
+    user: User,
+    worker_id: int,
+    eval_type: EvalType,
+    scores: dict[str, str],
+    reason: str,
+) -> dict[str, Any]:
+    if not _is_hq_safety_user(user):
+        raise ValueError("HQ_ONLY")
+    reason_text = (reason or "").strip()
+    if not reason_text:
+        raise ValueError("REVISION_REASON_REQUIRED")
+
+    worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
+    if worker is None:
+        raise ValueError("WORKER_NOT_FOUND")
+    if worker.is_site_manager:
+        raise ValueError("CANNOT_EVALUATE_SITE_MANAGER")
+    period = db.query(FunctionalEvalPeriod).filter(FunctionalEvalPeriod.id == worker.period_id).first()
+    if period is None:
+        raise ValueError("WORKER_NOT_FOUND")
+    if period_is_closed(period):
+        raise ValueError("PERIOD_CLOSED")
+
+    assessment = _upsert_assessment_with_revision(
+        db,
+        worker=worker,
+        eval_type=eval_type,
+        scores=scores,
+        user=user,
+        reason=reason_text,
+        source="HQ_OVERRIDE",
+    )
+    db.commit()
+    return {"assessment": assessment}
+
+
+def list_worker_assessment_revisions(db: Session, user: User, worker_id: int) -> list[dict[str, Any]]:
+    worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
+    if worker is None:
+        raise ValueError("WORKER_NOT_FOUND")
+    _assert_worker_view_access(db, user, worker)
+    rows = (
+        db.query(FunctionalEvalAssessmentRevision)
+        .filter(FunctionalEvalAssessmentRevision.worker_id == worker.id)
+        .order_by(FunctionalEvalAssessmentRevision.created_at.desc(), FunctionalEvalAssessmentRevision.id.desc())
+        .all()
+    )
+    return [_serialize_assessment_revision(r, db) for r in rows]
 
 
 def apply_daily_roster_file(

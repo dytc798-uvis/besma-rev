@@ -185,7 +185,6 @@ def test_document_instance_history_contract(tmp_path: Path):
         submitter_user_id=site_user_id,
         current_status=DocumentStatus.SUBMITTED,
         instance_id=inst2.id,
-        submitted_at=datetime(2026, 2, 1, 10, 0, 0),
         uploaded_at=datetime(2026, 2, 1, 10, 0, 0),
         uploaded_by_user_id=site_user_id,
         version_no=1,
@@ -224,6 +223,7 @@ def test_document_instance_history_contract(tmp_path: Path):
     assert row2["submission_count"] == 2
     assert row2["reupload_count"] == 1
     assert row2["is_missing"] is False
+    assert row2["submitted_at"] is not None
 
     r_detail = client.get(f"/document-instances/{inst_missing_id}")
     assert r_detail.status_code == 200

@@ -66,6 +66,14 @@
       <header class="layout-header layout-header-fe" :class="{ 'layout-header-site-mobile': isMobileViewport }">
         <div class="header-left">
           <button
+            v-if="isMobileViewport && isEvaluateRoute"
+            type="button"
+            class="fe-header-back"
+            @click="goRoster"
+          >
+            ← 현황
+          </button>
+          <button
             v-if="isMobileViewport"
             type="button"
             class="sidebar-toggle-btn"
@@ -86,23 +94,44 @@
         </div>
       </header>
       <main class="layout-main layout-main-fe">
-        <RouterView />
+        <FeConsentGate v-if="consentRequired" :open="consentRequired" @completed="onConsentCompleted" />
+        <RouterView v-else />
       </main>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useMobileViewport } from "@/composables/useMobileViewport";
 import { useAuthStore } from "@/stores/auth";
+import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
+import { api } from "@/services/api";
 
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 const { isMobileViewport } = useMobileViewport();
 const mobileDrawerOpen = ref(false);
+const consentRequired = ref(false);
+
+async function checkConsent() {
+  try {
+    const res = await api.get("/functional-eval/consent/status");
+    consentRequired.value = Boolean(res.data.required);
+  } catch {
+    consentRequired.value = false;
+  }
+}
+
+function onConsentCompleted() {
+  consentRequired.value = false;
+}
+
+onMounted(() => {
+  void checkConsent();
+});
 
 const evalMenuStatuses = [
   { key: "incomplete", label: "미평가" },
@@ -114,8 +143,15 @@ const isRosterMenuActive = computed(
   () => route.name === "site-functional-eval" || route.name === "site-functional-eval-roster",
 );
 
+const isEvaluateRoute = computed(() => route.name === "site-functional-eval-evaluate");
+
 function isEvalMenuActive(statusKey: string) {
   return route.name === "site-functional-eval-evaluate" && route.query.eval_status === statusKey;
+}
+
+function goRoster() {
+  mobileDrawerOpen.value = false;
+  void router.push({ name: "site-functional-eval" });
 }
 
 watch(
@@ -192,6 +228,19 @@ function logout() {
 
 .hamburger-glyph {
   line-height: 1;
+}
+
+.fe-header-back {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .layout-main-fe {

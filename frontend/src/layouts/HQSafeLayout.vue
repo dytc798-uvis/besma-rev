@@ -59,13 +59,6 @@
           </RouterLink>
           <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink
-            v-if="canAccessPdfSigning"
-            :style="menuOrderPrimaryStyle('pdf-signing')"
-            to="/hq-safe/pdf-signing"
-          >
-            PDF 외부서명(임시)
-          </RouterLink>
-          <RouterLink
             v-for="m in dynamicMenus"
             :key="`hq-dyn-${m.slug}`"
             :style="menuOrderPrimaryStyle(`dynamic:${m.id}`)"
@@ -83,7 +76,21 @@
           <RouterLink :style="menuOrderSecondaryStyle('settings')" to="/hq-safe/settings">안전문서 설정관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
-          <RouterLink :style="menuOrderSecondaryStyle('approvals-inbox')" to="/hq-safe/approvals/inbox">결재함(공사중)</RouterLink>
+          <RouterLink
+            v-if="canAccessPdfSigning"
+            :style="menuOrderSecondaryStyle('pdf-signing')"
+            to="/hq-safe/pdf-signing"
+          >
+            PDF 외부서명(임시)
+          </RouterLink>
+          <RouterLink
+            v-if="canSystemBackup"
+            class="hq-backup-menu-highlight"
+            :style="menuOrderSecondaryStyle('system-backup')"
+            to="/hq-safe/system-backup"
+          >
+            전체 백업
+          </RouterLink>
         </div>
       </nav>
     </aside>
@@ -120,6 +127,7 @@ import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
 import { todayKst } from "@/utils/datetime";
 import { buildHqMenuOrderMaps, isHqSidebarEmphasisKey } from "@/config/hqSidebarMenuGroups";
+import { canSystemBackup as userCanSystemBackup } from "@/utils/systemBackupAccess";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -133,6 +141,7 @@ const canAccessAccidents = computed(() => auth.user?.role === "ACCIDENT_ADMIN");
 const canAccessPdfSigning = computed(() =>
   ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
 );
+const canSystemBackup = computed(() => userCanSystemBackup(auth.user));
 const deployIncompleteCount = ref(0);
 
 onMounted(() => {
@@ -443,6 +452,11 @@ function handleLogout() {
   padding: 24px;
   overflow: auto;
   background: #f1f5f9;
+}
+
+.hq-backup-menu-highlight {
+  border-left: 3px solid #dc2626 !important;
+  font-weight: 700;
 }
 
 </style>

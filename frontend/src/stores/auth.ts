@@ -12,6 +12,7 @@ export interface AuthUser {
   site_id: number | null;
   person_id: number | null;
   map_preference?: "NAVER" | "TMAP" | null;
+  can_system_backup?: boolean;
 }
 
 export type TestPersona = "HQ_ADMIN" | "SITE_MANAGER" | "WORKER";

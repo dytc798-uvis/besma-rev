@@ -24,7 +24,7 @@ from app.modules.document_submissions.service import (
     transition_instance_workflow_status,
 )
 from app.modules.documents.ledger_managed import assert_not_ledger_managed_document, assert_not_ledger_managed_document_type
-from app.modules.documents.storage_paths import resolve_existing_storage_path
+from app.modules.documents.storage_paths import is_storage_path_available, resolve_existing_storage_path
 from app.modules.documents.feedback_loop_service import (
     apply_feedback_loop_patch,
     feedback_loop_public_dict,
@@ -42,7 +42,10 @@ from app.modules.documents.models import (
 )
 from app.modules.document_settings.models import DocumentRequirement
 from app.modules.documents.service import (
+    ack_peer_comments_on_site_reply,
+    ack_site_peer_comment,
     count_site_dashboard_pending_current_task,
+    count_unacked_peer_comments,
     create_document_comment,
     delete_document_comment,
     DocumentContentInvalidStateError,
@@ -55,6 +58,7 @@ from app.modules.documents.service import (
     get_tbm_periodic_daily_monitoring,
     list_document_comments,
     list_document_comments_with_review,
+    list_unacked_peer_comment_rows,
 )
 from app.schemas.document_dashboard import HQDashboardResponse, RequirementStatusResponse
 from app.modules.sites.models import Site
@@ -1042,26 +1046,14 @@ def get_peer_document_comment_count(
     current_user: CurrentUserDep,
     after: datetime | None = Query(
         None,
-        description="이 시각 이후에 등록된 타인 코멘트만 집계. 생략 시 최근 14일로 제한.",
+        description="(선택) 추가 하한 시각. 기본은 한국 '오늘' 00:00 이후 미확인 코멘트만.",
     ),
 ):
-    """현장 계정: 소속 현장 문서에 달린 다른 사용자 코멘트 수(SITE 티커용)."""
+    """현장 계정: 미확인 외부 코멘트 수(SITE 티커용, 현장 공통)."""
     if current_user.role != Role.SITE or not current_user.site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
-    cutoff = after
-    if cutoff is None:
-        cutoff = utc_now() - timedelta(days=14)
-    n = (
-        db.query(func.count(DocumentComment.id))
-        .join(Document, Document.id == DocumentComment.document_id)
-        .filter(
-            Document.site_id == int(current_user.site_id),
-            DocumentComment.user_id != int(current_user.id),
-            DocumentComment.created_at > cutoff,
-        )
-        .scalar()
-    )
-    return {"peer_comment_count": int(n or 0)}
+    n = count_unacked_peer_comments(db, site_id=int(current_user.site_id), after=after)
+    return {"peer_comment_count": n}
 
 
 @router.get("/comments/peer-items", response_model=SitePeerCommentListResponse)
@@ -1074,25 +1066,14 @@ def get_peer_document_comment_items(
     ),
     limit: int = Query(20, ge=1, le=200),
 ):
-    """현장 계정: 소속 현장 문서에 달린 다른 사용자 코멘트 목록(티커 상세 안내용)."""
+    """현장 계정: 미확인 외부 코멘트 목록(티커 상세 안내용, 현장 공통)."""
     if current_user.role != Role.SITE or not current_user.site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
-    cutoff = after
-    if cutoff is None:
-        cutoff = utc_now() - timedelta(days=14)
-
-    rows = (
-        db.query(DocumentComment, Document, User)
-        .join(Document, Document.id == DocumentComment.document_id)
-        .join(User, User.id == DocumentComment.user_id)
-        .filter(
-            Document.site_id == int(current_user.site_id),
-            DocumentComment.user_id != int(current_user.id),
-            DocumentComment.created_at > cutoff,
-        )
-        .order_by(DocumentComment.created_at.desc(), DocumentComment.id.desc())
-        .limit(limit)
-        .all()
+    rows = list_unacked_peer_comment_rows(
+        db,
+        site_id=int(current_user.site_id),
+        after=after,
+        limit=limit,
     )
     items = [
         {
@@ -1106,6 +1087,28 @@ def get_peer_document_comment_items(
         for c, d, u in rows
     ]
     return {"items": items}
+
+
+@router.post("/comments/{comment_id}/site-ack", status_code=status.HTTP_204_NO_CONTENT)
+def acknowledge_site_peer_comment(comment_id: int, db: DbDep, current_user: CurrentUserDep):
+    """현장 계정: 외부 코멘트 확인(동일 현장 관리자 전원에게 반영)."""
+    if current_user.role != Role.SITE or not current_user.site_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    try:
+        ack_site_peer_comment(
+            db,
+            site_id=int(current_user.site_id),
+            comment_id=int(comment_id),
+            acknowledged_by_user_id=int(current_user.id),
+            ack_kind="button",
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "comment_not_found":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=code)
+        if code in {"comment_not_peer", "comment_too_old"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=code)
+        raise
 
 
 @router.get("/hq-checklists", response_model=HQChecklistListResponse)
@@ -1593,6 +1596,13 @@ def get_document(document_id: int, db: DbDep, current_user: CurrentUserDep):
 
     payload = {k: v for k, v in vars(doc).items() if not k.startswith("_")}
     payload["document_type_code"] = requirement_code
+    payload["file_available"] = is_storage_path_available(
+        settings.storage_root,
+        doc.file_path,
+        instance_id=doc.instance_id,
+        file_name=doc.file_name,
+        version_no=doc.version_no,
+    )
     return payload
 
 
@@ -1627,6 +1637,17 @@ def add_document_comment(
         if str(exc) == "comment_text_required":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="comment_text is required")
         raise
+    if (
+        current_user.role == Role.SITE
+        and current_user.site_id
+        and int(doc.site_id) == int(current_user.site_id)
+    ):
+        ack_peer_comments_on_site_reply(
+            db,
+            document=doc,
+            site_id=int(current_user.site_id),
+            acknowledged_by_user_id=int(current_user.id),
+        )
     inst: DocumentInstance | None = None
     if doc.instance_id is not None:
         inst = db.query(DocumentInstance).filter(DocumentInstance.id == doc.instance_id).first()
@@ -1712,7 +1733,10 @@ def download_document_file(
         version_no=doc.version_no,
     )
     if file_path is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="stored_file_missing",
+        )
     resolved_disposition = (disposition or "attachment").strip().lower()
     if resolved_disposition not in {"attachment", "inline"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="disposition must be attachment or inline")

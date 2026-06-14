@@ -14,7 +14,13 @@ from app.core.enums import Role
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
 from app.modules.document_settings.models import ContractorDocumentBundleItem, DocumentRequirement
 from app.config.settings import settings
-from app.modules.documents.models import Document, DocumentComment, DocumentUploadHistory
+from app.modules.documents.models import (
+    Document,
+    DocumentComment,
+    DocumentCommentSiteAck,
+    DocumentUploadHistory,
+)
+from app.core.datetime_utils import kst_midnight_utc_naive, utc_now
 from app.modules.documents.storage_paths import is_storage_path_available
 from app.modules.sites.models import Site
 from app.modules.users.models import User
@@ -249,6 +255,157 @@ def create_document_comment(
         "comment_text": row.comment_text,
         "created_at": row.created_at,
     }
+
+
+def peer_comment_author_is_external(*, author: User, document_site_id: int) -> bool:
+    """본사 등 외부 코멘트만 현장 확인 대상(동일 현장 SITE 계정끼리는 제외)."""
+    if author.role != Role.SITE:
+        return True
+    return int(author.site_id or -1) != int(document_site_id)
+
+
+def peer_comment_cutoff(*, after: datetime | None = None) -> datetime:
+    """미확인 집계 하한: 한국 '오늘' 00:00 이후만(과거 코멘트는 확인 완료로 간주)."""
+    floor = kst_midnight_utc_naive()
+    if after is not None and after > floor:
+        return after
+    return floor
+
+
+def _unacked_peer_comments_query(
+    db: Session,
+    *,
+    site_id: int,
+    cutoff: datetime,
+    document_id: int | None = None,
+):
+    acked_ids = (
+        db.query(DocumentCommentSiteAck.comment_id)
+        .filter(DocumentCommentSiteAck.site_id == int(site_id))
+        .subquery()
+    )
+    q = (
+        db.query(DocumentComment, Document, User)
+        .join(Document, Document.id == DocumentComment.document_id)
+        .join(User, User.id == DocumentComment.user_id)
+        .filter(
+            Document.site_id == int(site_id),
+            DocumentComment.created_at >= cutoff,
+            ~DocumentComment.id.in_(acked_ids),
+            or_(
+                User.role != Role.SITE,
+                User.site_id.is_(None),
+                User.site_id != Document.site_id,
+            ),
+        )
+    )
+    if document_id is not None:
+        q = q.filter(Document.id == int(document_id))
+    return q
+
+
+def count_unacked_peer_comments(
+    db: Session,
+    *,
+    site_id: int,
+    after: datetime | None = None,
+) -> int:
+    cutoff = peer_comment_cutoff(after=after)
+    n = _unacked_peer_comments_query(db, site_id=site_id, cutoff=cutoff).with_entities(
+        func.count(DocumentComment.id)
+    ).scalar()
+    return int(n or 0)
+
+
+def list_unacked_peer_comment_rows(
+    db: Session,
+    *,
+    site_id: int,
+    after: datetime | None = None,
+    limit: int = 20,
+) -> list[tuple[DocumentComment, Document, User]]:
+    cutoff = peer_comment_cutoff(after=after)
+    return (
+        _unacked_peer_comments_query(db, site_id=site_id, cutoff=cutoff)
+        .order_by(DocumentComment.created_at.desc(), DocumentComment.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def ack_site_peer_comment(
+    db: Session,
+    *,
+    site_id: int,
+    comment_id: int,
+    acknowledged_by_user_id: int,
+    ack_kind: str,
+) -> None:
+    existing = (
+        db.query(DocumentCommentSiteAck)
+        .filter(
+            DocumentCommentSiteAck.site_id == int(site_id),
+            DocumentCommentSiteAck.comment_id == int(comment_id),
+        )
+        .first()
+    )
+    if existing is not None:
+        return
+    row = (
+        db.query(DocumentComment, Document, User)
+        .join(Document, Document.id == DocumentComment.document_id)
+        .join(User, User.id == DocumentComment.user_id)
+        .filter(
+            DocumentComment.id == int(comment_id),
+            Document.site_id == int(site_id),
+        )
+        .first()
+    )
+    if row is None:
+        raise ValueError("comment_not_found")
+    comment, document, author = row
+    if not peer_comment_author_is_external(author=author, document_site_id=int(document.site_id)):
+        raise ValueError("comment_not_peer")
+    if comment.created_at < peer_comment_cutoff():
+        raise ValueError("comment_too_old")
+    db.add(
+        DocumentCommentSiteAck(
+            site_id=int(site_id),
+            comment_id=int(comment.id),
+            acknowledged_by_user_id=int(acknowledged_by_user_id),
+            ack_kind=ack_kind,
+            acknowledged_at=utc_now(),
+        )
+    )
+    db.commit()
+
+
+def ack_peer_comments_on_site_reply(
+    db: Session,
+    *,
+    document: Document,
+    site_id: int,
+    acknowledged_by_user_id: int,
+) -> int:
+    """현장 답글 등록 시 같은 문서의 오늘 미확인 외부 코멘트를 현장 단위로 일괄 확인."""
+    cutoff = peer_comment_cutoff()
+    rows = _unacked_peer_comments_query(
+        db, site_id=site_id, cutoff=cutoff, document_id=int(document.id)
+    ).all()
+    n = 0
+    for comment, _, _ in rows:
+        try:
+            ack_site_peer_comment(
+                db,
+                site_id=site_id,
+                comment_id=int(comment.id),
+                acknowledged_by_user_id=acknowledged_by_user_id,
+                ack_kind="reply",
+            )
+            n += 1
+        except ValueError:
+            continue
+    return n
 
 
 def _latest_review_comment_map(db: Session, document_ids: list[int]) -> dict[int, str]:

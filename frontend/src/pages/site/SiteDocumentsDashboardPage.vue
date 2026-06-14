@@ -6,15 +6,17 @@
         <p class="page-note">기준일 {{ targetDate }} 기준으로 지금 처리할 문서와 반려 재조치 문서를 분리해서 보여줍니다.</p>
       </div>
       <div class="controls">
-        <button class="secondary" @click="confirmDocComments">문서 코멘트 확인</button>
         <button class="secondary" @click="load">새로고침</button>
       </div>
     </div>
 
     <section ref="unreadCommentPanelRef" class="section-card" :class="{ 'section-card-focus': shouldFocusUnreadPanel }">
       <div class="section-head">
-        <h3>미확인 문서 코멘트 안내</h3>
-        <p>아래 항목에서 바로가기 버튼을 누르면 해당 문서 상세/코멘트로 이동합니다.</p>
+        <h3>오늘 미확인 문서 코멘트</h3>
+        <p>
+          <strong>오늘</strong> 등록된 본사 등 외부 코멘트만 표시합니다(과거 코멘트는 확인 완료로 간주).
+          한 명이 <strong>확인</strong>하거나 해당 문서에 <strong>답글</strong>을 남기면 같은 현장 관리자 모두 확인 처리됩니다.
+        </p>
       </div>
       <div class="actions">
         <button class="secondary" @click="loadUnreadCommentItems">목록 새로고침</button>
@@ -28,6 +30,7 @@
             <th>작성자</th>
             <th>문서</th>
             <th>코멘트</th>
+            <th>확인</th>
             <th>바로가기</th>
           </tr>
         </thead>
@@ -38,11 +41,21 @@
             <td>{{ item.title }}</td>
             <td class="note-cell">{{ item.comment_text }}</td>
             <td>
-              <button class="secondary" @click="openUnreadCommentTarget(item)">해당 문서 열기</button>
+              <button
+                class="primary compact"
+                type="button"
+                :disabled="ackingCommentId === item.comment_id"
+                @click="ackUnreadComment(item)"
+              >
+                {{ ackingCommentId === item.comment_id ? "처리 중…" : "확인" }}
+              </button>
+            </td>
+            <td>
+              <button class="secondary" type="button" @click="openUnreadCommentTarget(item)">해당 문서 열기</button>
             </td>
           </tr>
           <tr v-if="unreadCommentItems.length === 0">
-            <td colspan="5" class="empty-cell">미확인 문서 코멘트가 없습니다.</td>
+            <td colspan="6" class="empty-cell">미확인 문서 코멘트가 없습니다.</td>
           </tr>
         </tbody>
       </table>
@@ -477,7 +490,7 @@ import DocumentCommentsPanel from "@/components/documents/DocumentCommentsPanel.
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst, todayKst, toDate } from "@/utils/datetime";
 import { isLedgerManagedDocumentType, siteLedgerRouteForDocumentType } from "@/utils/ledgerManagedDocument";
-import { getDocCommentTickerAfterIso, markDocCommentTickerAck } from "@/utils/documentCommentTickerRead";
+import { notifyDocCommentTickerChanged } from "@/utils/documentCommentTickerRead";
 import { requirementFrequencyKoLabel, requirementFrequencySortOrder } from "@/utils/requirementFrequencyGroups";
 
 interface RequirementStatusItem {
@@ -601,6 +614,7 @@ const unreadCommentItems = ref<
 >([]);
 const unreadCommentLoading = ref(false);
 const unreadCommentError = ref("");
+const ackingCommentId = ref<number | null>(null);
 const hqChecklistItems = ref<HQChecklistItem[]>([]);
 const shouldFocusUnreadPanel = computed(() => route.query.focus_comments === "1");
 
@@ -871,12 +885,8 @@ async function loadUnreadCommentItems() {
   unreadCommentLoading.value = true;
   unreadCommentError.value = "";
   try {
-    const after = getDocCommentTickerAfterIso(auth.user?.login_id ?? null);
     const res = await api.get("/documents/comments/peer-items", {
-      params: {
-        ...(after ? { after } : {}),
-        limit: 40,
-      },
+      params: { limit: 40 },
     });
     unreadCommentItems.value = res.data?.items ?? [];
   } catch {
@@ -884,6 +894,19 @@ async function loadUnreadCommentItems() {
     unreadCommentError.value = "미확인 코멘트 목록을 불러오지 못했습니다.";
   } finally {
     unreadCommentLoading.value = false;
+  }
+}
+
+async function ackUnreadComment(item: { comment_id: number }) {
+  ackingCommentId.value = item.comment_id;
+  try {
+    await api.post(`/documents/comments/${item.comment_id}/site-ack`);
+    unreadCommentItems.value = unreadCommentItems.value.filter((row) => row.comment_id !== item.comment_id);
+    notifyDocCommentTickerChanged();
+  } catch {
+    window.alert("확인 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+  } finally {
+    ackingCommentId.value = null;
   }
 }
 
@@ -1008,10 +1031,6 @@ async function submitUpload() {
   }
 }
 
-function confirmDocComments() {
-  markDocCommentTickerAck(auth.user?.login_id ?? null);
-}
-
 onMounted(async () => {
   if (auth.token) {
     await auth.loadMe();
@@ -1041,6 +1060,11 @@ watch(
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
 .summary-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; }
 .summary-card-alert { background: #fff7ed; border-color: #fdba74; }
+.primary.compact {
+  padding: 4px 10px;
+  font-size: 12px;
+  min-height: 28px;
+}
 .summary-label { font-size: 12px; color: #64748b; }
 .summary-value { margin-top: 6px; font-size: 24px; font-weight: 700; color: #0f172a; }
 .section-card { margin-top: 12px; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fff; }

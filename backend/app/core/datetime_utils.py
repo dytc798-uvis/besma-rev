@@ -13,3 +13,10 @@ def utc_now() -> datetime:
 def kst_today() -> date:
     """한국 현장 기준 '오늘' 날짜(서버 OS 타임존과 무관)."""
     return datetime.now(ZoneInfo("Asia/Seoul")).date()
+
+
+def kst_midnight_utc_naive(*, on_date: date | None = None) -> datetime:
+    """한국 날짜 자정(KST)을 DB용 naive UTC datetime으로 반환."""
+    d = on_date if on_date is not None else kst_today()
+    kst_midnight = datetime.combine(d, datetime.min.time(), tzinfo=ZoneInfo("Asia/Seoul"))
+    return kst_midnight.astimezone(timezone.utc).replace(tzinfo=None)

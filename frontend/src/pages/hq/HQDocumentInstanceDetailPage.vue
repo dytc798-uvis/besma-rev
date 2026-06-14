@@ -45,7 +45,17 @@
             >
               보기
             </button>
-            <button type="button" class="stitch-btn-primary" @click="downloadFile">다운로드</button>
+            <button
+              type="button"
+              class="stitch-btn-primary"
+              :disabled="!effectiveRow.file_available"
+              @click="downloadFile"
+            >
+              다운로드
+            </button>
+            <p v-if="effectiveRow.document_id && effectiveRow.file_available === false" class="file-missing-note">
+              서버에 저장된 파일이 없습니다. DB에는 제출 기록만 남아 있습니다. 현장에서 해당 날짜 TBM을 다시 업로드해야 합니다.
+            </p>
           </div>
         </template>
       </BaseCard>
@@ -139,13 +149,14 @@
                     미리보기
                   </button>
                   <button
-                    v-if="r.document_id"
+                    v-if="r.document_id && r.file_available !== false"
                     type="button"
                     class="stitch-btn-primary"
                     @click.stop="downloadHistoryRowFile(r)"
                   >
                     다운로드
                   </button>
+                  <span v-else-if="r.document_id" class="sub">파일 없음</span>
                   <span v-if="!r.document_id" class="sub">—</span>
                 </td>
               </tr>
@@ -211,6 +222,7 @@ interface HistoryRow {
   is_missing: boolean;
   document_id: number | null;
   current_file_name?: string | null;
+  file_available?: boolean;
   uploaded_by_name?: string | null;
   submitted_at: string | null;
   reviewed_at: string | null;
@@ -306,7 +318,7 @@ function formatDateTime(value: string | null) {
 }
 
 function workflowUiLabel(workflow: string, isMissing: boolean) {
-  if (isMissing) return "누락";
+  if (isMissing) return "미제출";
   if (workflow === "NOT_SUBMITTED") return "제출대기";
   if (workflow === "UNDER_REVIEW" || workflow === "SUBMITTED") return "검토중";
   if (workflow === "APPROVED") return "승인";
@@ -477,7 +489,11 @@ async function triggerBlobDownload(url: string, fallbackFilename: string) {
     let msg = "파일을 받아오지 못했습니다.";
     try {
       const j = JSON.parse(text) as { detail?: unknown };
-      if (j.detail != null) msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      if (j.detail === "stored_file_missing") {
+        msg = "서버에 저장된 파일이 없습니다. 현장에서 해당 날짜 문서를 다시 업로드해 주세요.";
+      } else if (j.detail != null) {
+        msg = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      }
     } catch {
       /* ignore */
     }
@@ -498,7 +514,10 @@ async function triggerBlobDownload(url: string, fallbackFilename: string) {
 }
 
 async function downloadHistoryRowFile(r: HistoryRow) {
-  if (!r.document_id) return;
+  if (!r.document_id || r.file_available === false) {
+    window.alert("서버에 저장된 파일이 없습니다. 현장에서 해당 날짜 문서를 다시 업로드해 주세요.");
+    return;
+  }
   try {
     await triggerBlobDownload(
       `/documents/${r.document_id}/file`,
@@ -582,6 +601,10 @@ function closePreview() {
 async function downloadFile() {
   const row = effectiveRow.value;
   if (!row?.document_id) return;
+  if (row.file_available === false) {
+    window.alert("서버에 저장된 파일이 없습니다. 현장에서 해당 날짜 문서를 다시 업로드해 주세요.");
+    return;
+  }
   try {
     await triggerBlobDownload(`/documents/${row.document_id}/file`, row.current_file_name || "document.bin");
   } catch {
@@ -611,6 +634,17 @@ watch(
   max-width: 1100px;
   margin: 0 auto;
   padding: 16px 20px 32px;
+}
+
+.file-missing-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .inst-detail-toolbar {

@@ -22,6 +22,7 @@ class DocumentInstanceHistoryItem(BaseModel):
     is_missing: bool
     document_id: int | None
     current_file_name: str | None = None
+    file_available: bool = False
     submitted_at: datetime | None
     reviewed_at: datetime | None
     review_note: str | None

@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
-import LoginEntryPage from "@/pages/LoginEntryPage.vue";
 import LoginPage from "@/pages/LoginPage.vue";
 import HQSafeLayout from "@/layouts/HQSafeLayout.vue";
 import SiteLayout from "@/layouts/SiteLayout.vue";
@@ -61,6 +60,7 @@ import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPa
 import SiteNewSiteDeploymentPage from "@/pages/site/SiteNewSiteDeploymentPage.vue";
 import HQFunctionalEvalPage from "@/pages/hq/HQFunctionalEvalPage.vue";
 import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
+import HQSystemBackupPage from "@/pages/hq/HQSystemBackupPage.vue";
 import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
 import PdfSigningPublicPage from "@/pages/pdf-signing/PdfSigningPublicPage.vue";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
@@ -80,8 +80,7 @@ function canAccessHqSafeWorkspace(role: string | undefined) {
 const routes: RouteRecordRaw[] = [
   {
     path: "/",
-    name: "login-entry",
-    component: LoginEntryPage,
+    redirect: { name: "login" },
   },
   {
     path: "/login",
@@ -211,6 +210,7 @@ const routes: RouteRecordRaw[] = [
       { path: "user-guide", name: "hq-safe-user-guide", component: UserGuidePage },
       { path: "functional-eval", name: "hq-safe-functional-eval", component: HQFunctionalEvalPage },
       { path: "new-site-deployment", name: "hq-safe-new-site-deployment", component: HQNewSiteDeploymentPage },
+      { path: "system-backup", name: "hq-safe-system-backup", component: HQSystemBackupPage },
     ],
   },
   {

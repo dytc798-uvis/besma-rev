@@ -8,6 +8,7 @@ from app.core.auth import DbDep, get_current_user
 from app.core.enums import Role
 from app.core.permissions import require_roles
 from app.modules.users.models import User
+from app.core.system_backup_access import can_system_backup
 from app.schemas.auth import AdminPasswordResetResponse, UserMe
 
 
@@ -22,7 +23,8 @@ class UpdateMapPreferenceRequest(BaseModel):
 
 @router.get("/me", response_model=UserMe)
 def read_me(current_user: User = Depends(get_current_user)):
-    return UserMe.model_validate(current_user)
+    base = UserMe.model_validate(current_user)
+    return base.model_copy(update={"can_system_backup": can_system_backup(current_user.login_id)})
 
 
 @router.get("", response_model=list[UserMe])

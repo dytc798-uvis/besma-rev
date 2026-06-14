@@ -6,19 +6,23 @@ from pathlib import Path
 
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
 
 from app.core.auth import DbDep
 from app.core.enums import Role
 from app.core.permissions import CurrentUserDep, assert_hq_safe_workspace
-from app.modules.functional_eval import approval_workflow, service
+from app.modules.functional_eval import approval_workflow, service, signature_ops
 from app.modules.functional_eval.models import FunctionalEvalPeriod
 from app.modules.functional_eval.schemas import (
     FunctionalEvalApprovalReject,
     FunctionalEvalAssessmentSave,
+    FunctionalEvalConsentSubmit,
+    FunctionalEvalHqAssessmentOverride,
+    FunctionalEvalHqApprovalSubmit,
     FunctionalEvalPeriodDeadlineUpdate,
     FunctionalEvalSanctionCreate,
+    FunctionalEvalSignatureSubmit,
 )
 from app.modules.functional_eval.site_grade_workbook import site_grade_export_filename
 
@@ -152,8 +156,67 @@ def save_worker_assessment(
             raise HTTPException(status_code=400, detail="당일 출역 명단에 없거나 출역일보가 반영되지 않았습니다.") from exc
         if code == "SITE_APPROVAL_LOCKED":
             raise HTTPException(status_code=409, detail="승인 진행 중이라 평가를 수정할 수 없습니다.") from exc
+        if code == "EVALUATION_SIGNATURE_LOCKED":
+            raise HTTPException(status_code=409, detail="서명 완료 후에는 평가를 수정할 수 없습니다.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return {"assessment": result}
+
+
+@router.put("/hq/workers/{worker_id}/assessment/{eval_type}")
+def save_hq_assessment_override(
+    worker_id: int,
+    eval_type: str,
+    body: FunctionalEvalHqAssessmentOverride,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    assert_hq_safe_workspace(current_user)
+    if eval_type not in {"FUNCTIONAL", "SAFETY"}:
+        raise HTTPException(status_code=400, detail="eval_type must be FUNCTIONAL or SAFETY")
+    try:
+        result = service.save_hq_assessment_override(
+            db,
+            current_user,
+            worker_id,
+            eval_type,  # type: ignore[arg-type]
+            body.scores,
+            body.reason,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "PERIOD_CLOSED":
+            raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
+        if code == "WORKER_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Worker not found") from exc
+        if code in {"REVISION_REASON_REQUIRED"}:
+            raise HTTPException(status_code=400, detail="수정 사유를 입력하세요.") from exc
+        if code.startswith("INCOMPLETE:") or code.startswith("INVALID_GRADE:"):
+            raise HTTPException(status_code=400, detail=code) from exc
+        if code in {"CANNOT_EVALUATE_SITE_MANAGER", "HQ_ONLY"}:
+            raise HTTPException(status_code=400, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+    return result
+
+
+@router.get("/workers/{worker_id}/assessment-revisions")
+def worker_assessment_revisions(worker_id: int, db: DbDep, current_user: CurrentUserDep):
+    if _role_value(current_user) not in {
+        Role.SITE_FUNCTIONAL_EVAL.value,
+        Role.HQ_SAFE.value,
+        Role.HQ_SAFE_ADMIN.value,
+        Role.SUPER_ADMIN.value,
+        Role.ACCIDENT_ADMIN.value,
+    }:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    try:
+        items = service.list_worker_assessment_revisions(db, current_user, worker_id)
+    except ValueError as exc:
+        if str(exc) == "WORKER_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Worker not found") from exc
+        if str(exc) == "SITE_MISMATCH":
+            raise HTTPException(status_code=403, detail="Not allowed for this site") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"items": items}
 
 
 @router.get("/period/current")
@@ -192,44 +255,208 @@ def list_my_site_workers(db: DbDep, current_user: CurrentUserDep):
     site_code = service._site_code_for_user(current_user, db)
     site_overview = service.list_site_overview_for_manager(db, current_user, period)
     approval = service.build_site_approval_payload(db, period, site_code)
+    signoff = signature_ops.build_signoff_payload_for_session(db, current_user, period, site_code, approval)
+    approval = {**approval, **signoff}
+    team_signoff = None
+    if _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
+        if not service._is_primary_site_evaluator(db, current_user, site_code):
+            try:
+                team_signoff = signature_ops.get_team_signoff_status(db, current_user, period)
+            except ValueError:
+                team_signoff = None
     return {
         "period": period_payload,
         "items": items,
         "site_overview": site_overview,
         "approval": approval,
+        "team_signoff": team_signoff,
         "evaluator": service.serialize_evaluator_session(db, current_user, period),
         "attendance_message": message,
+        "signatures": signature_ops.list_my_signatures(db, current_user, period),
     }
 
 
+def _signature_error(code: str) -> HTTPException:
+    mapping = {
+        "CONSENT_REQUIRED": (403, "동의서 서명이 필요합니다."),
+        "CONSENT_ACK_REQUIRED": (400, "동의서 확인 체크가 필요합니다."),
+        "CONSENT_ALREADY_SIGNED": (409, "이미 동의서에 서명하였습니다."),
+        "signature_required": (400, "서명을 입력해 주세요."),
+        "signature_too_small": (400, "서명이 너무 작습니다."),
+        "invalid_signature_base64": (400, "서명 이미지 형식이 올바르지 않습니다."),
+        "SIGNATURE_ALREADY_EXISTS": (409, "이미 서명이 완료되었습니다."),
+        "EVALUATION_SIGNATURE_LOCKED": (409, "서명 완료 후에는 평가를 수정할 수 없습니다."),
+        "TEAM_LEADERS_NOT_SIGNED": (400, "모든 팀장의 평가완료 서명이 필요합니다."),
+        "TEAM_REPORTS_NOT_MANAGER_APPROVED": (400, "모든 팀장 평가완료보고서에 소장 승인이 필요합니다."),
+        "TEAM_LEADER_NOT_SIGNED": (400, "팀장 평가완료 서명이 필요합니다."),
+        "NO_PENDING_APPROVALS": (400, "승인 대기 항목이 없습니다."),
+        "NO_SUPPLEMENTAL_BATCH": (400, "추가평가 대상이 없습니다."),
+        "MANAGER_NOT_TEAM_LEADER": (403, "팀장만 사용할 수 있습니다."),
+        "MANAGER_ONLY": (403, "소장만 사용할 수 있습니다."),
+    }
+    status_code, detail = mapping.get(code, (400, code))
+    return HTTPException(status_code=status_code, detail=detail)
+
+
+@router.get("/consent/status")
+def get_consent_status(db: DbDep, current_user: CurrentUserDep):
+    return signature_ops.get_consent_status(db, current_user)
+
+
+@router.post("/consent/submit")
+def submit_consent(body: FunctionalEvalConsentSubmit, request: Request, db: DbDep, current_user: CurrentUserDep):
+    try:
+        return signature_ops.submit_consent(
+            db,
+            current_user,
+            signature_data=body.signature_data,
+            consent_acknowledged=body.consent_acknowledged,
+            request=request,
+        )
+    except ValueError as exc:
+        raise _signature_error(str(exc)) from exc
+
+
+@router.get("/consent/document")
+def download_consent_document(db: DbDep, current_user: CurrentUserDep):
+    try:
+        path = signature_ops.get_consent_document_path(db, current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="동의서 문서를 찾을 수 없습니다.") from exc
+    return FileResponse(path, media_type="application/pdf", filename="기능인제_동의서.pdf")
+
+
+@router.get("/signatures/mine")
+def list_my_signatures(db: DbDep, current_user: CurrentUserDep):
+    period = service.get_or_create_active_period(db)
+    return {"items": signature_ops.list_my_signatures(db, current_user, period)}
+
+
+@router.get("/signatures/{signature_id}/document")
+def download_signature_document(signature_id: int, db: DbDep, current_user: CurrentUserDep):
+    try:
+        path = signature_ops.get_signature_document_path(db, current_user, signature_id)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "FORBIDDEN":
+            raise HTTPException(status_code=403, detail="다운로드 권한이 없습니다.") from exc
+        raise HTTPException(status_code=404, detail="서명 문서를 찾을 수 없습니다.") from exc
+    return FileResponse(path, media_type="application/pdf", filename=f"기능인제_서명_{signature_id}.pdf")
+
+
+@router.get("/my-team/signoff-status")
+def get_team_signoff_status(db: DbDep, current_user: CurrentUserDep):
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        return signature_ops.get_team_signoff_status(db, current_user, period)
+    except ValueError as exc:
+        raise _signature_error(str(exc)) from exc
+
+
+@router.post("/my-team/signoff")
+def submit_team_signoff(
+    body: FunctionalEvalSignatureSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        row = signature_ops.submit_team_signoff(
+            db, current_user, period, signature_data=body.signature_data, request=request
+        )
+    except ValueError as exc:
+        raise _signature_error(str(exc)) from exc
+    return {"signature": row}
+
+
+@router.post("/my-site/team-leader/{team_leader_login_id}/approve-report")
+def approve_team_leader_report(
+    team_leader_login_id: str,
+    body: FunctionalEvalSignatureSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    """소장 — 팀장 평가완료보고서 승인 서명."""
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    site_code = service._site_code_for_user(current_user, db)
+    try:
+        row = signature_ops.submit_team_manager_approval(
+            db,
+            current_user,
+            period,
+            site_code,
+            team_leader_login_id,
+            signature_data=body.signature_data,
+            request=request,
+        )
+    except ValueError as exc:
+        raise _signature_error(str(exc)) from exc
+    return {"signature": row}
+
+
 @router.post("/my-site/approval/submit")
-def submit_site_approval(db: DbDep, current_user: CurrentUserDep):
+def submit_site_approval(
+    body: FunctionalEvalSignatureSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
     """소장 — 현장 전체 평가 승인(안전보건실 검토 요청)."""
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
     site_code = service._site_code_for_user(current_user, db)
     if not service._is_primary_site_evaluator(db, current_user, site_code):
         raise HTTPException(status_code=403, detail="소장만 현장 승인할 수 있습니다.")
-    summary = service.serialize_site_approval_summary(db, period, site_code)
     try:
-        approval = approval_workflow.submit_site_approval(
+        approval = signature_ops.submit_site_approval_with_signature(
             db,
-            period=period,
-            site_code=site_code,
-            user=current_user,
-            incomplete_count=summary["incomplete_count"],
+            current_user,
+            period,
+            site_code,
+            signature_data=body.signature_data,
+            request=request,
         )
     except ValueError as exc:
         code = str(exc)
-        if code == "INCOMPLETE_EVALUATIONS":
-            raise HTTPException(
-                status_code=400,
-                detail="전원 평가(기능+안전)가 완료되어야 소장 승인할 수 있습니다.",
-            ) from exc
-        if code == "INVALID_APPROVAL_TRANSITION":
+        if code in {"INCOMPLETE_EVALUATIONS", "INVALID_APPROVAL_TRANSITION"}:
+            if code == "INCOMPLETE_EVALUATIONS":
+                raise HTTPException(
+                    status_code=400,
+                    detail="전원 평가(기능+안전)가 완료되어야 소장 승인할 수 있습니다.",
+                ) from exc
             raise HTTPException(status_code=409, detail="이미 승인 요청되었거나 처리 중입니다.") from exc
-        raise HTTPException(status_code=400, detail=code) from exc
+        raise _signature_error(code) from exc
     return {"approval": approval}
+
+
+@router.post("/my-site/supplemental-signoff")
+def submit_supplemental_site_signoff(
+    body: FunctionalEvalSignatureSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    """추가평가 — 별도 서명 (기존 승인 상태 유지)."""
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    site_code = service._site_code_for_user(current_user, db)
+    try:
+        row = signature_ops.submit_supplemental_site_signoff(
+            db,
+            current_user,
+            period,
+            site_code,
+            signature_data=body.signature_data,
+            request=request,
+        )
+    except ValueError as exc:
+        raise _signature_error(str(exc)) from exc
+    return {"signature": row}
 
 
 @router.get("/hq/approvals/pending")
@@ -243,8 +470,36 @@ def list_hq_pending_approvals(db: DbDep, current_user: CurrentUserDep):
     }
 
 
+@router.post("/hq/approvals/approve-all")
+def approve_all_hq(body: FunctionalEvalHqApprovalSubmit, request: Request, db: DbDep, current_user: CurrentUserDep):
+    """안전보건실 — 대기 현장 전체 일괄 승인 + 서명."""
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        return signature_ops.approve_hq_all_with_signature(
+            db,
+            current_user,
+            period,
+            signature_data=body.signature_data,
+            officer_comment=body.officer_comment,
+            director_comment=body.director_comment,
+            request=request,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "HQ_APPROVER_ONLY":
+            raise HTTPException(status_code=403, detail="안전보건실 권한이 필요합니다.") from exc
+        raise _signature_error(code) from exc
+
+
 @router.post("/hq/approvals/{site_code}/approve")
-def approve_site_hq(site_code: str, db: DbDep, current_user: CurrentUserDep):
+def approve_site_hq(
+    site_code: str,
+    body: FunctionalEvalSignatureSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
     """안전보건실 승인."""
     assert_hq_safe_workspace(current_user)
     try:
@@ -299,8 +554,29 @@ def list_ceo_pending_approvals(db: DbDep, current_user: CurrentUserDep):
     }
 
 
+@router.post("/hq/ceo-approvals/approve-all")
+def approve_all_ceo(body: FunctionalEvalSignatureSubmit, request: Request, db: DbDep, current_user: CurrentUserDep):
+    """대표이사 — 대기 현장 전체 일괄 최종승인 + 서명."""
+    period = service.get_or_create_active_period(db)
+    try:
+        return signature_ops.approve_ceo_all_with_signature(
+            db, current_user, period, signature_data=body.signature_data, request=request
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "CEO_APPROVER_ONLY":
+            raise HTTPException(status_code=403, detail="대표이사(최고관리자) 권한이 필요합니다.") from exc
+        raise _signature_error(code) from exc
+
+
 @router.post("/hq/ceo-approvals/{site_code}/approve")
-def approve_site_ceo(site_code: str, db: DbDep, current_user: CurrentUserDep):
+def approve_site_ceo(
+    site_code: str,
+    body: FunctionalEvalSignatureSubmit,
+    request: Request,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
     """대표이사 최종 승인."""
     try:
         approval_workflow.assert_ceo_approver(current_user)
@@ -404,6 +680,8 @@ def create_sanction(body: FunctionalEvalSanctionCreate, db: DbDep, current_user:
             ) from exc
         if code == "UNKNOWN_VIOLATION":
             raise HTTPException(status_code=400, detail="알 수 없는 위반 항목입니다.") from exc
+        if code == "SANCTION_NOTE_REQUIRED":
+            raise HTTPException(status_code=400, detail="제재 등록 사유를 입력하세요.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return row
 

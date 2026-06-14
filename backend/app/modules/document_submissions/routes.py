@@ -600,7 +600,19 @@ async def upload_document_for_instance(
         )
 
     stored_filename = versioned_primary_filename(safe_name, doc.version_no or 1)
-    doc.file_path = write_instance_file(storage_dir, inst.id, stored_filename, primary_content)
+    try:
+        doc.file_path = write_instance_file(storage_dir, inst.id, stored_filename, primary_content)
+    except OSError as exc:
+        logger.error(
+            "document upload storage verify failed: instance_id=%s document_id=%s error=%s",
+            inst.id,
+            doc.id,
+            exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="파일 저장 검증에 실패했습니다. 잠시 후 다시 업로드해 주세요.",
+        ) from exc
     doc.original_file_path = original_file_path
     doc.optimized_file_path = optimized_file_path
     doc.file_name = safe_name

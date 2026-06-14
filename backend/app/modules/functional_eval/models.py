@@ -145,6 +145,7 @@ class FunctionalEvalWorker(Base):
     removed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     mileage_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     mileage_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    evaluation_batch: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, onupdate=utc_now, nullable=False
@@ -156,6 +157,9 @@ class FunctionalEvalWorker(Base):
     )
     assessments: Mapped[list["FunctionalEvalAssessment"]] = relationship(
         "FunctionalEvalAssessment", back_populates="worker"
+    )
+    assessment_revisions: Mapped[list["FunctionalEvalAssessmentRevision"]] = relationship(
+        "FunctionalEvalAssessmentRevision", back_populates="worker"
     )
 
 
@@ -212,6 +216,29 @@ class FunctionalEvalAssessment(Base):
     worker: Mapped["FunctionalEvalWorker"] = relationship("FunctionalEvalWorker", back_populates="assessments")
 
 
+class FunctionalEvalAssessmentRevision(Base):
+    """본사 점수 수정·제재 연동 C등급 등 평가 변경 감사 로그."""
+
+    __tablename__ = "functional_eval_assessment_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_workers.id"), nullable=False, index=True)
+    eval_type: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    before_scores_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    after_scores_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    before_grade_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    after_grade_code: Mapped[str] = mapped_column(String(10), nullable=False, default="")
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="HQ_OVERRIDE", index=True)
+    sanction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("functional_eval_sanctions.id"), nullable=True, index=True
+    )
+    edited_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+    worker: Mapped["FunctionalEvalWorker"] = relationship("FunctionalEvalWorker", back_populates="assessment_revisions")
+
+
 class FunctionalEvalSanction(Base):
     __tablename__ = "functional_eval_sanctions"
 
@@ -229,3 +256,57 @@ class FunctionalEvalSanction(Base):
 
     period: Mapped[FunctionalEvalPeriod] = relationship("FunctionalEvalPeriod", back_populates="sanctions")
     worker: Mapped[FunctionalEvalWorker] = relationship("FunctionalEvalWorker", back_populates="sanctions")
+
+
+class FunctionalEvalConsent(Base):
+    """기능인제 최초 로그인 동의서 — 사용자당 1회."""
+
+    __tablename__ = "functional_eval_consents"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_fe_consent_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    login_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    consent_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    signature_data: Mapped[str] = mapped_column(Text, nullable=False)
+    signature_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    signed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    signer_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    signer_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signed_document_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class FunctionalEvalSignature(Base):
+    """기능인제 단계별 서명 (팀장·소장·본사·대표)."""
+
+    __tablename__ = "functional_eval_signatures"
+    __table_args__ = (
+        UniqueConstraint(
+            "period_id",
+            "evaluation_batch",
+            "stage",
+            "site_code",
+            "team_leader_login_id",
+            name="uq_fe_signature_scope",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    period_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_periods.id"), nullable=False, index=True)
+    evaluation_batch: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    stage: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    site_code: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    team_leader_login_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    signer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    signer_login_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    signer_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    scope_label: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    worker_scope_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    signature_data: Mapped[str] = mapped_column(Text, nullable=False)
+    signature_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    signed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    signer_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    signer_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signed_document_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)

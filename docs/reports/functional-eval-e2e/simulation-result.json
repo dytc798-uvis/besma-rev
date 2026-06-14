@@ -1,0 +1,207 @@
+{
+  "generated_at": "2026-06-08T04:30:49.454784+00:00",
+  "base_url": "http://127.0.0.1:8001",
+  "site_code": "24025",
+  "accounts": {
+    "team_leader": {
+      "login_id": "대우청라-김팀장",
+      "password": "750101"
+    },
+    "manager": {
+      "login_id": "대우청라-박명식",
+      "password": "661123"
+    },
+    "hq": {
+      "login_id": "안전보건-조동문",
+      "password": "600321"
+    },
+    "ceo": {
+      "login_id": "부현대표-김홍수",
+      "password": "611001"
+    }
+  },
+  "steps": [
+    {
+      "step": "1_team_leader_workers",
+      "actor": "대우청라-김팀장",
+      "status": 200,
+      "role": "TEAM_LEADER",
+      "worker_count": 8,
+      "team_split": true
+    },
+    {
+      "step": "1_team_leader_evaluate",
+      "errors": []
+    },
+    {
+      "step": "2_manager_workers",
+      "actor": "대우청라-박명식",
+      "status": 200,
+      "direct_count": 4,
+      "overview_count": 12,
+      "approval": {
+        "status": "IN_PROGRESS",
+        "status_label": "평가 진행",
+        "site_submitted_at": null,
+        "hq_approved_at": null,
+        "ceo_approved_at": null,
+        "reject_note": null,
+        "rejected_stage": null,
+        "site_total_workers": 12,
+        "site_complete_workers": 8,
+        "direct_total": 4,
+        "direct_complete": 0,
+        "team_total": 8,
+        "team_complete": 8,
+        "incomplete_count": 4,
+        "can_submit_site_approval": false,
+        "evaluation_editable": true
+      }
+    },
+    {
+      "step": "2_manager_direct_evaluate",
+      "errors": []
+    },
+    {
+      "step": "2_manager_approval_check",
+      "approval": {
+        "status": "IN_PROGRESS",
+        "status_label": "평가 진행",
+        "site_submitted_at": null,
+        "hq_approved_at": null,
+        "ceo_approved_at": null,
+        "reject_note": null,
+        "rejected_stage": null,
+        "site_total_workers": 12,
+        "site_complete_workers": 12,
+        "direct_total": 4,
+        "direct_complete": 4,
+        "team_total": 8,
+        "team_complete": 8,
+        "incomplete_count": 0,
+        "can_submit_site_approval": true,
+        "evaluation_editable": true
+      }
+    },
+    {
+      "step": "2_manager_submit",
+      "status": 200,
+      "body": "{\"approval\":{\"status\":\"SITE_APPROVED\",\"status_label\":\"소장 승인 · 본사 검토 대기\",\"site_submitted_at\":\"2026-06-08T04:30:48.956122\",\"hq_approved_at\":null,\"ceo_approved_at\":null,\"reject_note\":null,\"rejected_stage\":null}}"
+    },
+    {
+      "step": "3_hq_pending",
+      "actor": "안전보건-조동문",
+      "status": 200,
+      "items": [
+        {
+          "site_code": "24025",
+          "status": "SITE_APPROVED",
+          "status_label": "소장 승인 · 본사 검토 대기",
+          "site_submitted_at": "2026-06-08T04:30:48.956122",
+          "hq_approved_at": null,
+          "ceo_approved_at": null,
+          "reject_note": null,
+          "rejected_stage": null,
+          "site_total_workers": 12,
+          "site_complete_workers": 12,
+          "direct_total": 4,
+          "direct_complete": 4,
+          "team_total": 8,
+          "team_complete": 8,
+          "incomplete_count": 0,
+          "can_submit_site_approval": false,
+          "evaluation_editable": false
+        }
+      ]
+    },
+    {
+      "step": "3_hq_approve",
+      "status": 200,
+      "body": "{\"approval\":{\"status\":\"HQ_APPROVED\",\"status_label\":\"안전보건실 승인 · 대표 최종 대기\",\"site_submitted_at\":\"2026-06-08T04:30:48.956122\",\"hq_approved_at\":\"2026-06-08T04:30:49.133162\",\"ceo_approved_at\":null,\"reject_note\":null,\"rejected_stage\":null}}"
+    },
+    {
+      "step": "4_ceo_pending",
+      "actor": "부현대표-김홍수",
+      "status": 200,
+      "items": [
+        {
+          "site_code": "24025",
+          "status": "HQ_APPROVED",
+          "status_label": "안전보건실 승인 · 대표 최종 대기",
+          "site_submitted_at": "2026-06-08T04:30:48.956122",
+          "hq_approved_at": "2026-06-08T04:30:49.133162",
+          "ceo_approved_at": null,
+          "reject_note": null,
+          "rejected_stage": null,
+          "site_total_workers": 12,
+          "site_complete_workers": 12,
+          "direct_total": 4,
+          "direct_complete": 4,
+          "team_total": 8,
+          "team_complete": 8,
+          "incomplete_count": 0,
+          "can_submit_site_approval": false,
+          "evaluation_editable": false
+        }
+      ]
+    },
+    {
+      "step": "4_ceo_approve",
+      "status": 200,
+      "body": "{\"approval\":{\"status\":\"CEO_APPROVED\",\"status_label\":\"최종 승인 완료\",\"site_submitted_at\":\"2026-06-08T04:30:48.956122\",\"hq_approved_at\":\"2026-06-08T04:30:49.133162\",\"ceo_approved_at\":\"2026-06-08T04:30:49.298195\",\"reject_note\":null,\"rejected_stage\":null}}"
+    },
+    {
+      "step": "5_ceo_pending_after",
+      "status": 200,
+      "count": 0
+    }
+  ],
+  "issues": [
+    {
+      "step": "ops",
+      "severity": "warn",
+      "message": "로컬 DB가 alembic head(0061)인데 0057~0059 컬럼(last_attendance_date, assigned_evaluator_login_id, rep_name) 누락",
+      "note": "repair_fe_db_schema.py로 보정. 배포 전 alembic upgrade head 재실행 권장",
+      "status": "mitigated"
+    },
+    {
+      "step": "ui",
+      "severity": "info",
+      "message": "안전·제재 통합 UI는 로컬만 반영, 운영 미배포",
+      "note": "일괄 배포 시 Vercel 포함",
+      "status": "open"
+    }
+  ],
+  "passed": false,
+  "known_issues": [
+    {
+      "step": "fix",
+      "severity": "critical",
+      "message": "대표이사 목록 API(GET /hq/ceo-approvals/pending)가 SUPER_ADMIN만 허용 → 부현대표-김홍수 UI에서 403",
+      "note": "routes.py에서 assert_ceo_approver로 수정 완료",
+      "status": "fixed"
+    },
+    {
+      "step": "ops",
+      "severity": "warn",
+      "message": "로컬 DB가 alembic head(0061)인데 0057~0059 컬럼(last_attendance_date, assigned_evaluator_login_id, rep_name) 누락",
+      "note": "repair_fe_db_schema.py로 보정. 배포 전 alembic upgrade head 재실행 권장",
+      "status": "mitigated"
+    },
+    {
+      "step": "ui",
+      "severity": "info",
+      "message": "HQ 승인 패널 문구에 'SUPER_ADMIN' 표기 — 실제 CEO 계정은 부현대표-김홍수",
+      "note": "HQFunctionalEvalPage.vue 문구 수정 완료",
+      "status": "fixed"
+    },
+    {
+      "step": "ui",
+      "severity": "info",
+      "message": "안전·제재 통합 UI는 로컬만 반영, 운영 미배포",
+      "note": "일괄 배포 시 Vercel 포함",
+      "status": "open"
+    }
+  ],
+  "simulation_passed": false
+}

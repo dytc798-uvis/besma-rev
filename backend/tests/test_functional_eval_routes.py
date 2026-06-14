@@ -173,7 +173,7 @@ def test_functional_eval_sanction_flow(tmp_path: Path):
 
     immediate = client.post(
         "/functional-eval/sanctions",
-        json={"worker_id": worker_id, "violation_code": "WORK_BELT"},
+        json={"worker_id": worker_id, "violation_code": "WORK_BELT", "note": "안전벨트 미착용"},
     )
     assert immediate.status_code == 200
     assert immediate.json()["sanction_result"] == "SAME_DAY_EXPULSION"
@@ -186,7 +186,7 @@ def test_functional_eval_sanction_flow(tmp_path: Path):
 
     permanent = client.post(
         "/functional-eval/sanctions",
-        json={"worker_id": worker_id, "violation_code": "SEVERE_THEFT"},
+        json={"worker_id": worker_id, "violation_code": "SEVERE_THEFT", "note": "절도 적발"},
     )
     assert permanent.status_code == 200
     history2 = client.get(f"/functional-eval/workers/{worker_id}/history")
@@ -616,3 +616,255 @@ def test_ceo_pending_list_allows_ceo_login_id(tmp_path: Path):
     res = client.get("/functional-eval/hq/ceo-approvals/pending")
     assert res.status_code == 200
     assert any(item.get("site_code") == "24025" for item in res.json().get("items") or [])
+
+
+def test_sanction_auto_applies_safety_c_and_requires_note(tmp_path: Path):
+    db_file = tmp_path / "sanction_c.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.functional_eval import models as functional_eval_models  # noqa: F401
+    from app.modules.functional_eval.eval_catalog import build_lowest_grade_scores
+    from app.modules.workers import models as worker_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    site = Site(site_code="24018", site_name="테스트 현장")
+    setup_db.add(site)
+    setup_db.flush()
+    manager = User(
+        id=10,
+        name="소장",
+        login_id="24018",
+        password_hash="x",
+        role=Role.SITE_FUNCTIONAL_EVAL,
+        ui_type=UIType.SITE,
+        site_id=site.id,
+        must_change_password=False,
+    )
+    setup_db.add(manager)
+    period = FunctionalEvalPeriod(title="test", deadline_date=date(2026, 12, 31), is_active=True)
+    setup_db.add(period)
+    setup_db.flush()
+    worker = FunctionalEvalWorker(
+        period_id=period.id,
+        site_code="24018",
+        row_no=1,
+        name="홍길동",
+        rrn_hash=hashlib.sha256(b"8804091170112").hexdigest(),
+        is_site_manager=False,
+        is_active=True,
+    )
+    setup_db.add(worker)
+    setup_db.flush()
+    _seed_attendance(setup_db, period, worker)
+    site_id = site.id
+    worker_id = worker.id
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(functional_eval_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=10,
+        role=Role.SITE_FUNCTIONAL_EVAL,
+        ui_type=UIType.SITE,
+        site_id=site_id,
+        login_id="24018",
+        name="소장",
+    )
+    client = TestClient(app)
+
+    missing_note = client.post(
+        "/functional-eval/sanctions",
+        json={"worker_id": worker_id, "violation_code": "INST_TBM"},
+    )
+    assert missing_note.status_code == 422
+
+    res = client.post(
+        "/functional-eval/sanctions",
+        json={"worker_id": worker_id, "violation_code": "INST_TBM", "note": "TBM 미참석"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["reported_by_name"] == "소장"
+    assert body["note"] == "TBM 미참석"
+
+    safety = client.get(f"/functional-eval/workers/{worker_id}/assessment/SAFETY")
+    assert safety.status_code == 200
+    assessment = safety.json()["assessment"]
+    assert assessment["grade_code"] == "C"
+    assert assessment["scores"] == build_lowest_grade_scores("SAFETY")
+
+    revisions = client.get(f"/functional-eval/workers/{worker_id}/assessment-revisions")
+    assert revisions.status_code == 200
+    assert len(revisions.json()["items"]) >= 1
+    assert revisions.json()["items"][0]["source"] == "SANCTION_AUTO"
+
+
+def test_manager_can_sanction_team_worker(tmp_path: Path):
+    db_file = tmp_path / "manager_team_sanction.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.functional_eval import models as functional_eval_models  # noqa: F401
+    from app.modules.workers import models as worker_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    site = Site(site_code="24018", site_name="테스트 현장")
+    setup_db.add(site)
+    setup_db.flush()
+    setup_db.add(
+        User(
+            id=10,
+            name="소장",
+            login_id="24018",
+            password_hash="x",
+            role=Role.SITE_FUNCTIONAL_EVAL,
+            ui_type=UIType.SITE,
+            site_id=site.id,
+            must_change_password=False,
+        )
+    )
+    period = FunctionalEvalPeriod(title="test", deadline_date=date(2026, 12, 31), is_active=True)
+    setup_db.add(period)
+    setup_db.flush()
+    team_worker = FunctionalEvalWorker(
+        period_id=period.id,
+        site_code="24018",
+        row_no=2,
+        name="팀원",
+        rrn_hash=hashlib.sha256(b"9001011234567").hexdigest(),
+        assigned_evaluator_login_id="24018-팀장A",
+        is_site_manager=False,
+        is_active=True,
+    )
+    setup_db.add(team_worker)
+    setup_db.flush()
+    _seed_attendance(setup_db, period, team_worker)
+    site_id = site.id
+    team_worker_id = team_worker.id
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(functional_eval_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=10,
+        role=Role.SITE_FUNCTIONAL_EVAL,
+        ui_type=UIType.SITE,
+        site_id=site_id,
+        login_id="24018",
+        name="소장",
+    )
+    client = TestClient(app)
+
+    res = client.post(
+        "/functional-eval/sanctions",
+        json={"worker_id": team_worker_id, "violation_code": "GEN_BASIC_SAFETY", "note": "팀원 안전수칙 위반"},
+    )
+    assert res.status_code == 200
+    assert res.json()["worker_id"] == team_worker_id
+
+
+def test_hq_assessment_override_with_reason(tmp_path: Path):
+    db_file = tmp_path / "hq_override.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    from app.modules.functional_eval import models as functional_eval_models  # noqa: F401
+    from app.modules.functional_eval.eval_catalog import get_criteria
+    from app.modules.workers import models as worker_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+
+    setup_db = TestingSessionLocal()
+    setup_db.add(
+        User(
+            id=20,
+            name="안전보건",
+            login_id="안전보건-테스트",
+            password_hash="x",
+            role=Role.HQ_SAFE,
+            ui_type=UIType.HQ_SAFE,
+            site_id=None,
+            must_change_password=False,
+        )
+    )
+    period = FunctionalEvalPeriod(title="test", deadline_date=date(2026, 12, 31), is_active=True)
+    setup_db.add(period)
+    setup_db.flush()
+    worker = FunctionalEvalWorker(
+        period_id=period.id,
+        site_code="24018",
+        row_no=1,
+        name="홍길동",
+        rrn_hash=hashlib.sha256(b"8804091170112").hexdigest(),
+        is_site_manager=False,
+        is_active=True,
+    )
+    setup_db.add(worker)
+    setup_db.commit()
+    worker_id = worker.id
+    setup_db.close()
+
+    app = FastAPI()
+    app.include_router(functional_eval_router)
+
+    def override_get_db():
+        db = TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=20,
+        role=Role.HQ_SAFE,
+        ui_type=UIType.HQ_SAFE,
+        site_id=None,
+        login_id="안전보건-테스트",
+        name="안전보건",
+    )
+    client = TestClient(app)
+
+    criteria = get_criteria("FUNCTIONAL")
+    scores = {c["id"]: c["grades"][0]["key"] for c in criteria}
+
+    missing_reason = client.put(
+        f"/functional-eval/hq/workers/{worker_id}/assessment/FUNCTIONAL",
+        json={"scores": scores},
+    )
+    assert missing_reason.status_code == 422
+
+    res = client.put(
+        f"/functional-eval/hq/workers/{worker_id}/assessment/FUNCTIONAL",
+        json={"scores": scores, "reason": "현장 요청에 따른 본사 조정"},
+    )
+    assert res.status_code == 200
+    assert res.json()["assessment"]["is_complete"] is True
+
+    revisions = client.get(f"/functional-eval/workers/{worker_id}/assessment-revisions")
+    assert revisions.status_code == 200
+    assert revisions.json()["items"][0]["source"] == "HQ_OVERRIDE"
+    assert revisions.json()["items"][0]["edited_by_name"] == "안전보건"

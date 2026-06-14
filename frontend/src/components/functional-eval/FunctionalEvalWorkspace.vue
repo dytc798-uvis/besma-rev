@@ -80,26 +80,23 @@
       </div>
     </div>
 
-    <!-- 모바일: 평가 바텀시트 -->
+    <!-- 모바일: 평가 바텀시트 (Teleport — fe-sheet 스타일은 styles.css 전역) -->
     <Teleport to="body">
-      <div
-        v-if="isMobileViewport && evalWorker"
-        class="fe-sheet-backdrop"
-        aria-hidden="true"
-        @click="closeEval"
-      />
-      <div v-if="isMobileViewport && evalWorker && props.criteria.length" class="fe-sheet fe-sheet-open">
-        <div v-if="batchPendingWorkers > 0" class="batch-toolbar">
-          <button
-            class="stitch-btn-secondary batch-toolbar-btn touch-btn-inline"
-            type="button"
-            :disabled="batchApplyDisabled"
-            @click="applyBatchNormal"
-          >
-            일괄 보통 등록 ({{ batchPendingWorkers }}명)
-          </button>
-        </div>
-        <EvalAssessmentSheet
+      <template v-if="isMobileViewport && evalWorker && props.criteria.length">
+        <div class="fe-sheet-backdrop" aria-hidden="true" @click="closeEval" />
+        <div class="fe-sheet fe-sheet-open" role="dialog" aria-modal="true" :aria-label="`${evalWorker.name} ${title}`">
+          <div class="fe-sheet-handle" aria-hidden="true" />
+          <div v-if="batchPendingWorkers > 0" class="batch-toolbar">
+            <button
+              class="stitch-btn-secondary batch-toolbar-btn touch-btn-inline"
+              type="button"
+              :disabled="batchApplyDisabled"
+              @click="applyBatchNormal"
+            >
+              일괄 보통 등록 ({{ batchPendingWorkers }}명)
+            </button>
+          </div>
+          <EvalAssessmentSheet
             :worker="evalWorker"
             :title="title"
             :criteria="props.criteria"
@@ -114,8 +111,19 @@
             @save="saveEval"
             @close="closeEval"
             @update:scores="evalScores = $event"
-        />
-      </div>
+          />
+          <EvalSanctionInline
+            v-if="evalType === 'SAFETY'"
+            :worker="evalWorker"
+            :grouped-violations="groupedViolations"
+            :period-closed="periodClosed"
+            :prompt-message="sanctionPromptMessage"
+            :default-violation-code="defaultViolationCode"
+            @saved="onSanctionSaved"
+            @open-history="emit('open-history', evalWorker.id)"
+          />
+        </div>
+      </template>
     </Teleport>
   </div>
 </template>

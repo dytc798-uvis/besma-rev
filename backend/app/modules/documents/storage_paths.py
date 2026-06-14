@@ -54,7 +54,27 @@ def write_instance_file(storage_dir: Path, instance_id: int, filename: str, cont
     inst_dir = ensure_instance_dir(storage_dir, instance_id)
     target = inst_dir / filename
     target.write_bytes(content)
-    return target.relative_to(settings.storage_root).as_posix()
+    rel = target.relative_to(settings.storage_root).as_posix()
+    assert_storage_file_written(settings.storage_root, rel, expected_size=len(content))
+    return rel
+
+
+def assert_storage_file_written(
+    storage_root: Path,
+    relative_path: str,
+    *,
+    expected_size: int | None = None,
+) -> Path:
+    """업로드 직후 디스크에 파일이 실제로 존재하는지 검증한다."""
+    path = storage_root / (relative_path or "").replace("\\", "/")
+    if not path.is_file():
+        raise OSError(f"storage write verification failed: file missing ({relative_path})")
+    if expected_size is not None and path.stat().st_size != expected_size:
+        raise OSError(
+            f"storage write verification failed: size mismatch ({relative_path}, "
+            f"expected={expected_size}, actual={path.stat().st_size})"
+        )
+    return path
 
 
 def field_file_display_name(disk_name: str) -> str:

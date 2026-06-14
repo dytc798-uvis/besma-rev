@@ -91,6 +91,11 @@
           <span class="bucket-card__count">{{ managerBucketCounts.teams_complete }}</span>
           <span class="bucket-card__hint">전원 평가 완료된 팀</span>
         </button>
+        <button type="button" class="bucket-card bucket-card--sanctions" @click="selectManagerBucket('sanctions')">
+          <span class="bucket-card__label">제재 관리</span>
+          <span class="bucket-card__count">{{ siteOverview.length }}</span>
+          <span class="bucket-card__hint">현장 전체 근로자 제재·이력</span>
+        </button>
       </div>
 
       <div v-if="showManagerBuckets && activeManagerBucket" class="bucket-list-head">
@@ -144,6 +149,30 @@
         <li v-if="!visibleTeamGroups.length" class="muted empty-bucket">해당 구분의 팀이 없습니다.</li>
       </ul>
 
+      <div v-if="!isManager && teamSignoff" class="approval-panel">
+        <p class="approval-status">
+          담당 팀원 {{ teamSignoff.assigned_total }}명 · {{ teamSignoff.evaluation_batch_label }}
+          <span v-if="teamSignoff.signed"> · 서명 완료 ({{ teamSignoff.signed_at }})</span>
+        </p>
+        <button
+          v-if="teamSignoff.can_sign"
+          class="stitch-btn-primary btn-approve-site"
+          type="button"
+          :disabled="submittingTeamSignoff || Boolean(period?.is_closed)"
+          @click="openTeamSignoffModal"
+        >
+          {{ submittingTeamSignoff ? "제출 중…" : "평가완료보고서 서명" }}
+        </button>
+        <button
+          v-if="teamSignoff.signed && teamSignoff.signature_id"
+          class="stitch-btn-secondary"
+          type="button"
+          @click="downloadSignatureDoc(teamSignoff.signature_id)"
+        >
+          서명본 다운로드
+        </button>
+      </div>
+
       <div v-if="isManager && approval" class="approval-panel">
         <div class="approval-stats">
           <span>전체 {{ approval.site_complete_workers }}/{{ approval.site_total_workers }}명 완료</span>
@@ -151,19 +180,92 @@
           <span v-if="approval.team_total"> · 팀원 {{ approval.team_complete }}/{{ approval.team_total }}</span>
         </div>
         <p class="approval-status">{{ approval.status_label }}</p>
+        <p v-if="!approval.team_leaders_all_signed" class="attendance-warn">
+          모든 팀장의 평가완료보고서 서명 후 소장 승인 절차를 진행할 수 있습니다.
+        </p>
+        <p
+          v-else-if="approval.team_leaders_all_signed && !approval.team_reports_all_manager_approved"
+          class="attendance-warn"
+        >
+          팀장별 평가완료보고서에 소장 승인 서명이 필요합니다.
+        </p>
+        <ul v-if="teamLeaderReports.length" class="team-report-list">
+          <li v-for="report in teamLeaderReports" :key="report.team_leader_login_id">
+            <div class="team-report-item">
+              <strong>{{ report.team_leader_name }}</strong>
+              <span class="meta">
+                팀원 {{ report.team_worker_count }}명
+                · 팀장 {{ report.team_leader_signed ? "서명완료" : "미서명" }}
+                · 소장 {{ report.manager_approved ? "승인완료" : "대기" }}
+              </span>
+              <div class="team-report-actions">
+                <button
+                  v-if="report.team_leader_signature_id"
+                  type="button"
+                  class="link-btn"
+                  @click="downloadSignatureDoc(report.team_leader_signature_id)"
+                >
+                  팀장 보고서
+                </button>
+                <button
+                  v-if="report.can_manager_approve"
+                  type="button"
+                  class="stitch-btn-secondary"
+                  :disabled="Boolean(period?.is_closed)"
+                  @click="openTeamReportApproveModal(report.team_leader_login_id, report.team_leader_name)"
+                >
+                  보고서 승인 서명
+                </button>
+              </div>
+            </div>
+          </li>
+        </ul>
+        <p v-if="!approval.team_leaders_all_signed && approval.can_submit_site_approval === false" class="attendance-warn">
+          (위 조건 충족 후 현장 전체 승인 가능)
+        </p>
         <button
           v-if="approval.can_submit_site_approval"
           class="stitch-btn-primary btn-approve-site"
           type="button"
           :disabled="submittingApproval || Boolean(period?.is_closed)"
-          @click="submitSiteApproval"
+          @click="openSiteApprovalModal"
         >
-          {{ submittingApproval ? "제출 중…" : "현장 전체 승인" }}
+          {{ submittingApproval ? "제출 중…" : "평가완료보고서 제출 (서명)" }}
         </button>
       </div>
 
+      <div v-if="mySignatures.length" class="signatures-panel">
+        <h3 class="signatures-title">내 서명본</h3>
+        <ul class="signatures-list">
+          <li v-for="sig in mySignatures" :key="String(sig.id)">
+            <span>{{ sig.stage_label || sig.evaluation_batch_label || "서명" }} · {{ sig.signed_at || "—" }}</span>
+            <button
+              v-if="sig.has_document && typeof sig.id === 'number'"
+              type="button"
+              class="link-btn"
+              @click="downloadSignatureDoc(sig.id)"
+            >
+              PDF
+            </button>
+            <button
+              v-else-if="sig.consent"
+              type="button"
+              class="link-btn"
+              @click="downloadConsentDoc"
+            >
+              PDF
+            </button>
+          </li>
+        </ul>
+      </div>
+
       <div
-        v-if="!showManagerBuckets || (activeManagerBucket === 'direct') || activeTeamLeaderId"
+        v-if="
+          !showManagerBuckets ||
+          activeManagerBucket === 'direct' ||
+          activeManagerBucket === 'sanctions' ||
+          activeTeamLeaderId
+        "
         class="table-wrap roster-table-wrap"
       >
         <table class="data-table roster-table">
@@ -277,15 +379,15 @@
           </select>
         </label>
         <label class="field">
-          <span class="field-label">비고</span>
-          <textarea v-model="form.note" class="field-control" rows="3" placeholder="위반 상황 (선택)" />
+          <span class="field-label">등록 사유 <span class="req">*</span></span>
+          <textarea v-model="form.note" class="field-control" rows="3" placeholder="위반 상황·등록 사유" />
         </label>
         <div class="actions" :class="{ 'actions-sticky': isMobileViewport }">
           <button class="stitch-btn-secondary touch-btn" type="button" @click="closeForm">취소</button>
           <button
             class="stitch-btn-primary touch-btn"
             type="button"
-            :disabled="!form.violation_code || saving || period?.is_closed"
+            :disabled="!form.violation_code || !form.note.trim() || saving || period?.is_closed"
             @click="requestSubmitSanction"
           >
             {{ saving ? "등록 중…" : "제재 등록" }}
@@ -327,8 +429,22 @@
                 <span v-if="s.from_prior_period" class="tag">이전</span>
                 {{ s.violation_label }} → {{ s.sanction_result_label }} ({{ s.strike_number }}차)
                 <span class="meta">{{ formatDate(s.created_at) }}</span>
+                <span v-if="s.reported_by_name" class="meta"> · {{ s.reported_by_name }}</span>
+                <span v-if="s.note" class="meta history-note"> — {{ s.note }}</span>
               </li>
               <li v-if="!allHistorySanctions.length">제재 이력 없음</li>
+            </ul>
+          </section>
+          <section v-if="historyData?.assessment_revisions?.length" class="history-block">
+            <h3>점수 수정 이력</h3>
+            <ul class="history-list">
+              <li v-for="r in historyData.assessment_revisions" :key="`r-${r.id}`">
+                {{ r.eval_type === "SAFETY" ? "2-2 안전" : "2-1 기능" }}
+                {{ r.before_grade_code || "—" }} → {{ r.after_grade_code }}
+                <span class="meta">{{ formatDate(r.created_at) }}</span>
+                <span v-if="r.edited_by_name" class="meta"> · {{ r.edited_by_name }}</span>
+                <span class="meta history-note"> — {{ r.reason }}</span>
+              </li>
             </ul>
           </section>
         </div>
@@ -340,12 +456,22 @@
       </section>
     </Teleport>
 
+    <FeSignatureModal
+      ref="signatureModalRef"
+      :open="signatureModalOpen"
+      :title="signatureModalTitle"
+      :description="signatureModalDescription"
+      :submit-label="signatureModalSubmitLabel"
+      @update:open="(v) => (signatureModalOpen = v)"
+      @submit="onSignatureModalSubmit"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import FunctionalEvalWorkspace from "@/components/functional-eval/FunctionalEvalWorkspace.vue";
+import FeSignatureModal from "@/components/functional-eval/FeSignatureModal.vue";
 import type { Criterion } from "@/components/functional-eval/EvalAssessmentSheet.vue";
 import { useMobileViewport } from "@/composables/useMobileViewport";
 import { useRoute, useRouter } from "vue-router";
@@ -370,7 +496,7 @@ type EvalTab = "functional" | "safety";
 type EvalType = "FUNCTIONAL" | "SAFETY";
 type EvalStatusKey = "incomplete" | "in_progress" | "complete";
 type EvalStatusFilter = EvalStatusKey | "all";
-type ManagerBucket = "direct" | "team_leaders" | "team_incomplete" | "team_complete";
+type ManagerBucket = "direct" | "team_leaders" | "team_incomplete" | "team_complete" | "sanctions";
 
 interface TeamGroup {
   leaderLoginId: string;
@@ -424,7 +550,43 @@ interface ApprovalPayload {
   incomplete_count: number;
   can_submit_site_approval: boolean;
   evaluation_editable: boolean;
+  team_leaders_all_signed?: boolean;
+  team_reports_all_manager_approved?: boolean;
+  team_leader_reports?: TeamLeaderReportPayload[];
   reject_note?: string | null;
+}
+
+interface TeamLeaderReportPayload {
+  team_leader_login_id: string;
+  team_leader_name: string;
+  team_worker_count: number;
+  team_leader_signed: boolean;
+  team_leader_signed_at?: string | null;
+  manager_approved: boolean;
+  manager_approved_at?: string | null;
+  can_manager_approve: boolean;
+  team_leader_signature_id?: number | null;
+  manager_approval_signature_id?: number | null;
+}
+
+interface TeamSignoffPayload {
+  evaluation_batch: number;
+  evaluation_batch_label: string;
+  assigned_total: number;
+  incomplete_count: number;
+  can_sign: boolean;
+  signed: boolean;
+  signed_at?: string | null;
+  signature_id?: number | null;
+}
+
+interface SignatureListItem {
+  id: number | string;
+  stage_label?: string;
+  evaluation_batch_label?: string;
+  signed_at?: string | null;
+  has_document?: boolean;
+  consent?: boolean;
 }
 
 interface Period {
@@ -476,8 +638,20 @@ interface SanctionRow {
   violation_label: string;
   sanction_result_label: string;
   strike_number: number;
+  note?: string | null;
+  reported_by_name?: string | null;
   created_at: string;
   from_prior_period?: boolean;
+}
+
+interface RevisionRow {
+  id: number;
+  eval_type: string;
+  before_grade_code?: string | null;
+  after_grade_code: string;
+  reason: string;
+  edited_by_name?: string | null;
+  created_at: string;
 }
 
 const { isMobileViewport } = useMobileViewport();
@@ -519,7 +693,36 @@ const attendanceMessage = ref("");
 const workers = ref<Worker[]>([]);
 const siteOverview = ref<Worker[]>([]);
 const approval = ref<ApprovalPayload | null>(null);
+const teamSignoff = ref<TeamSignoffPayload | null>(null);
+const mySignatures = ref<SignatureListItem[]>([]);
 const submittingApproval = ref(false);
+const submittingTeamSignoff = ref(false);
+const signatureModalOpen = ref(false);
+const signatureModalRef = ref<InstanceType<typeof FeSignatureModal> | null>(null);
+const signatureModalMode = ref<"team" | "site" | "team_approve">("site");
+const teamApproveLoginId = ref("");
+const teamApproveName = ref("");
+const signatureModalTitle = computed(() => {
+  if (signatureModalMode.value === "team") return "팀원 평가완료보고서 서명";
+  if (signatureModalMode.value === "team_approve") return `${teamApproveName.value} 팀장 보고서 승인`;
+  return "현장 평가완료보고서 제출";
+});
+const signatureModalDescription = computed(() => {
+  if (signatureModalMode.value === "team") {
+    return "담당 팀원 등급표가 포함된 평가완료보고서입니다. 서명 후 소장 승인을 받습니다.";
+  }
+  if (signatureModalMode.value === "team_approve") {
+    return "팀장 평가완료보고서를 확인하고 소장 승인 서명을 합니다.";
+  }
+  return "팀장 보고서·직영 평가표를 포함한 갑지에 서명하여 본사 검토를 요청합니다.";
+});
+const signatureModalSubmitLabel = computed(() => {
+  if (signatureModalMode.value === "team") return "평가완료보고서 서명";
+  if (signatureModalMode.value === "team_approve") return "승인 서명";
+  return "제출 및 서명";
+});
+
+const teamLeaderReports = computed(() => approval.value?.team_leader_reports || []);
 const violations = ref<ViolationItem[]>([]);
 const selectedWorker = ref<Worker | null>(null);
 const historyWorker = ref<Worker | null>(null);
@@ -529,6 +732,7 @@ const historyData = ref<{
   sanctions: SanctionRow[];
   prior_sanctions: SanctionRow[];
   prior_assessments?: AssessmentHistoryRow[];
+  assessment_revisions?: RevisionRow[];
   mileage: { message?: string; points?: number };
 } | null>(null);
 const saving = ref(false);
@@ -592,10 +796,10 @@ const evaluatorHint = computed(() => {
   }
   if (!evaluator.value) return "";
   if (!isManager.value) {
-    return "담당 팀원만 평가할 수 있습니다. 소장이 현장 전체를 승인한 뒤 본사·대표 승인이 이어집니다.";
+    return "담당 팀원 평가 완료 후 「평가완료보고서」에 서명하세요. 소장 승인 → 본사 검토 → 대표 최종승인 순입니다.";
   }
   if (evaluator.value.team_split_active) {
-    return `출역 ${evaluator.value.split_threshold}명 초과: 직영은 소장, 팀원은 팀장이 평가합니다. 전원 완료 후 소장이 현장 전체를 승인하세요.`;
+    return `출역 ${evaluator.value.split_threshold}명 초과: 직영은 소장, 팀원은 팀장이 평가합니다. 팀장 보고서 승인 후 갑지(평가완료보고서)에 서명하여 제출하세요.`;
   }
   return "10명 이하 현장은 소장이 전원 평가합니다. 완료 후 소장 승인 → 안전보건실 → 대표이사 순으로 확정됩니다.";
 });
@@ -664,6 +868,7 @@ const managerBucketTitle = computed(() => {
   if (activeManagerBucket.value === "team_leaders") return "팀장평가";
   if (activeManagerBucket.value === "team_incomplete") return "팀별 평가(미완료)";
   if (activeManagerBucket.value === "team_complete") return "팀별 평가(완료)";
+  if (activeManagerBucket.value === "sanctions") return "제재 관리 (전체)";
   return "";
 });
 
@@ -681,7 +886,9 @@ const visibleTeamGroups = computed(() => {
 const rosterDisplayWorkers = computed(() => {
   let list = rosterSource.value;
   if (showManagerBuckets.value && activeManagerBucket.value) {
-    if (activeManagerBucket.value === "direct") {
+    if (activeManagerBucket.value === "sanctions") {
+      list = siteOverview.value.length ? siteOverview.value : list;
+    } else if (activeManagerBucket.value === "direct") {
       list = list.filter((w) => isDirectWorker(w));
     } else if (activeTeamLeaderId.value) {
       list = list.filter(
@@ -770,11 +977,14 @@ function startEvaluationFromIncomplete() {
 }
 
 function canOpenHistory(w: Worker): boolean {
+  if (isManager.value) return true;
   return Boolean(hasActualSanctionHistory(w));
 }
 
 function canRegisterSanction(w: Worker): boolean {
-  return !period.value?.is_closed && !w.is_permanently_expelled && (needsSanctionPrompt(w) || hasActualSanctionHistory(w));
+  if (period.value?.is_closed || w.is_permanently_expelled) return false;
+  if (isManager.value) return true;
+  return needsSanctionPrompt(w) || hasActualSanctionHistory(w);
 }
 
 function hasActualSanctionHistory(w: Worker): boolean {
@@ -1004,25 +1214,91 @@ async function load() {
   workers.value = cloneWorkerList(res.data.items || []);
   siteOverview.value = cloneWorkerList(res.data.site_overview || []);
   approval.value = res.data.approval ? { ...res.data.approval } : null;
+  teamSignoff.value = res.data.team_signoff ? { ...res.data.team_signoff } : null;
+  mySignatures.value = res.data.signatures || [];
   evaluator.value = res.data.evaluator || null;
   attendanceMessage.value = res.data.attendance_message || "";
 }
 
-async function submitSiteApproval() {
-  if (!approval.value?.can_submit_site_approval) return;
-  const ok = window.confirm("현장 전체 평가를 승인하고 안전보건실 검토로 제출하시겠습니까?");
-  if (!ok) return;
-  submittingApproval.value = true;
+function openTeamSignoffModal() {
+  signatureModalMode.value = "team";
+  signatureModalOpen.value = true;
+}
+
+function openSiteApprovalModal() {
+  signatureModalMode.value = "site";
+  signatureModalOpen.value = true;
+}
+
+function openTeamReportApproveModal(loginId: string, name: string) {
+  signatureModalMode.value = "team_approve";
+  teamApproveLoginId.value = loginId;
+  teamApproveName.value = name;
+  signatureModalOpen.value = true;
+}
+
+async function onSignatureModalSubmit(payload: {
+  signature_data: string;
+  consent_acknowledged: boolean;
+}) {
+  signatureModalRef.value?.setSubmitting(true);
   error.value = "";
   try {
-    await api.post("/functional-eval/my-site/approval/submit");
+    if (signatureModalMode.value === "team") {
+      submittingTeamSignoff.value = true;
+      await api.post("/functional-eval/my-team/signoff", payload);
+    } else if (signatureModalMode.value === "team_approve") {
+      submittingApproval.value = true;
+      await api.post(
+        `/functional-eval/my-site/team-leader/${encodeURIComponent(teamApproveLoginId.value)}/approve-report`,
+        payload,
+      );
+    } else {
+      submittingApproval.value = true;
+      await api.post("/functional-eval/my-site/approval/submit", payload);
+    }
+    signatureModalOpen.value = false;
     await load();
   } catch (e: unknown) {
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    error.value = typeof msg === "string" ? msg : "현장 승인에 실패했습니다.";
+    signatureModalRef.value?.setError(typeof msg === "string" ? msg : "서명 저장에 실패했습니다.");
   } finally {
     submittingApproval.value = false;
+    submittingTeamSignoff.value = false;
+    signatureModalRef.value?.setSubmitting(false);
   }
+}
+
+async function downloadSignatureDoc(signatureId: number) {
+  try {
+    const res = await api.get(`/functional-eval/signatures/${signatureId}/document`, { responseType: "blob" });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `기능인제_서명_${signatureId}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    error.value = "서명본 다운로드에 실패했습니다.";
+  }
+}
+
+async function downloadConsentDoc() {
+  try {
+    const res = await api.get("/functional-eval/consent/document", { responseType: "blob" });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "기능인제_동의서.pdf";
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    error.value = "동의서 다운로드에 실패했습니다.";
+  }
+}
+
+async function submitSiteApproval() {
+  openSiteApprovalModal();
 }
 
 function siteGradeWorkbookFilename() {
@@ -1119,7 +1395,7 @@ async function submitSanction() {
     await api.post("/functional-eval/sanctions", {
       worker_id: selectedWorker.value.id,
       violation_code: form.violation_code,
-      note: form.note || null,
+      note: form.note.trim(),
     });
     sanctionPromptMessage.value = "";
     closeForm();
@@ -1482,12 +1758,44 @@ textarea.field-control {
   color: #64748b;
 }
 
+.signatures-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.signatures-title { margin: 0 0 8px; font-size: 14px; }
+.signatures-list { margin: 0; padding-left: 18px; }
+.signatures-list li { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+
 .approval-panel {
   margin-bottom: 14px;
   padding: 12px 14px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
+}
+
+.team-report-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.team-report-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.team-report-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .approval-stats {
@@ -1680,6 +1988,15 @@ textarea.field-control {
 .roster-grades .grade-pill {
   font-size: 12px;
   padding: 3px 8px;
+}
+
+.req {
+  color: #dc2626;
+}
+
+.history-note {
+  display: block;
+  margin-top: 2px;
 }
 
 .sanction-hint {
@@ -1923,56 +2240,8 @@ textarea.field-control {
 }
 </style>
 
-<!-- Teleport 모달: scoped 밖 전역 클래스 -->
+<!-- Teleport 모달: scoped 밖 전역 클래스 (fe-sheet·backdrop는 styles.css) -->
 <style>
-.fe-overlay-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 400;
-  background: rgba(15, 23, 42, 0.45);
-}
-
-.fe-modal-panel {
-  position: fixed;
-  z-index: 410;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: min(480px, calc(100vw - 32px));
-  max-height: min(85vh, 640px);
-  overflow-y: auto;
-  margin: 0;
-  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
-}
-
-.fe-sheet {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 410;
-  max-height: min(88vh, 640px);
-  overflow-y: auto;
-  border-radius: 16px 16px 0 0;
-  margin: 0;
-  padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0));
-  box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.15);
-  transform: translateY(100%);
-  transition: transform 0.22s ease;
-}
-
-.fe-sheet.fe-sheet-open {
-  transform: translateY(0);
-}
-
-.fe-sheet-handle {
-  width: 40px;
-  height: 4px;
-  background: #cbd5e1;
-  border-radius: 999px;
-  margin: 0 auto 12px;
-}
-
 .fe-dialog .dialog-head {
   display: flex;
   align-items: flex-start;
@@ -2010,10 +2279,6 @@ textarea.field-control {
   margin: 12px 0 0;
   padding: 0;
   list-style: none;
-}
-
-body.fe-sheet-open-body {
-  overflow: hidden;
 }
 </style>
 

@@ -42,6 +42,59 @@ def main() -> None:
                 "ALTER TABLE functional_eval_workers ADD COLUMN is_on_reference_roster BOOLEAN NOT NULL DEFAULT 1"
             )
             changes.append("functional_eval_workers.is_on_reference_roster")
+        if not _has_column(cur, "functional_eval_workers", "evaluation_batch"):
+            cur.execute(
+                "ALTER TABLE functional_eval_workers ADD COLUMN evaluation_batch INTEGER NOT NULL DEFAULT 0"
+            )
+            changes.append("functional_eval_workers.evaluation_batch")
+
+    if not _has_table(cur, "functional_eval_consents"):
+        cur.execute(
+            """
+            CREATE TABLE functional_eval_consents (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+                login_id VARCHAR(50) NOT NULL,
+                consent_version VARCHAR(40) NOT NULL,
+                signature_data TEXT NOT NULL,
+                signature_hash VARCHAR(64) NOT NULL,
+                signed_at DATETIME NOT NULL,
+                signer_ip VARCHAR(64),
+                signer_user_agent TEXT,
+                signed_document_path TEXT,
+                created_at DATETIME NOT NULL
+            )
+            """
+        )
+        changes.append("functional_eval_consents (created)")
+
+    if not _has_table(cur, "functional_eval_signatures"):
+        cur.execute(
+            """
+            CREATE TABLE functional_eval_signatures (
+                id INTEGER PRIMARY KEY,
+                period_id INTEGER NOT NULL REFERENCES functional_eval_periods(id),
+                evaluation_batch INTEGER NOT NULL DEFAULT 0,
+                stage VARCHAR(20) NOT NULL,
+                site_code VARCHAR(50) NOT NULL DEFAULT '',
+                team_leader_login_id VARCHAR(50) NOT NULL DEFAULT '',
+                signer_user_id INTEGER NOT NULL REFERENCES users(id),
+                signer_login_id VARCHAR(50) NOT NULL,
+                signer_name VARCHAR(100) NOT NULL,
+                scope_label VARCHAR(500) NOT NULL DEFAULT '',
+                worker_scope_json JSON,
+                signature_data TEXT NOT NULL,
+                signature_hash VARCHAR(64) NOT NULL,
+                signed_at DATETIME NOT NULL,
+                signer_ip VARCHAR(64),
+                signer_user_agent TEXT,
+                signed_document_path TEXT,
+                created_at DATETIME NOT NULL,
+                UNIQUE (period_id, evaluation_batch, stage, site_code, team_leader_login_id)
+            )
+            """
+        )
+        changes.append("functional_eval_signatures (created)")
 
     if _has_table(cur, "functional_eval_attendance_entries"):
         for col, ddl in [

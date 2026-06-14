@@ -33,7 +33,8 @@ export const HQ_SIDEBAR_SECONDARY_KEYS = [
   "settings",
   "sites",
   "users",
-  "approvals-inbox",
+  "pdf-signing",
+  "system-backup",
 ] as const;
 
 const PRIMARY_SET = new Set<string>(HQ_SIDEBAR_PRIMARY_KEYS);

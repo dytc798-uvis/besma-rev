@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>기능인제 E2E 검증 보고서</title>
+  <style>
+    :root { font-family: "Segoe UI", system-ui, sans-serif; color: #0f172a; background: #f8fafc; }
+    body { margin: 0; padding: 24px; max-width: 1100px; margin-inline: auto; }
+    h1 { margin: 0 0 8px; font-size: 1.6rem; }
+    .meta { color: #64748b; font-size: 14px; margin-bottom: 20px; }
+    .badge { display: inline-block; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 13px; }
+    .badge.pass { background: #dcfce7; color: #166534; }
+    .badge.fail { background: #fee2e2; color: #991b1b; }
+    section { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+    h2 { margin: 0 0 12px; font-size: 1.1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; background: #f8fafc; padding: 8px; border-radius: 8px; }
+    code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
+    .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .shot { margin: 0; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: #fff; }
+    .shot figcaption { padding: 8px 10px; font-size: 13px; font-weight: 600; background: #fff7ed; color: #9a3412; }
+    .shot img { width: 100%; display: block; }
+    .flow { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .flow span { background: #eff6ff; color: #1d4ed8; padding: 6px 10px; border-radius: 8px; font-size: 13px; }
+    .flow span.arrow { background: transparent; color: #94a3b8; padding: 0 2px; }
+    tr.sev-critical td { background: #fef2f2; }
+    tr.sev-error td { background: #fff7ed; }
+    .urls a { display: block; margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <h1>기능인제(인사고과) E2E 검증 보고서</h1>
+  <p class="meta">생성: 2026-06-08T04:30:49.454784+00:00 · API: http://127.0.0.1:8001 · 현장 24025</p>
+  <p><span class="badge fail">API 시뮬레이션 실패 · 배포 전 권고 2건</span></p>
+
+  <section>
+    <h2>검증 흐름</h2>
+    <div class="flow">
+      <span>① 팀장 팀원 평가</span><span class="arrow">→</span>
+      <span>② 소장 직영 평가·현장 승인</span><span class="arrow">→</span>
+      <span>③ 안전보건실 승인</span><span class="arrow">→</span>
+      <span>④ 대표이사 최종 승인</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>로컬 확인 URL</h2>
+    <div class="urls">
+      <a href="http://127.0.0.1:5174/login" target="_blank">로그인 — http://127.0.0.1:5174/login</a>
+      <a href="http://127.0.0.1:5174/site/functional-eval" target="_blank">현장 기능인제 — http://127.0.0.1:5174/site/functional-eval</a>
+      <a href="http://127.0.0.1:5174/hq-safe/functional-eval" target="_blank">본사 기능인제 — http://127.0.0.1:5174/hq-safe/functional-eval</a>
+      <a href="http://127.0.0.1:8765/docs/reports/functional-eval-e2e/index.html" target="_blank">이 보고서 — http://127.0.0.1:8765/docs/reports/functional-eval-e2e/index.html</a>
+    </div>
+  </section>
+
+  <section>
+    <h2>테스트 계정 (청라 C18 · 24025)</h2>
+    <table>
+      <thead><tr><th>역할</th><th>로그인 ID</th><th>비밀번호</th></tr></thead>
+      <tbody><tr><td>team_leader</td><td><code>대우청라-김팀장</code></td><td><code>750101</code></td></tr><tr><td>manager</td><td><code>대우청라-박명식</code></td><td><code>661123</code></td></tr><tr><td>hq</td><td><code>안전보건-조동문</code></td><td><code>600321</code></td></tr><tr><td>ceo</td><td><code>부현대표-김홍수</code></td><td><code>611001</code></td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>발견 이슈 / 병목</h2>
+    <table>
+      <thead><tr><th>단계</th><th>심각도</th><th>내용</th><th>비고</th></tr></thead>
+      <tbody><tr class='sev-warn'><td>ops</td><td>warn</td><td>로컬 DB가 alembic head(0061)인데 0057~0059 컬럼(last_attendance_date, assigned_evaluator_login_id, rep_name) 누락</td><td>repair_fe_db_schema.py로 보정. 배포 전 alembic upgrade head 재실행 권장</td></tr><tr class='sev-info'><td>ui</td><td>info</td><td>안전·제재 통합 UI는 로컬만 반영, 운영 미배포</td><td>일괄 배포 시 Vercel 포함</td></tr><tr class='sev-warn'><td>ops</td><td>warn</td><td>로컬 DB가 alembic head(0061)인데 0057~0059 컬럼(last_attendance_date, assigned_evaluator_login_id, rep_name) 누락</td><td>repair_fe_db_schema.py로 보정. 배포 전 alembic upgrade head 재실행 권장</td></tr><tr class='sev-info'><td>ui</td><td>info</td><td>안전·제재 통합 UI는 로컬만 반영, 운영 미배포</td><td>일괄 배포 시 Vercel 포함</td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>API 시뮬레이션 단계</h2>
+    <table>
+      <thead><tr><th>단계</th><th>결과</th></tr></thead>
+      <tbody><tr><td>1_team_leader_workers</td><td><pre>{
+  &quot;step&quot;: &quot;1_team_leader_workers&quot;,
+  &quot;actor&quot;: &quot;대우청라-김팀장&quot;,
+  &quot;status&quot;: 200,
+  &quot;role&quot;: &quot;TEAM_LEADER&quot;,
+  &quot;worker_count&quot;: 8,
+  &quot;team_split&quot;: true
+}</pre></td></tr><tr><td>1_team_leader_evaluate</td><td><pre>{
+  &quot;step&quot;: &quot;1_team_leader_evaluate&quot;,
+  &quot;errors&quot;: []
+}</pre></td></tr><tr><td>2_manager_workers</td><td><pre>{
+  &quot;step&quot;: &quot;2_manager_workers&quot;,
+  &quot;actor&quot;: &quot;대우청라-박명식&quot;,
+  &quot;status&quot;: 200,
+  &quot;direct_count&quot;: 4,
+  &quot;overview_count&quot;: 12,
+  &quot;approval&quot;: {
+    &quot;status&quot;: &quot;IN_PROGRESS&quot;,
+    &quot;status_label&quot;: &quot;평가 진행&quot;,
+    &quot;site_submitted_at&quot;: null,
+    &quot;hq_approved_at&quot;: null,
+    &quot;ceo_approved_at&quot;: null,
+    &quot;reject_note&quot;: null,
+    &quot;rejected_stage&quot;: null,
+    &quot;site_total_workers&quot;: 12,
+    &quot;site_complete_workers&quot;: 8,
+    &quot;direct_total&quot;: 4,
+    &quot;direct_complete&quot;: 0,
+    &quot;team_total&quot;: 8,
+    &quot;team_complete&quot;: 8,
+    &quot;incomplete_count&quot;: 4,
+    &quot;can_submit_site_approval&quot;: false,
+    &quot;evaluation_editable&quot;: true
+  }
+}</pre></td></tr><tr><td>2_manager_direct_evaluate</td><td><pre>{
+  &quot;step&quot;: &quot;2_manager_direct_evaluate&quot;,
+  &quot;errors&quot;: []
+}</pre></td></tr><tr><td>2_manager_approval_check</td><td><pre>{
+  &quot;step&quot;: &quot;2_manager_approval_check&quot;,
+  &quot;approval&quot;: {
+    &quot;status&quot;: &quot;IN_PROGRESS&quot;,
+    &quot;status_label&quot;: &quot;평가 진행&quot;,
+    &quot;site_submitted_at&quot;: null,
+    &quot;hq_approved_at&quot;: null,
+    &quot;ceo_approved_at&quot;: null,
+    &quot;reject_note&quot;: null,
+    &quot;rejected_stage&quot;: null,
+    &quot;site_total_workers&quot;: 12,
+    &quot;site_complete_workers&quot;: 12,
+    &quot;direct_total&quot;: 4,
+    &quot;direct_complete&quot;: 4,
+    &quot;team_total&quot;: 8,
+    &quot;team_complete&quot;: 8,
+    &quot;incomplete_count&quot;: 0,
+    &quot;can_submit_site_approval&quot;: true,
+    &quot;evaluation_editable&quot;: true
+  }
+}</pre></td></tr><tr><td>2_manager_submit</td><td><pre>{
+  &quot;step&quot;: &quot;2_manager_submit&quot;,
+  &quot;status&quot;: 200,
+  &quot;body&quot;: &quot;{\&quot;approval\&quot;:{\&quot;status\&quot;:\&quot;SITE_APPROVED\&quot;,\&quot;status_label\&quot;:\&quot;소장 승인 · 본사 검토 대기\&quot;,\&quot;site_submitted_at\&quot;:\&quot;2026-06-08T04:30:48.956122\&quot;,\&quot;hq_approved_at\&quot;:null,\&quot;ceo_approved_at\&quot;:null,\&quot;reject_note\&quot;:null,\&quot;rejected_stage\&quot;:null}}&quot;
+}</pre></td></tr><tr><td>3_hq_pending</td><td><pre>{
+  &quot;step&quot;: &quot;3_hq_pending&quot;,
+  &quot;actor&quot;: &quot;안전보건-조동문&quot;,
+  &quot;status&quot;: 200,
+  &quot;items&quot;: [
+    {
+      &quot;site_code&quot;: &quot;24025&quot;,
+      &quot;status&quot;: &quot;SITE_APPROVED&quot;,
+      &quot;status_label&quot;: &quot;소장 승인 · 본사 검토 대기&quot;,
+      &quot;site_submitted_at&quot;: &quot;2026-06-08T04:30:48.956122&quot;,
+      &quot;hq_approved_at&quot;: null,
+      &quot;ceo_approved_at&quot;: null,
+      &quot;reject_note&quot;: null,
+      &quot;rejected_stage&quot;: null,
+      &quot;site_total_workers&quot;: 12,
+      &quot;site_complete_workers&quot;: 12,
+      &quot;direct_total&quot;: 4,
+      &quot;direct_complete&quot;: 4,
+      &quot;team_total&quot;: 8,
+      &quot;team_complete&quot;: 8,
+      &quot;incomplete_count&quot;: 0,
+      &quot;can_submit_site_approval&quot;: false,
+      &quot;evaluation_editable&quot;: false
+    }
+  ]
+}</pre></td></tr><tr><td>3_hq_approve</td><td><pre>{
+  &quot;step&quot;: &quot;3_hq_approve&quot;,
+  &quot;status&quot;: 200,
+  &quot;body&quot;: &quot;{\&quot;approval\&quot;:{\&quot;status\&quot;:\&quot;HQ_APPROVED\&quot;,\&quot;status_label\&quot;:\&quot;안전보건실 승인 · 대표 최종 대기\&quot;,\&quot;site_submitted_at\&quot;:\&quot;2026-06-08T04:30:48.956122\&quot;,\&quot;hq_approved_at\&quot;:\&quot;2026-06-08T04:30:49.133162\&quot;,\&quot;ceo_approved_at\&quot;:null,\&quot;reject_note\&quot;:null,\&quot;rejected_stage\&quot;:null}}&quot;
+}</pre></td></tr><tr><td>4_ceo_pending</td><td><pre>{
+  &quot;step&quot;: &quot;4_ceo_pending&quot;,
+  &quot;actor&quot;: &quot;부현대표-김홍수&quot;,
+  &quot;status&quot;: 200,
+  &quot;items&quot;: [
+    {
+      &quot;site_code&quot;: &quot;24025&quot;,
+      &quot;status&quot;: &quot;HQ_APPROVED&quot;,
+      &quot;status_label&quot;: &quot;안전보건실 승인 · 대표 최종 대기&quot;,
+      &quot;site_submitted_at&quot;: &quot;2026-06-08T04:30:48.956122&quot;,
+      &quot;hq_approved_at&quot;: &quot;2026-06-08T04:30:49.133162&quot;,
+      &quot;ceo_approved_at&quot;: null,
+      &quot;reject_note&quot;: null,
+      &quot;rejected_stage&quot;: null,
+      &quot;site_total_workers&quot;: 12,
+      &quot;site_complete_workers&quot;: 12,
+      &quot;direct_total&quot;: 4,
+      &quot;direct_complete&quot;: 4,
+      &quot;team_total&quot;: 8,
+      &quot;team_complete&quot;: 8,
+      &quot;incomplete_count&quot;: 0,
+      &quot;can_submit_site_approval&quot;: false,
+      &quot;evaluation_editable&quot;: false
+    }
+  ]
+}</pre></td></tr><tr><td>4_ceo_approve</td><td><pre>{
+  &quot;step&quot;: &quot;4_ceo_approve&quot;,
+  &quot;status&quot;: 200,
+  &quot;body&quot;: &quot;{\&quot;approval\&quot;:{\&quot;status\&quot;:\&quot;CEO_APPROVED\&quot;,\&quot;status_label\&quot;:\&quot;최종 승인 완료\&quot;,\&quot;site_submitted_at\&quot;:\&quot;2026-06-08T04:30:48.956122\&quot;,\&quot;hq_approved_at\&quot;:\&quot;2026-06-08T04:30:49.133162\&quot;,\&quot;ceo_approved_at\&quot;:\&quot;2026-06-08T04:30:49.298195\&quot;,\&quot;reject_note\&quot;:null,\&quot;rejected_stage\&quot;:null}}&quot;
+}</pre></td></tr><tr><td>5_ceo_pending_after</td><td><pre>{
+  &quot;step&quot;: &quot;5_ceo_pending_after&quot;,
+  &quot;status&quot;: 200,
+  &quot;count&quot;: 0
+}</pre></td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>화면 캡처</h2>
+    <div class="shots">
+        <figure class="shot">
+          <figcaption>01 team leader roster</figcaption>
+          <img src="screenshots/01_team_leader_roster.png" alt="01 team leader roster" loading="lazy" />
+        </figure>
+        <figure class="shot">
+          <figcaption>02 manager roster pending</figcaption>
+          <img src="screenshots/02_manager_roster_pending.png" alt="02 manager roster pending" loading="lazy" />
+        </figure>
+        <figure class="shot">
+          <figcaption>03 hq approvals</figcaption>
+          <img src="screenshots/03_hq_approvals.png" alt="03 hq approvals" loading="lazy" />
+        </figure>
+        <figure class="shot">
+          <figcaption>04 ceo approvals</figcaption>
+          <img src="screenshots/04_ceo_approvals.png" alt="04 ceo approvals" loading="lazy" />
+        </figure>
+        <figure class="shot">
+          <figcaption>05 manager final</figcaption>
+          <img src="screenshots/05_manager_final.png" alt="05 manager final" loading="lazy" />
+        </figure></div>
+  </section>
+</body>
+</html>

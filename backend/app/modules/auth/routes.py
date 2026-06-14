@@ -8,6 +8,7 @@ from app.core.password_policy import validate_password_policy
 from app.core.permissions import Role
 from app.modules.sites.models import Site
 from app.modules.users.models import User
+from app.core.system_backup_access import can_system_backup
 from app.schemas.auth import ChangePasswordRequest, Token, UserMe
 
 
@@ -101,7 +102,8 @@ def login(
 @router.get("/me", response_model=UserMe)
 def me(db: DbDep, current_user=Depends(get_current_user)) -> UserMe:
     _resolve_default_pilot_site(db, current_user)
-    return UserMe.model_validate(current_user)
+    base = UserMe.model_validate(current_user)
+    return base.model_copy(update={"can_system_backup": can_system_backup(current_user.login_id)})
 
 
 @router.post("/change-password")

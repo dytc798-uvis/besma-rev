@@ -127,6 +127,12 @@ def main() -> int:
 
     orphan_deleted = 0
     if args.delete_orphans:
+        if dry_run:
+            print("WARNING: --delete-orphans with dry-run only lists candidates; use --apply to delete.")
+        print(
+            "WARNING: orphan deletion removes legacy instance_* files not referenced after migration. "
+            "Run backend/scripts/verify_document_file_paths.py first."
+        )
         for path in sorted(docs_dir.rglob("*")):
             if not path.is_file():
                 continue

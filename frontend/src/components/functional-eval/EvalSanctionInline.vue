@@ -22,13 +22,13 @@
         </select>
       </label>
       <label class="field">
-        <span class="field-label">비고</span>
-        <textarea v-model="note" class="field-control" rows="2" placeholder="위반 상황 (선택)" :disabled="disabled" />
+        <span class="field-label">등록 사유 <span class="req">*</span></span>
+        <textarea v-model="note" class="field-control" rows="2" placeholder="위반 상황·등록 사유" :disabled="disabled" />
       </label>
       <button
         class="stitch-btn-primary touch-btn sanction-submit"
         type="button"
-        :disabled="disabled || saving || !violationCode"
+        :disabled="disabled || saving || !violationCode || !note.trim()"
         @click="submit"
       >
         {{ saving ? "등록 중…" : "제재 등록" }}
@@ -119,7 +119,7 @@ async function submit() {
     await api.post("/functional-eval/sanctions", {
       worker_id: props.worker.id,
       violation_code: violationCode.value,
-      note: note.value || null,
+      note: note.value.trim(),
     });
     note.value = "";
     emit("saved");
@@ -219,6 +219,10 @@ async function submit() {
 .status-pill.normal {
   background: #f1f5f9;
   color: #475569;
+}
+
+.req {
+  color: #dc2626;
 }
 
 .error {

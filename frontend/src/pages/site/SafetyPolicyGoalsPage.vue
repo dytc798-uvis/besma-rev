@@ -27,8 +27,8 @@
       <div class="panel-grid">
         <section class="panel-card">
           <h3>방침</h3>
-          <p class="title">{{ payload.policy?.title || "등록된 방침이 없습니다." }}</p>
-          <p class="meta">{{ formatDateTime(payload.policy?.uploaded_at) }}</p>
+          <p v-if="!payload.policy?.file_url" class="title">등록된 방침이 없습니다.</p>
+          <p v-else class="meta">{{ formatDateTime(payload.policy?.uploaded_at) }} · {{ payload.policy?.file_name }}</p>
           <div v-if="payload.policy?.file_url" class="file-actions">
             <button type="button" class="secondary" @click="downloadPolicyFile(payload.policy)">다운로드</button>
             <button type="button" class="secondary" @click="openPolicyFile(payload.policy)">새 창에서 보기</button>
@@ -56,30 +56,39 @@
           </div>
           <div v-if="isSiteUi" class="upload-box">
             <span class="upload-label">현장 방침 등록·갱신</span>
-            <input v-model="sitePolicyTitle" type="text" placeholder="현장 방침 제목" />
             <input type="file" accept="image/*,.pdf,application/pdf" @change="onSiteFileChange($event, 'policy')" />
             <button
               class="primary"
               type="button"
-              :disabled="!sitePolicyFile || !sitePolicyTitle.trim() || uploading || !siteId"
+              :disabled="!sitePolicyFile || uploading || !siteId"
               @click="uploadSite('POLICY')"
             >
               {{ uploading ? "처리 중…" : "현장 방침 업로드" }}
             </button>
           </div>
-          <div v-if="isHqUi" class="upload-box">
-            <input v-model="hqPolicyTitle" type="text" placeholder="본사 방침 제목" />
+          <div v-if="isHqUi && viewScope === 'HQ'" class="upload-box">
             <input type="file" accept="image/*,.pdf,application/pdf" @change="onFileChange($event, 'policy')" />
-            <button class="primary" :disabled="!hqPolicyFile || !hqPolicyTitle.trim() || uploading" @click="uploadHq('POLICY')">
-              업로드
+            <button class="primary" type="button" :disabled="!hqPolicyFile || uploading" @click="uploadHq('POLICY')">
+              본사 방침 업로드
+            </button>
+          </div>
+          <div v-if="isHqUi && viewScope === 'SITE' && hqCanViewSiteScope" class="upload-box">
+            <input type="file" accept="image/*,.pdf,application/pdf" @change="onSiteFileChange($event, 'policy')" />
+            <button
+              class="primary"
+              type="button"
+              :disabled="!sitePolicyFile || uploading || !siteId"
+              @click="uploadSite('POLICY')"
+            >
+              {{ uploading ? "처리 중…" : "현장 방침 업로드" }}
             </button>
           </div>
         </section>
 
         <section class="panel-card">
           <h3>목표</h3>
-          <p class="title">{{ payload.target?.title || "등록된 목표가 없습니다." }}</p>
-          <p class="meta">{{ formatDateTime(payload.target?.uploaded_at) }}</p>
+          <p v-if="!payload.target?.file_url" class="title">등록된 목표가 없습니다.</p>
+          <p v-else class="meta">{{ formatDateTime(payload.target?.uploaded_at) }} · {{ payload.target?.file_name }}</p>
           <div v-if="payload.target?.file_url" class="file-actions">
             <button type="button" class="secondary" @click="downloadPolicyFile(payload.target)">다운로드</button>
             <button type="button" class="secondary" @click="openPolicyFile(payload.target)">새 창에서 보기</button>
@@ -107,22 +116,31 @@
           </div>
           <div v-if="isSiteUi" class="upload-box">
             <span class="upload-label">현장 목표 등록·갱신</span>
-            <input v-model="siteTargetTitle" type="text" placeholder="현장 목표 제목" />
             <input type="file" accept="image/*,.pdf,application/pdf" @change="onSiteFileChange($event, 'target')" />
             <button
               class="primary"
               type="button"
-              :disabled="!siteTargetFile || !siteTargetTitle.trim() || uploading || !siteId"
+              :disabled="!siteTargetFile || uploading || !siteId"
               @click="uploadSite('TARGET')"
             >
               {{ uploading ? "처리 중…" : "현장 목표 업로드" }}
             </button>
           </div>
-          <div v-if="isHqUi" class="upload-box">
-            <input v-model="hqTargetTitle" type="text" placeholder="본사 목표 제목" />
+          <div v-if="isHqUi && viewScope === 'HQ'" class="upload-box">
             <input type="file" accept="image/*,.pdf,application/pdf" @change="onFileChange($event, 'target')" />
-            <button class="primary" :disabled="!hqTargetFile || !hqTargetTitle.trim() || uploading" @click="uploadHq('TARGET')">
-              업로드
+            <button class="primary" type="button" :disabled="!hqTargetFile || uploading" @click="uploadHq('TARGET')">
+              본사 목표 업로드
+            </button>
+          </div>
+          <div v-if="isHqUi && viewScope === 'SITE' && hqCanViewSiteScope" class="upload-box">
+            <input type="file" accept="image/*,.pdf,application/pdf" @change="onSiteFileChange($event, 'target')" />
+            <button
+              class="primary"
+              type="button"
+              :disabled="!siteTargetFile || uploading || !siteId"
+              @click="uploadSite('TARGET')"
+            >
+              {{ uploading ? "처리 중…" : "현장 목표 업로드" }}
             </button>
           </div>
         </section>
@@ -239,12 +257,8 @@ const mainPreviewLoading = ref(false);
 const hqModalOpen = ref(false);
 const hqModalLoading = ref(false);
 
-const hqPolicyTitle = ref("");
-const hqTargetTitle = ref("");
 const hqPolicyFile = ref<File | null>(null);
 const hqTargetFile = ref<File | null>(null);
-const sitePolicyTitle = ref("");
-const siteTargetTitle = ref("");
 const sitePolicyFile = ref<File | null>(null);
 const siteTargetFile = ref<File | null>(null);
 const uploading = ref(false);
@@ -489,23 +503,19 @@ function closeHqModal() {
 
 async function uploadHq(kind: "POLICY" | "TARGET") {
   const file = kind === "POLICY" ? hqPolicyFile.value : hqTargetFile.value;
-  const title = kind === "POLICY" ? hqPolicyTitle.value : hqTargetTitle.value;
-  if (!file || !title.trim()) return;
+  if (!file) return;
   uploadMessage.value = "";
   uploading.value = true;
   try {
     const form = new FormData();
     form.append("scope", "HQ");
     form.append("kind", kind);
-    form.append("title", title.trim());
     form.append("file", file);
     await api.post("/safety-policy-goals/upload", form);
     if (kind === "POLICY") {
       hqPolicyFile.value = null;
-      hqPolicyTitle.value = "";
     } else {
       hqTargetFile.value = null;
-      hqTargetTitle.value = "";
     }
     viewScope.value = "HQ";
     await load();
@@ -520,24 +530,20 @@ async function uploadHq(kind: "POLICY" | "TARGET") {
 
 async function uploadSite(kind: "POLICY" | "TARGET") {
   const file = kind === "POLICY" ? sitePolicyFile.value : siteTargetFile.value;
-  const title = kind === "POLICY" ? sitePolicyTitle.value : siteTargetTitle.value;
-  if (!file || !title.trim() || !siteId.value) return;
+  if (!file || !siteId.value) return;
   uploadMessage.value = "";
   uploading.value = true;
   try {
     const form = new FormData();
     form.append("scope", "SITE");
     form.append("kind", kind);
-    form.append("title", title.trim());
     form.append("site_id", String(siteId.value));
     form.append("file", file);
     await api.post("/safety-policy-goals/upload", form, { headers: { "Content-Type": "multipart/form-data" } });
     if (kind === "POLICY") {
       sitePolicyFile.value = null;
-      sitePolicyTitle.value = "";
     } else {
       siteTargetFile.value = null;
-      siteTargetTitle.value = "";
     }
     await load();
     uploadMessage.value = "현장 자료가 등록되었습니다.";
@@ -551,6 +557,8 @@ async function uploadSite(kind: "POLICY" | "TARGET") {
 
 onMounted(() => {
   if (isSiteUi.value) {
+    viewScope.value = "SITE";
+  } else if (hqCanViewSiteScope.value) {
     viewScope.value = "SITE";
   } else {
     viewScope.value = "HQ";

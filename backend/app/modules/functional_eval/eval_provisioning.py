@@ -31,6 +31,12 @@ from app.modules.sites.models import Site
 from app.modules.users.models import User
 
 
+def _evaluation_batch_for_new_worker(db: Session, period_id: int, site_code: str) -> int:
+    from app.modules.functional_eval.signature_ops import assign_evaluation_batch_for_new_worker
+
+    return assign_evaluation_batch_for_new_worker(db, period_id, site_code)
+
+
 def _rrn_front_password(rrn_raw: str) -> str | None:
     digits = re.sub(r"\D", "", rrn_raw)
     if len(digits) >= 6:
@@ -336,6 +342,7 @@ def apply_attendance_report_diff(
                 is_active=True,
                 is_on_reference_roster=False,
                 removed_at=None,
+                evaluation_batch=_evaluation_batch_for_new_worker(db, period.id, site_code),
             )
             db.add(worker)
             db.flush()

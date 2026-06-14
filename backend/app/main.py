@@ -32,6 +32,7 @@ from app.modules.functional_eval.routes import router as functional_eval_router
 from app.modules.work_plan_excel.routes import router as work_plan_excel_router
 from app.modules.new_site_deployment.routes import router as new_site_deployment_router
 from app.modules.pdf_signing.routes import router as pdf_signing_router
+from app.modules.system_backup.routes import router as system_backup_router
 
 
 _original_request_form = Request.form
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(work_plan_excel_router)
     app.include_router(new_site_deployment_router)
     app.include_router(pdf_signing_router)
+    app.include_router(system_backup_router)
 
     @app.on_event("startup")
     async def on_startup() -> None:

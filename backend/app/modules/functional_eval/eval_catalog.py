@@ -100,3 +100,15 @@ def normalize_grade_code(code: str | None) -> str | None:
     if text == "D":
         return "C"
     return text
+
+
+def build_lowest_grade_scores(eval_type: EvalType) -> dict[str, str]:
+    """항목별 최저 점수(문제/BOTTOM) — 전체 C등급 산출용."""
+    scores: dict[str, str] = {}
+    for crit in get_criteria(eval_type):
+        grades = crit.get("grades") or []
+        if not grades:
+            continue
+        lowest = min(grades, key=lambda g: int(g["points"]))
+        scores[str(crit["id"])] = str(lowest["key"])
+    return scores

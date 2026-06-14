@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from app.core.datetime_utils import kst_today
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
 from app.modules.document_settings.models import DocumentRequirement, DocumentTypeMaster
+from app.config.settings import settings
 from app.modules.documents.models import Document, DocumentUploadHistory
+from app.modules.documents.storage_paths import is_storage_path_available
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 
@@ -22,11 +24,12 @@ def _effective_workflow_status(inst: DocumentInstance, doc: Document | None) -> 
 
 
 def _is_missing(*, inst: DocumentInstance, doc: Document | None, today: date) -> bool:
+    """Past-period gap: no document row, or never uploaded (uploaded_at is the real submit signal)."""
     if inst.period_end >= today:
         return False
     if doc is None:
         return True
-    return doc.submitted_at is None
+    return doc.uploaded_at is None
 
 
 def _period_label(inst: DocumentInstance) -> str:
@@ -78,8 +81,16 @@ def _history_item_dict(
 ) -> dict[str, Any]:
     eff = _effective_workflow_status(inst, doc)
     file_name = None
+    file_available = False
     if doc is not None:
         file_name = doc.file_name or (Path(doc.file_path).name if doc.file_path else None)
+        file_available = is_storage_path_available(
+            settings.storage_root,
+            doc.file_path,
+            instance_id=doc.instance_id,
+            file_name=doc.file_name,
+            version_no=doc.version_no,
+        )
     return {
         "instance_id": inst.id,
         "site_id": inst.site_id,
@@ -95,7 +106,10 @@ def _history_item_dict(
         "is_missing": _is_missing(inst=inst, doc=doc, today=as_of),
         "document_id": doc.id if doc is not None else None,
         "current_file_name": file_name,
-        "submitted_at": doc.submitted_at if doc is not None else None,
+        "file_available": file_available,
+        "submitted_at": (
+            (doc.submitted_at or doc.uploaded_at) if doc is not None else None
+        ),
         "reviewed_at": doc.reviewed_at if doc is not None else None,
         "review_note": (doc.rejection_reason if doc is not None else None),
         "review_result": _review_result(eff),

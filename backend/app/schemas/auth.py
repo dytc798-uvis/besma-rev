@@ -29,6 +29,7 @@ class UserMe(BaseModel):
     person_id: int | None
     map_preference: str | None = "NAVER"
     must_change_password: bool
+    can_system_backup: bool = False
 
     class Config:
         from_attributes = True

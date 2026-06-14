@@ -35,7 +35,7 @@ class ViolationCatalogItemOut(BaseModel):
 class FunctionalEvalSanctionCreate(BaseModel):
     worker_id: int
     violation_code: str
-    note: str | None = Field(default=None, max_length=2000)
+    note: str = Field(..., min_length=1, max_length=2000)
 
 
 class FunctionalEvalSanctionOut(BaseModel):
@@ -53,6 +53,8 @@ class FunctionalEvalSanctionOut(BaseModel):
     sanction_result_label: str
     note: str | None
     reported_by_user_id: int | None
+    reported_by_name: str | None = None
+    reported_by_login_id: str | None = None
     created_at: datetime
 
 
@@ -60,8 +62,43 @@ class FunctionalEvalAssessmentSave(BaseModel):
     scores: dict[str, str] = Field(default_factory=dict)
 
 
+class FunctionalEvalHqAssessmentOverride(BaseModel):
+    scores: dict[str, str] = Field(default_factory=dict)
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+
+class FunctionalEvalAssessmentRevisionOut(BaseModel):
+    id: int
+    worker_id: int
+    eval_type: str
+    before_grade_code: str | None
+    after_grade_code: str
+    reason: str
+    source: str
+    sanction_id: int | None
+    edited_by_user_id: int | None
+    edited_by_name: str | None = None
+    edited_by_login_id: str | None = None
+    created_at: datetime
+
+
 class FunctionalEvalApprovalReject(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
+
+
+class FunctionalEvalSignatureSubmit(BaseModel):
+    signature_data: str = Field(..., min_length=32)
+    consent_acknowledged: bool = False
+
+
+class FunctionalEvalHqApprovalSubmit(FunctionalEvalSignatureSubmit):
+    officer_comment: str | None = Field(default=None, max_length=4000, description="안전보건 담당자 검토 코멘트")
+    director_comment: str | None = Field(default=None, max_length=4000, description="안전보건실장 최종 코멘트")
+
+
+class FunctionalEvalConsentSubmit(BaseModel):
+    signature_data: str = Field(..., min_length=32)
+    consent_acknowledged: bool = Field(..., description="동의서 확인 체크")
 
 
 class FunctionalEvalAssessmentOut(BaseModel):

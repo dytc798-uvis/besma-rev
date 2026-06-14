@@ -849,5 +849,31 @@ def test_documents_peer_comment_count_site_sees_hq_only(tmp_path: Path):
     current["user"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_peer")
     assert client.get("/documents/comments/peer-count").json()["peer_comment_count"] == 1
 
-    future_after = (utc_now() + timedelta(days=1)).isoformat()
-    assert client.get("/documents/comments/peer-count", params={"after": future_after}).json()["peer_comment_count"] == 0
+    current["user"] = SimpleNamespace(id=3, role=Role.SITE, site_id=site_id, login_id="site_peer2")
+    assert client.get("/documents/comments/peer-count").json()["peer_comment_count"] == 1
+
+    hq_comment_id = int(
+        client.get("/documents/comments/peer-items").json()["items"][0]["comment_id"]
+    )
+    assert client.post(f"/documents/comments/{hq_comment_id}/site-ack").status_code == 204
+    assert client.get("/documents/comments/peer-count").json()["peer_comment_count"] == 0
+
+    current["user"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id, login_id="hq_peer")
+    assert (
+        client.post(
+            f"/documents/{doc_id}/comments",
+            json={"comment_text": "본사 후속 메모"},
+        ).status_code
+        == 201
+    )
+    current["user"] = SimpleNamespace(id=1, role=Role.SITE, site_id=site_id, login_id="site_peer")
+    assert client.get("/documents/comments/peer-count").json()["peer_comment_count"] == 1
+
+    assert (
+        client.post(
+            f"/documents/{doc_id}/comments",
+            json={"comment_text": "현장 답변입니다"},
+        ).status_code
+        == 201
+    )
+    assert client.get("/documents/comments/peer-count").json()["peer_comment_count"] == 0

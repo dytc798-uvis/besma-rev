@@ -129,7 +129,8 @@
 
 - `completion_rate`: `approved_count / total_instances * 100` (인스턴스 0이면 `0`).
 - `workflow_status` (응답 행 및 집계): `Document`가 없으면 `NOT_SUBMITTED`.
-- `is_missing`: `period_end`가 **오늘(서버 로컬 날짜)** 보다 이전이고, 제출이 없으면 `true` (`Document` 없음 또는 `submitted_at` 없음).
+- `is_missing`: `period_end`가 **오늘(서버 로컬 날짜)** 보다 이전이고, 제출이 없으면 `true` (`Document` 없음 또는 `uploaded_at` 없음).
+- `submitted_at` (응답): 표시용 제출/업로드 시각. `documents.submitted_at`이 비어 있으면 `uploaded_at`으로 채움.
 - `submission_count`: 해당 `document_id`의 `document_upload_histories` 행 수.
 - `reupload_count`: `max(submission_count - 1, 0)`.
 

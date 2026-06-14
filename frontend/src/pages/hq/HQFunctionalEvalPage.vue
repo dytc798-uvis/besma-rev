@@ -126,6 +126,7 @@
               <th>기능 (2-1)</th>
               <th>안전·제재 (2-2)</th>
               <th>비고</th>
+              <th class="col-actions">관리</th>
             </tr>
           </thead>
           <tbody>
@@ -135,9 +136,18 @@
               <td><span :class="gradeClass(row.functional_grade)">{{ row.functional_grade }}</span></td>
               <td><span :class="gradeClass(row.safety_grade)">{{ row.safety_grade }}</span></td>
               <td class="remark">{{ row.remark }}</td>
+              <td class="col-actions">
+                <HqEvalWorkerActions
+                  :worker-id="row.worker_id"
+                  :worker-name="row.name"
+                  :period-closed="Boolean(period?.is_closed)"
+                  :is-permanently-expelled="Boolean(row.is_permanently_expelled)"
+                  @saved="reloadSiteDetail"
+                />
+              </td>
             </tr>
             <tr v-if="!evalRows.length">
-              <td colspan="5" class="muted">출역 대상 근로자가 없습니다.</td>
+              <td colspan="6" class="muted">출역 대상 근로자가 없습니다.</td>
             </tr>
           </tbody>
         </table>
@@ -214,6 +224,22 @@
         <button class="stitch-btn-secondary" type="button" :disabled="loadingHqApprovals" @click="loadHqApprovals">
           {{ loadingHqApprovals ? "조회 중…" : "승인 대기 새로고침" }}
         </button>
+        <button
+          v-if="hqPendingApprovals.length"
+          class="stitch-btn-primary"
+          type="button"
+          @click="openHqApproveAllModal"
+        >
+          안전보건실 전체 승인 (서명)
+        </button>
+        <button
+          v-if="ceoPendingApprovals.length"
+          class="stitch-btn-primary"
+          type="button"
+          @click="openCeoApproveAllModal"
+        >
+          대표이사 전체 최종승인 (서명)
+        </button>
       </div>
       <h3>안전보건실 검토 대기 (소장 승인 완료)</h3>
       <div v-if="hqPendingApprovals.length" class="table-scroll">
@@ -232,7 +258,6 @@
               <td>{{ row.site_complete_workers }}/{{ row.site_total_workers }}</td>
               <td>{{ row.site_submitted_at || "—" }}</td>
               <td class="actions-inline">
-                <button class="stitch-btn-primary" type="button" @click="approveHq(row.site_code)">승인</button>
                 <button class="stitch-btn-secondary" type="button" @click="rejectHq(row.site_code)">반려</button>
               </td>
             </tr>
@@ -258,7 +283,6 @@
               <td>{{ row.site_complete_workers }}/{{ row.site_total_workers }}</td>
               <td>{{ row.hq_approved_at || "—" }}</td>
               <td class="actions-inline">
-                <button class="stitch-btn-primary" type="button" @click="approveCeo(row.site_code)">최종 승인</button>
                 <button class="stitch-btn-secondary" type="button" @click="rejectCeo(row.site_code)">반려</button>
               </td>
             </tr>
@@ -412,11 +436,26 @@
         </div>
       </template>
     </section>
+
+    <FeConsentGate v-if="consentRequired" :open="consentRequired" @completed="consentRequired = false" />
+    <FeSignatureModal
+      ref="hqSignatureModalRef"
+      :open="hqSignatureModalOpen"
+      :title="hqSignatureModalTitle"
+      :description="hqSignatureModalDescription"
+      :show-review-fields="hqSignatureMode === 'hq'"
+      submit-label="서명 및 승인"
+      @update:open="(v) => (hqSignatureModalOpen = v)"
+      @submit="onHqSignatureSubmit"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import HqEvalWorkerActions from "@/components/functional-eval/HqEvalWorkerActions.vue";
+import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
+import FeSignatureModal from "@/components/functional-eval/FeSignatureModal.vue";
 import { api } from "@/services/api";
 
 interface Period {
@@ -459,6 +498,8 @@ interface EvalRow {
   eval_status?: string;
   eval_status_label?: string;
   needs_highlight?: boolean;
+  is_permanently_expelled?: boolean;
+  sanction_count?: number;
 }
 
 interface SiteApprovalSummary {
@@ -629,6 +670,60 @@ function gradeClass(grade: string) {
 const loadingHqApprovals = ref(false);
 const hqPendingApprovals = ref<Record<string, unknown>[]>([]);
 const ceoPendingApprovals = ref<Record<string, unknown>[]>([]);
+const consentRequired = ref(false);
+const hqSignatureModalOpen = ref(false);
+const hqSignatureModalRef = ref<InstanceType<typeof FeSignatureModal> | null>(null);
+const hqSignatureMode = ref<"hq" | "ceo">("hq");
+const hqSignatureModalTitle = computed(() =>
+  hqSignatureMode.value === "hq" ? "안전보건실 검토·승인 서명" : "대표이사 전체 최종승인 서명",
+);
+const hqSignatureModalDescription = computed(() =>
+  hqSignatureMode.value === "hq"
+    ? `담당자 검토 코멘트와 실장 최종 코멘트를 입력한 뒤 서명합니다. (대기 ${hqPendingApprovals.value.length}개 현장)`
+    : `대기 ${ceoPendingApprovals.value.length}개 현장을 일괄 최종승인합니다.`,
+);
+
+async function checkConsent() {
+  try {
+    const res = await api.get("/functional-eval/consent/status");
+    consentRequired.value = Boolean(res.data.required);
+  } catch {
+    consentRequired.value = false;
+  }
+}
+
+function openHqApproveAllModal() {
+  hqSignatureMode.value = "hq";
+  hqSignatureModalOpen.value = true;
+}
+
+function openCeoApproveAllModal() {
+  hqSignatureMode.value = "ceo";
+  hqSignatureModalOpen.value = true;
+}
+
+async function onHqSignatureSubmit(payload: {
+  signature_data: string;
+  consent_acknowledged: boolean;
+  officer_comment?: string;
+  director_comment?: string;
+}) {
+  hqSignatureModalRef.value?.setSubmitting(true);
+  try {
+    const path =
+      hqSignatureMode.value === "hq"
+        ? "/functional-eval/hq/approvals/approve-all"
+        : "/functional-eval/hq/ceo-approvals/approve-all";
+    await api.post(path, payload);
+    hqSignatureModalOpen.value = false;
+    await loadHqApprovals();
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    hqSignatureModalRef.value?.setError(typeof msg === "string" ? msg : "승인 서명에 실패했습니다.");
+  } finally {
+    hqSignatureModalRef.value?.setSubmitting(false);
+  }
+}
 
 async function loadHqApprovals() {
   loadingHqApprovals.value = true;
@@ -647,10 +742,8 @@ async function loadHqApprovals() {
   }
 }
 
-async function approveHq(siteCode: string) {
-  if (!window.confirm(`${siteCode} 현장을 안전보건실에서 승인하시겠습니까?`)) return;
-  await api.post(`/functional-eval/hq/approvals/${siteCode}/approve`);
-  await loadHqApprovals();
+async function approveHq(_siteCode: string) {
+  openHqApproveAllModal();
 }
 
 async function rejectHq(siteCode: string) {
@@ -659,10 +752,8 @@ async function rejectHq(siteCode: string) {
   await loadHqApprovals();
 }
 
-async function approveCeo(siteCode: string) {
-  if (!window.confirm(`${siteCode} 현장을 대표이사 최종 승인하시겠습니까?`)) return;
-  await api.post(`/functional-eval/hq/ceo-approvals/${siteCode}/approve`);
-  await loadHqApprovals();
+async function approveCeo(_siteCode: string) {
+  openCeoApproveAllModal();
 }
 
 async function rejectCeo(siteCode: string) {
@@ -766,6 +857,11 @@ function closeSite() {
   selectedSite.value = null;
   siteDetail.value = null;
   evalRows.value = [];
+}
+
+async function reloadSiteDetail() {
+  if (!selectedSite.value) return;
+  await openSite(selectedSite.value);
 }
 
 function onFileChange(e: Event) {
@@ -950,6 +1046,7 @@ async function downloadSanctionExcel() {
 }
 
 onMounted(async () => {
+  await checkConsent();
   await loadOverview();
   await loadHqApprovals();
 });
@@ -991,6 +1088,7 @@ onMounted(async () => {
 .grade.c { color: #b45309; }
 .grade.d { color: #991b1b; }
 .remark { font-size: 13px; color: #475569; }
+.col-actions { width: 220px; white-space: nowrap; }
 .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; }
 .badge.open { background: #dcfce7; color: #166534; }
 .badge.closed { background: #fee2e2; color: #991b1b; }

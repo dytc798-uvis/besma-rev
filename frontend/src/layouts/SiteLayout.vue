@@ -166,7 +166,7 @@
               class="notice-ticker-item notice-ticker-item-link"
               :to="{ name: 'site-documents', query: { focus_comments: '1' } }"
             >
-              [문서] 미확인 문서 코멘트 {{ docCommentTickerCount }}건
+              [문서] 오늘 미확인 코멘트 {{ docCommentTickerCount }}건
             </RouterLink>
             <span v-for="item in tickerItems" :key="`${cycle}-${item.id}`" class="notice-ticker-item">
               [공지] {{ item.title }}
@@ -188,7 +188,6 @@ import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
 import { todayKst } from "@/utils/datetime";
 import { getTickerReadNoticeIds } from "@/utils/noticeTickerRead";
-import { getDocCommentTickerAfterIso } from "@/utils/documentCommentTickerRead";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -412,10 +411,7 @@ async function loadDocCommentTicker() {
     return;
   }
   try {
-    const after = getDocCommentTickerAfterIso(auth.user?.login_id ?? null);
-    const res = await api.get("/documents/comments/peer-count", {
-      params: after ? { after } : {},
-    });
+    const res = await api.get("/documents/comments/peer-count");
     docCommentTickerCount.value = Number(res.data?.peer_comment_count ?? 0);
   } catch {
     docCommentTickerCount.value = 0;
