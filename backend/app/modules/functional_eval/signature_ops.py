@@ -34,6 +34,7 @@ from app.modules.functional_eval.signature_service import (
     validate_signature_data,
 )
 from app.modules.functional_eval.signature_report_pdf import (
+    REPORT_TITLE,
     generate_ceo_final_report_pdf,
     generate_consent_pdf,
     generate_hq_review_report_pdf,
@@ -143,10 +144,14 @@ def submit_consent(
     *,
     signature_data: str,
     consent_acknowledged: bool,
+    read_to_bottom_confirmed: bool | None = None,
+    read_completed_at: str | None = None,
     request: Request | None = None,
 ) -> dict[str, Any]:
     if not consent_acknowledged:
         raise ValueError("CONSENT_ACK_REQUIRED")
+    if read_to_bottom_confirmed is False:
+        raise ValueError("CONSENT_SCROLL_REQUIRED")
     existing = db.query(FunctionalEvalConsent).filter(FunctionalEvalConsent.user_id == user.id).first()
     if existing is not None:
         raise ValueError("CONSENT_ALREADY_SIGNED")
@@ -417,7 +422,7 @@ def _build_signature_pdf(
             signature_data=signature_data,
             signer_name=signer_name,
             signed_at=signed_at,
-            report_title="안전보건 담당 검토·승인",
+            report_title=REPORT_TITLE,
         )
 
     if stage == STAGE_HQ:
@@ -430,7 +435,7 @@ def _build_signature_pdf(
             signature_data=signature_data,
             signer_name=signer_name,
             signed_at=signed_at,
-            report_title="안전보건실장 최종 승인",
+            report_title=REPORT_TITLE,
         )
 
     if stage == STAGE_CEO:

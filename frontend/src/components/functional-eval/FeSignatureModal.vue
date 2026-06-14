@@ -8,9 +8,25 @@
             <p v-if="description" class="fe-sign-desc">{{ description }}</p>
           </header>
           <div v-if="consentText" class="fe-sign-consent">
-            <pre class="fe-sign-consent-body">{{ consentText }}</pre>
-            <label class="fe-sign-check">
-              <input v-model="ackChecked" type="checkbox" />
+            <pre
+              ref="consentBodyRef"
+              class="fe-sign-consent-body"
+              :class="{ 'fe-sign-consent-body--locked': requireConsentScroll && !scrollCompleted }"
+              @scroll="onConsentScroll"
+            >{{ consentText }}</pre>
+            <p
+              v-if="requireConsentScroll"
+              class="fe-sign-scroll-hint"
+              :class="{ 'fe-sign-scroll-hint--done': scrollCompleted }"
+            >
+              {{ scrollHintText }}
+            </p>
+            <label class="fe-sign-check" :class="{ 'fe-sign-check--disabled': consentControlsLocked }">
+              <input
+                v-model="ackChecked"
+                type="checkbox"
+                :disabled="consentControlsLocked"
+              />
               <span>{{ consentCheckLabel }}</span>
             </label>
           </div>
@@ -26,7 +42,7 @@
               <textarea v-model="directorComment" rows="3" class="fe-sign-textarea" />
             </label>
           </div>
-          <SignaturePad ref="padRef" :width="560" :height="200" />
+          <SignaturePad ref="padRef" :width="560" :height="200" :disabled="signaturePadDisabled" />
           <p v-if="error" class="fe-sign-error">{{ error }}</p>
           <footer class="fe-sign-footer">
             <button type="button" class="stitch-btn-secondary" :disabled="submitting" @click="onCancel">취소</button>
@@ -41,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import SignaturePad from "@/components/SignaturePad.vue";
 
 const props = withDefaults(
@@ -52,6 +68,7 @@ const props = withDefaults(
     consentText?: string;
     consentCheckLabel?: string;
     requireConsentCheck?: boolean;
+    requireConsentScroll?: boolean;
     submitLabel?: string;
     showReviewFields?: boolean;
     reviewMode?: "officer" | "director" | "both" | "none";
@@ -63,6 +80,7 @@ const props = withDefaults(
     submitLabel: "서명 완료",
     consentCheckLabel: "위 내용을 확인하였으며 동의합니다.",
     requireConsentCheck: false,
+    requireConsentScroll: false,
     showReviewFields: false,
     reviewMode: "none",
     officerCommentLabel: "안전보건 담당자 검토 코멘트",
@@ -75,6 +93,8 @@ const emit = defineEmits<{
   (e: "submit", payload: {
     signature_data: string;
     consent_acknowledged: boolean;
+    read_to_bottom_confirmed?: boolean;
+    read_completed_at?: string;
     officer_comment?: string;
     director_comment?: string;
   }): void;
@@ -82,11 +102,14 @@ const emit = defineEmits<{
 }>();
 
 const padRef = ref<InstanceType<typeof SignaturePad> | null>(null);
+const consentBodyRef = ref<HTMLElement | null>(null);
 const ackChecked = ref(false);
 const officerComment = ref("");
 const directorComment = ref("");
 const submitting = ref(false);
 const error = ref("");
+const scrollCompleted = ref(false);
+const readCompletedAt = ref<string | null>(null);
 
 const showOfficerComment = computed(() => {
   if (props.reviewMode === "officer" || props.reviewMode === "both") return true;
@@ -97,10 +120,56 @@ const showDirectorComment = computed(() => {
   return false;
 });
 
+const consentControlsLocked = computed(
+  () => props.requireConsentScroll && props.consentText && !scrollCompleted.value,
+);
+
+const signaturePadDisabled = computed(() => consentControlsLocked.value);
+
+const scrollHintText = computed(() =>
+  scrollCompleted.value
+    ? "동의서 내용을 모두 확인했습니다. 동의 후 서명해 주세요."
+    : "동의서 내용을 끝까지 확인한 후 서명할 수 있습니다.",
+);
+
 const canSubmit = computed(() => {
+  if (props.requireConsentScroll && props.consentText && !scrollCompleted.value) return false;
   if (props.requireConsentCheck && !ackChecked.value) return false;
   return true;
 });
+
+function isScrolledToBottom(el: HTMLElement): boolean {
+  const threshold = 8;
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - threshold;
+}
+
+function markScrollCompleted() {
+  if (scrollCompleted.value) return;
+  scrollCompleted.value = true;
+  readCompletedAt.value = new Date().toISOString();
+}
+
+function onConsentScroll() {
+  const el = consentBodyRef.value;
+  if (!el || !props.requireConsentScroll) return;
+  if (isScrolledToBottom(el)) markScrollCompleted();
+}
+
+async function refreshConsentScrollState() {
+  scrollCompleted.value = false;
+  readCompletedAt.value = null;
+  if (!props.requireConsentScroll || !props.consentText) {
+    scrollCompleted.value = true;
+    return;
+  }
+  await nextTick();
+  const el = consentBodyRef.value;
+  if (!el) return;
+  el.scrollTop = 0;
+  if (el.scrollHeight <= el.clientHeight + 8) {
+    markScrollCompleted();
+  }
+}
 
 watch(
   () => props.open,
@@ -112,7 +181,15 @@ watch(
       error.value = "";
       submitting.value = false;
       padRef.value?.clear();
+      void refreshConsentScrollState();
     }
+  },
+);
+
+watch(
+  () => props.consentText,
+  () => {
+    if (props.open) void refreshConsentScrollState();
   },
 );
 
@@ -123,6 +200,10 @@ function onCancel() {
 
 function onSubmit() {
   error.value = "";
+  if (props.requireConsentScroll && props.consentText && !scrollCompleted.value) {
+    error.value = "동의서 내용을 끝까지 확인해 주세요.";
+    return;
+  }
   if (props.requireConsentCheck && !ackChecked.value) {
     error.value = "동의서 확인 체크가 필요합니다.";
     return;
@@ -135,6 +216,8 @@ function onSubmit() {
   emit("submit", {
     signature_data: dataUrl,
     consent_acknowledged: ackChecked.value || !props.requireConsentCheck,
+    read_to_bottom_confirmed: props.requireConsentScroll ? scrollCompleted.value : undefined,
+    read_completed_at: props.requireConsentScroll ? readCompletedAt.value ?? undefined : undefined,
     officer_comment: showOfficerComment.value ? officerComment.value.trim() : undefined,
     director_comment: showDirectorComment.value ? directorComment.value.trim() : undefined,
   });
@@ -148,7 +231,7 @@ function setError(msg: string) {
   error.value = msg;
 }
 
-defineExpose({ setSubmitting, setError });
+defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
 </script>
 
 <style scoped>
@@ -177,6 +260,23 @@ defineExpose({ setSubmitting, setError });
   border-radius: 8px;
   padding: 12px;
   margin: 0 0 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.fe-sign-consent-body--locked {
+  border-color: #fcd34d;
+}
+
+.fe-sign-scroll-hint {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #b45309;
+  font-weight: 600;
+}
+
+.fe-sign-scroll-hint--done {
+  color: #047857;
 }
 
 .fe-sign-check {
@@ -184,6 +284,11 @@ defineExpose({ setSubmitting, setError });
   gap: 8px;
   align-items: flex-start;
   font-size: 14px;
+}
+
+.fe-sign-check--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .fe-sign-error {

@@ -20,6 +20,9 @@ from app.modules.functional_eval.eval_catalog import normalize_grade_code
 
 KOREAN_FONT = "MalgunGothic"
 KOREAN_FONT_FALLBACK = "HYGothic-Medium"
+REPORT_TITLE = "기능인인정제 평가 보고서"
+REPORT_TITLE_COVER = "기능인인정제 평가 보고서 (갑지)"
+REPORT_TITLE_DETAIL = "기능인인정제 평가 보고서 (상세)"
 _FONT_REGISTERED = False
 
 _MALGUN_CANDIDATES = (
@@ -543,7 +546,7 @@ def generate_team_completion_report_pdf(
     y = _draw_document_header_block(
         c,
         font=font,
-        title="평가완료보고서",
+        title=REPORT_TITLE,
         site_full_name=site_full_name,
         role_line=role_line or report_subtitle,
         title_size=28,
@@ -620,7 +623,7 @@ def generate_site_completion_report_pdf(
     y = _draw_document_header_block(
         c,
         font=font,
-        title="평가완료보고서 (갑지)",
+        title=REPORT_TITLE_COVER,
         site_full_name=site_full_name,
         role_line=role_line or report_subtitle,
         title_size=28,
@@ -677,7 +680,7 @@ def generate_site_completion_report_pdf(
     for sec in team_sections:
         c.showPage()
         c.setFont(font, 16)
-        sec_title = f"평가완료보고서 — {sec.get('leader_label', '팀')}"
+        sec_title = f"{REPORT_TITLE_DETAIL} — {sec.get('leader_label', '팀')}"
         tw = c.stringWidth(sec_title, font, 16)
         c.drawString((PAGE_W - tw) / 2, PAGE_H - 25 * mm, sec_title)
         y = PAGE_H - 35 * mm
@@ -699,7 +702,7 @@ def generate_site_completion_report_pdf(
     if direct_workers:
         c.showPage()
         c.setFont(font, 16)
-        direct_title = "평가완료보고서 — 소장 직영"
+        direct_title = f"{REPORT_TITLE_DETAIL} — 소장 직영"
         tw = c.stringWidth(direct_title, font, 16)
         c.drawString((PAGE_W - tw) / 2, PAGE_H - 25 * mm, direct_title)
         _draw_worker_table(
@@ -725,7 +728,7 @@ def generate_hq_review_report_pdf(
     signature_data: str,
     signer_name: str,
     signed_at: datetime,
-    report_title: str = "기능인인정제 본사 검토·승인서",
+    report_title: str = REPORT_TITLE,
 ) -> bytes:
     font = ensure_korean_font()
     buf = io.BytesIO()
@@ -774,7 +777,7 @@ def generate_ceo_final_report_pdf(
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     c.setFont(font, 16)
-    title = "기능인인정제 대표이사 최종승인서"
+    title = REPORT_TITLE
     tw = c.stringWidth(title, font, 16)
     c.drawString((PAGE_W - tw) / 2, PAGE_H - 28 * mm, title)
     c.setFont(font, 10)

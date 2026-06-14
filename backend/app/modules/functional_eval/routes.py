@@ -297,6 +297,7 @@ def _signature_error(code: str) -> HTTPException:
     mapping = {
         "CONSENT_REQUIRED": (403, "동의서 서명이 필요합니다."),
         "CONSENT_ACK_REQUIRED": (400, "동의서 확인 체크가 필요합니다."),
+        "CONSENT_SCROLL_REQUIRED": (400, "동의서 내용을 끝까지 확인해야 합니다."),
         "CONSENT_ALREADY_SIGNED": (409, "이미 동의서에 서명하였습니다."),
         "signature_required": (400, "서명을 입력해 주세요."),
         "signature_too_small": (400, "서명이 너무 작습니다."),
@@ -328,6 +329,8 @@ def submit_consent(body: FunctionalEvalConsentSubmit, request: Request, db: DbDe
             current_user,
             signature_data=body.signature_data,
             consent_acknowledged=body.consent_acknowledged,
+            read_to_bottom_confirmed=body.read_to_bottom_confirmed,
+            read_completed_at=body.read_completed_at,
             request=request,
         )
     except ValueError as exc:

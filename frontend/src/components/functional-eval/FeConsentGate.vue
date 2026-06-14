@@ -6,6 +6,7 @@
     :description="consentDescription"
     :consent-text="consentBody"
     require-consent-check
+    require-consent-scroll
     submit-label="동의 및 서명"
     @update:open="(v) => emit('update:open', v)"
     @submit="onSubmit"
@@ -47,7 +48,12 @@ onMounted(async () => {
   }
 });
 
-async function onSubmit(payload: { signature_data: string; consent_acknowledged: boolean }) {
+async function onSubmit(payload: {
+  signature_data: string;
+  consent_acknowledged: boolean;
+  read_to_bottom_confirmed?: boolean;
+  read_completed_at?: string;
+}) {
   modalRef.value?.setSubmitting(true);
   try {
     await api.post("/functional-eval/consent/submit", payload);

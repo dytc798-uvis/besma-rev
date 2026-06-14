@@ -1,10 +1,11 @@
 <template>
-  <div class="signature-pad">
+  <div class="signature-pad" :class="{ 'signature-pad--disabled': disabled }">
     <canvas
       ref="canvasRef"
       :width="width"
       :height="height"
       class="signature-canvas"
+      :class="{ 'signature-canvas--disabled': disabled }"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
@@ -12,7 +13,7 @@
       @pointercancel="onPointerUp"
     />
     <div class="signature-actions">
-      <button class="secondary" type="button" @click="clear">서명 지우기</button>
+      <button class="secondary" type="button" :disabled="disabled" @click="clear">서명 지우기</button>
     </div>
   </div>
 </template>
@@ -24,10 +25,12 @@ const props = withDefaults(
   defineProps<{
     width?: number;
     height?: number;
+    disabled?: boolean;
   }>(),
   {
     width: 560,
     height: 220,
+    disabled: false,
   },
 );
 
@@ -65,6 +68,7 @@ function getOffset(e: PointerEvent) {
 }
 
 function onPointerDown(e: PointerEvent) {
+  if (props.disabled) return;
   const payload = getContext();
   if (!payload) return;
   isDrawing.value = true;
@@ -124,6 +128,16 @@ defineExpose({
   border-radius: 8px;
   background: #fff;
   touch-action: none;
+}
+
+.signature-canvas--disabled {
+  opacity: 0.45;
+  pointer-events: none;
+  background: #f1f5f9;
+}
+
+.signature-pad--disabled .signature-actions {
+  opacity: 0.55;
 }
 
 .signature-actions {

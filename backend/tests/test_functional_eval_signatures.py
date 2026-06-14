@@ -86,14 +86,58 @@ def test_consent_submit_once(tmp_path: Path):
     assert client.get("/functional-eval/consent/status").json()["required"] is True
     res = client.post(
         "/functional-eval/consent/submit",
-        json={"signature_data": SIGNATURE_DATA, "consent_acknowledged": True},
+        json={
+            "signature_data": SIGNATURE_DATA,
+            "consent_acknowledged": True,
+            "read_to_bottom_confirmed": True,
+            "read_completed_at": "2026-06-14T12:00:00+09:00",
+        },
     )
     assert res.status_code == 200, res.text
     assert client.get("/functional-eval/consent/status").json()["required"] is False
     assert client.post(
         "/functional-eval/consent/submit",
-        json={"signature_data": SIGNATURE_DATA, "consent_acknowledged": True},
+        json={
+            "signature_data": SIGNATURE_DATA,
+            "consent_acknowledged": True,
+            "read_to_bottom_confirmed": True,
+        },
     ).status_code == 409
+
+
+def test_consent_requires_scroll_confirmation(tmp_path: Path):
+    user_ns = SimpleNamespace(
+        id=1, login_id="alias-mgr", name="Mgr", role=Role.SITE_FUNCTIONAL_EVAL, site_id=1
+    )
+
+    def setup(db):
+        site = Site(site_code="S01", site_name="Test")
+        db.add(site)
+        db.add(
+            User(
+                id=1,
+                login_id="alias-mgr",
+                name="Mgr",
+                role=Role.SITE_FUNCTIONAL_EVAL,
+                ui_type=UIType.SITE,
+                site_id=1,
+                password_hash="x",
+                must_change_password=False,
+            )
+        )
+        db.commit()
+
+    client = _client_for_user(tmp_path, user_ns, setup)
+    res = client.post(
+        "/functional-eval/consent/submit",
+        json={
+            "signature_data": SIGNATURE_DATA,
+            "consent_acknowledged": True,
+            "read_to_bottom_confirmed": False,
+        },
+    )
+    assert res.status_code == 400
+    assert res.json()["detail"] == "동의서 내용을 끝까지 확인해야 합니다."
 
 
 def test_signature_lock_after_team_signoff(tmp_path: Path):
@@ -179,7 +223,11 @@ def test_signature_lock_after_team_signoff(tmp_path: Path):
     client = _client_for_user(tmp_path, leader_ns, setup)
     client.post(
         "/functional-eval/consent/submit",
-        json={"signature_data": SIGNATURE_DATA, "consent_acknowledged": True},
+        json={
+            "signature_data": SIGNATURE_DATA,
+            "consent_acknowledged": True,
+            "read_to_bottom_confirmed": True,
+        },
     )
 
     from app.modules.functional_eval.eval_catalog import build_lowest_grade_scores

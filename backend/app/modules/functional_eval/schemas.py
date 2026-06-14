@@ -112,6 +112,8 @@ class FunctionalEvalHqApprovalSubmit(FunctionalEvalSignatureSubmit):
 class FunctionalEvalConsentSubmit(BaseModel):
     signature_data: str = Field(..., min_length=32)
     consent_acknowledged: bool = Field(..., description="동의서 확인 체크")
+    read_to_bottom_confirmed: bool | None = Field(default=None, description="동의서 끝까지 확인")
+    read_completed_at: str | None = Field(default=None, max_length=64, description="스크롤 완료 시각(ISO)")
 
 
 class FunctionalEvalTeamReportReject(BaseModel):
