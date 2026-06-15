@@ -794,6 +794,7 @@ import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst, todayKst } from "@/utils/datetime";
 import { saveFeGradeReportCache } from "@/utils/feGradeReportCache";
+import { getFeGuideScene, isFeGuidePreview } from "@/utils/feGuidePreview";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -1233,7 +1234,37 @@ onMounted(async () => {
   await loadOverview();
   await loadHqApprovals();
   await loadPendingRewards();
+  applyGuidePreviewScene();
 });
+
+function applyGuidePreviewScene() {
+  if (!isFeGuidePreview()) return;
+  const scene = getFeGuideScene();
+  const sampleSite = {
+    site_code: "DAEWOO-CL18",
+    site_name: "[1.대우건설] 청라C18BL",
+    site_complete_workers: 12,
+    site_total_workers: 12,
+  };
+  if (scene === "director-approval") {
+    hqDirectorPending.value = [
+      {
+        ...sampleSite,
+        hq_officer_approved_at_label: "2026-06-10 14:30",
+      },
+    ];
+    approvalSectionsOpen.value = { ...approvalSectionsOpen.value, director: true };
+  }
+  if (scene === "ceo-approval") {
+    ceoPendingApprovals.value = [
+      {
+        ...sampleSite,
+        hq_approved_at_label: "2026-06-11 09:00",
+      },
+    ];
+    approvalSectionsOpen.value = { ...approvalSectionsOpen.value, ceo: true };
+  }
+}
 
 function openOfficerApproveAllModal() {
   hqSignatureMode.value = "officer-all";

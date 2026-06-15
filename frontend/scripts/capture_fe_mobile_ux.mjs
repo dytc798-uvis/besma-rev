@@ -62,14 +62,30 @@ async function runAccount(browser, acc) {
     console.log(`${acc.key} collapsed`, JSON.stringify(before));
     await capture(page, `${acc.key}-menu-collapsed`);
 
+    // 동의서 전체화면일 때는 헤더·메뉴 버튼이 숨겨지므로, 메뉴 UX만 검증하기 위해 오버레이를 잠시 숨김
+    await page.evaluate(() => {
+      document.querySelectorAll(".fe-sign-overlay, .fe-consent-loading").forEach((el) => {
+        el.dataset.captureHidden = "1";
+        el.style.display = "none";
+      });
+      const header = document.querySelector(".layout-header");
+      if (header) header.style.display = "";
+    });
+    await page.waitForTimeout(200);
+
     const menuBtn = page.locator(".sidebar-toggle-btn--mobile").first();
     if (await menuBtn.count()) {
-      await menuBtn.click();
-      await page.waitForTimeout(400);
-      const opened = await sidebarMetrics(page);
-      console.log(`${acc.key} expanded`, JSON.stringify(opened));
-      await capture(page, `${acc.key}-menu-expanded`);
+      await menuBtn.click({ force: true });
+    } else {
+      // 현장: 동의서 중에는 헤더가 v-if로 없음 → 드로어만 직접 열어 펼침 UX 캡처
+      await page.evaluate(() => {
+        document.querySelector(".layout-root")?.classList.add("mobile-drawer-open");
+      });
     }
+    await page.waitForTimeout(400);
+    const opened = await sidebarMetrics(page);
+    console.log(`${acc.key} expanded`, JSON.stringify(opened));
+    await capture(page, `${acc.key}-menu-expanded`);
   } catch (err) {
     console.error(acc.key, err?.message || err);
     throw err;

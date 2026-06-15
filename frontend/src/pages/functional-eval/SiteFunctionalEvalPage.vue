@@ -642,6 +642,7 @@ import {
   workerRowHighlightClass,
 } from "@/utils/functionalEvalCompletion";
 import { buildSanctionPrefillFromSafetyScores } from "@/utils/safetySanctionMapping";
+import { getFeGuideScene, isFeGuidePreview } from "@/utils/feGuidePreview";
 import { formatDateTimeKst } from "@/utils/datetime";
 
 type MainView = "roster" | "evaluate";
@@ -1890,6 +1891,25 @@ async function load() {
         ? msg
         : "근로자 목록을 불러오지 못했습니다. 서버·DB 마이그레이션(0068·0069)을 확인하세요.";
   }
+  applyGuidePreviewScene();
+}
+
+function applyGuidePreviewScene() {
+  if (!isFeGuidePreview()) return;
+  if (getFeGuideScene() !== "reward-upload") return;
+  const candidate =
+    workers.value.find((w) => canUploadReward(w)) ??
+    workers.value[0] ??
+    ({
+      id: 0,
+      row_no: 1,
+      name: "김양호",
+      sanction_status: "NONE",
+      sanction_status_label: "없음",
+      is_permanently_expelled: false,
+      history_visible: true,
+    } as Worker);
+  openRewardUpload(candidate);
 }
 
 function openTeamSignoffModal() {
