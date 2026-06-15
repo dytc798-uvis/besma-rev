@@ -38,12 +38,145 @@ HQ_INCLUDE_MARKERS = (
     "외주구매",
     "예산견적",
     "업무팀",
+    "원가",
     "PM",
 )
 HQ_VIEWER_EXCLUDE_MARKERS = (
     "안전보건관리실",
     "안전보건실",
 )
+# ERP 사원리스트 부서코드 — DECISION-019/020 (범례 하단)
+SITE_DEPARTMENT_CODES = frozenset({"01", "15", "7"})
+SAFETY_DEPARTMENT_CODES = frozenset({"04"})
+# 현장 직위코드(범례): 현장소장·현장공무 계열
+SITE_POSITION_CODES = frozenset({"9", "10", "11", "12", "13", "14", "18", "19", "21", "22", "23", "28"})
+
+
+def _cell_label(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _birth6_from_rrn(rrn_front: Any, rrn_back: Any) -> str | None:
+    front = re.sub(r"\D", "", str(rrn_front or "").strip())
+    if len(front) >= 6:
+        return front[:6]
+    back = re.sub(r"\D", "", str(rrn_back or "").strip())
+    combined = f"{front}{back}"
+    if len(combined) >= 6:
+        return combined[:6]
+    return None
+
+
+def _birth_date_from_birth6(birth6: str) -> date | None:
+    if len(birth6) != 6 or not birth6.isdigit():
+        return None
+    yy = int(birth6[:2])
+    mm = int(birth6[2:4])
+    dd = int(birth6[4:6])
+    year = 1900 + yy if yy >= 50 else 2000 + yy
+    try:
+        return date(year, mm, dd)
+    except ValueError:
+        return None
+
+
+def _parse_code_legend_cell(cell: Any) -> dict[str, str]:
+    """'01.현장\\n02.외주구매팀' 형태 범례 → {'01': '현장', '02': '외주구매팀', ...}"""
+    text = str(cell or "")
+    out: dict[str, str] = {}
+    for part in re.split(r"[\n\r]+", text):
+        part = part.strip()
+        m = re.match(r"^(\d+)\.(.+)$", part)
+        if not m:
+            continue
+        code = m.group(1).strip()
+        label = m.group(2).strip()
+        out[code] = label
+        if code.isdigit():
+            out[str(int(code))] = label
+            out[code.zfill(2)] = label
+    return out
+
+
+def _extract_sawon_legends(rows: list[list[Any]]) -> tuple[dict[str, str], dict[str, str]]:
+    dept_legend: dict[str, str] = {}
+    pos_legend: dict[str, str] = {}
+    for values in rows:
+        if len(values) > 3 and isinstance(values[3], str) and "01.현장" in values[3]:
+            dept_legend = _parse_code_legend_cell(values[3])
+        if len(values) > 5 and isinstance(values[5], str) and "현장소장" in values[5]:
+            pos_legend = _parse_code_legend_cell(values[5])
+    return dept_legend, pos_legend
+
+
+def _is_sawon_legend_row(values: list[Any]) -> bool:
+    if not values:
+        return True
+    name = _cell_label(values[0])
+    if not name:
+        return True
+    if len(values) > 3 and isinstance(values[3], str) and "01.현장" in values[3]:
+        return True
+    if len(values) > 5 and isinstance(values[5], str) and "1.담당" in values[5] and "현장소장" in values[5]:
+        return True
+    return False
+
+
+def _resolve_code_label(code: str, legend: dict[str, str]) -> str:
+    raw = (code or "").strip()
+    if not raw:
+        return ""
+    if raw in legend:
+        return legend[raw]
+    if raw.isdigit():
+        padded = raw.zfill(2)
+        if padded in legend:
+            return legend[padded]
+        compact = str(int(raw))
+        if compact in legend:
+            return legend[compact]
+    return raw
+
+
+def _sawon_values_to_viewer_row(
+    values: list[Any],
+    *,
+    dept_legend: dict[str, str] | None = None,
+    pos_legend: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
+    if _is_sawon_legend_row(values):
+        return None
+    base = _employee_row_to_dict(values)
+    if not base:
+        return None
+    vals = list(values)
+    while len(vals) < 21:
+        vals.append(None)
+    dept_code = _cell_label(vals[3])
+    pos_code = _cell_label(vals[5])
+    department = _resolve_code_label(dept_code, dept_legend or {}) or dept_code
+    position = _resolve_code_label(pos_code, pos_legend or {}) or pos_code
+    email_raw = _cell_label(vals[12]) or _cell_label(vals[11]) or None
+    email = email_raw if email_raw and email_raw.upper() != "N" and "@" in email_raw else None
+    birth6 = _birth6_from_rrn(vals[6], vals[7])
+    if not birth6:
+        return None
+    name = (base.get("name") or "").strip()
+    if not name:
+        return None
+    return {
+        **base,
+        "name": name,
+        "department": department,
+        "department_code": dept_code,
+        "position": position,
+        "position_code": pos_code,
+        "email": email,
+        "birth6": birth6,
+        "birth_date": _birth_date_from_birth6(birth6),
+    }
 
 
 @dataclass
@@ -102,70 +235,14 @@ class ViewerProvisionResult:
         }
 
 
-def _cell_label(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _birth6_from_rrn(rrn_front: Any, rrn_back: Any) -> str | None:
-    front = re.sub(r"\D", "", str(rrn_front or "").strip())
-    if len(front) >= 6:
-        return front[:6]
-    back = re.sub(r"\D", "", str(rrn_back or "").strip())
-    combined = f"{front}{back}"
-    if len(combined) >= 6:
-        return combined[:6]
-    return None
-
-
-def _birth_date_from_birth6(birth6: str) -> date | None:
-    if len(birth6) != 6 or not birth6.isdigit():
-        return None
-    yy = int(birth6[:2])
-    mm = int(birth6[2:4])
-    dd = int(birth6[4:6])
-    year = 1900 + yy if yy >= 50 else 2000 + yy
-    try:
-        return date(year, mm, dd)
-    except ValueError:
-        return None
-
-
-def _sawon_values_to_viewer_row(values: list[Any]) -> dict[str, Any] | None:
-    base = _employee_row_to_dict(values)
-    if not base:
-        return None
-    vals = list(values)
-    while len(vals) < 21:
-        vals.append(None)
-    department = _cell_label(vals[3])
-    position = _cell_label(vals[5])
-    email = _cell_label(vals[12]) or _cell_label(vals[11]) or None
-    birth6 = _birth6_from_rrn(vals[6], vals[7])
-    if not birth6:
-        return None
-    name = (base.get("name") or "").strip()
-    if not name:
-        return None
-    return {
-        **base,
-        "name": name,
-        "department": department,
-        "position": position,
-        "email": email or None,
-        "birth6": birth6,
-        "birth_date": _birth_date_from_birth6(birth6),
-    }
-
-
 def load_viewer_rows_from_path(path: Path) -> tuple[list[dict[str, Any]], str]:
     from app.utils.file_ingestion import parse_excel_with_fallback
 
     parsed = parse_excel_with_fallback(path)
+    dept_legend, pos_legend = _extract_sawon_legends(parsed.rows)
     wb_rows: list[dict[str, Any]] = []
     for values in parsed.rows:
-        row = _sawon_values_to_viewer_row(values)
+        row = _sawon_values_to_viewer_row(values, dept_legend=dept_legend, pos_legend=pos_legend)
         if row:
             wb_rows.append(row)
     if wb_rows:
@@ -206,6 +283,35 @@ def _protected_names(db: Session) -> set[str]:
         if user.name:
             names.add(user.name.strip())
     return names
+
+
+def _normalize_dept_code(code: str) -> set[str]:
+    raw = (code or "").strip()
+    if not raw:
+        return set()
+    out = {raw}
+    if raw.isdigit():
+        out.add(str(int(raw)))
+        out.add(raw.zfill(2))
+    return out
+
+
+def _is_site_by_department_code(dept_code: str, department: str) -> bool:
+    if any(c in SITE_DEPARTMENT_CODES for c in _normalize_dept_code(dept_code)):
+        return True
+    return department.strip() in {"현장", "관급공사"}
+
+
+def _is_safety_by_department_code(dept_code: str, department: str) -> bool:
+    if any(c in SAFETY_DEPARTMENT_CODES for c in _normalize_dept_code(dept_code)):
+        return True
+    return _is_safety_hq_staff(department, "")
+
+
+def _is_site_by_position_code(pos_code: str, position: str) -> bool:
+    if any(c in SITE_POSITION_CODES for c in _normalize_dept_code(pos_code)):
+        return True
+    return False
 
 
 def _is_site_assigned(department: str, position: str) -> bool:
@@ -264,6 +370,8 @@ def classify_viewer_candidates(
         name = (row.get("name") or "").strip()
         department = (row.get("department") or "").strip()
         position = (row.get("position") or "").strip()
+        dept_code = (row.get("department_code") or "").strip()
+        pos_code = (row.get("position_code") or "").strip()
         email = (row.get("email") or "").strip() or None
         birth6 = (row.get("birth6") or "").strip()
         login_id = build_viewer_login_id(name)
@@ -283,11 +391,17 @@ def classify_viewer_candidates(
             base.reason = "생년월일 없음"
             result.excluded.append(base)
             continue
-        if _is_site_assigned(department, position):
+        if (
+            _is_site_by_department_code(dept_code, department)
+            or _is_site_by_position_code(pos_code, position)
+            or _is_site_assigned(department, position)
+        ):
             base.reason = "현장 인원"
             result.excluded.append(base)
             continue
-        if _is_safety_hq_staff(department, position):
+        if _is_safety_by_department_code(dept_code, department) or _is_safety_hq_staff(
+            department, position
+        ):
             base.reason = "안전보건 본사 계정 별도"
             result.excluded.append(base)
             continue
