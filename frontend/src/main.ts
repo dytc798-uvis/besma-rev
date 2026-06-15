@@ -16,19 +16,15 @@ async function bootstrap() {
   const app = createApp(App);
   const pinia = createPinia();
   app.use(pinia);
+  app.use(router);
 
   const auth = useAuthStore();
   const onPublicSignPage =
     typeof window !== "undefined" && isPublicSignPath(window.location.pathname);
   if (auth.token && !auth.user && !onPublicSignPage) {
-    try {
-      await auth.loadMe();
-    } catch {
-      auth.logout();
-    }
+    void auth.bootstrapSession();
   }
 
-  app.use(router);
   await router.isReady();
   app.mount("#app");
 }

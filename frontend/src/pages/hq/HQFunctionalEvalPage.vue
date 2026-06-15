@@ -195,11 +195,16 @@
         <div class="review-kpi-card">
           <span class="review-kpi-label">검토·승인 대기</span>
           <strong class="review-kpi-value">{{ reviewQueue.total_hq_action_count }}</strong>
-          <span class="review-kpi-hint">포상 승인 + 소장 제출 현장</span>
+          <span class="review-kpi-hint">포상·제재 승인 + 소장 제출 현장</span>
         </div>
         <div class="review-kpi-card">
           <span class="review-kpi-label">포상 승인 대기</span>
           <strong class="review-kpi-value">{{ reviewQueue.pending_reward_count }}</strong>
+        </div>
+        <div class="review-kpi-card">
+          <span class="review-kpi-label">제재 승인 대기</span>
+          <strong class="review-kpi-value">{{ reviewQueue.pending_sanction_count ?? pendingSanctions.length }}</strong>
+          <span class="review-kpi-hint">마감 후 현장 신고 · 월 2회 검토</span>
         </div>
         <div class="review-kpi-card">
           <span class="review-kpi-label">담당 검토 대기</span>
@@ -271,9 +276,50 @@
         v-if="reviewQueue.total_hq_action_count === 0 && !siteSubmitBlockers.length && reviewQueue.sites_with_evidence_count > 0"
         class="attendance-warn review-hint"
       >
-        포상·제재 이력은 있으나, 소장이 「평가완료보고서 최종 제출」을 하기 전에는 현장 검토·서명 버튼이 활성화되지 않습니다.
-        포상 사진은 아래 목록에서 승인할 수 있습니다.
+        포상·제재 이력은 소장 제출 전에도 아래 목록에서 승인할 수 있습니다. 마감 후 현장 신고분은 본사에서 <strong>월 2회</strong> 검토·승인합니다.
       </p>
+
+      <div v-if="pendingSanctions.length" class="inner-section approval-collapse">
+        <div class="approval-collapse__head">
+          <button
+            type="button"
+            class="approval-collapse__toggle"
+            :aria-expanded="approvalSectionsOpen.sanctions"
+            @click="toggleApprovalSection('sanctions')"
+          >
+            <span class="approval-collapse__chevron" :class="{ 'is-open': approvalSectionsOpen.sanctions }">▸</span>
+            <span class="approval-collapse__title">제재 이력 승인 대기</span>
+            <span class="approval-collapse__count">{{ pendingSanctions.length }}건</span>
+          </button>
+        </div>
+        <div v-show="approvalSectionsOpen.sanctions" class="approval-collapse__body">
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>현장</th>
+                  <th>근로자</th>
+                  <th>위반</th>
+                  <th>제출</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in pendingSanctions" :key="row.id">
+                  <td>{{ row.site_code }}</td>
+                  <td>{{ row.worker_name }}</td>
+                  <td>{{ row.sanction_display_label || row.violation_label }}</td>
+                  <td>{{ formatDateTimeKst(row.created_at, "—") }}</td>
+                  <td class="actions-inline">
+                    <button class="stitch-btn-primary" type="button" :disabled="sanctionReviewing" @click="approveSanction(row.id)">승인</button>
+                    <button class="stitch-btn-secondary" type="button" :disabled="sanctionReviewing" @click="rejectSanction(row.id)">반려</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
 
       <div v-if="pendingRewards.length" class="inner-section approval-collapse">
         <div class="approval-collapse__head">
@@ -1013,6 +1059,15 @@ interface PendingReward {
   created_at?: string;
 }
 
+interface PendingSanction {
+  id: number;
+  worker_name: string;
+  site_code: string;
+  violation_label?: string;
+  sanction_display_label?: string;
+  created_at?: string;
+}
+
 interface SiteSubmitBlocker {
   site_code: string;
   site_name?: string;
@@ -1042,10 +1097,14 @@ const loadError = ref("");
 const showAdmin = ref(false);
 const showOps = ref(false);
 const pendingRewards = ref<PendingReward[]>([]);
+const pendingSanctions = ref<PendingSanction[]>([]);
 const loadingPendingRewards = ref(false);
+const loadingPendingSanctions = ref(false);
 const rewardReviewing = ref(false);
+const sanctionReviewing = ref(false);
 const reviewQueue = ref({
   pending_reward_count: 0,
+  pending_sanction_count: 0,
   pending_hq_site_count: 0,
   pending_hq_officer_site_count: 0,
   pending_hq_director_site_count: 0,
@@ -1225,10 +1284,11 @@ const hqRole = ref("staff");
 const hqOfficerPending = ref<Record<string, unknown>[]>([]);
 const hqDirectorPending = ref<Record<string, unknown>[]>([]);
 
-type ApprovalSectionKey = "submitBlockers" | "rewards" | "officer" | "director" | "ceo";
+type ApprovalSectionKey = "submitBlockers" | "rewards" | "sanctions" | "officer" | "director" | "ceo";
 const approvalSectionsOpen = ref<Record<ApprovalSectionKey, boolean>>({
   submitBlockers: false,
   rewards: false,
+  sanctions: false,
   officer: false,
   director: false,
   ceo: false,
@@ -1331,7 +1391,7 @@ async function onConsentCompleted() {
   await checkConsent();
   await loadOverview();
   await loadHqApprovals();
-  await loadPendingRewards();
+  await Promise.all([loadPendingRewards(), loadPendingSanctions()]);
 }
 
 async function downloadConsentDoc() {
@@ -1347,7 +1407,7 @@ async function refreshReviewQueue() {
   loadingHqApprovals.value = true;
   loadingPendingRewards.value = true;
   try {
-    await Promise.all([loadHqApprovals(), loadPendingRewards(), loadOverview()]);
+    await Promise.all([loadHqApprovals(), loadPendingRewards(), loadPendingSanctions(), loadOverview()]);
   } finally {
     loadingPendingRewards.value = false;
   }
@@ -1443,7 +1503,7 @@ onMounted(async () => {
   if (consentRequired.value) return;
   await loadOverview();
   await loadHqApprovals();
-  await loadPendingRewards();
+  await Promise.all([loadPendingRewards(), loadPendingSanctions()]);
   await loadDailyReports();
   applyGuidePreviewScene();
 });
@@ -1935,16 +1995,34 @@ async function loadPendingRewards() {
   }
 }
 
+async function loadPendingSanctions() {
+  loadingPendingSanctions.value = true;
+  try {
+    const res = await api.get("/functional-eval/hq/sanctions/pending");
+    pendingSanctions.value = res.data.items || [];
+    syncReviewQueueCounts();
+  } catch {
+    pendingSanctions.value = [];
+    syncReviewQueueCounts();
+  } finally {
+    loadingPendingSanctions.value = false;
+  }
+}
+
 function syncReviewQueueCounts() {
   reviewQueue.value = {
     ...reviewQueue.value,
     pending_reward_count: pendingRewards.value.length,
+    pending_sanction_count: pendingSanctions.value.length,
     pending_hq_officer_site_count: hqOfficerPending.value.length,
     pending_hq_director_site_count: hqDirectorPending.value.length,
     pending_hq_site_count: hqOfficerPending.value.length + hqDirectorPending.value.length,
     pending_ceo_site_count: ceoPendingApprovals.value.length,
     total_hq_action_count:
-      pendingRewards.value.length + hqOfficerPending.value.length + hqDirectorPending.value.length,
+      pendingRewards.value.length +
+      pendingSanctions.value.length +
+      hqOfficerPending.value.length +
+      hqDirectorPending.value.length,
   };
 }
 
@@ -1963,7 +2041,7 @@ async function approveReward(rewardId: number) {
   rewardReviewing.value = true;
   try {
     await api.post(`/functional-eval/hq/customer-rewards/${rewardId}/approve`, {});
-    await loadPendingRewards();
+    await Promise.all([loadPendingRewards(), loadPendingSanctions()]);
     if (selectedSite.value) await reloadSiteDetail();
   } catch (e: unknown) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -1978,12 +2056,40 @@ async function rejectReward(rewardId: number) {
   rewardReviewing.value = true;
   try {
     await api.post(`/functional-eval/hq/customer-rewards/${rewardId}/reject`, { reject_note: rejectNote });
-    await loadPendingRewards();
+    await Promise.all([loadPendingRewards(), loadPendingSanctions()]);
   } catch (e: unknown) {
     const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
     window.alert(typeof detail === "string" ? detail : "반려에 실패했습니다.");
   } finally {
     rewardReviewing.value = false;
+  }
+}
+
+async function approveSanction(sanctionId: number) {
+  sanctionReviewing.value = true;
+  try {
+    await api.post(`/functional-eval/hq/sanctions/${sanctionId}/approve`, {});
+    await Promise.all([loadPendingSanctions(), load()]);
+    if (selectedSite.value) await reloadSiteDetail();
+  } catch (e: unknown) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    window.alert(typeof detail === "string" ? detail : "승인에 실패했습니다.");
+  } finally {
+    sanctionReviewing.value = false;
+  }
+}
+
+async function rejectSanction(sanctionId: number) {
+  const rejectNote = window.prompt("반려 사유 (선택)") || "";
+  sanctionReviewing.value = true;
+  try {
+    await api.post(`/functional-eval/hq/sanctions/${sanctionId}/reject`, { reject_note: rejectNote });
+    await loadPendingSanctions();
+  } catch (e: unknown) {
+    const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    window.alert(typeof detail === "string" ? detail : "반려에 실패했습니다.");
+  } finally {
+    sanctionReviewing.value = false;
   }
 }
 

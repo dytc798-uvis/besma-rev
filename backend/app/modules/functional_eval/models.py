@@ -291,6 +291,10 @@ class FunctionalEvalSanction(Base):
     signature_data: Mapped[str | None] = mapped_column(Text, nullable=True)
     signature_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     penalty_points: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="APPROVED", server_default="APPROVED", index=True)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reject_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     reported_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
 

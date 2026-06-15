@@ -38,6 +38,9 @@
           <span v-if="period?.is_closed" class="badge closed">마감</span>
           <span v-else class="badge open">진행</span>
         </p>
+        <p v-if="period?.is_closed" class="attendance-warn post-period-hint">
+          평가 마감 — <strong>포상·제재 이력만</strong> 등록할 수 있습니다. 본사에서 월 2회 검토·승인 후 점수에 반영됩니다.
+        </p>
         <p v-if="evaluatorHint" class="evaluator-hint">{{ evaluatorHint }}</p>
         <p v-if="attendanceMessage" class="attendance-warn">{{ attendanceMessage }}</p>
         <p v-if="error && mainView === 'roster'" class="load-error">{{ error }}</p>
@@ -434,6 +437,7 @@
       :title="evalTabTitle"
       :criteria="evalCriteria"
       :period-closed="Boolean(period?.is_closed) || evaluationLocked"
+      :evidence-submit-blocked="evidenceSubmitBlocked"
       :evaluation-locked="evaluationLocked"
       :focus-worker-id="focusWorkerId"
       :auto-pick-on-mount="isFeGuidePreview()"
@@ -472,6 +476,9 @@
           <button class="link-btn dialog-close" type="button" aria-label="닫기" @click="closeForm">✕</button>
         </div>
         <p v-if="sanctionPromptMessage" class="sanction-hint">{{ sanctionPromptMessage }}</p>
+        <p v-else-if="period?.is_closed" class="sanction-hint">
+          마감 후 제재 이력 제출 — 본사 승인 후 감점·등급에 반영됩니다. 등록 후 수정·삭제할 수 없습니다.
+        </p>
         <FeSanctionRegisterForm
           v-if="selectedWorker"
           :key="`${selectedWorker.id}-${sanctionFormKey}`"
@@ -481,7 +488,7 @@
           :default-violation-code="form.violation_code"
           :default-note="form.note"
           :focus-comment="Boolean(form.note)"
-          :disabled="Boolean(period?.is_closed)"
+          :disabled="evidenceSubmitBlocked"
           @saved="onSanctionFormSaved"
           @cancel="closeForm"
         />
@@ -502,7 +509,12 @@
           <button class="link-btn dialog-close" type="button" aria-label="닫기" @click="closeRewardUpload">✕</button>
         </div>
         <p class="sanction-hint">
-          포상 사진을 올리면 본사 승인 후 비고에 「고객사포상(+5)」이 표시됩니다. 제출 후에는 회수·변경할 수 없습니다.
+          <template v-if="period?.is_closed">
+            마감 후 포상 이력 제출 — 본사 승인 후 가점이 반영됩니다. 제출 후 회수·변경할 수 없습니다.
+          </template>
+          <template v-else>
+            포상 사진을 올리면 본사 승인 후 비고에 「고객사포상(+5)」이 표시됩니다. 제출 후에는 회수·변경할 수 없습니다.
+          </template>
         </p>
         <ul v-if="rewardHistory.length" class="reward-history">
           <li v-for="r in rewardHistory" :key="r.id">
@@ -523,7 +535,7 @@
           <button
             class="stitch-btn-primary touch-btn"
             type="button"
-            :disabled="!rewardPhotoFile || rewardUploading || rewardHasSubmitted || Boolean(period?.is_closed)"
+            :disabled="!rewardPhotoFile || rewardUploading || rewardHasSubmitted || evidenceSubmitBlocked"
             @click="submitRewardUpload"
           >
             {{ rewardUploading ? "제출 중…" : rewardHasSubmitted ? "제출 완료" : "본사 승인 요청" }}
@@ -1105,6 +1117,7 @@ const rosterSource = computed(() =>
   isManager.value && siteOverview.value.length ? siteOverview.value : workers.value,
 );
 const evaluationLocked = computed(() => approval.value?.evaluation_editable === false);
+const evidenceSubmitBlocked = computed(() => !period.value?.is_closed && evaluationLocked.value);
 
 const evaluatorHeadline = computed(() => {
   if (!evaluator.value) return "";
@@ -1329,12 +1342,19 @@ function canOpenHistory(w: Worker): boolean {
 }
 
 function canRegisterSanction(w: Worker): boolean {
-  if (w.is_permanently_expelled || Boolean(period.value?.is_closed) || evaluationLocked.value) return false;
+  if (w.is_permanently_expelled) return false;
+  if (period.value?.is_closed) return true;
+  if (evaluationLocked.value) return false;
   return true;
 }
 
 function canUploadReward(w: Worker): boolean {
-  if (w.is_permanently_expelled || Boolean(period.value?.is_closed) || evaluationLocked.value) return false;
+  if (w.is_permanently_expelled) return false;
+  if (period.value?.is_closed) {
+    if (w.customer_reward) return false;
+    return true;
+  }
+  if (evaluationLocked.value) return false;
   if (w.customer_reward) return false;
   return true;
 }
@@ -1675,7 +1695,11 @@ function closePanels() {
 function onSanctionFormSaved() {
   sanctionPromptMessage.value = "";
   closeForm();
-  flashSaveNotice("제재가 등록되었습니다.");
+  flashSaveNotice(
+    period.value?.is_closed
+      ? "제재 이력이 제출되었습니다. 본사 승인 후 반영됩니다."
+      : "제재가 등록되었습니다.",
+  );
   void load();
 }
 

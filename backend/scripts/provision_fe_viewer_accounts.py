@@ -16,7 +16,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, init_db
 from app.modules.functional_eval import fe_viewer_provisioning_service as svc
 
 
@@ -30,6 +30,7 @@ def main() -> int:
         parser.error("--dry-run 또는 --apply 중 하나를 지정하세요.")
 
     source = Path(args.source) if args.source.strip() else None
+    init_db()
     db = SessionLocal()
     try:
         if args.dry_run:

@@ -66,10 +66,12 @@ const props = withDefaults(
   defineProps<{
     worker: Worker;
     periodClosed: boolean;
+    evidenceSubmitBlocked?: boolean;
     evaluationLocked?: boolean;
     showCancel?: boolean;
   }>(),
   {
+    evidenceSubmitBlocked: false,
     evaluationLocked: false,
     showCancel: false,
   },
@@ -88,8 +90,7 @@ const rewardHasSubmitted = computed(() => rewardHistory.value.length > 0);
 
 const blockedReason = computed(() => {
   if (props.worker.is_permanently_expelled) return "영구 퇴출 대상자는 포상을 등록할 수 없습니다.";
-  if (props.periodClosed) return "마감된 기간에는 포상을 등록할 수 없습니다.";
-  if (props.evaluationLocked) return "승인 진행 중에는 포상·제재를 변경할 수 없습니다.";
+  if (props.evidenceSubmitBlocked) return "승인 진행 중에는 포상·제재를 변경할 수 없습니다.";
   return null;
 });
 

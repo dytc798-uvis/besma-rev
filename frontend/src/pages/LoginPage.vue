@@ -54,6 +54,7 @@ const router = useRouter();
 const route = useRoute();
 
 onMounted(() => {
+  auth.prepareLoginPage();
   if (!isFeGuidePreview()) return;
   const role = typeof route.query.guideRole === "string" ? route.query.guideRole : "team";
   const sample = FE_GUIDE_SAMPLE_LOGIN[role as keyof typeof FE_GUIDE_SAMPLE_LOGIN] ?? FE_GUIDE_SAMPLE_LOGIN.team;
@@ -62,33 +63,38 @@ onMounted(() => {
 });
 
 async function handleLogin() {
+  if (loading.value) return;
   loading.value = true;
   errorMessage.value = "";
   try {
     await auth.login(loginId.value, password.value);
+    if (!auth.user) {
+      errorMessage.value = "로그인은 되었으나 사용자 정보를 불러오지 못했습니다. 다시 시도해 주세요.";
+      return;
+    }
     if (auth.needsFeOnboarding) {
-      router.replace({ name: "fe-onboarding" });
+      await router.replace({ name: "fe-onboarding" });
       return;
     }
     if (auth.user?.must_change_password) {
-      router.replace({ name: "change-password" });
+      await router.replace({ name: "change-password" });
       return;
     }
     const redirectPath = typeof route.query.redirect === "string" ? route.query.redirect : "";
     if (redirectPath) {
-      router.push(redirectPath);
+      await router.push(redirectPath);
     } else if (auth.user?.role === "WORKER") {
-      router.push({ name: "worker-mobile-list" });
+      await router.push({ name: "worker-mobile-list" });
     } else if (auth.user?.ui_type === "HQ_SAFE") {
-      router.push({ name: hqSafeHomeRouteName() });
+      await router.push({ name: hqSafeHomeRouteName() });
     } else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
-      router.push({ name: "site-functional-eval" });
+      await router.push({ name: "site-functional-eval" });
     } else if (auth.user?.ui_type === "SITE") {
-      router.push({ name: siteMobileOrDesktopHomeName() });
+      await router.push({ name: siteMobileOrDesktopHomeName() });
     } else if (auth.user?.ui_type === "HQ_OTHER") {
-      router.push({ name: "hq-other-dashboard" });
+      await router.push({ name: "hq-other-dashboard" });
     } else {
-      router.push({ name: hqSafeHomeRouteName() });
+      await router.push({ name: hqSafeHomeRouteName() });
     }
   } catch (err) {
     errorMessage.value = formatLoginError(err);

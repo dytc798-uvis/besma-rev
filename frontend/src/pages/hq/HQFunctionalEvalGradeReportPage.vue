@@ -47,25 +47,6 @@
         />
       </section>
 
-      <section v-if="teamStats.length" class="report-section">
-        <h2>팀별 등급 분포</h2>
-        <p class="section-note">현장명 [N.시공사] 기준 공사N팀 · 소장 1명 = 현장 1곳</p>
-        <div class="team-report-grid">
-          <div
-            v-for="team in teamStats"
-            :key="String(team.team_key)"
-            class="team-report-card"
-          >
-            <FeGradeStatsPrintBlock
-              :stats="teamStatsPayload(team)"
-              :title="String(team.team_label || team.team_key)"
-              :subtitle="teamSubtitle(team)"
-              :donut-size="110"
-            />
-          </div>
-        </div>
-      </section>
-
       <section v-if="siteStats.length" class="report-section site-table-section">
         <h2>현장별 등급 요약</h2>
         <table class="site-summary-table">
@@ -157,11 +138,6 @@ const periodLabel = computed(() => {
 
 const overallStats = computed(() => (gradeStats.value?.overall as GradeStatsPayload | undefined) ?? null);
 
-const teamStats = computed(() => {
-  const rows = gradeStats.value?.by_team;
-  return Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
-});
-
 const siteStats = computed(() => {
   const rows = gradeStats.value?.by_site;
   return Array.isArray(rows) ? (rows as SiteStatRow[]) : [];
@@ -181,24 +157,6 @@ const overallSubtitle = computed(() => {
   }
   return `출역 ${workersTotal}명`;
 });
-
-function teamStatsPayload(team: Record<string, unknown>): GradeStatsPayload {
-  return {
-    functional: team.functional as GradeStatsPayload["functional"],
-    safety: team.safety as GradeStatsPayload["safety"],
-  };
-}
-
-function teamSubtitle(team: Record<string, unknown>) {
-  const sites = Number(team.site_count ?? 0);
-  const workers = Number((team.functional as { workers_total?: number } | undefined)?.workers_total ?? 0);
-  const labels = team.contractor_labels as string[] | undefined;
-  const single = String(team.contractor_label || "").trim();
-  let suffix = "";
-  if (labels && labels.length > 1) suffix = ` · ${labels.length}개 시공사`;
-  else if (single) suffix = ` · ${single}`;
-  return `현장 ${sites}곳 · 출역 ${workers}명${suffix}`;
-}
 
 function siteWorkersTotal(site: SiteStatRow) {
   return Number(site.functional?.workers_total ?? site.functional?.graded_total ?? 0);
@@ -225,7 +183,7 @@ async function waitForPrintReady() {
       /* ignore */
     }
   }
-  // 팀·현장 SVG·표가 많을 때 레이아웃 안정화
+  // SVG·표 레이아웃 안정화
   await new Promise<void>((resolve) => {
     window.setTimeout(resolve, 200);
   });
@@ -361,17 +319,6 @@ onMounted(() => {
   font-size: 12px;
   color: #64748b;
 }
-.team-report-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
-.team-report-card {
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  break-inside: avoid;
-}
 .site-table-section {
   break-inside: auto;
 }
@@ -459,9 +406,6 @@ onMounted(() => {
     border: none;
     border-radius: 0;
     padding: 0;
-  }
-  .team-report-card {
-    border-color: #cbd5e1;
   }
   @page {
     size: A4;

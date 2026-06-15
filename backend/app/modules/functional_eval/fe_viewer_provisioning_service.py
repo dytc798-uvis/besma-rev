@@ -20,24 +20,29 @@ from app.modules.functional_eval.models import FunctionalEvalViewerProvisionLog
 from app.modules.users.hq_safe_accounts import HQ_SAFE_ACCOUNT_SPECS
 from app.modules.users.models import User
 from app.modules.workers.models import Person, WorkerImportBatch
-from app.modules.workers.service import _employee_row_to_dict, _load_sawon_employee_row_dicts
+from app.modules.workers.service import _employee_row_to_dict
 
 LOGIN_PREFIX = "부현본사-"
 SITE_BRACKET_RE = re.compile(r"\[\s*\d*\.[^\]]+\]")
 
-EXCLUDE_JOB_KEYWORDS = ("현장소장", "현장공무")
+EXCLUDE_JOB_KEYWORDS = ("현장소장", "현장공무", "현장대기")
 HQ_INCLUDE_MARKERS = (
     "본사",
     "대표",
     "임원",
+    "경영지원",
     "공사관리",
+    "플랜트",
     "재무회계",
+    "회계",
     "외주구매",
     "예산견적",
     "업무팀",
+    "PM",
+)
+HQ_VIEWER_EXCLUDE_MARKERS = (
     "안전보건관리실",
     "안전보건실",
-    "PM",
 )
 
 
@@ -155,25 +160,14 @@ def _sawon_values_to_viewer_row(values: list[Any]) -> dict[str, Any] | None:
 
 
 def load_viewer_rows_from_path(path: Path) -> tuple[list[dict[str, Any]], str]:
-    _row_dicts, _ingestion = _load_sawon_employee_row_dicts(path)
-    wb_rows: list[dict[str, Any]] = []
-    try:
-        from app.modules.workers.service import open_xlrd_workbook
+    from app.utils.file_ingestion import parse_excel_with_fallback
 
-        wb = open_xlrd_workbook(path)
-        sh = wb.sheet_by_index(0)
-        for r in range(sh.nrows):
-            values = [sh.cell_value(r, c) for c in range(sh.ncols)]
-            if r == 0:
-                h0 = _cell_label(values[0] if values else "")
-                compact = h0.replace(" ", "")
-                if "성" in h0 and "명" in compact:
-                    continue
-            row = _sawon_values_to_viewer_row(values)
-            if row:
-                wb_rows.append(row)
-    except Exception:
-        wb_rows = []
+    parsed = parse_excel_with_fallback(path)
+    wb_rows: list[dict[str, Any]] = []
+    for values in parsed.rows:
+        row = _sawon_values_to_viewer_row(values)
+        if row:
+            wb_rows.append(row)
     if wb_rows:
         return wb_rows, path.name
     raise ValueError("사원리스트에서 부서·직위 라벨을 읽지 못했습니다. xls 형식을 확인하세요.")
@@ -228,8 +222,15 @@ def _is_site_assigned(department: str, position: str) -> bool:
     return False
 
 
+def _is_safety_hq_staff(department: str, position: str) -> bool:
+    combined = f"{department} {position}"
+    return any(marker in combined for marker in HQ_VIEWER_EXCLUDE_MARKERS)
+
+
 def _is_hq_eligible(department: str, position: str) -> bool:
     if _is_site_assigned(department, position):
+        return False
+    if _is_safety_hq_staff(department, position):
         return False
     combined = f"{department} {position}"
     if any(marker in combined for marker in HQ_INCLUDE_MARKERS):
@@ -284,6 +285,10 @@ def classify_viewer_candidates(
             continue
         if _is_site_assigned(department, position):
             base.reason = "현장 인원"
+            result.excluded.append(base)
+            continue
+        if _is_safety_hq_staff(department, position):
+            base.reason = "안전보건 본사 계정 별도"
             result.excluded.append(base)
             continue
         if not _is_hq_eligible(department, position):

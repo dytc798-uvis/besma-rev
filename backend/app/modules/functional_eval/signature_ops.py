@@ -28,6 +28,7 @@ from app.modules.functional_eval.signature_service import (
     CONSENT_KIND_EVALUATOR,
     CONSENT_KIND_VIEWER,
     CONSENT_VERSION,
+    EVALUATOR_CONSENT_TITLE,
     VIEWER_CONSENT_BODY,
     VIEWER_CONSENT_TITLE,
     VIEWER_CONSENT_VERSION,
@@ -115,7 +116,7 @@ def _consent_version_for_user(user: User) -> str:
 def _consent_title_for_user(user: User) -> str:
     if _consent_kind_for_user(user) == CONSENT_KIND_VIEWER:
         return VIEWER_CONSENT_TITLE
-    return "기능인인정제 평가 및 개인정보 활용 동의서"
+    return EVALUATOR_CONSENT_TITLE
 
 
 def _build_document_header(db: Session, user: User, *, site_code: str | None = None) -> dict[str, str]:

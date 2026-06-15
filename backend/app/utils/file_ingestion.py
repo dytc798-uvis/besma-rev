@@ -211,6 +211,30 @@ def _parse_with_csv_fallback(path: Path) -> tuple[list[str], list[list[Any]]]:
     raise ValueError("CSV 강제 읽기에 실패했습니다")
 
 
+def convert_xls_with_libreoffice(path: Path) -> Path:
+    """ERP 사원리스트 .xls(xlrd 파싱 불가) → xlsx 변환."""
+    import shutil
+    import subprocess
+
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if not soffice:
+        raise FileNotFoundError("LibreOffice(soffice)가 설치되어 있지 않습니다.")
+    out_dir = settings.storage_root / "sawon_converted"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{path.stem}.xlsx"
+    if out_path.is_file() and out_path.stat().st_mtime >= path.stat().st_mtime:
+        return out_path
+    subprocess.run(
+        [soffice, "--headless", "--convert-to", "xlsx", "--outdir", str(out_dir), str(path)],
+        check=True,
+        capture_output=True,
+        timeout=180,
+    )
+    if not out_path.is_file():
+        raise FileNotFoundError(f"LibreOffice 변환 결과 없음: {path}")
+    return out_path
+
+
 def _write_standardized_xlsx(path: Path, headers: list[str], rows: list[list[Any]]) -> Path:
     wb = openpyxl.Workbook()
     sh = wb.active
@@ -261,6 +285,12 @@ def parse_excel_with_fallback(path: Path) -> ParsedSheet:
             _try("fallback", "pandas.read_excel", lambda: _parse_with_pandas(path))
         if not parser_used:
             _try("fallback", "xlrd(on_demand=True)", lambda: _parse_with_xlrd(path, alt_mode=True))
+        if not parser_used:
+            _try(
+                "fallback",
+                "libreoffice+xlsx",
+                lambda: _parse_with_openpyxl(convert_xls_with_libreoffice(path)),
+            )
         if not parser_used:
             _try("fallback", "csv-force-read", lambda: _parse_with_csv_fallback(path))
     elif file_type == "csv":

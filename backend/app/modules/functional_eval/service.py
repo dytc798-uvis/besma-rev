@@ -61,6 +61,7 @@ from app.modules.functional_eval.sanctions import (
     worker_status_from_sanctions,
 )
 from app.modules.functional_eval.customer_rewards import CUSTOMER_REWARD_NOTE, REWARD_STATUS_APPROVED, REWARD_STATUS_PENDING
+from app.modules.functional_eval.sanction_reviews import SANCTION_STATUS_APPROVED, SANCTION_STATUS_PENDING
 from app.modules.functional_eval.sanction_evidence import (
     DEFAULT_SANCTION_PENALTY_POINTS,
     EVIDENCE_COMMENT,
@@ -146,8 +147,13 @@ def period_is_closed(period: FunctionalEvalPeriod, *, today: date | None = None)
 
 
 def assert_period_editable(period: FunctionalEvalPeriod) -> None:
+    """평가·ERP 반영 등 — 마감 후 불가."""
     if period_is_closed(period):
         raise ValueError("PERIOD_CLOSED")
+
+
+def assert_period_eval_editable(period: FunctionalEvalPeriod) -> None:
+    assert_period_editable(period)
 
 
 def get_latest_attendance_date(db: Session, period_id: int) -> date | None:
@@ -335,7 +341,7 @@ def _worker_ids_same_person(db: Session, worker: FunctionalEvalWorker) -> list[i
 
 
 def _strike_sequence_for_person(db: Session, rrn_hash: str) -> dict[int, int]:
-    """동일인·동일 위반코드 기준 누적 차수(기간 무관)."""
+    """동일인·동일 위반코드 기준 누적 차수(기간 무관). 승인된 제재만 집계."""
     worker_ids = [
         row.id for row in db.query(FunctionalEvalWorker.id).filter(FunctionalEvalWorker.rrn_hash == rrn_hash).all()
     ]
@@ -343,7 +349,10 @@ def _strike_sequence_for_person(db: Session, rrn_hash: str) -> dict[int, int]:
         return {}
     rows = (
         db.query(FunctionalEvalSanction)
-        .filter(FunctionalEvalSanction.worker_id.in_(worker_ids))
+        .filter(
+            FunctionalEvalSanction.worker_id.in_(worker_ids),
+            FunctionalEvalSanction.status == SANCTION_STATUS_APPROVED,
+        )
         .order_by(FunctionalEvalSanction.created_at.asc(), FunctionalEvalSanction.id.asc())
         .all()
     )
@@ -410,6 +419,12 @@ def _serialize_sanction(
         "reported_by_user_id": row.reported_by_user_id,
         "reported_by_name": reporter_name,
         "reported_by_login_id": reporter_login,
+        "status": getattr(row, "status", None) or SANCTION_STATUS_APPROVED,
+        "status_label": {
+            SANCTION_STATUS_PENDING: "승인 대기",
+            SANCTION_STATUS_APPROVED: "승인",
+            "REJECTED": "반려",
+        }.get(getattr(row, "status", None) or SANCTION_STATUS_APPROVED, getattr(row, "status", None) or SANCTION_STATUS_APPROVED),
         "created_at": row.created_at,
     }
 
@@ -442,21 +457,53 @@ def _worker_sanction_rows(db: Session, worker_id: int) -> list[FunctionalEvalSan
 
 
 def _worker_is_permanently_expelled(db: Session, worker_id: int) -> bool:
-    rows = _worker_sanction_rows(db, worker_id)
+    rows = [
+        r
+        for r in _worker_sanction_rows(db, worker_id)
+        if (getattr(r, "status", None) or SANCTION_STATUS_APPROVED) == SANCTION_STATUS_APPROVED
+    ]
     return any(is_permanent_sanction(r.sanction_result) for r in rows)
 
 
+def _count_approved_sanctions_for_violation(
+    db: Session, worker: FunctionalEvalWorker, violation_code: str
+) -> int:
+    return (
+        db.query(FunctionalEvalSanction)
+        .filter(
+            FunctionalEvalSanction.worker_id.in_(_worker_ids_same_person(db, worker)),
+            FunctionalEvalSanction.violation_code == violation_code,
+            FunctionalEvalSanction.status == SANCTION_STATUS_APPROVED,
+        )
+        .count()
+    )
+
+
 def _worker_sanction_status(db: Session, worker_id: int) -> tuple[str, str, int, FunctionalEvalSanction | None]:
-    rows = _worker_sanction_rows(db, worker_id)
+    rows = [
+        r
+        for r in _worker_sanction_rows(db, worker_id)
+        if (getattr(r, "status", None) or SANCTION_STATUS_APPROVED) != "REJECTED"
+    ]
     if not rows:
         return "NONE", "해당 없음", 0, None
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
     strike_sequence = _strike_sequence_for_person(db, worker.rrn_hash) if worker else None
-    results = [r.sanction_result for r in rows]
-    status = worker_status_from_sanctions(results)
-    display_row = next((r for r in rows if r.sanction_result == status), rows[0])
+    approved_rows = [
+        r for r in rows if (getattr(r, "status", None) or SANCTION_STATUS_APPROVED) == SANCTION_STATUS_APPROVED
+    ]
+    results = [r.sanction_result for r in approved_rows]
+    if results:
+        status = worker_status_from_sanctions(results)
+        display_row = next((r for r in approved_rows if r.sanction_result == status), approved_rows[0])
+    else:
+        pending = next(r for r in rows if getattr(r, "status", None) == SANCTION_STATUS_PENDING)
+        status = "PENDING"
+        display_row = pending
     strike = _effective_strike_number(display_row, strike_sequence)
     label = build_sanction_display_label(display_row.violation_code, strike, display_row.sanction_result)
+    if status == "PENDING":
+        label = f"제재 승인 대기 ({display_row.violation_code})"
     return status, label, len(rows), rows[0]
 
 
@@ -1150,8 +1197,10 @@ def _list_eval_complete_site_submit_blockers(
 def build_hq_review_queue(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
     """본사 검토·승인 대기 건수 (포상 승인 + 소장 제출 완료 현장)."""
     from app.modules.functional_eval import approval_workflow, customer_rewards as reward_service
+    from app.modules.functional_eval import sanction_reviews as sanction_review_service
 
     pending_rewards = reward_service.list_pending_customer_rewards(db, period)
+    pending_sanctions = sanction_review_service.list_pending_sanctions(db, period)
     pending_officer = approval_workflow.list_pending_hq_officer_approvals(db, period)
     pending_director = approval_workflow.list_pending_hq_director_approvals(db, period)
     pending_ceo = approval_workflow.list_pending_ceo_approvals(db, period)
@@ -1185,11 +1234,12 @@ def build_hq_review_queue(db: Session, period: FunctionalEvalPeriod) -> dict[str
 
     return {
         "pending_reward_count": len(pending_rewards),
+        "pending_sanction_count": len(pending_sanctions),
         "pending_hq_officer_site_count": len(pending_officer),
         "pending_hq_director_site_count": len(pending_director),
         "pending_hq_site_count": len(pending_officer) + len(pending_director),
         "pending_ceo_site_count": len(pending_ceo),
-        "total_hq_action_count": len(pending_rewards) + len(pending_officer) + len(pending_director),
+        "total_hq_action_count": len(pending_rewards) + len(pending_sanctions) + len(pending_officer) + len(pending_director),
         "sites_with_evidence_count": len(sites_with_evidence),
         "eval_complete_not_submitted_count": len(site_submit_blockers),
         "site_submit_blockers": site_submit_blockers,
@@ -1460,7 +1510,10 @@ def _worker_penalty_points_total(db: Session, worker_id: int) -> int:
 
     total = (
         db.query(func.coalesce(func.sum(FunctionalEvalSanction.penalty_points), 0))
-        .filter(FunctionalEvalSanction.worker_id == worker_id)
+        .filter(
+            FunctionalEvalSanction.worker_id == worker_id,
+            FunctionalEvalSanction.status == SANCTION_STATUS_APPROVED,
+        )
         .scalar()
     )
     return int(total or 0)
@@ -2308,7 +2361,14 @@ def record_sanction(
 ) -> dict[str, Any]:
     from app.modules.functional_eval.signature_service import validate_signature_data
 
-    assert_period_editable(period)
+    period_closed = period_is_closed(period)
+    if not period_closed:
+        assert_period_editable(period)
+    elif _is_hq_safety_user(user):
+        pass
+    elif user.role != Role.SITE_FUNCTIONAL_EVAL:
+        raise ValueError("SITE_MISMATCH")
+
     if violation_code not in VIOLATION_BY_CODE:
         raise ValueError("UNKNOWN_VIOLATION")
 
@@ -2334,17 +2394,12 @@ def record_sanction(
     if worker.is_site_manager:
         raise ValueError("CANNOT_SANCTION_SITE_MANAGER")
     _assert_sanction_register(db, user, worker)
-    if not _is_hq_safety_user(user):
+    if not _is_hq_safety_user(user) and not period_closed:
         _assert_worker_attendance_eligible(db, period, worker)
 
-    prior_count = (
-        db.query(FunctionalEvalSanction)
-        .filter(
-            FunctionalEvalSanction.worker_id.in_(_worker_ids_same_person(db, worker)),
-            FunctionalEvalSanction.violation_code == violation_code,
-        )
-        .count()
-    )
+    site_pending = period_closed and not _is_hq_safety_user(user)
+
+    prior_count = _count_approved_sanctions_for_violation(db, worker, violation_code)
     sanction_result, strike = resolve_sanction(violation_code, prior_count)
     item = VIOLATION_BY_CODE[violation_code]
     if prior_count > 0:
@@ -2367,21 +2422,23 @@ def record_sanction(
         signature_data=signature_data.strip(),
         signature_hash=signature_hash,
         penalty_points=points,
+        status=SANCTION_STATUS_PENDING if site_pending else SANCTION_STATUS_APPROVED,
         reported_by_user_id=user.id,
     )
     db.add(row)
     db.flush()
 
-    display_note = note_text or ("사진 근거" if ev_type == EVIDENCE_PHOTO else "")
-    _apply_safety_bottom_from_violation(
-        db,
-        worker=worker,
-        user=user,
-        sanction_row=row,
-        violation_code=violation_code,
-        violation_label=item.label,
-        note=display_note,
-    )
+    if not site_pending:
+        display_note = note_text or ("사진 근거" if ev_type == EVIDENCE_PHOTO else "")
+        _apply_safety_bottom_from_violation(
+            db,
+            worker=worker,
+            user=user,
+            sanction_row=row,
+            violation_code=violation_code,
+            violation_label=item.label,
+            note=display_note,
+        )
     db.commit()
     db.refresh(row)
     strike_sequence = _strike_sequence_for_person(db, worker.rrn_hash)

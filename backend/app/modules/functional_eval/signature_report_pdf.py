@@ -437,7 +437,7 @@ def generate_consent_pdf(
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
 
-    title = (document_title or "").strip() or "기능인인정제 평가 동의서"
+    title = (document_title or "").strip() or "기능인인정제 평가 수행 및 전자서명 동의서"
     body_size = 18
     body_line_h = 9 * mm
     date_size = 18

@@ -72,6 +72,22 @@ def test_exclude_site_manager_and_existing_user(db):
     assert reasons["김현장"] == "현장 인원"
 
 
+def test_exclude_safety_hq_without_existing_account(db):
+    rows = [
+        {
+            "name": "신입안전",
+            "department": "안전보건실",
+            "position": "본사 - 팀원",
+            "email": "s@example.com",
+            "birth6": "950101",
+            "rrn_hash": "h5",
+        },
+    ]
+    result = svc.classify_viewer_candidates(db, rows)
+    assert len(result.planned) == 0
+    assert result.excluded[0].reason == "안전보건 본사 계정 별도"
+
+
 def test_apply_creates_viewer_user(db):
     rows = [
         {

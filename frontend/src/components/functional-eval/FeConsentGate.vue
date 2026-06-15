@@ -32,7 +32,7 @@ const emit = defineEmits<{
 
 const modalRef = ref<InstanceType<typeof FeSignatureModal> | null>(null);
 const consentBody = ref("");
-const consentTitle = ref("기능인인정제 평가 동의서");
+const consentTitle = ref("기능인인정제 평가 수행 및 전자서명 동의서");
 const teamLabel = ref("");
 const siteFullName = ref("");
 

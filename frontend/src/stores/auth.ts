@@ -21,16 +21,46 @@ export type TestPersona = "HQ_ADMIN" | "SITE_MANAGER" | "WORKER";
 
 const TEST_PERSONA_STORAGE_KEY = "besma_test_persona";
 const TEST_SITE_CONTEXT_STORAGE_KEY = "besma_test_site_context_id";
-const rawSiteContextId = localStorage.getItem(TEST_SITE_CONTEXT_STORAGE_KEY);
+
+function readStorageItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorageItem(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function removeStorageItem(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
+const rawSiteContextId = readStorageItem(TEST_SITE_CONTEXT_STORAGE_KEY);
 const initialSiteContextId = rawSiteContextId && Number.isFinite(Number(rawSiteContextId))
   ? Number(rawSiteContextId)
   : null;
 
+const SESSION_BOOTSTRAP_TIMEOUT_MS = 12_000;
+
 export const useAuthStore = defineStore("auth", () => {
-  const token = ref<string | null>(localStorage.getItem("besma_token"));
+  const token = ref<string | null>(readStorageItem("besma_token"));
   const user = ref<AuthUser | null>(null);
+  const sessionBootstrapped = ref(!token.value);
+  let bootstrapPromise: Promise<void> | null = null;
+  let authGeneration = 0;
   const selectedPersona = ref<TestPersona | null>(
-    (localStorage.getItem(TEST_PERSONA_STORAGE_KEY) as TestPersona | null) ?? null,
+    (readStorageItem(TEST_PERSONA_STORAGE_KEY) as TestPersona | null) ?? null,
   );
   const testSiteContextId = ref<number | null>(
     initialSiteContextId && initialSiteContextId > 0 ? initialSiteContextId : null,
@@ -64,7 +94,33 @@ export const useAuthStore = defineStore("auth", () => {
     return user.value?.site_id ?? null;
   });
 
+  function bumpAuthGeneration() {
+    authGeneration += 1;
+    return authGeneration;
+  }
+
+  function cancelInFlightSessionWork() {
+    bumpAuthGeneration();
+    bootstrapPromise = null;
+    sessionBootstrapped.value = true;
+  }
+
+  /** 로그인 화면 진입 시 — 백그라운드 세션 복구가 새 로그인과 겹치지 않게 */
+  function prepareLoginPage() {
+    cancelInFlightSessionWork();
+    user.value = null;
+    token.value = null;
+    removeStorageItem("besma_token");
+  }
+
   async function login(loginId: string, password: string) {
+    const loginGeneration = bumpAuthGeneration();
+    bootstrapPromise = null;
+    user.value = null;
+    token.value = null;
+    removeStorageItem("besma_token");
+    sessionBootstrapped.value = true;
+
     const normalizedId = loginId.trim();
     const normalizedPassword = password.trim();
     const form = new URLSearchParams();
@@ -73,55 +129,115 @@ export const useAuthStore = defineStore("auth", () => {
 
     const res = await api.post("/auth/login", form, {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      timeout: 20_000,
     });
+
+    if (loginGeneration !== authGeneration) {
+      throw new Error("LOGIN_SUPERSEDED");
+    }
+
     token.value = res.data.access_token;
-    localStorage.setItem("besma_token", token.value!);
+    writeStorageItem("besma_token", token.value!);
+    sessionBootstrapped.value = false;
+
     try {
-      await loadMe({ skipAuthRedirect: true });
+      await loadMe({ skipAuthRedirect: true, generation: loginGeneration });
+      if (loginGeneration !== authGeneration) {
+        throw new Error("LOGIN_SUPERSEDED");
+      }
+      sessionBootstrapped.value = true;
     } catch (err) {
-      token.value = null;
-      user.value = null;
-      localStorage.removeItem("besma_token");
+      if (loginGeneration === authGeneration) {
+        token.value = null;
+        user.value = null;
+        removeStorageItem("besma_token");
+        sessionBootstrapped.value = true;
+      }
       throw err;
     }
   }
 
-  async function loadMe(options?: { skipAuthRedirect?: boolean }) {
-    if (!token.value) return;
+  async function bootstrapSession() {
+    if (sessionBootstrapped.value) return;
+    if (bootstrapPromise) {
+      await bootstrapPromise;
+      return;
+    }
+    if (!token.value) {
+      sessionBootstrapped.value = true;
+      return;
+    }
+
+    const bootstrapGeneration = authGeneration;
+    bootstrapPromise = (async () => {
+      try {
+        await Promise.race([
+          loadMe({ skipAuthRedirect: true, generation: bootstrapGeneration }),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error("SESSION_BOOTSTRAP_TIMEOUT")), SESSION_BOOTSTRAP_TIMEOUT_MS);
+          }),
+        ]);
+      } catch {
+        if (bootstrapGeneration === authGeneration && token.value) {
+          logout();
+        }
+      } finally {
+        if (bootstrapGeneration === authGeneration) {
+          sessionBootstrapped.value = true;
+        }
+        if (bootstrapPromise && bootstrapGeneration === authGeneration) {
+          bootstrapPromise = null;
+        }
+      }
+    })();
+    await bootstrapPromise;
+  }
+
+  async function loadMe(options?: { skipAuthRedirect?: boolean; generation?: number }) {
+    const tokenAtStart = token.value;
+    if (!tokenAtStart) return;
+
     const res = await api.get("/auth/me", {
       skipAuthRedirect: options?.skipAuthRedirect ?? false,
     });
+
+    if (options?.generation != null && options.generation !== authGeneration) return;
+    if (token.value !== tokenAtStart) return;
+
     user.value = res.data as AuthUser;
   }
 
   function logout() {
+    bumpAuthGeneration();
     token.value = null;
     user.value = null;
     selectedPersona.value = null;
     testSiteContextId.value = null;
-    localStorage.removeItem("besma_token");
-    localStorage.removeItem(TEST_PERSONA_STORAGE_KEY);
-    localStorage.removeItem(TEST_SITE_CONTEXT_STORAGE_KEY);
+    sessionBootstrapped.value = true;
+    bootstrapPromise = null;
+    removeStorageItem("besma_token");
+    removeStorageItem(TEST_PERSONA_STORAGE_KEY);
+    removeStorageItem(TEST_SITE_CONTEXT_STORAGE_KEY);
   }
 
   function setPersona(persona: TestPersona) {
     selectedPersona.value = persona;
-    localStorage.setItem(TEST_PERSONA_STORAGE_KEY, persona);
+    writeStorageItem(TEST_PERSONA_STORAGE_KEY, persona);
   }
 
   function clearPersona() {
     selectedPersona.value = null;
-    localStorage.removeItem(TEST_PERSONA_STORAGE_KEY);
+    removeStorageItem(TEST_PERSONA_STORAGE_KEY);
   }
 
   function setTestSiteContext(siteId: number | null) {
     if (!siteId || !Number.isFinite(siteId) || siteId <= 0) {
       testSiteContextId.value = null;
-      localStorage.removeItem(TEST_SITE_CONTEXT_STORAGE_KEY);
+      removeStorageItem(TEST_SITE_CONTEXT_STORAGE_KEY);
       return;
     }
     testSiteContextId.value = siteId;
-    localStorage.setItem(TEST_SITE_CONTEXT_STORAGE_KEY, String(siteId));
+    writeStorageItem(TEST_SITE_CONTEXT_STORAGE_KEY, String(siteId));
   }
 
   return {
@@ -138,12 +254,14 @@ export const useAuthStore = defineStore("auth", () => {
     selectedPersona,
     testSiteContextId,
     effectiveSiteId,
+    sessionBootstrapped,
+    prepareLoginPage,
     login,
     loadMe,
+    bootstrapSession,
     logout,
     setPersona,
     clearPersona,
     setTestSiteContext,
   };
 });
-

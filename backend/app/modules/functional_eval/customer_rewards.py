@@ -97,7 +97,6 @@ def submit_customer_reward(
 ) -> dict[str, Any]:
     from app.modules.functional_eval import service as fe_service
 
-    fe_service.assert_period_editable(period)
     if user.role != Role.SITE_FUNCTIONAL_EVAL:
         raise ValueError("SITE_ONLY")
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
@@ -186,7 +185,6 @@ def approve_customer_reward(
 ) -> dict[str, Any]:
     from app.modules.functional_eval import service as fe_service
 
-    fe_service.assert_period_editable(period)
     row = (
         db.query(FunctionalEvalCustomerReward)
         .filter(
@@ -223,7 +221,6 @@ def reject_customer_reward(
 ) -> dict[str, Any]:
     from app.modules.functional_eval import service as fe_service
 
-    fe_service.assert_period_editable(period)
     row = (
         db.query(FunctionalEvalCustomerReward)
         .filter(

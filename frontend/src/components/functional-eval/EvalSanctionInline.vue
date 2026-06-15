@@ -58,6 +58,7 @@ const props = defineProps<{
   worker: Worker;
   groupedViolations: { category: string; label: string; items: ViolationItem[] }[];
   periodClosed: boolean;
+  evidenceSubmitBlocked?: boolean;
   promptMessage?: string;
   defaultViolationCode?: string;
   defaultNote?: string;
@@ -69,7 +70,9 @@ const emit = defineEmits<{
   "open-history": [];
 }>();
 
-const disabled = computed(() => props.periodClosed || props.worker.is_permanently_expelled);
+const disabled = computed(
+  () => Boolean(props.evidenceSubmitBlocked) || props.worker.is_permanently_expelled,
+);
 
 const showSanctionForm = computed(
   () => !disabled.value || Boolean(props.promptMessage),

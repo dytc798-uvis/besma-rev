@@ -19,4 +19,4 @@ export function applyFeConsentPrefill(
 }
 
 export const FE_CONSENT_FALLBACK_BODY =
-  "기능인인정제 평가 업무 수행에 동의합니다.";
+  "본인은 BESMA 기능인인정제 평가 업무를 수행함에 있어 아래 사항을 확인하고 동의합니다.";

@@ -70,6 +70,7 @@
             :worker="evalWorker"
             :grouped-violations="groupedViolations"
             :period-closed="periodClosed"
+            :evidence-submit-blocked="Boolean(evidenceSubmitBlocked)"
             :prompt-message="sanctionPromptMessage"
             :default-violation-code="inlineDefaultViolationCode"
             :default-note="inlineDefaultNote"
@@ -81,6 +82,7 @@
             v-if="evalType === 'SAFETY'"
             :worker="evalWorker"
             :period-closed="periodClosed"
+            :evidence-submit-blocked="Boolean(evidenceSubmitBlocked)"
             :evaluation-locked="evaluationLocked"
             @saved="onRewardSaved"
           />
@@ -130,6 +132,7 @@
             :worker="evalWorker"
             :grouped-violations="groupedViolations"
             :period-closed="periodClosed"
+            :evidence-submit-blocked="Boolean(evidenceSubmitBlocked)"
             :prompt-message="sanctionPromptMessage"
             :default-violation-code="inlineDefaultViolationCode"
             :default-note="inlineDefaultNote"
@@ -141,6 +144,7 @@
             v-if="evalType === 'SAFETY'"
             :worker="evalWorker"
             :period-closed="periodClosed"
+            :evidence-submit-blocked="Boolean(evidenceSubmitBlocked)"
             :evaluation-locked="evaluationLocked"
             @saved="onRewardSaved"
           />
@@ -206,6 +210,7 @@ const props = defineProps<{
   title: string;
   criteria: Criterion[];
   periodClosed: boolean;
+  evidenceSubmitBlocked?: boolean;
   evaluationLocked?: boolean;
   reload: () => Promise<void>;
   focusWorkerId: number | null;

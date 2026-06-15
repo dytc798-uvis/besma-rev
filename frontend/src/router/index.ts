@@ -328,7 +328,7 @@ export const router = createRouter({
   routes,
 });
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const normalizedPath = normalizePublicSignPath(to.path);
   if (normalizedPath !== to.path) {
     next({ path: normalizedPath, query: to.query, hash: to.hash, replace: true });
@@ -340,6 +340,16 @@ router.beforeEach((to, _from, next) => {
   }
 
   const auth = useAuthStore();
+  if (
+    auth.token &&
+    !auth.user &&
+    !auth.sessionBootstrapped &&
+    to.name !== "login" &&
+    to.name !== "fe-onboarding"
+  ) {
+    await auth.bootstrapSession();
+  }
+
   const workerAccessToken =
     typeof to.query.access_token === "string" && to.query.access_token.trim().length > 0
       ? to.query.access_token.trim()
@@ -359,7 +369,13 @@ router.beforeEach((to, _from, next) => {
     next({ name: "fe-onboarding" });
     return;
   }
-  if (auth.isAuthenticated && auth.mustChangePassword && to.path !== "/change-password") {
+  // needsFeOnboarding 이면 FeOnboardingPage에서 비밀번호·동의를 처리 — change-password 로내면 무한 리다이렉트
+  if (
+    auth.isAuthenticated &&
+    auth.mustChangePassword &&
+    !auth.needsFeOnboarding &&
+    to.name !== "change-password"
+  ) {
     next({ name: "change-password" });
     return;
   }

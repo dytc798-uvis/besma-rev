@@ -1383,7 +1383,7 @@ async def submit_customer_reward(
             "INVALID_REWARD_PHOTO_TYPE": (400, "jpg, png, webp 이미지만 업로드할 수 있습니다."),
             "EMPTY_REWARD_PHOTO": (400, "빈 파일입니다."),
             "REWARD_PHOTO_TOO_LARGE": (400, "8MB 이하 이미지만 업로드할 수 있습니다."),
-            "PERIOD_CLOSED": (409, "마감일이 지나 수정할 수 없습니다."),
+            "PERIOD_CLOSED": (409, "평가 마감 후에는 포상·제재 이력만 등록할 수 있습니다."),
         }
         if code in mapping:
             status_code, detail = mapping[code]
@@ -1448,6 +1448,65 @@ def reject_customer_reward(
         if code == "REWARD_NOT_FOUND":
             raise HTTPException(status_code=404, detail=code) from exc
         if code in {"REWARD_NOT_PENDING", "PERIOD_CLOSED"}:
+            raise HTTPException(status_code=409, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+
+
+@router.get("/hq/sanctions/pending")
+def list_pending_sanctions(db: DbDep, current_user: CurrentUserDep):
+    from app.modules.functional_eval import sanction_reviews as sanction_review_service
+
+    assert_fe_hq_read(current_user)
+    period = service.get_or_create_active_period(db)
+    return {"items": sanction_review_service.list_pending_sanctions(db, period)}
+
+
+@router.post("/hq/sanctions/{sanction_id}/approve")
+def approve_pending_sanction(sanction_id: int, db: DbDep, current_user: CurrentUserDep):
+    from app.modules.functional_eval import sanction_reviews as sanction_review_service
+
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        return sanction_review_service.approve_sanction(
+            db,
+            period=period,
+            user=current_user,
+            sanction_id=sanction_id,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "SANCTION_NOT_FOUND":
+            raise HTTPException(status_code=404, detail=code) from exc
+        if code == "SANCTION_NOT_PENDING":
+            raise HTTPException(status_code=409, detail=code) from exc
+        raise HTTPException(status_code=400, detail=code) from exc
+
+
+@router.post("/hq/sanctions/{sanction_id}/reject")
+def reject_pending_sanction(
+    sanction_id: int,
+    body: FunctionalEvalCustomerRewardReject,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    from app.modules.functional_eval import sanction_reviews as sanction_review_service
+
+    assert_hq_safe_workspace(current_user)
+    period = service.get_or_create_active_period(db)
+    try:
+        return sanction_review_service.reject_sanction(
+            db,
+            period=period,
+            sanction_id=sanction_id,
+            user=current_user,
+            reject_note=body.reject_note,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "SANCTION_NOT_FOUND":
+            raise HTTPException(status_code=404, detail=code) from exc
+        if code == "SANCTION_NOT_PENDING":
             raise HTTPException(status_code=409, detail=code) from exc
         raise HTTPException(status_code=400, detail=code) from exc
 
