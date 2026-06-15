@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onUnmounted, ref, watch } from "vue";
 import SignaturePad from "@/components/SignaturePad.vue";
 import FeGradeInflationReview, { type GradeInflationReview } from "@/components/functional-eval/FeGradeInflationReview.vue";
 
@@ -189,6 +189,12 @@ async function refreshConsentScrollState() {
 watch(
   () => props.open,
   (val) => {
+    if (typeof document !== "undefined") {
+      document.body.classList.toggle(
+        "fe-consent-modal-open",
+        Boolean(val && props.consentText),
+      );
+    }
     if (val) {
       ackChecked.value = false;
       officerComment.value = "";
@@ -201,6 +207,12 @@ watch(
     }
   },
 );
+
+onUnmounted(() => {
+  if (typeof document !== "undefined") {
+    document.body.classList.remove("fe-consent-modal-open");
+  }
+});
 
 watch(
   () => props.consentText,
@@ -372,5 +384,59 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   padding: 20px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
   color: #0f172a;
+}
+
+@media (max-width: 768px) {
+  .fe-sign-overlay {
+    padding: 0;
+    align-items: stretch;
+    background: #fff;
+    z-index: 700;
+  }
+
+  .fe-sign-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .fe-sign-header {
+    flex-shrink: 0;
+  }
+
+  .fe-sign-header h2 {
+    font-size: 17px;
+  }
+
+  .fe-sign-desc {
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+
+  .fe-sign-consent {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 8px;
+  }
+
+  .fe-sign-consent-body {
+    flex: 1;
+    min-height: 140px;
+    max-height: none;
+  }
+
+  .fe-sign-footer {
+    flex-shrink: 0;
+    margin-top: 8px;
+  }
 }
 </style>

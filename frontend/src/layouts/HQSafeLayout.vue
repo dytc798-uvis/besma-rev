@@ -1,8 +1,21 @@
 <template>
-  <div class="hq-safe-shell layout-root" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+  <div
+    class="hq-safe-shell layout-root"
+    :class="{
+      'sidebar-collapsed': !isMobileViewport && sidebarCollapsed,
+      'hq-mobile-layout': isMobileViewport,
+      'mobile-drawer-open': isMobileViewport && mobileDrawerOpen,
+    }"
+  >
+    <div
+      v-if="isMobileViewport && mobileDrawerOpen"
+      class="mobile-drawer-backdrop"
+      aria-hidden="true"
+      @click="mobileDrawerOpen = false"
+    />
     <aside class="layout-sidebar">
       <h1 class="sidebar-brand">BESMA CSMS 안전보건플랫폼 · HQ 안전</h1>
-      <nav class="layout-menu layout-menu-hq">
+      <nav class="layout-menu layout-menu-hq" @click="onMobileNavClick">
         <RouterLink class="hq-menu-dashboard" to="/hq-safe/dashboard">대시보드</RouterLink>
 
         <div class="hq-menu-group">
@@ -99,22 +112,39 @@
       </nav>
     </aside>
     <section class="layout-content">
-      <header class="layout-header">
+      <header class="layout-header" :class="{ 'layout-header--mobile-fe': isMobileViewport && isFunctionalEvalRoute }">
         <div class="header-left">
-          <button class="sidebar-toggle-btn" @click="toggleSidebar">
+          <button
+            v-if="isMobileViewport"
+            type="button"
+            class="sidebar-toggle-btn sidebar-toggle-btn--menu"
+            aria-label="메뉴"
+            :aria-expanded="mobileDrawerOpen"
+            @click="mobileDrawerOpen = !mobileDrawerOpen"
+          >
+            <span aria-hidden="true">☰</span>
+          </button>
+          <button v-else class="sidebar-toggle-btn" type="button" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
           </button>
-          <div class="header-title">BESMA CSMS 안전보건플랫폼 · HQ_SAFE</div>
+          <div class="header-title">{{ headerTitle }}</div>
         </div>
         <div class="header-right">
-          <span class="header-user">
+          <span v-if="!isMobileViewport" class="header-user">
             {{ auth.user?.name }} ({{ auth.user?.login_id }})
             <template v-if="auth.isTestPersonaMode && auth.effectivePersona">
               / Persona: {{ auth.effectivePersona }}
             </template>
           </span>
-          <RouterLink class="secondary" style="margin-right: 8px; text-decoration: none; display: inline-block" to="/change-password">비밀번호 변경</RouterLink>
-          <button class="secondary" @click="handleLogout">로그아웃</button>
+          <RouterLink
+            v-if="!isMobileViewport"
+            class="secondary"
+            style="margin-right: 8px; text-decoration: none; display: inline-block"
+            to="/change-password"
+          >
+            비밀번호 변경
+          </RouterLink>
+          <button class="secondary header-logout-btn" type="button" @click="handleLogout">로그아웃</button>
         </div>
       </header>
       <main class="layout-main">
@@ -125,8 +155,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useRouter, RouterLink, RouterView } from "vue-router";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute, useRouter, RouterLink, RouterView } from "vue-router";
+import { useMobileViewport } from "@/composables/useMobileViewport";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
 import { todayKst } from "@/utils/datetime";
@@ -135,6 +166,9 @@ import { canSystemBackup as userCanSystemBackup } from "@/utils/systemBackupAcce
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
+const { isMobileViewport } = useMobileViewport();
+const mobileDrawerOpen = ref(false);
 const badge = ref({ incomplete_count: 0 });
 const unreadCommunicationCount = ref(0);
 const sidebarCollapsed = ref(false);
@@ -147,6 +181,28 @@ const canAccessPdfSigning = computed(() =>
 );
 const canSystemBackup = computed(() => userCanSystemBackup(auth.user));
 const deployIncompleteCount = ref(0);
+
+const isFunctionalEvalRoute = computed(() => route.path.includes("/functional-eval"));
+const headerTitle = computed(() => {
+  if (isMobileViewport.value && isFunctionalEvalRoute.value) return "기능인인정제";
+  if (isMobileViewport.value) return "HQ 안전";
+  return "BESMA CSMS 안전보건플랫폼 · HQ_SAFE";
+});
+
+function onMobileNavClick(event: MouseEvent) {
+  if (!isMobileViewport.value) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("a")) {
+    mobileDrawerOpen.value = false;
+  }
+}
+
+watch(
+  () => route.path,
+  () => {
+    mobileDrawerOpen.value = false;
+  },
+);
 
 onMounted(() => {
   if (!auth.user) {
@@ -461,6 +517,45 @@ function handleLogout() {
 .hq-backup-menu-highlight {
   border-left: 3px solid #dc2626 !important;
   font-weight: 700;
+}
+
+.sidebar-toggle-btn--menu {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  padding: 0;
+}
+
+.layout-header--mobile-fe {
+  min-height: 44px;
+  height: auto;
+  padding: 6px 10px;
+}
+
+.header-logout-btn {
+  min-height: 40px;
+}
+
+@media (max-width: 768px) {
+  .hq-safe-shell .layout-main {
+    padding: 10px;
+  }
+
+  .hq-safe-shell .layout-header {
+    padding: 6px 10px;
+    min-height: 44px;
+    height: auto;
+  }
+
+  .header-title {
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 
 </style>

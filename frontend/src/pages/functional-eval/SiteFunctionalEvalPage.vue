@@ -1,8 +1,8 @@
 <template>
   <div class="fe-page">
-    <div class="page-head">
+    <div class="page-head" :class="{ 'page-head--mobile': isMobileViewport }">
       <div class="page-head-text">
-        <h1 class="page-title">기능인 인정제 평가</h1>
+        <h1 v-if="!isMobileViewport" class="page-title">기능인 인정제 평가</h1>
         <p class="page-sub">
           <span v-if="evaluator" :class="['evaluator-badge', evaluatorBadgeClass]">{{ evaluatorHeadline }}</span>
           마감일 <strong>{{ period?.deadline_date || "—" }}</strong>
@@ -23,7 +23,7 @@
         <p v-if="attendanceMessage" class="attendance-warn">{{ attendanceMessage }}</p>
         <p v-if="error && mainView === 'roster'" class="load-error">{{ error }}</p>
       </div>
-      <div class="page-head-actions">
+      <div class="page-head-actions" :class="{ 'page-head-actions--mobile': isMobileViewport }">
       <button
         v-if="!evaluator || isManager"
         class="btn-export stitch-btn-primary"
@@ -31,7 +31,7 @@
         :disabled="exportingGrade"
         @click="downloadSiteGradeWorkbook"
       >
-        {{ exportingGrade ? "출력 중…" : "현장별 기능인등급 출력" }}
+        {{ exportingGrade ? "출력 중…" : isMobileViewport ? "등급 출력" : "현장별 기능인등급 출력" }}
       </button>
       <button class="btn-refresh stitch-btn-secondary" type="button" @click="load">새로고침</button>
       </div>
@@ -3142,6 +3142,30 @@ textarea.field-control {
     display: flex;
   }
 
+  .page-head--mobile {
+    gap: 8px;
+  }
+
+  .page-head--mobile .page-sub {
+    margin-top: 0;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .page-head-actions--mobile {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .page-head-actions--mobile .btn-export,
+  .page-head-actions--mobile .btn-refresh {
+    width: 100%;
+    min-height: 40px;
+    font-size: 13px;
+  }
+
   .page-head {
     flex-direction: column;
     align-items: stretch;
@@ -3154,6 +3178,10 @@ textarea.field-control {
 
   .workers-panel {
     padding: 12px;
+  }
+
+  .fe-page {
+    gap: 8px;
   }
 }
 </style>

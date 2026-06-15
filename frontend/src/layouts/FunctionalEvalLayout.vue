@@ -73,7 +73,11 @@
       </nav>
     </aside>
     <section class="layout-content">
-      <header class="layout-header layout-header-fe" :class="{ 'layout-header-site-mobile': isMobileViewport }">
+      <header
+        v-if="!(isMobileViewport && consentRequired)"
+        class="layout-header layout-header-fe"
+        :class="{ 'layout-header-site-mobile': isMobileViewport }"
+      >
         <div class="header-left">
           <button
             v-if="isMobileViewport && isEvaluateRoute"
@@ -314,6 +318,23 @@ function logout() {
     min-height: 40px;
     padding: 8px 12px;
     font-size: 13px;
+  }
+
+  .functional-eval-shell.site-mobile-layout .layout-main-fe {
+    padding: 8px 10px;
+  }
+
+  .functional-eval-shell.site-mobile-layout .layout-header-fe {
+    padding: 6px 10px;
+    min-height: 44px;
+  }
+
+  .functional-eval-shell.site-mobile-layout .header-title {
+    font-size: 15px;
+  }
+
+  .functional-eval-shell.site-mobile-layout .header-sub {
+    display: none;
   }
 }
 </style>

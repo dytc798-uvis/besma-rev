@@ -1,8 +1,8 @@
 <template>
-  <div class="fe-hq-page">
-    <div class="page-head">
+  <div class="fe-hq-page" :class="{ 'fe-hq-page--mobile': isMobileViewport }">
+    <div class="page-head" :class="{ 'page-head--mobile': isMobileViewport }">
       <div>
-        <h1 class="page-title">기능인 인정제 · 본사</h1>
+        <h1 v-if="!isMobileViewport" class="page-title">기능인 인정제 · 본사</h1>
         <p class="page-sub">
           출역일보 기준 현장별 평가 현황
           <span v-if="period?.last_attendance_date" class="attendance-badge">
@@ -14,19 +14,19 @@
           </span>
         </p>
       </div>
-      <div class="head-actions">
+      <div class="head-actions" :class="{ 'head-actions--mobile': isMobileViewport }">
         <button
           v-if="canPrintGradeReport"
           class="stitch-btn-primary"
           type="button"
           @click="openGradeReport"
         >
-          등급 통계 보고서 출력
+          {{ isMobileViewport ? "등급 보고서" : "등급 통계 보고서 출력" }}
         </button>
         <button class="stitch-btn-primary" type="button" :disabled="exportingGrade" @click="downloadSiteGradeWorkbook()">
-          {{ exportingGrade ? "출력 중..." : "현장별 기능인등급 출력" }}
+          {{ exportingGrade ? "출력 중..." : isMobileViewport ? "등급 출력" : "현장별 기능인등급 출력" }}
         </button>
-        <button class="stitch-btn-secondary" type="button" :disabled="exporting" @click="downloadEvalExcel">
+        <button v-if="!isMobileViewport" class="stitch-btn-secondary" type="button" :disabled="exporting" @click="downloadEvalExcel">
           {{ exporting ? "다운로드 중..." : "평가 현황(간략)" }}
         </button>
         <button class="stitch-btn-secondary" type="button" @click="loadOverview">새로고침</button>
@@ -782,6 +782,7 @@ import HqEvalWorkerActions from "@/components/functional-eval/HqEvalWorkerAction
 import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
 import FeSignatureModal from "@/components/functional-eval/FeSignatureModal.vue";
 import FeGradeStatsPanel, { type GradeStatsPayload } from "@/components/functional-eval/FeGradeStatsPanel.vue";
+import { useMobileViewport } from "@/composables/useMobileViewport";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst, todayKst } from "@/utils/datetime";
@@ -789,6 +790,7 @@ import { saveFeGradeReportCache } from "@/utils/feGradeReportCache";
 
 const auth = useAuthStore();
 const router = useRouter();
+const { isMobileViewport } = useMobileViewport();
 const HQ_OFFICER_LOGIN = "안전보건-정상익";
 const HQ_DIRECTOR_LOGIN = "안전보건-조동문";
 const CEO_LOGIN = "부현대표-김홍수";
@@ -1848,6 +1850,37 @@ onMounted(async () => {
 }
 @media (max-width: 900px) {
   .bucket-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .fe-hq-page--mobile {
+    gap: 8px;
+  }
+  .fe-hq-page--mobile .page-head--mobile {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .fe-hq-page--mobile .page-head--mobile .page-sub {
+    margin-top: 0;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .fe-hq-page--mobile .head-actions--mobile {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .fe-hq-page--mobile .head-actions--mobile button {
+    min-height: 40px;
+    font-size: 13px;
+  }
+  .fe-hq-page--mobile .section-heading,
+  .fe-hq-page--mobile .hq-review-title {
+    font-size: 16px;
+  }
+  .fe-hq-page--mobile .panel {
+    padding: 12px;
+  }
 }
 .bucket-card {
   display: flex;
