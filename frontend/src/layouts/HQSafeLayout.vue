@@ -14,8 +14,12 @@
       @click="mobileDrawerOpen = false"
     />
     <aside class="layout-sidebar">
-      <h1 class="sidebar-brand">BESMA CSMS 안전보건플랫폼 · HQ 안전</h1>
+      <h1 class="sidebar-brand">{{ isFeViewer ? "BESMA · 기능인인정제 조회" : "BESMA CSMS 안전보건플랫폼 · HQ 안전" }}</h1>
       <nav class="layout-menu layout-menu-hq" @click="onMobileNavClick">
+        <template v-if="isFeViewer">
+          <RouterLink class="hq-fe-menu-highlight" to="/hq-safe/functional-eval">기능인정제 평가 조회</RouterLink>
+        </template>
+        <template v-else>
         <RouterLink class="hq-menu-dashboard" to="/hq-safe/dashboard">대시보드</RouterLink>
 
         <div class="hq-menu-group">
@@ -109,6 +113,7 @@
             전체 백업
           </RouterLink>
         </div>
+        </template>
       </nav>
     </aside>
     <section class="layout-content">
@@ -182,6 +187,7 @@ const canAccessAccidents = computed(() => auth.user?.role === "ACCIDENT_ADMIN");
 const canAccessPdfSigning = computed(() =>
   ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
 );
+const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
 const canSystemBackup = computed(() => userCanSystemBackup(auth.user));
 const deployIncompleteCount = ref(0);
 

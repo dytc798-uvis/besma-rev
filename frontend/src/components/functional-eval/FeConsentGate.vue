@@ -2,7 +2,7 @@
   <FeSignatureModal
     ref="modalRef"
     :open="open"
-    title="기능인인정제 평가 동의서"
+    :title="consentTitle"
     :description="consentDescription"
     :consent-text="consentBody"
     require-consent-check
@@ -32,6 +32,7 @@ const emit = defineEmits<{
 
 const modalRef = ref<InstanceType<typeof FeSignatureModal> | null>(null);
 const consentBody = ref("");
+const consentTitle = ref("기능인인정제 평가 동의서");
 const teamLabel = ref("");
 const siteFullName = ref("");
 
@@ -44,7 +45,7 @@ const consentDescription = computed(() => {
 });
 
 function applyPrefill(data: FeConsentPrefill | null | undefined) {
-  applyFeConsentPrefill(data, { consentBody, teamLabel, siteFullName });
+  applyFeConsentPrefill(data, { consentBody, consentTitle, teamLabel, siteFullName });
   if (!consentBody.value) {
     consentBody.value = FE_CONSENT_FALLBACK_BODY;
   }

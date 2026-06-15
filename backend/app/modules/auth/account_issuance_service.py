@@ -47,6 +47,8 @@ class AccountIssuanceError(Exception):
 def user_participates_in_fe_consent(user: User) -> bool:
     if user.role == Role.SITE_FUNCTIONAL_EVAL:
         return True
+    if user.role == Role.FUNCTIONAL_EVAL_VIEWER:
+        return True
     return user.role in HQ_SAFE_WORKSPACE_ROLES
 
 

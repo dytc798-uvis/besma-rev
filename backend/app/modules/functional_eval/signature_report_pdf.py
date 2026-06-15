@@ -431,12 +431,13 @@ def generate_consent_pdf(
     site_full_name: str | None = None,
     role_line: str | None = None,
     team_label: str | None = None,
+    document_title: str | None = None,
 ) -> bytes:
     font = ensure_korean_font()
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
 
-    title = "기능인인정제 평가 동의서"
+    title = (document_title or "").strip() or "기능인인정제 평가 동의서"
     body_size = 18
     body_line_h = 9 * mm
     date_size = 18

@@ -4,12 +4,16 @@ export function applyFeConsentPrefill(
   data: FeConsentPrefill | null | undefined,
   targets: {
     consentBody: { value: string };
+    consentTitle?: { value: string };
     teamLabel: { value: string };
     siteFullName: { value: string };
   },
 ) {
   if (!data) return;
   targets.consentBody.value = data.consent_body || "";
+  if (targets.consentTitle && data.consent_title) {
+    targets.consentTitle.value = data.consent_title;
+  }
   targets.teamLabel.value = data.role_line || data.team_label || "";
   targets.siteFullName.value = data.site_full_name || "";
 }

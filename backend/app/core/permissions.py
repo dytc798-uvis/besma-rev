@@ -14,10 +14,30 @@ HQ_SAFE_WORKSPACE_ROLES: frozenset[Role] = frozenset(
     {Role.HQ_SAFE, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN, Role.ACCIDENT_ADMIN}
 )
 
+FUNCTIONAL_EVAL_VIEWER_ROLES: frozenset[Role] = frozenset({Role.FUNCTIONAL_EVAL_VIEWER})
+
+FE_HQ_READ_ROLES: frozenset[Role] = HQ_SAFE_WORKSPACE_ROLES | FUNCTIONAL_EVAL_VIEWER_ROLES
+
+FE_HQ_ADMIN_ROLES: frozenset[Role] = frozenset({Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN})
+
 
 def assert_hq_safe_workspace(user: User) -> None:
     if user.role not in HQ_SAFE_WORKSPACE_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+
+def assert_fe_hq_read(user: User) -> None:
+    if user.role not in FE_HQ_READ_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+
+def assert_fe_hq_admin(user: User) -> None:
+    if user.role not in FE_HQ_ADMIN_ROLES:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+
+def is_functional_eval_viewer(user: User) -> bool:
+    return user.role == Role.FUNCTIONAL_EVAL_VIEWER
 
 
 def require_roles(*allowed_roles: Role):

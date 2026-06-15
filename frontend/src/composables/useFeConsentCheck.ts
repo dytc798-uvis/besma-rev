@@ -7,6 +7,8 @@ import { useAuthStore } from "@/stores/auth";
 /** /functional-eval/consent/status 응답 중 FeConsentGate에 전달할 필드 */
 export interface FeConsentPrefill {
   consent_body?: string;
+  consent_title?: string;
+  consent_kind?: string;
   role_line?: string;
   team_label?: string;
   site_full_name?: string;

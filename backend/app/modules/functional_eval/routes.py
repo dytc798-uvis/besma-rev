@@ -12,7 +12,12 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from app.core.auth import DbDep
 from app.core.enums import Role
-from app.core.permissions import CurrentUserDep, assert_hq_safe_workspace
+from app.core.permissions import (
+    CurrentUserDep,
+    assert_fe_hq_admin,
+    assert_fe_hq_read,
+    assert_hq_safe_workspace,
+)
 from app.modules.functional_eval import approval_workflow, service, signature_ops
 from app.modules.functional_eval.constants import (
     APPROVAL_STATUS_HQ_OFFICER_APPROVED,
@@ -516,8 +521,16 @@ def submit_supplemental_site_signoff(
 @router.get("/hq/approvals/pending")
 def list_hq_pending_approvals(db: DbDep, current_user: CurrentUserDep):
     """안전보건실 — 담당/실장 검토 대기 현장 목록."""
-    assert_hq_safe_workspace(current_user)
+    assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
+    if current_user.role == Role.FUNCTIONAL_EVAL_VIEWER:
+        return {
+            "period": service.serialize_period(period, db),
+            "hq_role": "viewer",
+            "officer_items": [],
+            "director_items": [],
+            "items": [],
+        }
     officer_items = approval_workflow.list_pending_hq_officer_approvals(db, period)
     director_items = approval_workflow.list_pending_hq_director_approvals(db, period)
     hq_role = approval_workflow.resolve_hq_approval_role(current_user)
@@ -738,8 +751,14 @@ def reject_site_hq(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep
 @router.get("/hq/ceo-approvals/pending")
 def list_ceo_pending_approvals(db: DbDep, current_user: CurrentUserDep):
     """대표이사 — 안전보건실 승인 완료 현장 목록. 비대표 계정은 빈 목록."""
-    assert_hq_safe_workspace(current_user)
+    assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
+    if current_user.role == Role.FUNCTIONAL_EVAL_VIEWER:
+        return {
+            "period": service.serialize_period(period, db),
+            "items": [],
+            "ceo_eligible": False,
+        }
     try:
         approval_workflow.assert_ceo_approver(current_user)
     except ValueError:
@@ -991,7 +1010,7 @@ def get_sanction_signature_image(sanction_id: int, db: DbDep, current_user: Curr
 @router.get("/hq/grade-stats")
 def hq_grade_stats(db: DbDep, current_user: CurrentUserDep):
     """본사 — 전체·팀별·현장별 등급 분포."""
-    assert_hq_safe_workspace(current_user)
+    assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     return service.build_hq_grade_stats(db, period)
 
@@ -999,7 +1018,7 @@ def hq_grade_stats(db: DbDep, current_user: CurrentUserDep):
 @router.get("/hq/sites/{site_code}/grade-stats")
 def hq_site_grade_stats(site_code: str, db: DbDep, current_user: CurrentUserDep):
     """본사 — 특정 현장 등급 분포."""
-    assert_hq_safe_workspace(current_user)
+    assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     try:
         return service.build_site_grade_stats(db, period, site_code.strip())
@@ -1032,7 +1051,7 @@ def hq_summary(
     site_code: str | None = Query(default=None),
 ):
     """현장별 평가 진행률 목록 (근로자 상세 미포함)."""
-    assert_hq_safe_workspace(current_user)
+    assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     return service.build_hq_summary_response(
         db,
@@ -1052,7 +1071,7 @@ def hq_site_evaluations(
     sort_dir: str = Query(default="asc"),
 ):
     """현장별 평가 완료자만 (기능+안전 모두 완료)."""
-    assert_hq_safe_workspace(current_user)
+    assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     return service.list_hq_site_completed_evaluations(
         db,
@@ -1376,7 +1395,7 @@ async def submit_customer_reward(
 
 @router.get("/hq/customer-rewards/pending")
 def list_pending_customer_rewards(db: DbDep, current_user: CurrentUserDep):
-    assert_hq_safe_workspace(current_user)
+    assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     return {"items": reward_service.list_pending_customer_rewards(db, period)}
 
@@ -1489,7 +1508,7 @@ def list_worker_customer_rewards(worker_id: int, db: DbDep, current_user: Curren
 
 @router.get("/hq/daily-reports")
 def list_hq_daily_reports(db: DbDep, current_user: CurrentUserDep, limit: int = Query(30, ge=1, le=100)):
-    assert_hq_safe_workspace(current_user)
+    assert_fe_hq_read(current_user)
     from app.modules.functional_eval import daily_report_service
 
     period = service.get_or_create_active_period(db)
@@ -1498,7 +1517,7 @@ def list_hq_daily_reports(db: DbDep, current_user: CurrentUserDep, limit: int = 
 
 @router.get("/hq/daily-reports/{report_id}")
 def get_hq_daily_report(report_id: int, db: DbDep, current_user: CurrentUserDep):
-    assert_hq_safe_workspace(current_user)
+    assert_fe_hq_read(current_user)
     from app.modules.functional_eval import daily_report_service
 
     row = daily_report_service.get_daily_report(db, report_id)
@@ -1553,3 +1572,35 @@ def generate_hq_daily_report(
             raise HTTPException(status_code=409, detail="이미 해당 날짜 보고서가 있습니다. force=true 로 재생성하세요.") from exc
         raise
     return daily_report_service.serialize_daily_report_row(row)
+
+
+@router.post("/hq/viewer-accounts/dry-run")
+def dry_run_hq_viewer_accounts(db: DbDep, current_user: CurrentUserDep):
+    assert_fe_hq_admin(current_user)
+    from app.modules.functional_eval import fe_viewer_provisioning_service
+
+    try:
+        result = fe_viewer_provisioning_service.dry_run_viewer_accounts(db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.to_dict()
+
+
+@router.post("/hq/viewer-accounts/apply")
+def apply_hq_viewer_accounts(db: DbDep, current_user: CurrentUserDep):
+    assert_fe_hq_admin(current_user)
+    from app.modules.functional_eval import fe_viewer_provisioning_service
+
+    try:
+        result = fe_viewer_provisioning_service.apply_viewer_accounts(db, actor=current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.to_dict()
+
+
+@router.get("/hq/viewer-accounts/logs")
+def list_hq_viewer_account_logs(db: DbDep, current_user: CurrentUserDep, limit: int = Query(20, ge=1, le=100)):
+    assert_fe_hq_admin(current_user)
+    from app.modules.functional_eval import fe_viewer_provisioning_service
+
+    return {"items": fe_viewer_provisioning_service.list_viewer_provision_logs(db, limit=limit)}

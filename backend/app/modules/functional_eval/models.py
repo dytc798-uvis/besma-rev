@@ -314,7 +314,25 @@ class FunctionalEvalConsent(Base):
     signer_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     signer_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     signed_document_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consent_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="evaluator", server_default="evaluator")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class FunctionalEvalViewerProvisionLog(Base):
+    """본사 조회전용 계정 일괄 생성 이력."""
+
+    __tablename__ = "fe_viewer_provision_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False, index=True)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)  # dry_run | apply
+    source_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_by_login_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    planned_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    excluded_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    applied_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class FunctionalEvalSignature(Base):

@@ -19,6 +19,10 @@ PNG_DATA_PREFIX = "data:image/png;base64,"
 SIGNATURE_MIN_BYTES = 20
 SIGNATURE_MAX_BYTES = 512_000
 CONSENT_VERSION = "2026-06-14-v6"
+VIEWER_CONSENT_VERSION = "2026-06-17-viewer-v1"
+
+CONSENT_KIND_EVALUATOR = "evaluator"
+CONSENT_KIND_VIEWER = "viewer"
 
 STAGE_CONSENT = "CONSENT"
 STAGE_TEAM_LEADER = "TEAM_LEADER"
@@ -46,6 +50,21 @@ CONSENT_BODY = """
 사실성과 정확성에 대한 책임을 이해하고 이에 동의합니다.
 
 전자서명은 본인의 의사 표시로서 서면 서명과 동일한 효력을 갖는다는 점에 동의합니다.
+""".strip()
+
+VIEWER_CONSENT_TITLE = "기능인인정제 평가정보 조회 및 비밀유지 동의서"
+
+VIEWER_CONSENT_BODY = """
+본인은 BESMA 기능인인정제 평가정보 조회 권한을 부여받음에 있어 아래 사항을 확인하고 동의합니다.
+
+1. 본인은 기능인인정제 평가정보를 회사 업무 목적 범위 내에서만 조회합니다.
+2. 본인은 평가결과, 평가점수, 등급, 근로자 정보, 현장 정보, 결재 이력 등 BESMA에서 조회한 정보를 무단으로 복사, 촬영, 캡처, 출력, 다운로드, 전송 또는 배포하지 않습니다.
+3. 본인은 조회한 정보를 사내 업무 목적 외로 사용하거나 제3자에게 제공하지 않습니다.
+4. 본인은 부여받은 아이디와 비밀번호를 타인에게 공유하지 않으며, 본인 계정으로 발생한 행위에 대한 관리 책임이 있음을 확인합니다.
+5. 본인은 BESMA 접속, 조회, 다운로드, 서명 등 이용 이력이 시스템에 기록될 수 있음을 확인합니다.
+6. 본인은 위 사항을 위반할 경우 회사 규정 및 관련 법령에 따른 책임이 발생할 수 있음을 확인합니다.
+
+본인은 위 내용을 확인하였으며 이에 동의합니다.
 """.strip()
 
 

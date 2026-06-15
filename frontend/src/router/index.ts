@@ -77,7 +77,11 @@ const HQ_SAFE_WORKSPACE_ROLES = new Set([
 ]);
 
 function canAccessHqSafeWorkspace(role: string | undefined) {
-  return HQ_SAFE_WORKSPACE_ROLES.has(role ?? "");
+  return HQ_SAFE_WORKSPACE_ROLES.has(role ?? "") || role === "FUNCTIONAL_EVAL_VIEWER";
+}
+
+function isFunctionalEvalViewer(role: string | undefined) {
+  return role === "FUNCTIONAL_EVAL_VIEWER";
 }
 
 const routes: RouteRecordRaw[] = [
@@ -399,6 +403,21 @@ router.beforeEach((to, _from, next) => {
     to.name !== "login"
   ) {
     next({ name: "site-functional-eval" });
+    return;
+  }
+
+  const isFeViewer = isFunctionalEvalViewer(role);
+  const goingFeViewerArea =
+    to.path.startsWith("/hq-safe/functional-eval") || to.name === "hq-safe-functional-eval-grade-report";
+  if (
+    auth.isAuthenticated &&
+    isFeViewer &&
+    !goingFeViewerArea &&
+    to.path !== "/change-password" &&
+    to.path !== "/fe-onboarding" &&
+    to.name !== "login"
+  ) {
+    next({ name: "hq-safe-functional-eval" });
     return;
   }
 

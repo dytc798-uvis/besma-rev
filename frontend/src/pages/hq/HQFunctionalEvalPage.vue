@@ -6,10 +6,11 @@
     :prefill="consentPrefill"
     @completed="onConsentCompleted"
   />
-  <div v-else class="fe-hq-page" :class="{ 'fe-hq-page--mobile': isMobileViewport }">
+  <div v-else class="fe-hq-page" :class="{ 'fe-hq-page--mobile': isMobileViewport, 'fe-hq-page--viewer': isFeViewer }">
+    <p v-if="isFeViewer" class="viewer-banner" role="status">조회전용 계정입니다. 평가·승인·다운로드·수정은 할 수 없습니다.</p>
     <div class="page-head" :class="{ 'page-head--mobile': isMobileViewport }">
       <div>
-        <h1 v-if="!isMobileViewport" class="page-title">기능인 인정제 · 본사</h1>
+        <h1 v-if="!isMobileViewport" class="page-title">{{ isFeViewer ? "기능인 인정제 · 본사 조회" : "기능인 인정제 · 본사" }}</h1>
         <p class="page-sub">
           출역일보 기준 현장별 평가 현황
           <span v-if="period?.last_attendance_date" class="attendance-badge">
@@ -23,17 +24,17 @@
       </div>
       <div class="head-actions" :class="{ 'head-actions--mobile': isMobileViewport }">
         <button
-          v-if="canPrintGradeReport"
+          v-if="canPrintGradeReport && !isFeViewer"
           class="stitch-btn-primary"
           type="button"
           @click="openGradeReport"
         >
           {{ isMobileViewport ? "등급 보고서" : "등급 통계 보고서 출력" }}
         </button>
-        <button class="stitch-btn-primary" type="button" :disabled="exportingGrade" @click="downloadSiteGradeWorkbook()">
+        <button v-if="!isFeViewer" class="stitch-btn-primary" type="button" :disabled="exportingGrade" @click="downloadSiteGradeWorkbook()">
           {{ exportingGrade ? "출력 중..." : isMobileViewport ? "등급 출력" : "현장별 기능인등급 출력" }}
         </button>
-        <button v-if="!isMobileViewport" class="stitch-btn-secondary" type="button" :disabled="exporting" @click="downloadEvalExcel">
+        <button v-if="!isFeViewer && !isMobileViewport" class="stitch-btn-secondary" type="button" :disabled="exporting" @click="downloadEvalExcel">
           {{ exporting ? "다운로드 중..." : "평가 현황(간략)" }}
         </button>
         <button class="stitch-btn-secondary" type="button" @click="loadOverview">새로고침</button>
@@ -135,7 +136,7 @@
             <td>v{{ row.version }}</td>
             <td>
               <button
-                v-if="row.has_document"
+                v-if="row.has_document && !isFeViewer"
                 type="button"
                 class="link-btn"
                 @click="downloadDailyReport(row.id, row.report_date)"
@@ -149,8 +150,8 @@
       <p v-else class="panel-sub">최근 보고서가 없습니다. 수동 생성하거나 21:00 자동 생성을 기다려 주세요.</p>
     </section>
 
-    <!-- 검토·승인 (항상 표시) -->
-    <section class="panel hq-review-panel">
+    <!-- 검토·승인 (조회전용 계정 제외) -->
+    <section v-if="!isFeViewer" class="panel hq-review-panel">
       <div class="hq-review-head">
         <div>
           <h2 class="hq-review-title">검토·승인</h2>
@@ -834,6 +835,41 @@
       </template>
     </section>
 
+    <section v-if="canManageViewerAccounts" class="panel viewer-provision-panel">
+      <h2 class="hq-review-title">본사 조회전용 계정 일괄 생성</h2>
+      <p class="panel-sub">
+        사원리스트 기준 · 현장 인원·기존 계정 제외 · 아이디 <code>부현본사-이름</code> · 초기비밀번호 생년월일 6자리
+      </p>
+      <div class="hq-review-actions">
+        <button class="stitch-btn-secondary" type="button" :disabled="viewerProvisionLoading" @click="runViewerDryRun">
+          {{ viewerProvisionLoading ? "확인 중…" : "Dry-run" }}
+        </button>
+        <button class="stitch-btn-primary" type="button" :disabled="viewerProvisionLoading" @click="applyViewerAccounts">
+          {{ viewerProvisionLoading ? "생성 중…" : "Apply 생성" }}
+        </button>
+      </div>
+      <p v-if="viewerProvisionMessage" class="meta" :class="{ success: viewerProvisionOk }">{{ viewerProvisionMessage }}</p>
+      <div v-if="viewerProvisionResult" class="viewer-provision-result">
+        <p>생성 예정 {{ viewerProvisionResult.planned_count }}명 · 제외 {{ viewerProvisionResult.excluded_count }}명</p>
+        <details v-if="viewerProvisionResult.excluded?.length">
+          <summary>제외 목록 ({{ viewerProvisionResult.excluded.length }}건)</summary>
+          <ul class="viewer-provision-list">
+            <li v-for="(row, idx) in viewerProvisionResult.excluded.slice(0, 40)" :key="`ex-${idx}`">
+              {{ row.name }} — {{ row.reason }}
+            </li>
+          </ul>
+        </details>
+        <details v-if="viewerProvisionResult.planned?.length">
+          <summary>생성 예정 ({{ viewerProvisionResult.planned.length }}건)</summary>
+          <ul class="viewer-provision-list">
+            <li v-for="(row, idx) in viewerProvisionResult.planned.slice(0, 40)" :key="`pl-${idx}`">
+              {{ row.login_id }} · {{ row.name }} ({{ row.department }} / {{ row.position }})
+            </li>
+          </ul>
+        </details>
+      </div>
+    </section>
+
     <FeSignatureModal
       ref="hqSignatureModalRef"
       :open="hqSignatureModalOpen"
@@ -1209,6 +1245,10 @@ const hqSignatureMode = ref<"officer-all" | "director-all" | "officer-site" | "d
 const pendingApproveSiteCode = ref("");
 
 const loginId = computed(() => (auth.user?.login_id || "").trim());
+const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
+const canManageViewerAccounts = computed(
+  () => auth.user?.role === "HQ_SAFE_ADMIN" || auth.user?.role === "SUPER_ADMIN",
+);
 const canGenerateDailyReport = computed(
   () => auth.user?.role === "HQ_SAFE_ADMIN" || auth.user?.role === "SUPER_ADMIN",
 );
@@ -1346,6 +1386,55 @@ async function downloadDailyReport(reportId: number, reportDate: string) {
     downloadBlobAsFile(res.data, `기능인인정제_일일진행현황_${ymd}.pdf`, res.headers);
   } catch {
     window.alert("PDF 다운로드에 실패했습니다.");
+  }
+}
+
+interface ViewerProvisionSummary {
+  planned_count: number;
+  excluded_count: number;
+  created_count?: number;
+  planned?: Array<{ name: string; login_id?: string; department?: string; position?: string; reason?: string }>;
+  excluded?: Array<{ name: string; reason?: string }>;
+  created?: Array<{ name: string; login_id?: string }>;
+}
+
+const viewerProvisionLoading = ref(false);
+const viewerProvisionMessage = ref("");
+const viewerProvisionOk = ref(false);
+const viewerProvisionResult = ref<ViewerProvisionSummary | null>(null);
+
+async function runViewerDryRun() {
+  viewerProvisionLoading.value = true;
+  viewerProvisionMessage.value = "";
+  viewerProvisionOk.value = false;
+  try {
+    const res = await api.post("/functional-eval/hq/viewer-accounts/dry-run");
+    viewerProvisionResult.value = res.data as ViewerProvisionSummary;
+    viewerProvisionOk.value = true;
+    viewerProvisionMessage.value = `Dry-run 완료: 생성 예정 ${res.data.planned_count}명, 제외 ${res.data.excluded_count}명`;
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    viewerProvisionMessage.value = typeof msg === "string" ? msg : "Dry-run에 실패했습니다.";
+  } finally {
+    viewerProvisionLoading.value = false;
+  }
+}
+
+async function applyViewerAccounts() {
+  if (!window.confirm("Dry-run 결과를 확인했습니까? 조회전용 계정을 실제 생성합니다.")) return;
+  viewerProvisionLoading.value = true;
+  viewerProvisionMessage.value = "";
+  viewerProvisionOk.value = false;
+  try {
+    const res = await api.post("/functional-eval/hq/viewer-accounts/apply");
+    viewerProvisionResult.value = res.data as ViewerProvisionSummary;
+    viewerProvisionOk.value = true;
+    viewerProvisionMessage.value = `생성 완료: ${res.data.created_count ?? 0}명`;
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    viewerProvisionMessage.value = typeof msg === "string" ? msg : "계정 생성에 실패했습니다.";
+  } finally {
+    viewerProvisionLoading.value = false;
   }
 }
 
@@ -1948,6 +2037,20 @@ async function downloadSanctionExcel() {
 .evaluator-accounts-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
 .evaluator-accounts-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .fe-hq-page { display: flex; flex-direction: column; gap: 16px; }
+.viewer-banner {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 13px;
+}
+.viewer-provision-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
 .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; }

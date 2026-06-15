@@ -26,10 +26,8 @@
       </template>
 
       <template v-else-if="step === 'consent'">
-        <div class="card-title">기능인인정제 평가 및 개인정보 활용 동의</div>
-        <p class="onboarding-lead">
-          본인은 기능인인정제 평가 진행, 서명, 평가결과 관리에 필요한 사항을 확인하였으며 이에 동의합니다.
-        </p>
+        <div class="card-title">{{ consentTitle }}</div>
+        <p class="onboarding-lead">{{ consentLead }}</p>
         <FeConsentGate :open="true" :prefill="consentPrefill" @completed="handleConsentCompleted" />
       </template>
 
@@ -70,6 +68,20 @@ const errorMessage = ref("");
 const step = ref<"password" | "consent" | "done">("password");
 
 const consentNext = computed(() => auth.needsFeConsent && auth.feConsentRequired);
+
+const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
+const consentTitle = computed(
+  () =>
+    (consentPrefill.value?.consent_title as string | undefined) ||
+    (isFeViewer.value
+      ? "기능인인정제 평가정보 조회 및 비밀유지 동의서"
+      : "기능인인정제 평가 및 개인정보 활용 동의"),
+);
+const consentLead = computed(() =>
+  isFeViewer.value
+    ? "조회한 평가정보를 무단 복사·배포하지 않으며, 업무 목적 범위 내에서만 조회함을 확인합니다."
+    : "본인은 기능인인정제 평가 진행, 서명, 평가결과 관리에 필요한 사항을 확인하였으며 이에 동의합니다.",
+);
 
 function resolveStep() {
   if (auth.mustChangePassword) {

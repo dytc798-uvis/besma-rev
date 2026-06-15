@@ -25,7 +25,12 @@ from app.modules.functional_eval.models import (
 )
 from app.modules.functional_eval.signature_service import (
     CONSENT_BODY,
+    CONSENT_KIND_EVALUATOR,
+    CONSENT_KIND_VIEWER,
     CONSENT_VERSION,
+    VIEWER_CONSENT_BODY,
+    VIEWER_CONSENT_TITLE,
+    VIEWER_CONSENT_VERSION,
     STAGE_CEO,
     STAGE_HQ,
     STAGE_HQ_OFFICER,
@@ -89,11 +94,40 @@ def _build_consent_subtitle(db: Session, user: User) -> str:
     return _build_document_header(db, user)["role_line"]
 
 
+def _consent_kind_for_user(user: User) -> str:
+    if user.role == Role.FUNCTIONAL_EVAL_VIEWER:
+        return CONSENT_KIND_VIEWER
+    return CONSENT_KIND_EVALUATOR
+
+
+def _consent_body_for_user(user: User) -> str:
+    if _consent_kind_for_user(user) == CONSENT_KIND_VIEWER:
+        return VIEWER_CONSENT_BODY
+    return CONSENT_BODY
+
+
+def _consent_version_for_user(user: User) -> str:
+    if _consent_kind_for_user(user) == CONSENT_KIND_VIEWER:
+        return VIEWER_CONSENT_VERSION
+    return CONSENT_VERSION
+
+
+def _consent_title_for_user(user: User) -> str:
+    if _consent_kind_for_user(user) == CONSENT_KIND_VIEWER:
+        return VIEWER_CONSENT_TITLE
+    return "기능인인정제 평가 및 개인정보 활용 동의서"
+
+
 def _build_document_header(db: Session, user: User, *, site_code: str | None = None) -> dict[str, str]:
     from app.modules.functional_eval import service
 
     login_id = (user.login_id or "").strip()
     signer_name = (user.name or "").strip() or login_id
+    if user.role == Role.FUNCTIONAL_EVAL_VIEWER:
+        return {
+            "site_full_name": "본사 기능인 인정제 조회",
+            "role_line": f"본사 조회전용 - {signer_name}" + (f" ({login_id})" if login_id else ""),
+        }
     if service._is_hq_safety_user(user):
         return {
             "site_full_name": "본사 기능인 인정제",
@@ -130,10 +164,13 @@ def get_consent_status(db: Session, user: User) -> dict[str, Any]:
     row = db.query(FunctionalEvalConsent).filter(FunctionalEvalConsent.user_id == user.id).first()
     team_label = _build_consent_subtitle(db, user)
     header = _build_document_header(db, user)
+    consent_body = _consent_body_for_user(user)
     return {
         "required": row is None,
-        "consent_version": CONSENT_VERSION,
-        "consent_body": CONSENT_BODY,
+        "consent_kind": _consent_kind_for_user(user),
+        "consent_title": _consent_title_for_user(user),
+        "consent_version": _consent_version_for_user(user),
+        "consent_body": consent_body,
         "site_full_name": header["site_full_name"],
         "team_label": team_label,
         "role_line": header["role_line"],
@@ -165,20 +202,25 @@ def submit_consent(
     signer_name = (user.name or "").strip() or login_id
     ip, ua = _signer_meta(request)
     header = _build_document_header(db, user)
+    consent_body = _consent_body_for_user(user)
+    consent_version = _consent_version_for_user(user)
+    consent_kind = _consent_kind_for_user(user)
     pdf = generate_consent_pdf(
         signer_name=signer_name,
         signer_login_id=login_id,
-        consent_body=CONSENT_BODY,
+        consent_body=consent_body,
         signature_data=signature_data,
         signed_at=now,
         site_full_name=header["site_full_name"],
         role_line=header["role_line"],
+        document_title=_consent_title_for_user(user),
     )
     doc_path = save_pdf_document(prefix=f"consent_{login_id}", pdf_bytes=pdf)
     row = FunctionalEvalConsent(
         user_id=user.id,
         login_id=login_id,
-        consent_version=CONSENT_VERSION,
+        consent_version=consent_version,
+        consent_kind=consent_kind,
         signature_data=signature_data,
         signature_hash=sig_hash,
         signed_at=now,
