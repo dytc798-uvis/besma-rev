@@ -74,7 +74,7 @@
     </aside>
     <section class="layout-content">
       <header
-        v-if="!(isMobileViewport && consentRequired)"
+        v-if="!(isMobileViewport && (consentRequired || consentLoading))"
         class="layout-header layout-header-fe"
         :class="{ 'layout-header-site-mobile': isMobileViewport }"
       >
@@ -108,7 +108,13 @@
         </div>
       </header>
       <main class="layout-main layout-main-fe">
-        <FeConsentGate v-if="consentRequired" :open="consentRequired" @completed="onConsentCompleted" />
+        <p v-if="consentLoading" class="fe-consent-loading" role="status">동의서 확인 중…</p>
+        <FeConsentGate
+          v-else-if="consentRequired"
+          :open="consentRequired"
+          :prefill="consentPrefill"
+          @completed="onConsentCompleted"
+        />
         <RouterView v-else />
       </main>
     </section>
@@ -121,27 +127,20 @@ import { useRoute, useRouter } from "vue-router";
 import { useMobileViewport } from "@/composables/useMobileViewport";
 import { useAuthStore } from "@/stores/auth";
 import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
-import { api } from "@/services/api";
+import { useFeConsentCheck } from "@/composables/useFeConsentCheck";
 
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 const { isMobileViewport } = useMobileViewport();
 const mobileDrawerOpen = ref(false);
-const consentRequired = ref(false);
-
-async function checkConsent() {
-  try {
-    const res = await api.get("/functional-eval/consent/status");
-    consentRequired.value = Boolean(res.data.required);
-  } catch {
-    consentRequired.value = false;
-  }
-}
-
-function onConsentCompleted() {
-  consentRequired.value = false;
-}
+const {
+  consentLoading,
+  consentRequired,
+  consentPrefill,
+  checkConsent,
+  onConsentCompleted,
+} = useFeConsentCheck();
 
 onMounted(() => {
   void checkConsent();
@@ -335,6 +334,13 @@ function logout() {
 
   .functional-eval-shell.site-mobile-layout .header-sub {
     display: none;
+  }
+
+  .fe-consent-loading {
+    margin: 24px 12px;
+    text-align: center;
+    color: #64748b;
+    font-size: 14px;
   }
 }
 </style>

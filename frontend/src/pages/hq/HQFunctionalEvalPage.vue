@@ -1,5 +1,12 @@
 <template>
-  <div class="fe-hq-page" :class="{ 'fe-hq-page--mobile': isMobileViewport }">
+  <p v-if="consentLoading" class="fe-consent-loading" role="status">동의서 확인 중…</p>
+  <FeConsentGate
+    v-else-if="consentRequired"
+    :open="consentRequired"
+    :prefill="consentPrefill"
+    @completed="onConsentCompleted"
+  />
+  <div v-else class="fe-hq-page" :class="{ 'fe-hq-page--mobile': isMobileViewport }">
     <div class="page-head" :class="{ 'page-head--mobile': isMobileViewport }">
       <div>
         <h1 v-if="!isMobileViewport" class="page-title">기능인 인정제 · 본사</h1>
@@ -149,8 +156,8 @@
         </div>
       </div>
 
-      <p v-if="consentSignedAt && !consentRequired" class="consent-done meta">
-        동의서 서명 완료 · {{ consentSignedAt }}
+      <p v-if="consentSignedAtLabel && !consentRequired" class="consent-done meta">
+        동의서 서명 완료 · {{ consentSignedAtLabel }}
         <button class="link-btn" type="button" @click="downloadConsentDoc">동의서 PDF</button>
       </p>
 
@@ -761,7 +768,6 @@
       </template>
     </section>
 
-    <FeConsentGate v-if="consentRequired" :open="consentRequired" @completed="onConsentCompleted" />
     <FeSignatureModal
       ref="hqSignatureModalRef"
       :open="hqSignatureModalOpen"
@@ -782,6 +788,7 @@ import HqEvalWorkerActions from "@/components/functional-eval/HqEvalWorkerAction
 import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
 import FeSignatureModal from "@/components/functional-eval/FeSignatureModal.vue";
 import FeGradeStatsPanel, { type GradeStatsPayload } from "@/components/functional-eval/FeGradeStatsPanel.vue";
+import { useFeConsentCheck } from "@/composables/useFeConsentCheck";
 import { useMobileViewport } from "@/composables/useMobileViewport";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
@@ -791,6 +798,14 @@ import { saveFeGradeReportCache } from "@/utils/feGradeReportCache";
 const auth = useAuthStore();
 const router = useRouter();
 const { isMobileViewport } = useMobileViewport();
+const {
+  consentLoading,
+  consentRequired,
+  consentPrefill,
+  consentSignedAtLabel,
+  checkConsent,
+  onConsentCompleted: markConsentCompleted,
+} = useFeConsentCheck();
 const HQ_OFFICER_LOGIN = "안전보건-정상익";
 const HQ_DIRECTOR_LOGIN = "안전보건-조동문";
 const CEO_LOGIN = "부현대표-김홍수";
@@ -1120,7 +1135,6 @@ function toggleApprovalSection(key: ApprovalSectionKey) {
 }
 const hqPendingApprovals = ref<Record<string, unknown>[]>([]);
 const ceoPendingApprovals = ref<Record<string, unknown>[]>([]);
-const consentRequired = ref(false);
 const hqSignatureModalOpen = ref(false);
 const hqSignatureModalRef = ref<InstanceType<typeof FeSignatureModal> | null>(null);
 const hqSignatureMode = ref<"officer-all" | "director-all" | "officer-site" | "director-site" | "ceo">("officer-all");
@@ -1184,15 +1198,12 @@ const hqSignatureModalDescription = computed(() => {
   return `현장 ${pendingApproveSiteCode.value} — 실장 최종승인`;
 });
 
-async function checkConsent() {
-  try {
-    const res = await api.get("/functional-eval/consent/status");
-    consentRequired.value = Boolean(res.data.required);
-    consentSignedAt.value = res.data.signed_at_label || res.data.signed_at || "";
-  } catch {
-    consentRequired.value = false;
-    consentSignedAt.value = "";
-  }
+async function onConsentCompleted() {
+  markConsentCompleted();
+  await checkConsent();
+  await loadOverview();
+  await loadHqApprovals();
+  await loadPendingRewards();
 }
 
 async function downloadConsentDoc() {
@@ -1215,6 +1226,14 @@ async function refreshReviewQueue() {
     loadingPendingRewards.value = false;
   }
 }
+
+onMounted(async () => {
+  await checkConsent();
+  if (consentRequired.value) return;
+  await loadOverview();
+  await loadHqApprovals();
+  await loadPendingRewards();
+});
 
 function openOfficerApproveAllModal() {
   hqSignatureMode.value = "officer-all";
@@ -1750,18 +1769,6 @@ async function downloadSanctionExcel() {
   a.click();
   URL.revokeObjectURL(url);
 }
-
-async function onConsentCompleted() {
-  consentRequired.value = false;
-  await checkConsent();
-}
-
-onMounted(async () => {
-  await checkConsent();
-  await loadOverview();
-  await loadHqApprovals();
-  await loadPendingRewards();
-});
 </script>
 
 <style scoped>
@@ -1852,6 +1859,12 @@ onMounted(async () => {
   .bucket-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
+  .fe-consent-loading {
+    margin: 24px 12px;
+    text-align: center;
+    color: #64748b;
+    font-size: 14px;
+  }
   .fe-hq-page--mobile {
     gap: 8px;
   }

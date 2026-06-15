@@ -14,11 +14,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { api } from "@/services/api";
+import type { FeConsentPrefill } from "@/composables/useFeConsentCheck";
 import FeSignatureModal from "@/components/functional-eval/FeSignatureModal.vue";
+import { applyFeConsentPrefill, FE_CONSENT_FALLBACK_BODY } from "@/utils/feConsentPrefill";
 
-const props = defineProps<{ open: boolean }>();
+const props = defineProps<{
+  open: boolean;
+  prefill?: FeConsentPrefill | null;
+}>();
+
 const emit = defineEmits<{
   (e: "update:open", value: boolean): void;
   (e: "completed"): void;
@@ -37,16 +43,35 @@ const consentDescription = computed(() => {
   return lines.join("\n");
 });
 
-onMounted(async () => {
-  try {
-    const res = await api.get("/functional-eval/consent/status");
-    consentBody.value = res.data.consent_body || "";
-    teamLabel.value = res.data.role_line || res.data.team_label || "";
-    siteFullName.value = res.data.site_full_name || "";
-  } catch {
-    consentBody.value = "기능인인정제 평가 업무 수행에 동의합니다.";
+function applyPrefill(data: FeConsentPrefill | null | undefined) {
+  applyFeConsentPrefill(data, { consentBody, teamLabel, siteFullName });
+  if (!consentBody.value) {
+    consentBody.value = FE_CONSENT_FALLBACK_BODY;
   }
-});
+}
+
+watch(
+  () => props.prefill,
+  (data) => {
+    if (data) applyPrefill(data);
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.open,
+  async (isOpen) => {
+    if (!isOpen || props.prefill?.consent_body) return;
+    if (consentBody.value && consentBody.value !== FE_CONSENT_FALLBACK_BODY) return;
+    try {
+      const res = await api.get("/functional-eval/consent/status");
+      applyPrefill(res.data as FeConsentPrefill);
+    } catch {
+      consentBody.value = FE_CONSENT_FALLBACK_BODY;
+    }
+  },
+  { immediate: true },
+);
 
 async function onSubmit(payload: {
   signature_data: string;
