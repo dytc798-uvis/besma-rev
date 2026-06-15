@@ -109,6 +109,35 @@ def test_issue_accounts_generic_failure(tmp_path: Path):
         db.close()
 
 
+def test_issue_hq_viewer_ignores_wrong_department(tmp_path: Path):
+    client, SessionLocal = _client(tmp_path)
+    db = SessionLocal()
+    try:
+        db.add(
+            User(
+                name="천이나",
+                login_id="부현본사-천이나",
+                password_hash=get_password_hash("old"),
+                role=Role.FUNCTIONAL_EVAL_VIEWER,
+                ui_type=UIType.HQ_SAFE,
+                department="재무회계팀",
+                birth_date=date(1992, 4, 6),
+                must_change_password=False,
+                is_active=True,
+            )
+        )
+        db.commit()
+
+        res = client.post(
+            "/auth/issue-accounts",
+            json={"scope": "hq", "name": "천이나", "birth6": "920406", "department": "안전보건실"},
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["accounts"][0]["login_id"] == "부현본사-천이나"
+    finally:
+        db.close()
+
+
 def test_issue_hq_viewer_account(tmp_path: Path):
     client, SessionLocal = _client(tmp_path)
     db = SessionLocal()

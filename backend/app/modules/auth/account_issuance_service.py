@@ -270,7 +270,12 @@ def _find_hq_user(db: Session, *, name: str, birth6: str, department: str | None
             continue
         if fe_service._normalize_role_identifier(user.name) != target:
             continue
-        if department and (user.department or "").strip() and department not in (user.department or ""):
+        if (
+            department
+            and user.role not in FUNCTIONAL_EVAL_VIEWER_ROLES
+            and (user.department or "").strip()
+            and department not in (user.department or "")
+        ):
             continue
         if _hq_user_matches_birth(user, birth6):
             matched.append(user)
