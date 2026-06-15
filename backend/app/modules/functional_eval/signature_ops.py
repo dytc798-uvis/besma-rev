@@ -162,12 +162,22 @@ def _build_report_header_for_site(
 
 
 def get_consent_status(db: Session, user: User) -> dict[str, Any]:
+    from app.modules.functional_eval.eval_schedule import (
+        evaluation_is_open,
+        evaluation_opens_at_kst_iso,
+        evaluation_opens_at_kst_label,
+    )
+
     row = db.query(FunctionalEvalConsent).filter(FunctionalEvalConsent.user_id == user.id).first()
     team_label = _build_consent_subtitle(db, user)
     header = _build_document_header(db, user)
     consent_body = _consent_body_for_user(user)
+    eval_open = evaluation_is_open()
     return {
-        "required": row is None,
+        "required": eval_open and row is None,
+        "evaluation_open": eval_open,
+        "evaluation_opens_at": evaluation_opens_at_kst_iso(),
+        "evaluation_opens_at_label": evaluation_opens_at_kst_label(),
         "consent_kind": _consent_kind_for_user(user),
         "consent_title": _consent_title_for_user(user),
         "consent_version": _consent_version_for_user(user),
@@ -190,6 +200,9 @@ def submit_consent(
     read_completed_at: str | None = None,
     request: Request | None = None,
 ) -> dict[str, Any]:
+    from app.modules.functional_eval.eval_schedule import assert_evaluation_open
+
+    assert_evaluation_open()
     if not consent_acknowledged:
         raise ValueError("CONSENT_ACK_REQUIRED")
     if read_to_bottom_confirmed is False:

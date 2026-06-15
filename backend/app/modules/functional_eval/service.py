@@ -72,6 +72,13 @@ from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.utils.file_ingestion import parse_excel_with_fallback
 
+from app.modules.functional_eval.eval_schedule import (
+    EVAL_CAMPAIGN_DEADLINE,
+    assert_evaluation_open,
+    evaluation_is_open,
+    evaluation_opens_at_kst_iso,
+    evaluation_opens_at_kst_label,
+)
 from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
 from app.modules.functional_eval.signature_service import batch_label
 from app.modules.functional_eval.site_alias import build_eval_login_id
@@ -79,7 +86,7 @@ from app.modules.functional_eval import approval_workflow
 from app.modules.functional_eval.legacy_site_grade import apply_legacy_assessments
 
 DEFAULT_PERIOD_TITLE = "기능인제 인사고과"
-DEFAULT_DEADLINE = date(2026, 6, 26)
+DEFAULT_DEADLINE = EVAL_CAMPAIGN_DEADLINE
 
 
 def _rrn_front_password(rrn_raw: str) -> str | None:
@@ -153,6 +160,7 @@ def assert_period_editable(period: FunctionalEvalPeriod) -> None:
 
 
 def assert_period_eval_editable(period: FunctionalEvalPeriod) -> None:
+    assert_evaluation_open()
     assert_period_editable(period)
 
 
@@ -298,6 +306,9 @@ def serialize_period(period: FunctionalEvalPeriod, db: Session | None = None) ->
         "deadline_date": period.deadline_date,
         "is_active": period.is_active,
         "is_closed": period_is_closed(period),
+        "evaluation_open": evaluation_is_open(),
+        "evaluation_opens_at": evaluation_opens_at_kst_iso(),
+        "evaluation_opens_at_label": evaluation_opens_at_kst_label(),
         "last_attendance_date": attendance_date,
         "attendance_row_count": attendance_count,
         "created_at": period.created_at,

@@ -12,6 +12,8 @@ export interface FeConsentPrefill {
   role_line?: string;
   team_label?: string;
   site_full_name?: string;
+  evaluation_open?: boolean;
+  evaluation_opens_at_label?: string;
 }
 
 export function useFeConsentCheck() {
@@ -20,6 +22,8 @@ export function useFeConsentCheck() {
   const consentPrefill = ref<FeConsentPrefill | null>(null);
 
   const consentSignedAtLabel = ref("");
+  const evaluationOpen = ref(true);
+  const evaluationOpensAtLabel = ref("");
 
   async function checkConsent() {
     const auth = useAuthStore();
@@ -59,6 +63,8 @@ export function useFeConsentCheck() {
     try {
       const res = await api.get("/functional-eval/consent/status");
       consentRequired.value = Boolean(res.data.required);
+      evaluationOpen.value = res.data.evaluation_open !== false;
+      evaluationOpensAtLabel.value = res.data.evaluation_opens_at_label || "";
       consentPrefill.value = res.data as FeConsentPrefill;
       consentSignedAtLabel.value = res.data.signed_at_label || res.data.signed_at || "";
       if (loginId && !consentRequired.value) {
@@ -86,6 +92,8 @@ export function useFeConsentCheck() {
     consentRequired,
     consentPrefill,
     consentSignedAtLabel,
+    evaluationOpen,
+    evaluationOpensAtLabel,
     checkConsent,
     onConsentCompleted,
   };

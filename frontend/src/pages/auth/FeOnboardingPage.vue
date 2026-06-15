@@ -33,9 +33,14 @@
 
       <template v-else>
         <div class="card-title">설정 완료</div>
-        <p class="onboarding-lead">비밀번호 변경 및 동의서 서명이 완료되었습니다.</p>
-        <p class="onboarding-sub">이제 기능인인정제를 이용할 수 있습니다.</p>
-        <button class="primary onboarding-done-btn" type="button" @click="goHome">시작하기</button>
+        <p v-if="evaluationOpen" class="onboarding-lead">비밀번호 변경 및 동의서 서명이 완료되었습니다.</p>
+        <p v-else class="onboarding-lead">비밀번호 변경이 완료되었습니다.</p>
+        <p v-if="evaluationOpen" class="onboarding-sub">이제 기능인인정제를 이용할 수 있습니다.</p>
+        <p v-else class="onboarding-sub">
+          평가는 <strong>{{ evaluationOpensAtLabel || "6월 16일 오전 6시" }}</strong>부터 가능합니다.
+          오늘은 비밀번호 변경만 완료하시면 됩니다.
+        </p>
+        <button class="primary onboarding-done-btn" type="button" @click="goHome">{{ evaluationOpen ? "시작하기" : "확인" }}</button>
       </template>
 
       <p class="onboarding-logout">
@@ -58,7 +63,7 @@ import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
 
 const router = useRouter();
 const auth = useAuthStore();
-const { consentPrefill, checkConsent, onConsentCompleted: markConsentDone } = useFeConsentCheck();
+const { consentPrefill, checkConsent, onConsentCompleted: markConsentDone, evaluationOpen, evaluationOpensAtLabel } = useFeConsentCheck();
 
 const currentPassword = ref("");
 const newPassword = ref("");
@@ -99,6 +104,7 @@ onMounted(async () => {
   if (!auth.user) {
     await auth.loadMe({ skipAuthRedirect: true });
   }
+  void checkConsent();
   resolveStep();
   if (step.value === "consent") {
     await checkConsent();

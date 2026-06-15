@@ -166,6 +166,11 @@ def save_worker_assessment(
         code = str(exc)
         if code == "PERIOD_CLOSED":
             raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
+        if code == "EVAL_NOT_OPEN":
+            raise HTTPException(
+                status_code=403,
+                detail="평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디·비밀번호 변경만 이용해 주세요.",
+            ) from exc
         if code == "WORKER_NOT_FOUND":
             raise HTTPException(status_code=404, detail="Worker not found") from exc
         if code.startswith("INCOMPLETE:") or code.startswith("INVALID_GRADE:"):
@@ -208,6 +213,11 @@ def save_hq_assessment_override(
         code = str(exc)
         if code == "PERIOD_CLOSED":
             raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
+        if code == "EVAL_NOT_OPEN":
+            raise HTTPException(
+                status_code=403,
+                detail="평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디·비밀번호 변경만 이용해 주세요.",
+            ) from exc
         if code == "WORKER_NOT_FOUND":
             raise HTTPException(status_code=404, detail="Worker not found") from exc
         if code in {"REVISION_REASON_REQUIRED"}:
@@ -317,6 +327,7 @@ def _signature_error(code: str) -> HTTPException:
         "MANAGER_NOT_TEAM_LEADER": (403, "팀장만 사용할 수 있습니다."),
         "MANAGER_ONLY": (403, "소장만 사용할 수 있습니다."),
         "S_GRADE_OVER_LIMIT_REASON_REQUIRED": (400, "S등급 권장 기준(20%) 초과 사유를 10자 이상 입력해 주세요."),
+        "EVAL_NOT_OPEN": (403, "평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디·비밀번호 변경만 이용해 주세요."),
     }
     status_code, detail = mapping.get(code, (400, code))
     return HTTPException(status_code=status_code, detail=detail)
@@ -917,6 +928,11 @@ async def create_sanction(
         code = str(exc)
         if code == "PERIOD_CLOSED":
             raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
+        if code == "EVAL_NOT_OPEN":
+            raise HTTPException(
+                status_code=403,
+                detail="평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디·비밀번호 변경만 이용해 주세요.",
+            ) from exc
         if code in {"WORKER_NOT_FOUND", "SITE_MISMATCH", "CANNOT_SANCTION_SITE_MANAGER", "WORKER_INACTIVE"}:
             raise HTTPException(status_code=400, detail=code) from exc
         if code in {"WORKER_NOT_ON_ATTENDANCE", "NO_ATTENDANCE_UPLOAD"}:

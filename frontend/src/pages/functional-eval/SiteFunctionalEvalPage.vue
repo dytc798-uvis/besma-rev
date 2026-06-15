@@ -36,10 +36,15 @@
           미완료 {{ incompleteCount }}명
         </button>
           <span v-if="period?.is_closed" class="badge closed">마감</span>
+          <span v-else-if="evaluationNotOpen" class="badge pending">시행 전</span>
           <span v-else class="badge open">진행</span>
         </p>
         <p v-if="period?.is_closed" class="attendance-warn post-period-hint">
           평가 마감 — <strong>포상·제재 이력만</strong> 등록할 수 있습니다. 본사에서 월 2회 검토·승인 후 점수에 반영됩니다.
+        </p>
+        <p v-else-if="evaluationNotOpen" class="attendance-warn eval-not-open-hint">
+          평가는 <strong>{{ period?.evaluation_opens_at_label || "6월 16일 오전 6시" }}</strong>부터 가능합니다.
+          오늘은 <strong>아이디·비밀번호 발급 및 비밀번호 변경</strong>만 이용해 주세요.
         </p>
         <p v-if="evaluatorHint" class="evaluator-hint">{{ evaluatorHint }}</p>
         <p v-if="attendanceMessage" class="attendance-warn">{{ attendanceMessage }}</p>
@@ -117,7 +122,7 @@
           v-if="!isTeamLeaderFlow || teamLeaderPhase === 'evaluate'"
           class="stitch-btn-primary btn-start-eval"
           type="button"
-          :disabled="Boolean(period?.is_closed) || !rosterSource.length"
+          :disabled="Boolean(period?.is_closed) || evaluationNotOpen || !rosterSource.length"
           @click="startEvaluation()"
         >
           평가 시작
@@ -826,6 +831,8 @@ interface Period {
   id: number;
   deadline_date: string;
   is_closed: boolean;
+  evaluation_open?: boolean;
+  evaluation_opens_at_label?: string;
   last_attendance_date?: string | null;
   attendance_row_count?: number;
 }
@@ -959,6 +966,7 @@ const activeManagerBucket = ref<ManagerBucket | null>(null);
 const activeTeamLeaderId = ref<string | null>(null);
 const evalCatalog = ref<{ FUNCTIONAL: EvalCatalogBlock; SAFETY: EvalCatalogBlock } | null>(null);
 const period = ref<Period | null>(null);
+const evaluationNotOpen = computed(() => period.value != null && period.value.evaluation_open === false);
 const evaluator = ref<EvaluatorSession | null>(null);
 const attendanceMessage = ref("");
 const workers = ref<Worker[]>([]);
@@ -1089,6 +1097,7 @@ const evaluableIncompleteCount = computed(() =>
 
 const canStartFromIncomplete = computed(() =>
   !Boolean(period?.value?.is_closed)
+  && !evaluationNotOpen.value
   && evaluableIncompleteCount.value > 0,
 );
 
@@ -1324,6 +1333,7 @@ function assignmentLabel(w: Worker): string {
 }
 
 function canEvaluateWorker(w: Worker): boolean {
+  if (evaluationNotOpen.value) return false;
   if (period.value?.is_closed) return false;
   return isManagerEvaluable(w);
 }
@@ -1342,6 +1352,7 @@ function canOpenHistory(w: Worker): boolean {
 }
 
 function canRegisterSanction(w: Worker): boolean {
+  if (evaluationNotOpen.value) return false;
   if (w.is_permanently_expelled) return false;
   if (period.value?.is_closed) return true;
   if (evaluationLocked.value) return false;
@@ -1349,6 +1360,7 @@ function canRegisterSanction(w: Worker): boolean {
 }
 
 function canUploadReward(w: Worker): boolean {
+  if (evaluationNotOpen.value) return false;
   if (w.is_permanently_expelled) return false;
   if (period.value?.is_closed) {
     if (w.customer_reward) return false;
@@ -2438,6 +2450,11 @@ onBeforeUnmount(() => {
 .badge.closed {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.badge.pending {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .incomplete-count {
