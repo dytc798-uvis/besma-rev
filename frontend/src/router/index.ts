@@ -54,6 +54,7 @@ import SiteMobileSiteSearchPage from "@/pages/site/SiteMobileSiteSearchPage.vue"
 import SiteInfoPage from "@/pages/site/SiteInfoPage.vue";
 import WorkPlanForkliftPage from "@/pages/site/WorkPlanForkliftPage.vue";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
+import FeOnboardingPage from "@/pages/auth/FeOnboardingPage.vue";
 import UserGuidePage from "@/pages/common/UserGuidePage.vue";
 import FunctionalEvalLayout from "@/layouts/FunctionalEvalLayout.vue";
 import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPage.vue";
@@ -113,6 +114,12 @@ const routes: RouteRecordRaw[] = [
     path: "/change-password",
     name: "change-password",
     component: ChangePasswordPage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: "/fe-onboarding",
+    name: "fe-onboarding",
+    component: FeOnboardingPage,
     meta: { requiresAuth: true },
   },
   {
@@ -229,6 +236,7 @@ const routes: RouteRecordRaw[] = [
       { path: "", name: "site-functional-eval", component: SiteFunctionalEvalPage },
       { path: "roster", name: "site-functional-eval-roster", component: SiteFunctionalEvalPage },
       { path: "evaluate", name: "site-functional-eval-evaluate", component: SiteFunctionalEvalPage },
+      { path: "user-guide", name: "site-functional-eval-user-guide", component: UserGuidePage },
     ],
   },
   {
@@ -342,7 +350,11 @@ router.beforeEach((to, _from, next) => {
     return;
   }
 
-  // dev 페르소나·기타 분기보다 먼저: 초기/초기화 비밀번호 미변경 시 우회 불가
+  // dev 페르소나·기타 분기보다 먼저: 초기/초기화 비밀번호·동의서 미완료 시 우회 불가
+  if (auth.isAuthenticated && auth.needsFeOnboarding && to.name !== "fe-onboarding") {
+    next({ name: "fe-onboarding" });
+    return;
+  }
   if (auth.isAuthenticated && auth.mustChangePassword && to.path !== "/change-password") {
     next({ name: "change-password" });
     return;
@@ -369,6 +381,7 @@ router.beforeEach((to, _from, next) => {
     isDeploymentTeam &&
     !goingDeployment &&
     to.path !== "/change-password" &&
+    to.path !== "/fe-onboarding" &&
     to.name !== "login"
   ) {
     next({ name: "hq-safe-new-site-deployment" });
@@ -382,6 +395,7 @@ router.beforeEach((to, _from, next) => {
     isFunctionalEvalUser &&
     !goingFunctionalEval &&
     to.path !== "/change-password" &&
+    to.path !== "/fe-onboarding" &&
     to.name !== "login"
   ) {
     next({ name: "site-functional-eval" });
@@ -457,6 +471,10 @@ router.beforeEach((to, _from, next) => {
   }
 
   if (to.name === "login" && auth.isAuthenticated) {
+    if (auth.needsFeOnboarding) {
+      next({ name: "fe-onboarding" });
+      return;
+    }
     if (auth.mustChangePassword) {
       next({ name: "change-password" });
       return;

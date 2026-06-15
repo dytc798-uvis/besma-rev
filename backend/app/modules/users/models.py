@@ -26,6 +26,11 @@ class User(Base):
     # Initial-login password must be changed before accessing other services.
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     password_changed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    initial_password_issued: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    account_issued_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    account_issued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, nullable=False
     )

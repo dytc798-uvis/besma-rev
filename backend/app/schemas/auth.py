@@ -29,10 +29,37 @@ class UserMe(BaseModel):
     person_id: int | None
     map_preference: str | None = "NAVER"
     must_change_password: bool
+    needs_fe_consent: bool = False
+    fe_consent_required: bool = False
     can_system_backup: bool = False
 
     class Config:
         from_attributes = True
+
+
+class IssueAccountRequest(BaseModel):
+    scope: str  # site | hq
+    site_code: str | None = None
+    department: str | None = None
+    name: str
+    birth6: str
+
+
+class IssuedAccountItem(BaseModel):
+    role_label: str
+    name: str
+    login_id: str
+    initial_password: str
+
+
+class IssueAccountResponse(BaseModel):
+    scope: str
+    message: str
+    site_code: str | None = None
+    site_label: str | None = None
+    recipient_name: str | None = None
+    role_label: str | None = None
+    accounts: list[IssuedAccountItem]
 
 
 class ChangePasswordRequest(BaseModel):

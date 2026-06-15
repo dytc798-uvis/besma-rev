@@ -1,19 +1,12 @@
-/** 기능인인정제 설명 — PPT(운영설명서) 대지 형태와 동일한 슬라이드 정의 */
+/** 기능인인정제 설명 — 슬라이드 정의 (캡처는 UI 요소 단위, 강조 오버레이 없음) */
 
 export type FeGuideImageLayout = "single" | "dual" | "triple" | "phone-reward";
-
-/** 강조 영역 — 이미지 대비 % (중심 cx/cy, 반경 r) */
-export interface FeGuideHighlight {
-  cx: number;
-  cy: number;
-  r: number;
-}
 
 export interface FeGuideImageItem {
   src: string;
   label?: string;
+  /** true면 설명 페이지에서 핸드폰 프레임으로 표시 */
   phoneFrame?: boolean;
-  highlight?: FeGuideHighlight;
 }
 
 export type FeGuideImage = string | FeGuideImageItem;
@@ -27,17 +20,12 @@ export interface FeGuideSlide {
 
 const IMG = "/fe-guide/screenshots";
 
-function img(
-  file: string,
-  opts: Omit<FeGuideImageItem, "src"> = {},
-): FeGuideImageItem {
+function img(file: string, opts: Omit<FeGuideImageItem, "src"> = {}): FeGuideImageItem {
   return { src: `${IMG}/${file}`, ...opts };
 }
 
 export function normalizeGuideImages(images?: FeGuideImage[]): FeGuideImageItem[] {
-  return (images ?? []).map((item) =>
-    typeof item === "string" ? { src: item } : item,
-  );
+  return (images ?? []).map((item) => (typeof item === "string" ? { src: item } : item));
 }
 
 export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
@@ -48,7 +36,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "아이디: 대우청라-김팀장    비밀번호: ●●●●●●",
         "비밀번호는 주민등록번호 앞 6자리입니다.",
       ],
-      images: [img("login_team.png", { highlight: { cx: 50, cy: 72, r: 14 } })],
+      images: [img("login_team.png")],
       layout: "single",
     },
     {
@@ -57,7 +45,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "최초 1회만 표시됩니다. 동의문 확인 후 체크 · 서명 · 「동의 및 서명」",
         "서명 완료 후에는 다시 표시되지 않습니다.",
       ],
-      images: [img("consent_modal.png", { highlight: { cx: 50, cy: 88, r: 12 } })],
+      images: [img("consent_modal.png")],
       layout: "single",
     },
     {
@@ -69,9 +57,9 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "3-3. 제재 등록 시 근거(사진/텍스트)+서명. 등록 후 수정 불가.",
       ],
       images: [
-        img("team_evaluate_mobile.png", { phoneFrame: true, highlight: { cx: 50, cy: 48, r: 22 } }),
-        img("reward_upload_modal.png", { label: "포상 사진 업로드", highlight: { cx: 50, cy: 58, r: 24 } }),
-        img("reward_evidence_kimposang.png", { label: "제출된 포상 사진", highlight: { cx: 50, cy: 42, r: 28 } }),
+        img("team_evaluate_mobile.png", { phoneFrame: true }),
+        img("reward_upload_modal.png", { label: "포상 사진 업로드" }),
+        img("reward_evidence_kimposang.png", { label: "제출된 포상 사진" }),
       ],
       layout: "phone-reward",
     },
@@ -81,15 +69,13 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "담당 팀원 전원 평가 완료 후 버튼이 활성화됩니다.",
         "서명하면 보고서가 저장되며, 이후 평가·포상·제재 수정이 불가합니다.",
       ],
-      images: [img("team_signoff_modal.png", { highlight: { cx: 50, cy: 86, r: 11 } })],
+      images: [img("team_signoff_modal.png")],
       layout: "single",
     },
     {
       title: "5. 본사 안전보건실 검토",
-      bullets: [
-        "소장 제출 후 본사에서 포상 승인·제재·점수를 검토·기록합니다.",
-      ],
-      images: [img("hq_dashboard.png", { highlight: { cx: 50, cy: 28, r: 18 } })],
+      bullets: ["소장 제출 후 본사에서 포상 승인·제재·점수를 검토·기록합니다."],
+      images: [img("hq_dashboard.png")],
       layout: "single",
     },
     {
@@ -98,7 +84,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "안전보건실장이 현장 평가보고서를 확인합니다.",
         "「일괄 최종승인」 또는 현장별 「최종승인」 버튼을 누릅니다.",
       ],
-      images: [img("hq_director_approval.png", { highlight: { cx: 72, cy: 38, r: 14 } })],
+      images: [img("hq_director_approval.png")],
       layout: "single",
     },
     {
@@ -107,7 +93,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "대표님 「대표이사 최종승인 서명」으로 평가가 확정됩니다.",
         "승인본은 서명과 함께 전체 현황을 출력할 수 있습니다.",
       ],
-      images: [img("ceo_approval.png", { highlight: { cx: 68, cy: 32, r: 16 } })],
+      images: [img("ceo_approval.png")],
       layout: "single",
     },
   ],
@@ -118,13 +104,13 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "아이디: 대우청라-박명식    비밀번호: ●●●●●●",
         "비밀번호는 주민등록번호 앞 6자리입니다.",
       ],
-      images: [img("login_manager.png", { highlight: { cx: 50, cy: 72, r: 14 } })],
+      images: [img("login_manager.png")],
       layout: "single",
     },
     {
       title: "2. 기능인인정제 평가 동의서를 읽고 서명합니다.",
       bullets: ["최초 1회 동의·서명 후 기능인제 업무를 수행합니다."],
-      images: [img("consent_modal.png", { highlight: { cx: 50, cy: 88, r: 12 } })],
+      images: [img("consent_modal.png")],
       layout: "single",
     },
     {
@@ -135,9 +121,9 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "3-2. 포상은 사진 업로드(본사 승인). 제재는 근거+서명 필수.",
       ],
       images: [
-        img("manager_roster.png", { highlight: { cx: 50, cy: 35, r: 20 } }),
-        img("reward_upload_modal.png", { label: "포상 사진 업로드", highlight: { cx: 50, cy: 58, r: 24 } }),
-        img("reward_evidence_kimposang.png", { label: "제출된 포상 사진", highlight: { cx: 50, cy: 42, r: 28 } }),
+        img("manager_roster.png"),
+        img("reward_upload_modal.png", { label: "포상 사진 업로드" }),
+        img("reward_evidence_kimposang.png", { label: "제출된 포상 사진" }),
       ],
       layout: "phone-reward",
     },
@@ -147,7 +133,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "팀장 보고서 전원 확인 → 「평가완료보고서 제출 및 서명」",
         "서명 후 현장 평가·포상·제재 수정 불가",
       ],
-      images: [img("manager_approval.png", { highlight: { cx: 50, cy: 78, r: 14 } })],
+      images: [img("manager_approval.png")],
       layout: "single",
     },
     {
@@ -156,7 +142,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "소장 제출 후 본사에서 포상 승인·제재·점수를 검토·기록합니다.",
         "필요 시 추가 포상·제재 사항을 검토하고 기록합니다.",
       ],
-      images: [img("hq_dashboard.png", { highlight: { cx: 50, cy: 28, r: 18 } })],
+      images: [img("hq_dashboard.png")],
       layout: "single",
     },
     {
@@ -165,7 +151,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "안전보건실장이 현장 평가보고서를 확인하고 승인·서명합니다.",
         "「일괄 최종승인」 또는 현장별 「최종승인」 버튼을 누릅니다.",
       ],
-      images: [img("hq_director_approval.png", { highlight: { cx: 72, cy: 38, r: 14 } })],
+      images: [img("hq_director_approval.png")],
       layout: "single",
     },
     {
@@ -174,7 +160,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "대표님 최종 승인·서명 후 평가가 확정됩니다.",
         "승인본은 서명과 함께 전체 현황을 PDF·등급표로 출력할 수 있습니다.",
       ],
-      images: [img("ceo_approval.png", { highlight: { cx: 68, cy: 32, r: 16 } })],
+      images: [img("ceo_approval.png")],
       layout: "single",
     },
   ],
@@ -186,13 +172,13 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "대표님: 부현대표-김홍수 / ●●●●●●",
         "비밀번호는 주민등록번호 앞 6자리입니다.",
       ],
-      images: [img("login_hq.png", { highlight: { cx: 50, cy: 72, r: 14 } })],
+      images: [img("login_hq.png")],
       layout: "single",
     },
     {
       title: "2. 기능인인정제 평가 동의서(최초 1회)",
       bullets: ["본사·대표 계정도 최초 접속 시 동의·서명이 필요합니다."],
-      images: [img("consent_modal.png", { highlight: { cx: 50, cy: 88, r: 12 } })],
+      images: [img("consent_modal.png")],
       layout: "single",
     },
     {
@@ -201,7 +187,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "현장별 평가 진행·제출 상태를 확인합니다.",
         "소장이 현장에서 제출한 후 본사에서 검토합니다.",
       ],
-      images: [img("hq_dashboard.png", { highlight: { cx: 50, cy: 35, r: 18 } })],
+      images: [img("hq_dashboard.png")],
       layout: "single",
     },
     {
@@ -210,7 +196,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "현장에서 팀장·소장 서명이 완료된 보고서가 본사로 전달됩니다.",
         "서명 완료 후 현장에서는 평가·포상·제재를 수정할 수 없습니다.",
       ],
-      images: [img("manager_approval.png", { highlight: { cx: 50, cy: 78, r: 14 } })],
+      images: [img("manager_approval.png")],
       layout: "single",
     },
     {
@@ -221,8 +207,8 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "점수 이견 시 평가 점수를 수정하고 사유를 기록합니다.",
       ],
       images: [
-        img("reward_evidence_kimposang.png", { label: "포상 사진", highlight: { cx: 50, cy: 42, r: 28 } }),
-        img("sanction_evidence_kimbusil.png", { label: "제재 근거", highlight: { cx: 50, cy: 45, r: 26 } }),
+        img("reward_evidence_kimposang.png", { label: "포상 사진" }),
+        img("sanction_evidence_kimbusil.png", { label: "제재 근거" }),
       ],
       layout: "dual",
     },
@@ -232,7 +218,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "검토 후 「일괄 최종승인」 또는 현장별 「최종승인」을 누릅니다.",
         "승인·서명 후 대표님 최종 승인 단계로 넘어갑니다.",
       ],
-      images: [img("hq_director_approval.png", { highlight: { cx: 72, cy: 38, r: 14 } })],
+      images: [img("hq_director_approval.png")],
       layout: "single",
     },
     {
@@ -241,7 +227,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "대표님 「대표이사 최종승인 서명」으로 평가가 확정됩니다.",
         "승인본 PDF·등급표로 전체 현황을 출력·보관할 수 있습니다.",
       ],
-      images: [img("ceo_approval.png", { highlight: { cx: 68, cy: 32, r: 16 } })],
+      images: [img("ceo_approval.png")],
       layout: "single",
     },
   ],

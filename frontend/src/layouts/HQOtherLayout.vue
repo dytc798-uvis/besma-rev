@@ -10,14 +10,16 @@
       </nav>
     </aside>
     <section class="layout-content">
-      <header class="layout-header">
+      <header class="layout-header layout-header--branded">
         <div class="layout-header-left">
           <button class="sidebar-toggle-btn" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
           </button>
-          <span>BESMA CSMS 안전보건플랫폼 · HQ_OTHER</span>
         </div>
-        <div>
+        <div class="layout-header-brand-center">
+          <AppFullLogo />
+        </div>
+        <div class="layout-header-actions">
           <span style="margin-right: 8px">
             {{ auth.user?.name }} ({{ auth.user?.login_id }})
             <template v-if="auth.isTestPersonaMode && auth.effectivePersona">
@@ -43,6 +45,7 @@ import { onMounted } from "vue";
 import { ref } from "vue";
 import { useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
+import AppFullLogo from "@/components/branding/AppFullLogo.vue";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -86,6 +89,15 @@ function toggleSidebar() {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  z-index: 2;
+}
+
+.layout-header-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  z-index: 2;
 }
 
 .sidebar-toggle-btn {

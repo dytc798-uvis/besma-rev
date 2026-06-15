@@ -55,6 +55,7 @@ body {
 }
 
 .layout-header {
+  position: relative;
   height: 48px;
   background-color: #ffffff;
   border-bottom: 1px solid #e5e7eb;
@@ -63,6 +64,60 @@ body {
   justify-content: space-between;
   padding: 0 16px;
   font-size: 13px;
+}
+
+.layout-header--branded {
+  min-height: 52px;
+  height: auto;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.layout-header-brand-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(280px, 46vw);
+  max-width: calc(100% - 200px);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.app-full-logo-wrap {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-full-logo-wrap--compact {
+  width: min(220px, 40vw);
+}
+
+.app-full-logo {
+  display: block;
+  width: 100%;
+  max-height: 40px;
+  object-fit: contain;
+}
+
+.app-full-logo-wrap--compact .app-full-logo {
+  max-height: 34px;
+}
+
+@media (max-width: 768px) {
+  .layout-header-brand-center {
+    width: min(200px, 52vw);
+    max-width: calc(100% - 160px);
+  }
+
+  .app-full-logo {
+    max-height: 32px;
+  }
 }
 
 .layout-main {
@@ -288,6 +343,17 @@ form.form-grid .form-field label {
     flex: 1;
     width: 100%;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .layout-root.functional-eval-shell.site-shell .layout-main,
+  .layout-root.functional-eval-shell.site-shell .layout-main-fe {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
 
   .layout-root.functional-eval-shell.site-shell .sidebar-toggle-btn--mobile,
@@ -340,6 +406,11 @@ form.form-grid .form-field label {
 
 .fe-sheet.fe-sheet-open {
   transform: translateY(0);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .fe-sheet.fe-dialog {

@@ -350,3 +350,31 @@ class FunctionalEvalSignature(Base):
     signer_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     signed_document_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class FunctionalEvalDailyReport(Base):
+    """기능인제 일일 진행현황 보고서 (21:00 KST 기준)."""
+
+    __tablename__ = "functional_eval_daily_reports"
+    __table_args__ = (
+        UniqueConstraint("period_id", "report_date", name="uq_fe_daily_report_period_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    period_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_periods.id"), nullable=False, index=True)
+    report_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    criteria_at_kst: Mapped[str] = mapped_column(String(40), nullable=False)
+    timezone: Mapped[str] = mapped_column(String(40), nullable=False, default="Asia/Seoul")
+    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    regenerated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    total_workers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_workers: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completion_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    bottleneck_site_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    report_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_json_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_format: Mapped[str] = mapped_column(String(20), nullable=False, default="pdf")
+    report_json_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    generated_by: Mapped[str] = mapped_column(String(20), nullable=False, default="system")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)

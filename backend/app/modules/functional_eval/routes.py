@@ -1485,3 +1485,71 @@ def list_worker_customer_rewards(worker_id: int, db: DbDep, current_user: Curren
     except ValueError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return {"items": reward_service.list_worker_customer_rewards(db, worker_id)}
+
+
+@router.get("/hq/daily-reports")
+def list_hq_daily_reports(db: DbDep, current_user: CurrentUserDep, limit: int = Query(30, ge=1, le=100)):
+    assert_hq_safe_workspace(current_user)
+    from app.modules.functional_eval import daily_report_service
+
+    period = service.get_or_create_active_period(db)
+    return {"items": daily_report_service.list_daily_reports(db, period, limit=limit)}
+
+
+@router.get("/hq/daily-reports/{report_id}")
+def get_hq_daily_report(report_id: int, db: DbDep, current_user: CurrentUserDep):
+    assert_hq_safe_workspace(current_user)
+    from app.modules.functional_eval import daily_report_service
+
+    row = daily_report_service.get_daily_report(db, report_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="REPORT_NOT_FOUND")
+    return {
+        **daily_report_service.serialize_daily_report_row(row),
+        "snapshot": row.report_json_snapshot,
+    }
+
+
+@router.get("/hq/daily-reports/{report_id}/document")
+def download_hq_daily_report_document(report_id: int, db: DbDep, current_user: CurrentUserDep):
+    assert_hq_safe_workspace(current_user)
+    from app.modules.functional_eval import daily_report_service
+
+    row = daily_report_service.get_daily_report(db, report_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="REPORT_NOT_FOUND")
+    path = daily_report_service.resolve_report_path(row.report_path)
+    if path is None:
+        raise HTTPException(status_code=404, detail="REPORT_FILE_MISSING")
+    filename = f"기능인인정제_일일진행현황_{row.report_date.strftime('%Y%m%d')}.pdf"
+    return FileResponse(path, media_type="application/pdf", filename=filename)
+
+
+@router.post("/hq/daily-reports/generate")
+def generate_hq_daily_report(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    report_date: date | None = Query(None),
+    force: bool = Query(False, description="같은 날짜 보고서 재생성(버전 증가)"),
+):
+    assert_hq_safe_workspace(current_user)
+    from app.modules.functional_eval import daily_report_service
+
+    try:
+        daily_report_service.assert_hq_report_admin(current_user)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    period = service.get_or_create_active_period(db)
+    try:
+        row = daily_report_service.generate_daily_report(
+            db,
+            period,
+            report_date=report_date,
+            generated_by="manual",
+            force=force,
+        )
+    except ValueError as exc:
+        if str(exc) == "REPORT_ALREADY_EXISTS":
+            raise HTTPException(status_code=409, detail="이미 해당 날짜 보고서가 있습니다. force=true 로 재생성하세요.") from exc
+        raise
+    return daily_report_service.serialize_daily_report_row(row)

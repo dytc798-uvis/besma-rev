@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.config.security import get_password_hash, verify_password
@@ -6,10 +6,24 @@ from app.core.auth import authenticate_user, create_user_access_token, DbDep, ge
 from app.core.datetime_utils import utc_now
 from app.core.password_policy import validate_password_policy
 from app.core.permissions import Role
+from app.modules.auth.account_issuance_service import (
+    AccountIssuanceError,
+    fe_consent_required,
+    issue_hq_account,
+    issue_site_accounts,
+    user_participates_in_fe_consent,
+)
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.core.system_backup_access import can_system_backup
-from app.schemas.auth import ChangePasswordRequest, Token, UserMe
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    IssueAccountRequest,
+    IssueAccountResponse,
+    IssuedAccountItem,
+    Token,
+    UserMe,
+)
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -102,8 +116,62 @@ def login(
 @router.get("/me", response_model=UserMe)
 def me(db: DbDep, current_user=Depends(get_current_user)) -> UserMe:
     _resolve_default_pilot_site(db, current_user)
+    needs_fe = user_participates_in_fe_consent(current_user)
+    consent_req = fe_consent_required(db, current_user) if needs_fe else False
     base = UserMe.model_validate(current_user)
-    return base.model_copy(update={"can_system_backup": can_system_backup(current_user.login_id)})
+    return base.model_copy(
+        update={
+            "can_system_backup": can_system_backup(current_user.login_id),
+            "needs_fe_consent": needs_fe,
+            "fe_consent_required": consent_req,
+        }
+    )
+
+
+@router.post("/issue-accounts", response_model=IssueAccountResponse)
+def issue_accounts(payload: IssueAccountRequest, request: Request, db: DbDep) -> IssueAccountResponse:
+    scope = (payload.scope or "").strip().lower()
+    client_ip = request.client.host if request.client else None
+    try:
+        if scope == "site":
+            if not (payload.site_code or "").strip():
+                raise AccountIssuanceError(
+                    "입력한 정보와 일치하는 계정을 찾을 수 없습니다. 정보를 확인 후 다시 시도해 주세요.",
+                    internal_reason="missing_site_code",
+                )
+            result = issue_site_accounts(
+                db,
+                site_code=payload.site_code or "",
+                name=payload.name,
+                birth6_raw=payload.birth6,
+                request_ip=client_ip,
+            )
+        elif scope == "hq":
+            result = issue_hq_account(
+                db,
+                name=payload.name,
+                birth6_raw=payload.birth6,
+                department=payload.department,
+                request_ip=client_ip,
+            )
+        else:
+            raise AccountIssuanceError(
+                "입력한 정보와 일치하는 계정을 찾을 수 없습니다. 정보를 확인 후 다시 시도해 주세요.",
+                internal_reason="bad_scope",
+            )
+    except AccountIssuanceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    accounts = [IssuedAccountItem.model_validate(item) for item in result.get("accounts", [])]
+    return IssueAccountResponse(
+        scope=result["scope"],
+        message=result.get("message", "아이디 발급이 완료되었습니다."),
+        site_code=result.get("site_code"),
+        site_label=result.get("site_label"),
+        recipient_name=result.get("recipient_name"),
+        role_label=result.get("role_label"),
+        accounts=accounts,
+    )
 
 
 @router.post("/change-password")

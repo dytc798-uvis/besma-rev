@@ -45,6 +45,11 @@
   background: linear-gradient(180deg, #fff7ed 0%, #ffffff 28px);
 }
 
+.functional-eval-shell .layout-footer-fe {
+  border-top-color: #fed7aa;
+  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 100%);
+}
+
 .functional-eval-shell .layout-menu a.fe-menu-subitem {
   color: #475569;
   background: transparent;
@@ -65,6 +70,24 @@
 
 .functional-eval-shell .layout-menu a.fe-menu-subitem.router-link-active {
   border-left: 0;
+}
+
+/* 팀장 단계 버튼(button) — a 전용 규칙이 적용되지 않던 문제 보완 */
+.functional-eval-shell .layout-menu button.fe-tl-step {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.functional-eval-shell .layout-menu button.fe-tl-step--active {
+  background: #fff7ed;
+  color: #c2410c;
+  border-color: #ea580c;
+}
+
+.functional-eval-shell .layout-menu button.fe-tl-step--done {
+  background: #f0fdf4;
+  color: #166534;
+  border-color: #86efac;
 }
 
 /* HQ · 기능인제 메뉴 강조 (밝은 사이드바) */

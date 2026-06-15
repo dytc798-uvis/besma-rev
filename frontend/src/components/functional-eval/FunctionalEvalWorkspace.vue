@@ -48,6 +48,7 @@
               일괄 보통 등록 ({{ batchPendingWorkers }}명)
             </button>
           </div>
+          <p v-if="evalError" class="batch-error" role="alert">{{ evalError }}</p>
           <EvalAssessmentSheet
             :worker="evalWorker"
             :title="title"
@@ -106,6 +107,7 @@
               일괄 보통 등록 ({{ batchPendingWorkers }}명)
             </button>
           </div>
+          <p v-if="evalError" class="batch-error" role="alert">{{ evalError }}</p>
           <EvalAssessmentSheet
             :worker="evalWorker"
             :title="title"
@@ -149,7 +151,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import EvalAssessmentSheet from "@/components/functional-eval/EvalAssessmentSheet.vue";
 import EvalSanctionInline from "@/components/functional-eval/EvalSanctionInline.vue";
 import EvalRewardInline from "@/components/functional-eval/EvalRewardInline.vue";
@@ -452,16 +454,29 @@ function buildNormalScores(): Record<string, string> {
   const scores: Record<string, string> = {};
   for (const c of props.criteria) {
     const gradeKey = normalGradeKey(c);
-    if (gradeKey) scores[c.id] = gradeKey;
+    if (gradeKey) scores[String(c.id)] = gradeKey;
   }
   return scores;
+}
+
+function formatSaveError(e: unknown): string {
+  const status = (e as { response?: { status?: number } })?.response?.status;
+  const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+  if (msg === "EVALUATION_SIGNATURE_LOCKED") return "서명 완료 후 수정 불가";
+  if (msg === "CANNOT_EVALUATE_SELF") return "본인 평가 불가";
+  if (msg === "SITE_MISMATCH") return "평가 권한 없음";
+  if (typeof msg === "string" && msg.startsWith("INCOMPLETE:")) return "항목 누락";
+  if (typeof msg === "string" && msg) return msg;
+  if (status === 401) return "로그인 만료";
+  return "저장 실패";
 }
 
 async function applyBatchNormal() {
   if (batchApplyDisabled.value || !props.criteria.length) return;
   const scorePayload = buildNormalScores();
-  if (!Object.keys(scorePayload).length) {
-    evalError.value = "기준값을 구성할 수 없습니다.";
+  const requiredIds = props.criteria.map((c) => String(c.id));
+  if (requiredIds.some((id) => !scorePayload[id])) {
+    evalError.value = "보통 등급 기준을 구성할 수 없습니다. 항목 정의를 확인하세요.";
     return;
   }
 
@@ -472,34 +487,39 @@ async function applyBatchNormal() {
 
   evalSaving.value = true;
   evalError.value = "";
+  const failures: string[] = [];
+  let saved = 0;
   try {
-    await Promise.all(
-      targets.map((target) =>
-        api.put(`/functional-eval/workers/${target.id}/assessment/${props.evalType}`, { scores: scorePayload }),
-      ),
-    );
+    for (const target of targets) {
+      try {
+        await api.put(`/functional-eval/workers/${target.id}/assessment/${props.evalType}`, {
+          scores: scorePayload,
+        });
+        saved += 1;
+      } catch (e: unknown) {
+        failures.push(`${target.name}: ${formatSaveError(e)}`);
+      }
+    }
     await props.reload();
     if (evalWorker.value) {
       const refreshed = props.workers.find((w) => w.id === evalWorker.value?.id);
       evalWorker.value = refreshed ?? evalWorker.value;
+      if (refreshed) await loadScores(refreshed);
     }
-    if (props.evalType === "FUNCTIONAL" && evalWorker.value && !isSafetyComplete(evalWorker.value)) {
+    if (failures.length) {
+      const head = failures.slice(0, 2).join(" · ");
+      const tail = failures.length > 2 ? ` 외 ${failures.length - 2}명` : "";
+      evalError.value = saved
+        ? `${saved}명 저장, 실패 ${failures.length}명 — ${head}${tail}`
+        : `일괄 저장 실패 — ${head}${tail}`;
+    } else if (props.evalType === "FUNCTIONAL" && evalWorker.value && !isSafetyComplete(evalWorker.value)) {
       emit("request-safety", evalWorker.value.id);
       return;
-    }
-    if (props.evalType === "SAFETY" && evalWorker.value) {
+    } else if (props.evalType === "SAFETY" && evalWorker.value) {
       emit("safety-saved", evalWorker.value);
     }
-  } catch (e: unknown) {
-    const status = (e as { response?: { status?: number } })?.response?.status;
-    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    if (status === 401) {
-      evalError.value = "로그인이 만료되었습니다. 다시 로그인한 뒤 시도해 주세요.";
-    } else if (msg === "EVALUATION_SIGNATURE_LOCKED") {
-      evalError.value = "서명 완료 후에는 평가를 수정할 수 없습니다.";
-    } else {
-      evalError.value = typeof msg === "string" ? msg : "일괄 저장 중 오류가 발생했습니다.";
-    }
+  } catch {
+    evalError.value = "일괄 저장 중 오류가 발생했습니다.";
   } finally {
     evalSaving.value = false;
   }
@@ -528,6 +548,10 @@ async function pickInitialWorker() {
 
 onMounted(() => {
   void pickInitialWorker();
+});
+
+onBeforeUnmount(() => {
+  document.body.classList.remove("fe-sheet-open-body");
 });
 
 watch(
@@ -560,14 +584,16 @@ watch(
   display: grid;
   grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
   gap: 12px;
-  min-height: auto;
-  align-items: start;
+  min-height: 0;
+  max-height: min(72vh, calc(100vh - 220px));
+  align-items: stretch;
 }
 
 .worker-rail {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  max-height: 100%;
   padding: 12px;
   overflow: hidden;
 }
@@ -669,9 +695,13 @@ watch(
 
 .eval-main {
   min-width: 0;
+  min-height: 0;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .eval-placeholder {
@@ -691,6 +721,11 @@ watch(
 
 .mobile-roster {
   padding: 12px;
+  padding-bottom: 4px;
+}
+
+.roster-list > li:last-child .roster-item {
+  margin-bottom: 4px;
 }
 
 .roster-head {
@@ -764,6 +799,18 @@ watch(
 .batch-toolbar-btn {
   width: fit-content;
   min-height: 40px;
+}
+
+.batch-error {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 100%;
 }
 
 @media (max-width: 768px) {

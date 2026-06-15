@@ -112,7 +112,7 @@
       </nav>
     </aside>
     <section class="layout-content">
-      <header class="layout-header" :class="{ 'layout-header--mobile-fe': isMobileViewport && isFunctionalEvalRoute }">
+      <header class="layout-header layout-header--branded" :class="{ 'layout-header--mobile-fe': isMobileViewport && isFunctionalEvalRoute }">
         <div class="header-left">
           <button
             type="button"
@@ -127,7 +127,9 @@
           <button class="sidebar-toggle-btn sidebar-toggle-btn--desktop" type="button" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
           </button>
-          <div class="header-title">{{ headerTitle }}</div>
+        </div>
+        <div class="layout-header-brand-center">
+          <AppFullLogo :compact="isMobileViewport" />
         </div>
         <div class="header-right">
           <span v-if="!isMobileViewport" class="header-user">
@@ -163,6 +165,7 @@ import { api } from "@/services/api";
 import { todayKst } from "@/utils/datetime";
 import { buildHqMenuOrderMaps, isHqSidebarEmphasisKey } from "@/config/hqSidebarMenuGroups";
 import { canSystemBackup as userCanSystemBackup } from "@/utils/systemBackupAccess";
+import AppFullLogo from "@/components/branding/AppFullLogo.vue";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -485,6 +488,8 @@ function handleLogout() {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  z-index: 2;
 }
 
 .sidebar-toggle-btn {
@@ -501,6 +506,7 @@ function handleLogout() {
   display: flex;
   align-items: center;
   gap: 12px;
+  z-index: 2;
 }
 
 .header-user {

@@ -133,16 +133,16 @@
       </nav>
     </aside>
     <section class="layout-content">
-      <header class="layout-header" :class="{ 'layout-header-site-mobile': isMobileViewport }">
+      <header class="layout-header layout-header--branded" :class="{ 'layout-header-site-mobile': isMobileViewport }">
         <div class="layout-header-left">
           <button type="button" class="sidebar-toggle-btn" :aria-expanded="isMobileViewport ? mobileDrawerOpen : !sidebarCollapsed" @click="toggleSidebar">
             <span v-if="isMobileViewport" class="hamburger-glyph" aria-hidden="true">☰</span>
             <template v-else>{{ sidebarCollapsed ? "펼치기" : "접기" }}</template>
           </button>
-          <span class="layout-header-product">BESMA · SITE</span>
+          <span v-if="!isMobileViewport" class="layout-header-product">{{ headerSiteLabel }}</span>
         </div>
-        <div class="layout-header-center">
-          {{ headerSiteLabel }}
+        <div class="layout-header-brand-center">
+          <AppFullLogo :compact="isMobileViewport" />
         </div>
         <div class="layout-header-actions">
           <span v-if="!isMobileViewport" class="header-user-line">
@@ -186,6 +186,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter, RouterLink, RouterView } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/services/api";
+import AppFullLogo from "@/components/branding/AppFullLogo.vue";
 import { todayKst } from "@/utils/datetime";
 import { getTickerReadNoticeIds } from "@/utils/noticeTickerRead";
 
@@ -607,18 +608,12 @@ function menuIcon(key: string) {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  z-index: 2;
 }
 
-.layout-header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-weight: 700;
-  color: #0f172a;
-  white-space: nowrap;
-  max-width: 48%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.layout-header-actions {
+  z-index: 2;
 }
 
 .notice-ticker {
@@ -688,8 +683,9 @@ function menuIcon(key: string) {
   flex-shrink: 0;
 }
 
-.layout-header-site-mobile .layout-header-center {
-  max-width: 36%;
+.layout-header-site-mobile .layout-header-left {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .layout-header-product {

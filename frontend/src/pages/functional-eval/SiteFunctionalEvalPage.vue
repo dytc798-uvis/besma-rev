@@ -436,7 +436,7 @@
       :period-closed="Boolean(period?.is_closed) || evaluationLocked"
       :evaluation-locked="evaluationLocked"
       :focus-worker-id="focusWorkerId"
-      :auto-pick-on-mount="false"
+      :auto-pick-on-mount="isFeGuidePreview()"
       :grouped-violations="groupedViolations"
       :sanction-prompt-message="sanctionPromptMessage"
       :default-violation-code="form.violation_code"
@@ -698,7 +698,9 @@ import {
 } from "@/utils/functionalEvalCompletion";
 import { buildSanctionPrefillFromSafetyScores } from "@/utils/safetySanctionMapping";
 import { getFeGuideScene, isFeGuidePreview } from "@/utils/feGuidePreview";
+import { downloadBlobAsFile } from "@/utils/blobDownload";
 import { useFeSiteSessionStore, type TeamLeaderPhase } from "@/stores/feSiteSession";
+import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst } from "@/utils/datetime";
 
 type MainView = "roster" | "evaluate";
@@ -912,6 +914,7 @@ const { isMobileViewport } = useMobileViewport();
 const route = useRoute();
 const router = useRouter();
 const feSiteSession = useFeSiteSessionStore();
+const auth = useAuthStore();
 
 const evalStatusFromLabel: Record<string, EvalStatusKey> = {
   미완료: "incomplete",
@@ -1054,9 +1057,15 @@ const evalTabTitle = computed(() => {
 
 const evalCriteria = computed(() => evalCatalog.value?.[currentEvalType.value]?.criteria || []);
 
-const incompleteCount = computed(() =>
-  approval.value?.incomplete_count ?? countIncompleteWorkers(rosterSource.value),
-);
+const incompleteCount = computed(() => {
+  if (isTeamLeaderFlow.value) {
+    return teamSignoff.value?.incomplete_count ?? countIncompleteWorkers(workers.value);
+  }
+  if (isManager.value && evaluator.value?.team_split_active) {
+    return evaluableIncompleteCount.value;
+  }
+  return approval.value?.incomplete_count ?? countIncompleteWorkers(rosterSource.value);
+});
 
 const managerEvalQueue = computed(() =>
   isManager.value && evaluator.value?.team_split_active ? workers.value : rosterSource.value,
@@ -1568,6 +1577,40 @@ async function preloadEvidenceThumbs(rows: Worker[]) {
   await Promise.all([preloadRewardThumbs(rows), preloadSanctionThumbs(rows)]);
 }
 
+function scheduleEvidenceThumbPreload(rows: Worker[]) {
+  const run = () => void preloadEvidenceThumbs(rows);
+  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+    window.requestIdleCallback(run, { timeout: 4000 });
+  } else {
+    window.setTimeout(run, 2000);
+  }
+}
+
+let evalCatalogPromise: Promise<void> | null = null;
+let violationCatalogPromise: Promise<void> | null = null;
+
+async function ensureEvalCatalog() {
+  if (evalCatalog.value) return;
+  if (!evalCatalogPromise) {
+    evalCatalogPromise = loadEvalCatalog().catch((e) => {
+      evalCatalogPromise = null;
+      throw e;
+    });
+  }
+  await evalCatalogPromise;
+}
+
+async function ensureViolationCatalog() {
+  if (violations.value.length) return;
+  if (!violationCatalogPromise) {
+    violationCatalogPromise = loadCatalog().catch((e) => {
+      violationCatalogPromise = null;
+      throw e;
+    });
+  }
+  await violationCatalogPromise;
+}
+
 const groupedViolations = computed(() => {
   const map = new Map<string, { category: string; label: string; items: ViolationItem[] }>();
   for (const item of violations.value) {
@@ -1721,6 +1764,7 @@ async function goToRoster() {
 }
 
 function startEvaluation(worker?: Worker) {
+  void ensureEvalCatalog();
   const target = (() => {
     if (worker) {
       if (!isManagerEvaluable(worker)) return null;
@@ -1807,9 +1851,10 @@ async function onRewardRegistered() {
   flashSaveNotice("포상 사진이 제출되었습니다. 본사 승인을 기다립니다.");
 }
 
-watch(activeTab, () => {
+watch(activeTab, (tab) => {
   closeForm();
   closeHistory();
+  if (tab === "safety") void ensureViolationCatalog();
 });
 
 watch(mainView, (view) => {
@@ -1934,14 +1979,7 @@ async function load() {
   attendanceMessage.value = "";
   clearEvidenceThumbCache();
   try {
-    const [workersRes, statsRes] = await Promise.allSettled([
-      api.get("/functional-eval/my-site/workers"),
-      api.get("/functional-eval/my-site/grade-stats"),
-    ]);
-    if (workersRes.status !== "fulfilled") {
-      throw workersRes.reason;
-    }
-    const res = workersRes.value;
+    const res = await api.get("/functional-eval/my-site/workers");
     period.value = res.data.period;
     workers.value = cloneWorkerList(res.data.items || []);
     siteOverview.value = cloneWorkerList(res.data.site_overview || []);
@@ -1950,13 +1988,25 @@ async function load() {
     mySignatures.value = res.data.signatures || [];
     evaluator.value = res.data.evaluator || null;
     attendanceMessage.value = res.data.attendance_message || "";
-    siteGradeStats.value = statsRes.status === "fulfilled" ? statsRes.value.data : null;
+    syncFeSiteSession();
+    maybeAutoRouteTeamLeader();
+
+    void api
+      .get("/functional-eval/my-site/grade-stats")
+      .then((statsRes) => {
+        siteGradeStats.value = statsRes.data;
+      })
+      .catch(() => {
+        siteGradeStats.value = null;
+      });
+
     const thumbSources = [...workers.value, ...siteOverview.value];
-    void preloadEvidenceThumbs(thumbSources);
+    scheduleEvidenceThumbPreload(thumbSources);
   } catch (e: unknown) {
     workers.value = [];
     siteOverview.value = [];
     siteGradeStats.value = null;
+    syncFeSiteSession();
     const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
     error.value =
       typeof msg === "string"
@@ -1964,15 +2014,16 @@ async function load() {
         : "근로자 목록을 불러오지 못했습니다. 서버·DB 마이그레이션(0068·0069)을 확인하세요.";
   }
   applyGuidePreviewScene();
-  syncFeSiteSession();
-  maybeAutoRouteTeamLeader();
 }
 
 function syncFeSiteSession() {
-  if (evaluator.value) {
-    feSiteSession.setEvaluatorRole(evaluator.value.role === "MANAGER" ? "MANAGER" : "TEAM_LEADER");
-  }
-  feSiteSession.setTeamLeaderPhase(isTeamLeaderFlow.value ? teamLeaderPhase.value : null);
+  const role: "MANAGER" | "TEAM_LEADER" | null = evaluator.value
+    ? evaluator.value.role === "MANAGER"
+      ? "MANAGER"
+      : "TEAM_LEADER"
+    : null;
+  const loginId = (auth.user?.login_id || "").trim();
+  feSiteSession.syncFromSite(role, isTeamLeaderFlow.value ? teamLeaderPhase.value : null, loginId || null);
 }
 
 function maybeAutoRouteTeamLeader() {
@@ -1991,20 +2042,26 @@ function maybeAutoRouteTeamLeader() {
 
 function applyGuidePreviewScene() {
   if (!isFeGuidePreview()) return;
-  if (getFeGuideScene() !== "reward-upload") return;
-  const candidate =
-    workers.value.find((w) => canUploadReward(w)) ??
-    workers.value[0] ??
-    ({
-      id: 0,
-      row_no: 1,
-      name: "김양호",
-      sanction_status: "NONE",
-      sanction_status_label: "없음",
-      is_permanently_expelled: false,
-      history_visible: true,
-    } as Worker);
-  openRewardUpload(candidate);
+  if (getFeGuideScene() === "reward-upload") {
+    const candidate =
+      workers.value.find((w) => canUploadReward(w)) ??
+      workers.value[0] ??
+      ({
+        id: 0,
+        row_no: 1,
+        name: "김양호",
+        sanction_status: "NONE",
+        sanction_status_label: "없음",
+        is_permanently_expelled: false,
+        history_visible: true,
+      } as Worker);
+    openRewardUpload(candidate);
+    return;
+  }
+  if (getFeGuideScene() === "team-signoff") {
+    signatureModalMode.value = "team";
+    signatureModalOpen.value = true;
+  }
 }
 
 function openTeamSignoffModal() {
@@ -2068,12 +2125,7 @@ async function onSignatureModalSubmit(payload: {
 async function downloadSignatureDoc(signatureId: number) {
   try {
     const res = await api.get(`/functional-eval/signatures/${signatureId}/document`, { responseType: "blob" });
-    const url = URL.createObjectURL(res.data);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `기능인제_서명_${signatureId}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlobAsFile(res.data, `기능인제_서명_${signatureId}.pdf`, res.headers);
   } catch {
     error.value = "서명본 다운로드에 실패했습니다.";
   }
@@ -2082,12 +2134,7 @@ async function downloadSignatureDoc(signatureId: number) {
 async function downloadConsentDoc() {
   try {
     const res = await api.get("/functional-eval/consent/document", { responseType: "blob" });
-    const url = URL.createObjectURL(res.data);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "기능인제_동의서.pdf";
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlobAsFile(res.data, "기능인제_동의서.pdf", res.headers);
   } catch {
     error.value = "동의서 다운로드에 실패했습니다.";
   }
@@ -2146,7 +2193,8 @@ async function openHistory(worker: Worker) {
   }
 }
 
-function openSanction(worker: Worker) {
+async function openSanction(worker: Worker) {
+  await Promise.all([ensureViolationCatalog(), ensureEvalCatalog()]);
   historyWorker.value = null;
   historyData.value = null;
   selectedWorker.value = worker;
@@ -2184,9 +2232,17 @@ async function loadEvalCatalog() {
   evalCatalog.value = res.data;
 }
 
-onMounted(async () => {
-  await Promise.all([loadCatalog(), loadEvalCatalog(), load()]);
+onMounted(() => {
+  void load();
 });
+
+watch(
+  () => mainView.value,
+  (view) => {
+    if (view === "evaluate") void ensureEvalCatalog();
+  },
+  { immediate: true },
+);
 
 watch(
   () => route.query.team_step,
@@ -2195,6 +2251,13 @@ watch(
     if (step === "report" && teamLeaderPhase.value !== "evaluate" && mainView.value === "evaluate") {
       void goToRoster();
     }
+  },
+);
+
+watch(
+  () => route.query.guideScene,
+  () => {
+    applyGuidePreviewScene();
   },
 );
 
@@ -2305,6 +2368,11 @@ onBeforeUnmount(() => {
   .team-step {
     flex: 1 1 auto;
     font-size: 16px;
+  }
+
+  /* 데스크톱은 사이드바 단계 메뉴 사용 — 상단 stepbar 중복 숨김 */
+  .team-leader-stepbar {
+    display: none;
   }
 }
 

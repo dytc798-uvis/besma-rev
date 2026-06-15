@@ -243,8 +243,19 @@ function setCriterionBlockRef(criterionId: string, el: Element | null) {
   }
 }
 
+function findMobileScrollContainer(start: HTMLElement | null): HTMLElement | null {
+  let node: HTMLElement | null = start;
+  while (node) {
+    const style = window.getComputedStyle(node);
+    const scrollableY = /auto|scroll/i.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1;
+    if (scrollableY) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
 function scrollToNextCriterion(currentCriterionId: string) {
-  const container = criteriaMobileRef.value;
+  const container = findMobileScrollContainer(criteriaMobileRef.value);
   if (!container) return;
 
   const currentIndex = props.criteria.findIndex((c) => c.id === currentCriterionId);
@@ -308,8 +319,8 @@ async function pickGrade(criterionId: string, gradeKey: string) {
 .eval-panel--mobile {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: auto;
   background: #fff;
 }
 
@@ -452,8 +463,8 @@ async function pickGrade(criterionId: string, gradeKey: string) {
 }
 
 .criteria-mobile {
-  flex: 1;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  overflow: visible;
 }
 
 .criterion-block {

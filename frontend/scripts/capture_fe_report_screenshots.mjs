@@ -17,15 +17,33 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(__dirname, "..", "..", "docs", "reports", "functional-eval-e2e", "screenshots", "report");
 const FE = process.env.FE_BASE || "http://127.0.0.1:5174";
+const API = process.env.API_BASE || (FE.includes("besma.co.kr") ? "https://api.besma.co.kr" : "http://127.0.0.1:8001");
 
 const ACCOUNTS = {
-  team: { login: "대우청라-김팀장", password: "750101", label: "팀장" },
+  team: { login: "대우청라-박명식", password: "661123", label: "소장(동의·현장)" },
   manager: { login: "대우청라-박명식", password: "661123", label: "소장" },
   hq: { login: "안전보건-조동문", password: "600321", label: "안전보건실장" },
+  hqOfficer: { login: "안전보건-정상익", password: "600321", label: "안전보건 담당" },
   ceo: { login: "부현대표-김홍수", password: "611001", label: "대표이사" },
 };
 
+async function loginViaApi(page, { login, password }) {
+  const res = await fetch(`${API}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ username: login, password }),
+  });
+  if (!res.ok) throw new Error(`login failed ${login} ${res.status}`);
+  const { access_token: token } = await res.json();
+  await page.goto(`${FE}/login`, { waitUntil: "domcontentloaded" });
+  await page.evaluate((t) => localStorage.setItem("besma_token", t), token);
+}
+
 async function login(page, { login, password }) {
+  if (FE.includes("besma.co.kr")) {
+    await loginViaApi(page, { login, password });
+    return;
+  }
   await page.goto(`${FE}/login`, { waitUntil: "networkidle" });
   await page.fill('input[type="text"]', login);
   await page.fill('input[type="password"]', password);
@@ -180,14 +198,34 @@ async function main() {
     await ctx.close();
   }
 
-  // HQ
+  // HQ 담당 (계정 없으면 guidePreview 대체)
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 }, locale: "ko-KR" });
+    const page = await ctx.newPage();
+    try {
+      await login(page, ACCOUNTS.hqOfficer);
+      await page.goto(`${FE}/hq-safe/functional-eval`, { waitUntil: "networkidle" });
+      await dismissConsentIfVisible(page);
+      await page.waitForTimeout(2000);
+      await shot(page, "10_hq_officer_dashboard", { fullPage: true });
+    } catch {
+      await page.goto(guideUrl(FE, "/hq-safe/functional-eval", { preview: true }) + "&guideRole=hq", {
+        waitUntil: "networkidle",
+      });
+      await page.waitForTimeout(1500);
+      await shot(page, "10_hq_officer_dashboard", { fullPage: true });
+    }
+    await ctx.close();
+  }
+
+  // HQ 실장
   {
     const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 }, locale: "ko-KR" });
     const page = await ctx.newPage();
     await login(page, ACCOUNTS.hq);
     await page.goto(`${FE}/hq-safe/functional-eval`, { waitUntil: "networkidle" });
     await page.waitForTimeout(2000);
-    await shot(page, "10_hq_dashboard", { fullPage: true });
+    await shot(page, "11_hq_director_dashboard", { fullPage: true });
     await ctx.close();
   }
 
@@ -198,7 +236,7 @@ async function main() {
     await login(page, ACCOUNTS.ceo);
     await page.goto(`${FE}/hq-safe/functional-eval`, { waitUntil: "networkidle" });
     await page.waitForTimeout(2000);
-    await shot(page, "11_ceo_dashboard", { fullPage: true });
+    await shot(page, "12_ceo_dashboard", { fullPage: true });
     await ctx.close();
   }
 

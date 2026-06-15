@@ -8,6 +8,8 @@ export interface AuthUser {
   login_id: string;
   role: string;
   must_change_password: boolean;
+  needs_fe_consent?: boolean;
+  fe_consent_required?: boolean;
   ui_type: "HQ_SAFE" | "SITE" | "HQ_OTHER";
   site_id: number | null;
   person_id: number | null;
@@ -36,6 +38,11 @@ export const useAuthStore = defineStore("auth", () => {
 
   const isAuthenticated = computed(() => !!token.value && !!user.value);
   const mustChangePassword = computed(() => !!user.value?.must_change_password);
+  const needsFeConsent = computed(() => !!user.value?.needs_fe_consent);
+  const feConsentRequired = computed(() => !!user.value?.fe_consent_required);
+  const needsFeOnboarding = computed(
+    () => needsFeConsent.value && (mustChangePassword.value || feConsentRequired.value),
+  );
   const isTestPersonaMode = computed(() => import.meta.env.DEV);
   const effectivePersona = computed<TestPersona | null>(() => {
     if (!isTestPersonaMode.value) return null;
@@ -122,6 +129,9 @@ export const useAuthStore = defineStore("auth", () => {
     user,
     isAuthenticated,
     mustChangePassword,
+    needsFeConsent,
+    feConsentRequired,
+    needsFeOnboarding,
     isTestPersonaMode,
     effectivePersona,
     effectiveUiType,

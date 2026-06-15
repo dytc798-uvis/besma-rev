@@ -39,6 +39,13 @@ export async function drawSampleSignature(page) {
   await page.mouse.up();
 }
 
+export async function scrollConsentToBottom(page) {
+  await page.locator(".fe-sign-consent-body").evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  }).catch(() => {});
+  await page.waitForTimeout(400);
+}
+
 export async function dismissConsent(page) {
   const modal = page.locator(".fe-sign-modal");
   if (!(await modal.isVisible().catch(() => false))) return;
@@ -51,11 +58,19 @@ export async function dismissConsent(page) {
 /** 평가 화면 — guidePreview=1 로 샘플 등급 표시 후 캡처 */
 export async function prepareEvaluateScreenshot(page, evalType = "functional") {
   await page.waitForTimeout(1200);
-  const railItem = page.locator(".rail-item, .roster-item").first();
-  if (await railItem.count()) {
-    await railItem.click().catch(() => {});
+  const startBtn = page.getByRole("button", { name: /^평가 시작$/ }).first();
+  if (await startBtn.isVisible().catch(() => false)) {
+    await startBtn.click().catch(() => {});
     await page.waitForTimeout(800);
   }
+  const mobileItem = page.locator(".roster-item, .site-list-item--leader").first();
+  const railItem = page.locator(".rail-item").first();
+  if (await mobileItem.count()) {
+    await mobileItem.click().catch(() => {});
+  } else if (await railItem.count()) {
+    await railItem.click().catch(() => {});
+  }
+  await page.waitForTimeout(800);
   if (evalType === "safety") {
     await page.getByRole("button", { name: /2-2|안전/ }).first().click().catch(() => {});
     await page.waitForTimeout(600);
@@ -81,50 +96,25 @@ export async function fillSanctionModalSample(page) {
   await drawSampleSignature(page);
 }
 
-/** 캡처 직전 강조 오버레이 (빨간 원 + 주변 흐림) */
-export async function applyCaptureHighlight(page, highlight) {
-  if (!highlight) return;
-  await page.evaluate(({ cx, cy, r }) => {
-    const old = document.getElementById("guide-capture-highlight");
-    old?.remove();
-    const wrap = document.createElement("div");
-    wrap.id = "guide-capture-highlight";
-    wrap.style.cssText =
-      "position:fixed;inset:0;z-index:99999;pointer-events:none;" +
-      `-webkit-mask-image:radial-gradient(circle at ${cx}% ${cy}%, transparent 0, transparent ${r}%, #000 calc(${r}% + 1px));` +
-      `mask-image:radial-gradient(circle at ${cx}% ${cy}%, transparent 0, transparent ${r}%, #000 calc(${r}% + 1px));` +
-      "background:rgba(15,23,42,0.52);";
-    const ring = document.createElement("div");
-    ring.id = "guide-capture-highlight-ring";
-    ring.style.cssText =
-      `position:fixed;left:calc(${cx}% - ${r}%);top:calc(${cy}% - ${r}%);` +
-      `width:calc(${r * 2}%);height:calc(${r * 2}%);` +
-      "border:3px solid #ef4444;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,0.9);pointer-events:none;z-index:100000;";
-    document.body.appendChild(wrap);
-    document.body.appendChild(ring);
-  }, highlight);
-}
-
-export async function clearCaptureHighlight(page) {
-  await page.evaluate(() => {
-    document.getElementById("guide-capture-highlight")?.remove();
-    document.getElementById("guide-capture-highlight-ring")?.remove();
-  });
-}
-
-export async function shotWithHighlight(page, name, outDir, opts = {}) {
+/** 캡처 — UI 요소만 잘라 저장 (오버레이·전체화면 캡처 없음) */
+export async function shotElement(page, name, outDir, selector) {
+  const loc = page.locator(selector).first();
+  await loc.waitFor({ state: "visible", timeout: 20000 });
+  await loc.scrollIntoViewIfNeeded().catch(() => {});
+  await page.waitForTimeout(300);
   const out = `${outDir}/${name}.png`;
-  if (opts.highlight) await applyCaptureHighlight(page, opts.highlight);
-  try {
-    if (opts.selector) {
-      await page.locator(opts.selector).first().screenshot({ path: out });
-    } else {
-      await page.screenshot({ path: out, fullPage: Boolean(opts.fullPage) });
-    }
-    console.log("ok", name);
-  } finally {
-    await clearCaptureHighlight(page);
+  await loc.screenshot({ path: out });
+  console.log("ok", name, selector);
+}
+
+export async function shotPage(page, name, outDir, opts = {}) {
+  const out = `${outDir}/${name}.png`;
+  if (opts.selector) {
+    await shotElement(page, name, outDir, opts.selector);
+    return;
   }
+  await page.screenshot({ path: out, fullPage: Boolean(opts.fullPage) });
+  console.log("ok", name);
 }
 
 /** 포상 업로드 창 캡처 (모바일) */
@@ -143,7 +133,7 @@ export async function captureRewardUploadModal(page, outDir, shotFn) {
     await page.keyboard.press("Escape").catch(() => {});
     return;
   }
-  await shotFn(page, "reward_upload_modal", { selector: ".fe-dialog:has(h2:has-text('포상'))", highlight: { cx: 50, cy: 58, r: 24 } });
+  await shotFn(page, "reward_upload_modal", { selector: ".fe-dialog:has(h2:has-text('포상'))" });
   await page.keyboard.press("Escape").catch(() => {});
   await page.locator(".fe-overlay-backdrop").click({ force: true }).catch(() => {});
   await page.waitForTimeout(400);

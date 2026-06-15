@@ -15,11 +15,22 @@
     <aside class="layout-sidebar">
       <h1>기능인 인정제 평가</h1>
       <nav class="layout-menu">
-        <template v-if="isTeamLeaderNav">
+        <p v-if="!navHydrated" class="fe-menu-loading" role="status">메뉴 불러오는 중…</p>
+        <template v-else-if="isTeamLeaderNav">
           <button
             type="button"
-            class="fe-menu-highlight fe-step-link"
-            :class="{ active: teamPhase === 'evaluate' || isEvaluateRoute }"
+            class="fe-tl-step fe-tl-step--consent fe-tl-step--done"
+            disabled
+          >
+            ① 동의서
+          </button>
+          <button
+            type="button"
+            class="fe-tl-step"
+            :class="{
+              'fe-tl-step--done': teamPhase === 'report' || teamPhase === 'results',
+              'fe-tl-step--active': teamPhase === 'evaluate' || isEvaluateRoute,
+            }"
             :disabled="teamPhase === 'results'"
             @click="goTeamStep('evaluate')"
           >
@@ -27,8 +38,11 @@
           </button>
           <button
             type="button"
-            class="fe-menu-subitem fe-step-link"
-            :class="{ active: teamPhase === 'report' && !isEvaluateRoute }"
+            class="fe-tl-step"
+            :class="{
+              'fe-tl-step--active': teamPhase === 'report' && !isEvaluateRoute,
+              'fe-tl-step--done': teamPhase === 'results',
+            }"
             :disabled="teamPhase === 'evaluate'"
             @click="goTeamStep('report')"
           >
@@ -36,8 +50,8 @@
           </button>
           <button
             type="button"
-            class="fe-menu-subitem fe-step-link"
-            :class="{ active: teamPhase === 'results' }"
+            class="fe-tl-step"
+            :class="{ 'fe-tl-step--active': teamPhase === 'results' }"
             :disabled="teamPhase !== 'results'"
             @click="goTeamStep('results')"
           >
@@ -69,7 +83,8 @@
         </template>
         <RouterLink
           class="fe-menu-subitem fe-menu-guide"
-          :to="{ name: 'site-user-guide' }"
+          :class="{ active: isGuideRoute }"
+          :to="{ name: 'site-functional-eval-user-guide' }"
           @click="closeMobileDrawer"
         >
           기능인인정제 설명
@@ -79,17 +94,17 @@
     <section class="layout-content">
       <header
         v-if="!(isMobileViewport && (consentRequired || consentLoading))"
-        class="layout-header layout-header-fe"
+        class="layout-header layout-header-fe layout-header--branded"
         :class="{ 'layout-header-site-mobile': isMobileViewport }"
       >
         <div class="header-left">
           <button
-            v-if="isMobileViewport && isEvaluateRoute"
+            v-if="isMobileViewport && (isEvaluateRoute || isGuideRoute)"
             type="button"
             class="fe-header-back"
-            @click="goRoster"
+            @click="goRoster()"
           >
-            ← 현황
+            ← {{ isGuideRoute ? "평가" : "현황" }}
           </button>
           <button
             type="button"
@@ -101,10 +116,12 @@
             <span class="hamburger-glyph" aria-hidden="true">☰</span>
             <span class="menu-toggle-label">{{ mobileDrawerOpen ? "메뉴 닫기" : "메뉴 펼치기" }}</span>
           </button>
-          <div class="header-title-block">
-            <div class="header-title">기능인 인정제 평가</div>
+          <div v-if="isMobileViewport" class="header-title-block header-title-block--mobile">
             <div class="header-sub header-sub--user">{{ auth.user?.name }} ({{ auth.user?.login_id }})</div>
           </div>
+        </div>
+        <div class="layout-header-brand-center">
+          <AppFullLogo :compact="isMobileViewport" />
         </div>
         <div class="header-right">
           <span v-if="!isMobileViewport">{{ auth.user?.name }} ({{ auth.user?.login_id }})</span>
@@ -121,6 +138,9 @@
         />
         <RouterView v-else />
       </main>
+      <footer v-if="showSiteFooter" class="layout-footer-fe" aria-label="사이트 정보">
+        <p class="layout-footer-fe__copy">© BooHyun Electric Co., Ltd</p>
+      </footer>
     </section>
   </div>
 </template>
@@ -131,8 +151,10 @@ import { useRoute, useRouter } from "vue-router";
 import { useMobileViewport } from "@/composables/useMobileViewport";
 import { useAuthStore } from "@/stores/auth";
 import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
+import AppFullLogo from "@/components/branding/AppFullLogo.vue";
 import { useFeConsentCheck } from "@/composables/useFeConsentCheck";
 import { useFeSiteSessionStore } from "@/stores/feSiteSession";
+import { clearFeSessionCache } from "@/utils/feSessionCache";
 
 const auth = useAuthStore();
 const feSiteSession = useFeSiteSessionStore();
@@ -149,8 +171,17 @@ const {
 } = useFeConsentCheck();
 
 onMounted(() => {
+  const loginId = (auth.user?.login_id || "").trim();
+  if (loginId) feSiteSession.hydrateNavFromCache(loginId);
   void checkConsent();
 });
+
+watch(
+  () => `${route.query.guidePreview ?? ""}|${route.query.guideScene ?? ""}`,
+  () => {
+    void checkConsent();
+  },
+);
 
 const evalMenuStatuses = [
   { key: "incomplete", label: "미평가" },
@@ -162,10 +193,14 @@ const isRosterMenuActive = computed(
   () => route.name === "site-functional-eval" || route.name === "site-functional-eval-roster",
 );
 
+const navHydrated = computed(() => feSiteSession.navHydrated);
 const isTeamLeaderNav = computed(() => feSiteSession.isTeamLeader);
 const teamPhase = computed(() => feSiteSession.teamLeaderPhase);
+const consentDone = computed(() => !consentLoading.value && !consentRequired.value);
+const showSiteFooter = computed(() => !consentLoading.value && !consentRequired.value);
 
 const isEvaluateRoute = computed(() => route.name === "site-functional-eval-evaluate");
+const isGuideRoute = computed(() => route.name === "site-functional-eval-user-guide");
 
 function isEvalMenuActive(statusKey: string) {
   return route.name === "site-functional-eval-evaluate" && route.query.eval_status === statusKey;
@@ -199,6 +234,8 @@ watch(
 );
 
 function logout() {
+  clearFeSessionCache(auth.user?.login_id);
+  feSiteSession.reset();
   auth.logout();
   router.push({ name: "login" });
 }
@@ -217,28 +254,17 @@ function logout() {
   padding: 8px 12px;
 }
 
-.layout-header-site-mobile .header-left {
+.header-left {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
   flex: 1;
+  z-index: 2;
 }
 
-.header-title-block {
+.header-title-block--mobile {
   min-width: 0;
-}
-
-.header-title {
-  font-weight: 600;
-  font-size: 15px;
-  line-height: 1.3;
-}
-
-.header-sub {
-  font-size: 12px;
-  color: #64748b;
-  margin-top: 2px;
 }
 
 .header-right {
@@ -246,6 +272,7 @@ function logout() {
   gap: 8px;
   align-items: center;
   flex-shrink: 0;
+  z-index: 2;
 }
 
 .sidebar-toggle-btn {
@@ -300,6 +327,28 @@ function logout() {
   max-width: none;
 }
 
+.functional-eval-shell .layout-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.layout-footer-fe {
+  flex-shrink: 0;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #fed7aa;
+  background: linear-gradient(180deg, #fff7ed 0%, #ffffff 100%);
+  text-align: center;
+}
+
+.layout-footer-fe__copy {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+}
+
 .fe-sidebar-group {
   display: flex;
   flex-direction: column;
@@ -343,9 +392,57 @@ function logout() {
   font-family: inherit;
 }
 
-.fe-step-link:disabled {
-  opacity: 0.45;
+/* 팀장 좌측 단계 메뉴 — 상단 stepbar(①~④)와 동일 규칙 */
+.fe-tl-step {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 5px 10px;
+  padding: 11px 14px;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #64748b;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.fe-tl-step--done {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.fe-tl-step--active {
+  border-color: #ea580c;
+  background: #fff7ed;
+  color: #c2410c;
+  box-shadow: 0 0 0 1px rgba(234, 88, 12, 0.15);
+}
+
+.fe-tl-step:disabled {
   cursor: not-allowed;
+}
+
+.fe-tl-step:disabled:not(.fe-tl-step--done):not(.fe-tl-step--active) {
+  opacity: 0.72;
+}
+
+.fe-tl-step--consent.fe-tl-step--done,
+.fe-tl-step--done:disabled,
+.fe-tl-step--active:disabled {
+  opacity: 1;
+}
+
+.fe-menu-loading {
+  margin: 8px 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #64748b;
 }
 
 .fe-step-link.active {
@@ -366,10 +463,22 @@ function logout() {
   .functional-eval-shell {
     display: grid;
     grid-template-columns: 240px 1fr;
+    height: 100vh;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .functional-eval-shell .layout-content {
+    min-height: 0;
+    overflow: hidden;
   }
 
   .layout-main-fe {
     padding: 20px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -382,6 +491,14 @@ function logout() {
 
   .functional-eval-shell.site-mobile-layout .layout-main-fe {
     padding: 8px 10px;
+  }
+
+  .functional-eval-shell.site-mobile-layout .layout-footer-fe {
+    padding: 8px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .functional-eval-shell.site-mobile-layout .layout-footer-fe__copy {
+    font-size: 10px;
   }
 
   .functional-eval-shell.site-mobile-layout .layout-header-fe {

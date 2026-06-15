@@ -83,6 +83,72 @@
       </div>
     </section>
 
+    <section class="panel hq-daily-report-panel">
+      <div class="hq-review-head">
+        <div>
+          <h2 class="hq-review-title">일일 진행현황 보고서</h2>
+          <p class="panel-sub">매일 21:00 KST 기준 자동 생성 · 본사 확인용</p>
+        </div>
+        <div class="hq-review-actions">
+          <button class="stitch-btn-secondary" type="button" :disabled="loadingDailyReports" @click="loadDailyReports">
+            {{ loadingDailyReports ? "조회 중…" : "새로고침" }}
+          </button>
+          <button
+            v-if="canGenerateDailyReport"
+            class="stitch-btn-primary"
+            type="button"
+            :disabled="generatingDailyReport"
+            @click="generateDailyReport(false)"
+          >
+            {{ generatingDailyReport ? "생성 중…" : "오늘 보고서 생성" }}
+          </button>
+          <button
+            v-if="canGenerateDailyReport"
+            class="stitch-btn-secondary"
+            type="button"
+            :disabled="generatingDailyReport"
+            @click="generateDailyReport(true)"
+          >
+            재생성
+          </button>
+        </div>
+      </div>
+      <table v-if="dailyReports.length" class="data-table daily-report-table">
+        <thead>
+          <tr>
+            <th>보고일</th>
+            <th>생성시각</th>
+            <th>완료율</th>
+            <th>평가완료</th>
+            <th>병목 현장</th>
+            <th>버전</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in dailyReports" :key="row.id">
+            <td>{{ row.report_date }}</td>
+            <td>{{ row.generated_at_label || row.generated_at }}</td>
+            <td>{{ row.completion_rate_pct }}%</td>
+            <td>{{ row.completed_workers }} / {{ row.total_workers }}</td>
+            <td>{{ row.bottleneck_site_count }}</td>
+            <td>v{{ row.version }}</td>
+            <td>
+              <button
+                v-if="row.has_document"
+                type="button"
+                class="link-btn"
+                @click="downloadDailyReport(row.id, row.report_date)"
+              >
+                PDF
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-else class="panel-sub">최근 보고서가 없습니다. 수동 생성하거나 21:00 자동 생성을 기다려 주세요.</p>
+    </section>
+
     <!-- 검토·승인 (항상 표시) -->
     <section class="panel hq-review-panel">
       <div class="hq-review-head">
@@ -790,6 +856,7 @@ import FeSignatureModal from "@/components/functional-eval/FeSignatureModal.vue"
 import FeGradeStatsPanel, { type GradeStatsPayload } from "@/components/functional-eval/FeGradeStatsPanel.vue";
 import { useFeConsentCheck } from "@/composables/useFeConsentCheck";
 import { useMobileViewport } from "@/composables/useMobileViewport";
+import { downloadBlobAsFile } from "@/utils/blobDownload";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { formatDateTimeKst, todayKst } from "@/utils/datetime";
@@ -1142,6 +1209,26 @@ const hqSignatureMode = ref<"officer-all" | "director-all" | "officer-site" | "d
 const pendingApproveSiteCode = ref("");
 
 const loginId = computed(() => (auth.user?.login_id || "").trim());
+const canGenerateDailyReport = computed(
+  () => auth.user?.role === "HQ_SAFE_ADMIN" || auth.user?.role === "SUPER_ADMIN",
+);
+
+interface DailyReportRow {
+  id: number;
+  report_date: string;
+  generated_at?: string;
+  generated_at_label?: string;
+  completion_rate_pct: number;
+  completed_workers: number;
+  total_workers: number;
+  bottleneck_site_count: number;
+  version: number;
+  has_document?: boolean;
+}
+
+const dailyReports = ref<DailyReportRow[]>([]);
+const loadingDailyReports = ref(false);
+const generatingDailyReport = ref(false);
 const canOfficerApprove = computed(
   () => loginId.value === HQ_OFFICER_LOGIN || hqRole.value === "admin",
 );
@@ -1210,9 +1297,7 @@ async function onConsentCompleted() {
 async function downloadConsentDoc() {
   try {
     const res = await api.get("/functional-eval/consent/document", { responseType: "blob" });
-    const url = URL.createObjectURL(res.data);
-    window.open(url, "_blank", "noopener,noreferrer");
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    downloadBlobAsFile(res.data, "기능인제_동의서.pdf", res.headers);
   } catch {
     window.alert("동의서 PDF를 불러오지 못했습니다.");
   }
@@ -1228,12 +1313,49 @@ async function refreshReviewQueue() {
   }
 }
 
+async function loadDailyReports() {
+  loadingDailyReports.value = true;
+  try {
+    const res = await api.get("/functional-eval/hq/daily-reports", { params: { limit: 7 } });
+    dailyReports.value = res.data.items || [];
+  } catch {
+    dailyReports.value = [];
+  } finally {
+    loadingDailyReports.value = false;
+  }
+}
+
+async function generateDailyReport(force: boolean) {
+  generatingDailyReport.value = true;
+  try {
+    await api.post("/functional-eval/hq/daily-reports/generate", null, { params: { force } });
+    await loadDailyReports();
+    window.alert(force ? "보고서를 재생성했습니다." : "보고서를 생성했습니다.");
+  } catch (e: unknown) {
+    const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    window.alert(typeof msg === "string" ? msg : "보고서 생성에 실패했습니다.");
+  } finally {
+    generatingDailyReport.value = false;
+  }
+}
+
+async function downloadDailyReport(reportId: number, reportDate: string) {
+  try {
+    const res = await api.get(`/functional-eval/hq/daily-reports/${reportId}/document`, { responseType: "blob" });
+    const ymd = (reportDate || "").replace(/-/g, "");
+    downloadBlobAsFile(res.data, `기능인인정제_일일진행현황_${ymd}.pdf`, res.headers);
+  } catch {
+    window.alert("PDF 다운로드에 실패했습니다.");
+  }
+}
+
 onMounted(async () => {
   await checkConsent();
   if (consentRequired.value) return;
   await loadOverview();
   await loadHqApprovals();
   await loadPendingRewards();
+  await loadDailyReports();
   applyGuidePreviewScene();
 });
 
@@ -1804,6 +1926,8 @@ async function downloadSanctionExcel() {
 
 <style scoped>
 .hq-review-panel { border-left: 4px solid #2563eb; }
+.hq-daily-report-panel { border-left: 4px solid #0d9488; margin-bottom: 14px; }
+.daily-report-table { margin-top: 8px; font-size: 13px; }
 .hq-review-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .hq-review-title { margin: 0 0 4px; font-size: 18px; }
 .hq-review-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
