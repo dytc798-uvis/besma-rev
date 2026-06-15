@@ -109,6 +109,39 @@ def test_issue_accounts_generic_failure(tmp_path: Path):
         db.close()
 
 
+def test_issue_hq_viewer_account(tmp_path: Path):
+    client, SessionLocal = _client(tmp_path)
+    db = SessionLocal()
+    try:
+        db.add(
+            User(
+                name="전용성",
+                login_id="부현본사-전용성",
+                password_hash=get_password_hash("old"),
+                role=Role.FUNCTIONAL_EVAL_VIEWER,
+                ui_type=UIType.HQ_SAFE,
+                department="공사관리4팀",
+                birth_date=date(1985, 12, 9),
+                must_change_password=False,
+                is_active=True,
+            )
+        )
+        db.commit()
+
+        res = client.post(
+            "/auth/issue-accounts",
+            json={"scope": "hq", "name": "전용성", "birth6": "851209"},
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["accounts"][0]["login_id"] == "부현본사-전용성"
+        user = db.query(User).filter(User.login_id == "부현본사-전용성").one()
+        assert user.must_change_password is True
+        assert verify_password("851209", user.password_hash)
+    finally:
+        db.close()
+
+
 def test_issue_hq_account(tmp_path: Path):
     client, SessionLocal = _client(tmp_path)
     db = SessionLocal()

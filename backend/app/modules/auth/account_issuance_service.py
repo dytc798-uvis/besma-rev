@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config.security import get_password_hash
 from app.core.datetime_utils import utc_now
 from app.core.enums import Role, UIType
-from app.core.permissions import HQ_SAFE_WORKSPACE_ROLES
+from app.core.permissions import FUNCTIONAL_EVAL_VIEWER_ROLES, HQ_SAFE_WORKSPACE_ROLES
 from app.modules.auth.account_issuance_models import AccountIssuanceLog
 from app.modules.functional_eval import service as fe_service
 from app.modules.functional_eval.eval_provisioning import _rrn_front_password
@@ -31,6 +31,9 @@ GENERIC_FAILURE = (
     "입력한 정보와 일치하는 계정을 찾을 수 없습니다. 정보를 확인 후 다시 시도해 주세요."
 )
 RATE_LIMIT_MESSAGE = "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."
+
+# 본사 자가 발급 대상: 안전보건실·조회전용(부현본사-*) 등
+_ISSUABLE_HQ_ROLES = HQ_SAFE_WORKSPACE_ROLES | FUNCTIONAL_EVAL_VIEWER_ROLES
 
 MAX_FAILS_PER_FINGERPRINT = 5
 FAIL_WINDOW_MINUTES = 10
@@ -262,7 +265,7 @@ def _find_hq_user(db: Session, *, name: str, birth6: str, department: str | None
         if birth6 == "611001":
             matched.append(user)
 
-    for user in db.query(User).filter(User.is_active.is_(True), User.role.in_(tuple(HQ_SAFE_WORKSPACE_ROLES))).all():
+    for user in db.query(User).filter(User.is_active.is_(True), User.role.in_(tuple(_ISSUABLE_HQ_ROLES))).all():
         if user in matched:
             continue
         if fe_service._normalize_role_identifier(user.name) != target:
