@@ -246,16 +246,20 @@ form.form-grid .form-field label {
   }
 }
 
-/* SITE 모바일: 콘텐츠 우선, 사이드바는 햄버거 오버레이 */
+/* SITE·HQ·기능인제 모바일: 사이드바 기본 접힘(드로어), 콘텐츠 전폭 */
 @media (max-width: 768px) {
-  .layout-root.site-shell.site-mobile-layout {
+  .layout-root.site-shell.site-mobile-layout,
+  .layout-root.functional-eval-shell.site-shell,
+  .layout-root.hq-safe-shell {
     flex-direction: row !important;
     height: 100vh !important;
     min-height: 100vh !important;
     position: relative;
   }
 
-  .layout-root.site-shell.site-mobile-layout .layout-sidebar {
+  .layout-root.site-shell.site-mobile-layout .layout-sidebar,
+  .layout-root.functional-eval-shell.site-shell .layout-sidebar,
+  .layout-root.hq-safe-shell .layout-sidebar {
     position: fixed;
     top: 0;
     left: 0;
@@ -267,70 +271,32 @@ form.form-grid .form-field label {
     box-shadow: none;
   }
 
-  .layout-root.site-shell.site-mobile-layout.mobile-drawer-open .layout-sidebar {
-    transform: translateX(0);
-    box-shadow: 8px 0 28px rgba(15, 23, 42, 0.18);
-  }
-
-  .layout-root.site-shell.site-mobile-layout .layout-content {
-    flex: 1;
-    width: 100%;
-    min-width: 0;
-  }
-
-  /* 기능인제 현장: 사이드바 드로어 + 콘텐츠 전폭 */
-  .layout-root.functional-eval-shell.site-mobile-layout {
-    flex-direction: row !important;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    position: relative;
-  }
-
-  .layout-root.functional-eval-shell.site-mobile-layout .layout-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
+  .layout-root.functional-eval-shell.site-shell .layout-sidebar {
     width: min(88vw, 280px) !important;
-    z-index: 300;
-    transform: translateX(-100%);
-    transition: transform 0.2s ease;
   }
 
-  .layout-root.functional-eval-shell.site-mobile-layout.mobile-drawer-open .layout-sidebar {
+  .layout-root.site-shell.site-mobile-layout.mobile-drawer-open .layout-sidebar,
+  .layout-root.functional-eval-shell.site-shell.mobile-drawer-open .layout-sidebar,
+  .layout-root.hq-safe-shell.mobile-drawer-open .layout-sidebar {
     transform: translateX(0);
     box-shadow: 8px 0 28px rgba(15, 23, 42, 0.18);
   }
 
-  /* HQ 모바일: 사이드바 드로어 + 콘텐츠 전폭 */
-  .layout-root.hq-safe-shell.hq-mobile-layout {
-    flex-direction: row !important;
-    height: 100vh !important;
-    min-height: 100vh !important;
-    position: relative;
-  }
-
-  .layout-root.hq-safe-shell.hq-mobile-layout .layout-sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: min(88vw, 300px) !important;
-    z-index: 300;
-    transform: translateX(-100%);
-    transition: transform 0.2s ease;
-    box-shadow: none;
-  }
-
-  .layout-root.hq-safe-shell.hq-mobile-layout.mobile-drawer-open .layout-sidebar {
-    transform: translateX(0);
-    box-shadow: 8px 0 28px rgba(15, 23, 42, 0.18);
-  }
-
-  .layout-root.hq-safe-shell.hq-mobile-layout .layout-content {
+  .layout-root.site-shell.site-mobile-layout .layout-content,
+  .layout-root.functional-eval-shell.site-shell .layout-content,
+  .layout-root.hq-safe-shell .layout-content {
     flex: 1;
     width: 100%;
     min-width: 0;
+  }
+
+  .layout-root.functional-eval-shell.site-shell .sidebar-toggle-btn--mobile,
+  .layout-root.hq-safe-shell .sidebar-toggle-btn--mobile {
+    display: inline-flex !important;
+  }
+
+  .layout-root.hq-safe-shell .sidebar-toggle-btn--desktop {
+    display: none !important;
   }
 
   body.fe-consent-modal-open .layout-header,

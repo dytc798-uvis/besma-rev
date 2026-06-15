@@ -115,16 +115,16 @@
       <header class="layout-header" :class="{ 'layout-header--mobile-fe': isMobileViewport && isFunctionalEvalRoute }">
         <div class="header-left">
           <button
-            v-if="isMobileViewport"
             type="button"
-            class="sidebar-toggle-btn sidebar-toggle-btn--menu"
-            aria-label="메뉴"
+            class="sidebar-toggle-btn sidebar-toggle-btn--mobile"
+            :aria-label="mobileDrawerOpen ? '메뉴 닫기' : '메뉴 펼치기'"
             :aria-expanded="mobileDrawerOpen"
             @click="mobileDrawerOpen = !mobileDrawerOpen"
           >
             <span aria-hidden="true">☰</span>
+            <span class="menu-toggle-label">{{ mobileDrawerOpen ? "메뉴 닫기" : "메뉴 펼치기" }}</span>
           </button>
-          <button v-else class="sidebar-toggle-btn" type="button" @click="toggleSidebar">
+          <button class="sidebar-toggle-btn sidebar-toggle-btn--desktop" type="button" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
           </button>
           <div class="header-title">{{ headerTitle }}</div>
@@ -524,9 +524,19 @@ function handleLogout() {
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: 6px;
   justify-content: center;
-  font-size: 18px;
-  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 10px;
+}
+
+.sidebar-toggle-btn--mobile {
+  display: none;
+}
+
+.menu-toggle-label {
+  line-height: 1;
 }
 
 .layout-header--mobile-fe {
@@ -555,6 +565,14 @@ function handleLogout() {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .hq-safe-shell .sidebar-toggle-btn--mobile {
+    display: inline-flex;
+  }
+
+  .hq-safe-shell .sidebar-toggle-btn--desktop {
+    display: none;
   }
 }
 

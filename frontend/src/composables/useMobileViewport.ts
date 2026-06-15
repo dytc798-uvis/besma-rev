@@ -2,13 +2,17 @@ import { onMounted, onUnmounted, ref } from "vue";
 
 export const MOBILE_BREAKPOINT_PX = 768;
 
+function readIsMobileViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth <= MOBILE_BREAKPOINT_PX;
+}
+
 /** SITE·기능인제 등 현장 모바일 레이아웃 판별 (≤768px) */
 export function useMobileViewport() {
-  const isMobileViewport = ref(false);
+  const isMobileViewport = ref(readIsMobileViewport());
 
   function syncViewport() {
-    if (typeof window === "undefined") return;
-    isMobileViewport.value = window.innerWidth <= MOBILE_BREAKPOINT_PX;
+    isMobileViewport.value = readIsMobileViewport();
   }
 
   onMounted(() => {

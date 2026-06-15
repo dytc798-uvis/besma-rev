@@ -34,35 +34,54 @@ async function capture(page, name) {
   console.log("saved", file);
 }
 
+async function sidebarMetrics(page) {
+  return page.evaluate(() => {
+    const sidebar = document.querySelector(".layout-sidebar");
+    const rect = sidebar?.getBoundingClientRect();
+    const menuBtn = document.querySelector(".sidebar-toggle-btn--mobile");
+    return {
+      sidebarLeft: rect?.left ?? null,
+      sidebarWidth: rect?.width ?? null,
+      menuBtnText: menuBtn?.textContent?.trim() ?? null,
+      drawerOpen: document.querySelector(".layout-root")?.classList.contains("mobile-drawer-open") ?? false,
+    };
+  });
+}
+
+async function runAccount(browser, acc) {
+  const ctx = await browser.newContext({ ...devices["iPhone 13"], locale: "ko-KR" });
+  const page = await ctx.newPage();
+  try {
+    const token = await login(acc.login, acc.password);
+    await page.goto(`${FE}/login`, { waitUntil: "domcontentloaded" });
+    await page.evaluate((t) => localStorage.setItem("besma_token", t), token);
+    await page.goto(`${FE}${acc.path}`, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(1500);
+
+    const before = await sidebarMetrics(page);
+    console.log(`${acc.key} collapsed`, JSON.stringify(before));
+    await capture(page, `${acc.key}-menu-collapsed`);
+
+    const menuBtn = page.locator(".sidebar-toggle-btn--mobile").first();
+    if (await menuBtn.count()) {
+      await menuBtn.click();
+      await page.waitForTimeout(400);
+      const opened = await sidebarMetrics(page);
+      console.log(`${acc.key} expanded`, JSON.stringify(opened));
+      await capture(page, `${acc.key}-menu-expanded`);
+    }
+  } catch (err) {
+    console.error(acc.key, err?.message || err);
+    throw err;
+  } finally {
+    await ctx.close();
+  }
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true });
-  const iphone = devices["iPhone 13"];
   for (const acc of ACCOUNTS) {
-    const ctx = await browser.newContext({ ...iphone, locale: "ko-KR" });
-    const page = await ctx.newPage();
-    try {
-      const token = await login(acc.login, acc.password);
-      await page.goto(`${FE}/login`, { waitUntil: "domcontentloaded" });
-      await page.evaluate((t) => localStorage.setItem("besma_token", t), token);
-      await page.goto(`${FE}${acc.path}`, { waitUntil: "networkidle", timeout: 30000 });
-      await page.waitForTimeout(2500);
-      await capture(page, `${acc.key}-top-before-scroll`);
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight * 0.35));
-      await page.waitForTimeout(400);
-      await capture(page, `${acc.key}-after-scroll`);
-      const metrics = await page.evaluate(() => ({
-        scrollY: window.scrollY,
-        innerH: window.innerHeight,
-        sidebarVisible: !!document.querySelector(".layout-sidebar")?.getBoundingClientRect().width,
-        sidebarRect: document.querySelector(".layout-sidebar")?.getBoundingClientRect(),
-        mainRect: document.querySelector(".layout-main, .fe-page")?.getBoundingClientRect(),
-      }));
-      console.log(acc.key, JSON.stringify(metrics, null, 2));
-    } catch (err) {
-      console.error(acc.key, err?.message || err);
-    } finally {
-      await ctx.close();
-    }
+    await runAccount(browser, acc);
   }
   await browser.close();
 }

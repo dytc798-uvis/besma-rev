@@ -12,13 +12,14 @@
       aria-hidden="true"
       @click="mobileDrawerOpen = false"
     />
-    <aside v-if="!isMobileViewport" class="layout-sidebar">
+    <aside class="layout-sidebar">
       <h1>기능인 인정제 평가</h1>
       <nav class="layout-menu">
         <RouterLink
           class="fe-menu-highlight"
           :class="{ active: isRosterMenuActive }"
           :to="{ name: 'site-functional-eval' }"
+          @click="closeMobileDrawer"
         >
           등급현황
         </RouterLink>
@@ -30,35 +31,7 @@
             class="fe-menu-subitem"
             :class="{ active: isEvalMenuActive(status.key) }"
             :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status.key } }"
-          >
-            {{ status.label }}
-          </RouterLink>
-        </div>
-        <RouterLink class="fe-menu-subitem fe-menu-guide" :to="{ name: 'site-user-guide' }">
-          기능인인정제 설명
-        </RouterLink>
-      </nav>
-    </aside>
-    <aside v-else class="layout-sidebar">
-      <h1>기능인 인정제 평가</h1>
-      <nav class="layout-menu">
-        <RouterLink
-          class="fe-menu-highlight"
-          :class="{ active: isRosterMenuActive }"
-          :to="{ name: 'site-functional-eval' }"
-          @click="mobileDrawerOpen = false"
-        >
-          등급현황
-        </RouterLink>
-        <div class="fe-sidebar-group">
-          <div class="fe-sidebar-group-title">분류</div>
-          <RouterLink
-            v-for="status in evalMenuStatuses"
-            :key="`eval-mobile-${status.key}`"
-            class="fe-menu-subitem"
-            :class="{ active: isEvalMenuActive(status.key) }"
-            :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status.key } }"
-            @click="mobileDrawerOpen = false"
+            @click="closeMobileDrawer"
           >
             {{ status.label }}
           </RouterLink>
@@ -66,7 +39,7 @@
         <RouterLink
           class="fe-menu-subitem fe-menu-guide"
           :to="{ name: 'site-user-guide' }"
-          @click="mobileDrawerOpen = false"
+          @click="closeMobileDrawer"
         >
           기능인인정제 설명
         </RouterLink>
@@ -88,18 +61,18 @@
             ← 현황
           </button>
           <button
-            v-if="isMobileViewport"
             type="button"
-            class="sidebar-toggle-btn"
-            aria-label="메뉴"
+            class="sidebar-toggle-btn sidebar-toggle-btn--mobile"
+            :aria-label="mobileDrawerOpen ? '메뉴 닫기' : '메뉴 펼치기'"
             :aria-expanded="mobileDrawerOpen"
             @click="mobileDrawerOpen = !mobileDrawerOpen"
           >
             <span class="hamburger-glyph" aria-hidden="true">☰</span>
+            <span class="menu-toggle-label">{{ mobileDrawerOpen ? "메뉴 닫기" : "메뉴 펼치기" }}</span>
           </button>
           <div class="header-title-block">
             <div class="header-title">기능인 인정제 평가</div>
-            <div v-if="isMobileViewport" class="header-sub">{{ auth.user?.name }} ({{ auth.user?.login_id }})</div>
+            <div class="header-sub header-sub--user">{{ auth.user?.name }} ({{ auth.user?.login_id }})</div>
           </div>
         </div>
         <div class="header-right">
@@ -167,6 +140,12 @@ function goRoster() {
   void router.push({ name: "site-functional-eval" });
 }
 
+function closeMobileDrawer() {
+  if (isMobileViewport.value) {
+    mobileDrawerOpen.value = false;
+  }
+}
+
 watch(
   () => route.path,
   () => {
@@ -230,13 +209,28 @@ function logout() {
   min-height: 44px;
   display: flex;
   align-items: center;
+  gap: 6px;
   justify-content: center;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #fff;
   cursor: pointer;
-  font-size: 18px;
-  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  padding: 0 10px;
+}
+
+.sidebar-toggle-btn--mobile {
+  display: none;
+}
+
+.menu-toggle-label {
+  line-height: 1;
+}
+
+.header-sub--user {
+  display: none;
 }
 
 .hamburger-glyph {
@@ -332,8 +326,15 @@ function logout() {
     font-size: 15px;
   }
 
-  .functional-eval-shell.site-mobile-layout .header-sub {
-    display: none;
+  .functional-eval-shell.site-mobile-layout .header-sub--user {
+    display: block;
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 2px;
+  }
+
+  .functional-eval-shell .sidebar-toggle-btn--mobile {
+    display: inline-flex;
   }
 
   .fe-consent-loading {
