@@ -387,10 +387,6 @@ router.beforeEach((to, _from, next) => {
     next({ name: "site-functional-eval" });
     return;
   }
-  if (auth.isAuthenticated && !isFunctionalEvalUser && goingFunctionalEval) {
-    next({ name: siteMobileOrDesktopHomeName() });
-    return;
-  }
 
   if (to.meta.requiresPdfSigning && !canAccessHqSafeWorkspace(auth.user?.role)) {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
