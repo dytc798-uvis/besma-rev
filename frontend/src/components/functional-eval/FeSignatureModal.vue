@@ -270,13 +270,13 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
 <style scoped>
 .fe-sign-header h2 {
   margin: 0 0 8px;
-  font-size: 18px;
+  font-size: 22px;
 }
 
 .fe-sign-desc {
   margin: 0 0 12px;
   color: #64748b;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .fe-sign-consent {
@@ -286,14 +286,14 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
 .fe-sign-consent-body {
   white-space: pre-wrap;
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 17px;
+  line-height: 1.65;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  padding: 12px;
+  padding: 14px;
   margin: 0 0 8px;
-  max-height: 160px;
+  max-height: 220px;
   overflow-y: auto;
 }
 
@@ -303,7 +303,7 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
 
 .fe-sign-scroll-hint {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: 16px;
   color: #b45309;
   font-weight: 600;
 }
@@ -316,7 +316,7 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   display: flex;
   gap: 8px;
   align-items: flex-start;
-  font-size: 14px;
+  font-size: 17px;
 }
 
 .fe-sign-check--disabled {
@@ -412,11 +412,11 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   }
 
   .fe-sign-header h2 {
-    font-size: 17px;
+    font-size: 21px;
   }
 
   .fe-sign-desc {
-    font-size: 13px;
+    font-size: 17px;
     margin-bottom: 8px;
   }
 

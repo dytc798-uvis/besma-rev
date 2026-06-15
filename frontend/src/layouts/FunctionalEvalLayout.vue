@@ -15,27 +15,58 @@
     <aside class="layout-sidebar">
       <h1>기능인 인정제 평가</h1>
       <nav class="layout-menu">
-        <RouterLink
-          class="fe-menu-highlight"
-          :class="{ active: isRosterMenuActive }"
-          :to="{ name: 'site-functional-eval' }"
-          @click="closeMobileDrawer"
-        >
-          등급현황
-        </RouterLink>
-        <div class="fe-sidebar-group">
-          <div class="fe-sidebar-group-title">분류</div>
+        <template v-if="isTeamLeaderNav">
+          <button
+            type="button"
+            class="fe-menu-highlight fe-step-link"
+            :class="{ active: teamPhase === 'evaluate' || isEvaluateRoute }"
+            :disabled="teamPhase === 'results'"
+            @click="goTeamStep('evaluate')"
+          >
+            ② 팀원 평가
+          </button>
+          <button
+            type="button"
+            class="fe-menu-subitem fe-step-link"
+            :class="{ active: teamPhase === 'report' && !isEvaluateRoute }"
+            :disabled="teamPhase === 'evaluate'"
+            @click="goTeamStep('report')"
+          >
+            ③ 평가완료보고서
+          </button>
+          <button
+            type="button"
+            class="fe-menu-subitem fe-step-link"
+            :class="{ active: teamPhase === 'results' }"
+            :disabled="teamPhase !== 'results'"
+            @click="goTeamStep('results')"
+          >
+            ④ 팀 평가 결과
+          </button>
+        </template>
+        <template v-else>
           <RouterLink
-            v-for="status in evalMenuStatuses"
-            :key="`eval-${status.key}`"
-            class="fe-menu-subitem"
-            :class="{ active: isEvalMenuActive(status.key) }"
-            :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status.key } }"
+            class="fe-menu-highlight"
+            :class="{ active: isRosterMenuActive }"
+            :to="{ name: 'site-functional-eval' }"
             @click="closeMobileDrawer"
           >
-            {{ status.label }}
+            등급현황
           </RouterLink>
-        </div>
+          <div class="fe-sidebar-group">
+            <div class="fe-sidebar-group-title">분류</div>
+            <RouterLink
+              v-for="status in evalMenuStatuses"
+              :key="`eval-${status.key}`"
+              class="fe-menu-subitem"
+              :class="{ active: isEvalMenuActive(status.key) }"
+              :to="{ name: 'site-functional-eval-evaluate', query: { eval_status: status.key } }"
+              @click="closeMobileDrawer"
+            >
+              {{ status.label }}
+            </RouterLink>
+          </div>
+        </template>
         <RouterLink
           class="fe-menu-subitem fe-menu-guide"
           :to="{ name: 'site-user-guide' }"
@@ -101,8 +132,10 @@ import { useMobileViewport } from "@/composables/useMobileViewport";
 import { useAuthStore } from "@/stores/auth";
 import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
 import { useFeConsentCheck } from "@/composables/useFeConsentCheck";
+import { useFeSiteSessionStore } from "@/stores/feSiteSession";
 
 const auth = useAuthStore();
+const feSiteSession = useFeSiteSessionStore();
 const router = useRouter();
 const route = useRoute();
 const { isMobileViewport } = useMobileViewport();
@@ -129,6 +162,9 @@ const isRosterMenuActive = computed(
   () => route.name === "site-functional-eval" || route.name === "site-functional-eval-roster",
 );
 
+const isTeamLeaderNav = computed(() => feSiteSession.isTeamLeader);
+const teamPhase = computed(() => feSiteSession.teamLeaderPhase);
+
 const isEvaluateRoute = computed(() => route.name === "site-functional-eval-evaluate");
 
 function isEvalMenuActive(statusKey: string) {
@@ -138,6 +174,15 @@ function isEvalMenuActive(statusKey: string) {
 function goRoster() {
   mobileDrawerOpen.value = false;
   void router.push({ name: "site-functional-eval" });
+}
+
+function goTeamStep(step: "evaluate" | "report" | "results") {
+  closeMobileDrawer();
+  if (step === "evaluate") {
+    void router.push({ name: "site-functional-eval-evaluate" });
+    return;
+  }
+  void router.push({ name: "site-functional-eval", query: { team_step: step } });
 }
 
 function closeMobileDrawer() {
@@ -286,6 +331,28 @@ function logout() {
   background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%);
   color: #fff;
   font-weight: 600;
+}
+
+.fe-step-link {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 0 10px;
+  text-align: left;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+}
+
+.fe-step-link:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.fe-step-link.active {
+  background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 8px;
 }
 
 .fe-menu-highlight.active,

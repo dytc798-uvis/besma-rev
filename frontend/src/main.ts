@@ -9,6 +9,7 @@ import "./tailwind.css";
 import "./styles.css";
 import "./styles/hq-stitch.css";
 import "./styles/functional-eval-menu.css";
+import "./styles/functional-eval-senior.css";
 import "./styles/new-site-deployment-menu.css";
 
 async function bootstrap() {

@@ -1,5 +1,24 @@
 <template>
-  <div class="fe-page">
+  <div class="fe-page" :class="{ 'fe-page--team-leader': isTeamLeaderFlow }">
+    <nav v-if="isTeamLeaderFlow" class="team-leader-stepbar" aria-label="팀장 업무 단계">
+      <span class="team-step team-step--done">① 동의서</span>
+      <span
+        class="team-step"
+        :class="{
+          'team-step--active': teamLeaderPhase === 'evaluate',
+          'team-step--done': teamLeaderPhase === 'report' || teamLeaderPhase === 'results',
+        }"
+      >② 팀원 평가</span>
+      <span
+        class="team-step"
+        :class="{
+          'team-step--active': teamLeaderPhase === 'report',
+          'team-step--done': teamLeaderPhase === 'results',
+        }"
+      >③ 보고서 서명</span>
+      <span class="team-step" :class="{ 'team-step--active': teamLeaderPhase === 'results' }">④ 팀 결과</span>
+    </nav>
+
     <div class="page-head" :class="{ 'page-head--mobile': isMobileViewport }">
       <div class="page-head-text">
         <h1 v-if="!isMobileViewport" class="page-title">기능인 인정제 평가</h1>
@@ -39,7 +58,22 @@
 
         <nav class="fe-tabs" aria-label="기능인 인정제 평가">
       <template v-if="mainView === 'evaluate'">
-        <button type="button" class="fe-tab fe-tab-back" @click="goToRoster">← 현황</button>
+        <button
+          v-if="!isTeamLeaderFlow"
+          type="button"
+          class="fe-tab fe-tab-back"
+          @click="goToRoster"
+        >
+          ← 현황
+        </button>
+        <button
+          v-else-if="teamLeaderPhase === 'report'"
+          type="button"
+          class="fe-tab fe-tab-back"
+          @click="goToRoster"
+        >
+          ← 보고서
+        </button>
         <button type="button" class="fe-tab" :class="{ active: activeTab === 'functional' }" @click="activeTab = 'functional'">
           2-1 기능
         </button>
@@ -47,10 +81,16 @@
           2-2 안전·제재
         </button>
       </template>
-      <template v-else>
+      <template v-else-if="!isTeamLeaderFlow">
         <button type="button" class="fe-tab active">
           등급 현황
         </button>
+      </template>
+      <template v-else-if="teamLeaderPhase === 'report'">
+        <button type="button" class="fe-tab active">③ 평가완료보고서</button>
+      </template>
+      <template v-else-if="teamLeaderPhase === 'results'">
+        <button type="button" class="fe-tab active">④ 팀 평가 결과</button>
       </template>
     </nav>
 
@@ -58,8 +98,20 @@
 
     <!-- 첫 화면: 근로자별 현재 등급 -->
     <section v-if="mainView === 'roster'" class="panel roster-panel">
-      <div class="roster-toolbar">
+      <div v-if="showTeamLeaderReportOnly" class="team-leader-report-panel">
+        <h2 class="team-leader-panel-title">평가완료보고서 서명</h2>
+        <p class="team-leader-panel-desc">
+          담당 팀원 {{ teamSignoff?.assigned_total ?? 0 }}명 평가가 모두 끝났습니다.
+          아래 버튼으로 보고서에 서명해 주세요.
+        </p>
+      </div>
+      <div v-else-if="showTeamLeaderResults" class="team-leader-results-head">
+        <h2 class="team-leader-panel-title">팀 평가 결과</h2>
+        <p class="team-leader-panel-desc">서명이 완료된 팀원 등급입니다. PDF는 아래에서 받을 수 있습니다.</p>
+      </div>
+      <div v-if="!showTeamLeaderReportOnly" class="roster-toolbar">
         <button
+          v-if="!isTeamLeaderFlow || teamLeaderPhase === 'evaluate'"
           class="stitch-btn-primary btn-start-eval"
           type="button"
           :disabled="Boolean(period?.is_closed) || !rosterSource.length"
@@ -68,9 +120,9 @@
           평가 시작
         </button>
       </div>
-      <p class="roster-desc">{{ rosterDescription }}</p>
+      <p v-if="!showTeamLeaderReportOnly" class="roster-desc">{{ rosterDescription }}</p>
 
-      <section v-if="siteGradeStatsPayload" class="panel site-grade-stats-panel">
+      <section v-if="siteGradeStatsPayload && !isTeamLeaderFlow" class="panel site-grade-stats-panel">
         <FeGradeStatsPanel
           :stats="siteGradeStatsPayload"
           :title="siteGradeStatsTitle"
@@ -158,7 +210,7 @@
         <li v-if="!visibleTeamGroups.length" class="muted empty-bucket">해당 구분의 팀이 없습니다.</li>
       </ul>
 
-      <div v-if="!isManager && teamSignoff" class="approval-panel">
+      <div v-if="!isManager && teamSignoff && (showTeamLeaderReportOnly || showTeamLeaderResults || !isTeamLeaderFlow)" class="approval-panel approval-panel--team-leader">
         <p class="approval-status">
           담당 팀원 {{ teamSignoff.assigned_total }}명 · {{ teamSignoff.evaluation_batch_label }}
           <span v-if="teamSignoff.signed"> · 서명 완료 ({{ teamSignoff.signed_at_label || teamSignoff.signed_at }})</span>
@@ -272,10 +324,13 @@
 
       <div
         v-if="
-          !showManagerBuckets ||
-          activeManagerBucket === 'direct' ||
-          activeManagerBucket === 'sanctions' ||
-          activeTeamLeaderId
+          !showTeamLeaderReportOnly &&
+          (
+            !showManagerBuckets ||
+            activeManagerBucket === 'direct' ||
+            activeManagerBucket === 'sanctions' ||
+            activeTeamLeaderId
+          )
         "
         class="table-wrap roster-table-wrap"
       >
@@ -643,6 +698,7 @@ import {
 } from "@/utils/functionalEvalCompletion";
 import { buildSanctionPrefillFromSafetyScores } from "@/utils/safetySanctionMapping";
 import { getFeGuideScene, isFeGuidePreview } from "@/utils/feGuidePreview";
+import { useFeSiteSessionStore, type TeamLeaderPhase } from "@/stores/feSiteSession";
 import { formatDateTimeKst } from "@/utils/datetime";
 
 type MainView = "roster" | "evaluate";
@@ -855,6 +911,7 @@ interface EvidenceModalState {
 const { isMobileViewport } = useMobileViewport();
 const route = useRoute();
 const router = useRouter();
+const feSiteSession = useFeSiteSessionStore();
 
 const evalStatusFromLabel: Record<string, EvalStatusKey> = {
   미완료: "incomplete",
@@ -1019,6 +1076,21 @@ const isManager = computed(() => {
   if (!evaluator.value) return false;
   return evaluator.value.role === "MANAGER";
 });
+
+const teamLeaderPhase = computed((): TeamLeaderPhase => {
+  if (isManager.value || !evaluator.value) return null;
+  if (teamSignoff.value?.signed) return "results";
+  if (evaluableIncompleteCount.value === 0 && teamSignoff.value) return "report";
+  return "evaluate";
+});
+
+const isTeamLeaderFlow = computed(() => !isManager.value && Boolean(evaluator.value));
+const showTeamLeaderReportOnly = computed(
+  () => isTeamLeaderFlow.value && teamLeaderPhase.value === "report" && mainView.value === "roster",
+);
+const showTeamLeaderResults = computed(
+  () => isTeamLeaderFlow.value && teamLeaderPhase.value === "results" && mainView.value === "roster",
+);
 
 const rosterSource = computed(() =>
   isManager.value && siteOverview.value.length ? siteOverview.value : workers.value,
@@ -1892,6 +1964,29 @@ async function load() {
         : "근로자 목록을 불러오지 못했습니다. 서버·DB 마이그레이션(0068·0069)을 확인하세요.";
   }
   applyGuidePreviewScene();
+  syncFeSiteSession();
+  maybeAutoRouteTeamLeader();
+}
+
+function syncFeSiteSession() {
+  if (evaluator.value) {
+    feSiteSession.setEvaluatorRole(evaluator.value.role === "MANAGER" ? "MANAGER" : "TEAM_LEADER");
+  }
+  feSiteSession.setTeamLeaderPhase(isTeamLeaderFlow.value ? teamLeaderPhase.value : null);
+}
+
+function maybeAutoRouteTeamLeader() {
+  if (isFeGuidePreview()) return;
+  if (isManager.value || !evaluator.value || period.value?.is_closed) return;
+  const stepQuery = typeof route.query.team_step === "string" ? route.query.team_step : "";
+  if (stepQuery === "results" || stepQuery === "report") return;
+  if (teamLeaderPhase.value === "evaluate" && mainView.value === "roster" && evaluableIncompleteCount.value > 0) {
+    startEvaluation();
+    return;
+  }
+  if (teamLeaderPhase.value === "report" && mainView.value === "evaluate") {
+    void goToRoster();
+  }
 }
 
 function applyGuidePreviewScene() {
@@ -2093,6 +2188,16 @@ onMounted(async () => {
   await Promise.all([loadCatalog(), loadEvalCatalog(), load()]);
 });
 
+watch(
+  () => route.query.team_step,
+  (step) => {
+    if (!isTeamLeaderFlow.value || typeof step !== "string") return;
+    if (step === "report" && teamLeaderPhase.value !== "evaluate" && mainView.value === "evaluate") {
+      void goToRoster();
+    }
+  },
+);
+
 onBeforeUnmount(() => {
   clearEvidenceThumbCache();
 });
@@ -2127,6 +2232,80 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
+}
+
+.team-leader-stepbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.team-step {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #64748b;
+  text-align: center;
+}
+
+.team-step--active {
+  border-color: #ea580c;
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.team-step--done {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.team-leader-panel-title {
+  margin: 0 0 8px;
+  font-size: 1.35rem;
+  color: #0f172a;
+}
+
+.team-leader-panel-desc {
+  margin: 0 0 16px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.team-leader-report-panel,
+.team-leader-results-head {
+  margin-bottom: 12px;
+}
+
+.approval-panel--team-leader {
+  padding: 16px;
+  border-radius: 12px;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+}
+
+.approval-panel--team-leader .btn-approve-site {
+  width: 100%;
+  max-width: 420px;
+  font-size: 19px;
+  min-height: 56px;
+}
+
+@media (min-width: 769px) {
+  .team-step {
+    flex: 1 1 auto;
+    font-size: 16px;
+  }
 }
 
 .page-head {
