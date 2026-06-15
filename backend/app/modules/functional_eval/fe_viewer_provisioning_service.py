@@ -49,6 +49,8 @@ HQ_VIEWER_EXCLUDE_MARKERS = (
 SITE_DEPARTMENT_CODES = frozenset({"01", "15", "7"})
 SAFETY_DEPARTMENT_CODES = frozenset({"04"})
 # 현장 직위코드(범례): 현장소장·현장공무 계열
+# 현장 직위코드(범례): 현장소장·현장공무 계열
+SITE_POSITION_CODES = frozenset({"9", "10", "11", "12", "13", "14", "18", "19", "21", "22", "23", "28"})
 TEAM_PLACEHOLDER_NAMES = frozenset({"공사관리팀", "공사관리6팀", "관-노무관리용"})
 
 
