@@ -1,5 +1,6 @@
 import { ref } from "vue";
 import { api } from "@/services/api";
+import { isFeGuidePreview } from "@/utils/feGuidePreview";
 
 /** /functional-eval/consent/status 응답 중 FeConsentGate에 전달할 필드 */
 export interface FeConsentPrefill {
@@ -18,6 +19,11 @@ export function useFeConsentCheck() {
 
   async function checkConsent() {
     consentLoading.value = true;
+    if (isFeGuidePreview()) {
+      consentRequired.value = false;
+      consentLoading.value = false;
+      return;
+    }
     try {
       const res = await api.get("/functional-eval/consent/status");
       consentRequired.value = Boolean(res.data.required);

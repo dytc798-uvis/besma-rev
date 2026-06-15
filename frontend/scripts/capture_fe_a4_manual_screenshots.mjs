@@ -124,15 +124,23 @@ async function main() {
     const ctx = await browser.newContext({ ...mobile, locale: "ko-KR" });
     const page = await ctx.newPage();
     await login(page, "대우청라-김팀장", "750101");
+    await page.goto(`${FE}/site/functional-eval`, { waitUntil: "networkidle" });
+    await reloadAfterConsent(page);
     await page.goto(guideUrl(FE, "/site/functional-eval", { preview: true, scene: "reward-upload" }), {
       waitUntil: "networkidle",
     });
-    await reloadAfterConsent(page);
-    await page.waitForTimeout(1200);
-    await shot(page, "reward_upload_modal", {
-      selector: ".fe-dialog:has(h2:has-text('포상'))",
-      highlight: { cx: 50, cy: 58, r: 24 },
-    }).catch(() => console.warn("skip reward_upload_modal"));
+    await page.waitForTimeout(1500);
+    const rewardDialog = page.locator('.fe-dialog:has(h2:text-matches("포상"))');
+    if (await rewardDialog.count()) {
+      await shot(page, "reward_upload_modal", {
+        selector: '.fe-dialog:has(h2:text-matches("포상"))',
+        highlight: { cx: 50, cy: 58, r: 24 },
+      });
+    } else {
+      console.warn("skip reward_upload_modal");
+    }
+    await page.goto(`${FE}/site/functional-eval`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(1000);
     await captureWorkerEvidence(page);
     await ctx.close();
   }
@@ -167,11 +175,13 @@ async function main() {
     await page.goto(guideUrl(FE, "/site/functional-eval", { preview: true, scene: "reward-upload" }), {
       waitUntil: "networkidle",
     });
-    await page.waitForTimeout(1200);
-    await shot(page, "reward_upload_modal", {
-      selector: ".fe-dialog:has(h2:has-text('포상'))",
-      highlight: { cx: 50, cy: 58, r: 24 },
-    }).catch(() => {});
+    await page.waitForTimeout(1500);
+    if (await page.locator('.fe-dialog:has(h2:text-matches("포상"))').count()) {
+      await shot(page, "reward_upload_modal", {
+        selector: '.fe-dialog:has(h2:text-matches("포상"))',
+        highlight: { cx: 50, cy: 58, r: 24 },
+      });
+    }
     await captureWorkerEvidence(page);
     await page.goto(`${FE}/site/functional-eval`, { waitUntil: "networkidle" });
     await page.waitForTimeout(1000);
@@ -195,16 +205,22 @@ async function main() {
     const ctx = await browser.newContext({ viewport: { width: 1240, height: 900 }, locale: "ko-KR" });
     const page = await ctx.newPage();
     await login(page, "안전보건-조동문", "600321");
+    await page.goto(`${FE}/hq-safe/functional-eval`, { waitUntil: "networkidle" });
+    await reloadAfterConsent(page);
     await page.goto(guideUrl(FE, "/hq-safe/functional-eval", { preview: true, scene: "director-approval" }), {
       waitUntil: "networkidle",
     });
-    await reloadAfterConsent(page);
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(2500);
     await page.locator(".hq-review-panel").scrollIntoViewIfNeeded().catch(() => {});
-    await shot(page, "hq_director_approval", {
-      selector: ".approval-collapse:has-text('실장 최종승인')",
-      highlight: { cx: 72, cy: 38, r: 14 },
-    }).catch(() => console.warn("skip hq_director_approval"));
+    const directorPanel = page.locator('.approval-collapse:has-text("실장 최종승인")');
+    if (await directorPanel.count()) {
+      await shot(page, "hq_director_approval", {
+        selector: '.approval-collapse:has-text("실장 최종승인")',
+        highlight: { cx: 72, cy: 38, r: 14 },
+      });
+    } else {
+      console.warn("skip hq_director_approval");
+    }
     await ctx.close();
   }
 
@@ -212,16 +228,22 @@ async function main() {
     const ctx = await browser.newContext({ viewport: { width: 1240, height: 900 }, locale: "ko-KR" });
     const page = await ctx.newPage();
     await login(page, "부현대표-김홍수", "611001");
+    await page.goto(`${FE}/hq-safe/functional-eval`, { waitUntil: "networkidle" });
+    await reloadAfterConsent(page);
     await page.goto(guideUrl(FE, "/hq-safe/functional-eval", { preview: true, scene: "ceo-approval" }), {
       waitUntil: "networkidle",
     });
-    await reloadAfterConsent(page);
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(2500);
     await page.locator(".hq-review-panel").scrollIntoViewIfNeeded().catch(() => {});
-    await shot(page, "ceo_approval", {
-      selector: ".approval-collapse:has-text('대표이사 최종 승인')",
-      highlight: { cx: 68, cy: 32, r: 16 },
-    }).catch(() => console.warn("skip ceo_approval"));
+    const ceoPanel = page.locator('.approval-collapse:has-text("대표이사 최종 승인")');
+    if (await ceoPanel.count()) {
+      await shot(page, "ceo_approval", {
+        selector: '.approval-collapse:has-text("대표이사 최종 승인")',
+        highlight: { cx: 68, cy: 32, r: 16 },
+      });
+    } else {
+      console.warn("skip ceo_approval");
+    }
     await ctx.close();
   }
   await browser.close();

@@ -13,12 +13,14 @@ export function guideUrl(base, path, { preview = true, scene = null } = {}) {
 }
 
 export async function reloadAfterConsent(page) {
-  const hadConsent = await page.locator(".fe-sign-modal, .fe-sign-overlay").isVisible().catch(() => false);
-  await dismissConsent(page);
-  if (hadConsent) {
-    await page.reload({ waitUntil: "networkidle" });
-    await page.waitForTimeout(1500);
-  }
+  const modal = page.locator(".fe-sign-modal, .fe-sign-overlay");
+  if (!(await modal.first().isVisible().catch(() => false))) return;
+  await page.locator('.fe-sign-check input[type="checkbox"]').check().catch(() => {});
+  await drawSampleSignature(page);
+  await page.getByRole("button", { name: /동의 및 서명|서명 완료/ }).click().catch(() => {});
+  await page.waitForTimeout(1200);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
 }
 
 export async function fillLoginSample(page, loginId, password) {
