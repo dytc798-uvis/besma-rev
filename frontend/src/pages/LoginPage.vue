@@ -1,9 +1,12 @@
 <template>
   <div class="login-page">
+    <div class="login-hero" aria-hidden="true">
+      <img :src="ONLY_LOGO_SRC" alt="" class="login-bg-logo" />
+    </div>
+
     <div class="login-stack">
-      <img :src="ONLY_LOGO_SRC" :alt="BRAND_ALT" class="login-only-logo" width="360" height="auto" />
-      <div class="card login-card">
-        <div class="card-title login-card-title">안전보건플랫폼 로그인</div>
+      <div class="login-card">
+        <div class="login-card-title">안전보건플랫폼 로그인</div>
         <form class="login-form" @submit.prevent="handleLogin">
           <label>
             <div class="login-label">로그인 ID</div>
@@ -13,7 +16,7 @@
             <div class="login-label">비밀번호</div>
             <input v-model="password" type="password" autocomplete="current-password" />
           </label>
-          <button class="primary" type="submit" :disabled="loading">
+          <button class="primary login-submit" type="submit" :disabled="loading">
             {{ loading ? "로그인 중..." : "로그인" }}
           </button>
           <p v-if="errorMessage" class="login-error" role="alert">{{ errorMessage }}</p>
@@ -37,7 +40,7 @@ import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import AccountIssueModal from "@/components/auth/AccountIssueModal.vue";
-import { BRAND_ALT, ONLY_LOGO_SRC } from "@/constants/branding";
+import { ONLY_LOGO_SRC } from "@/constants/branding";
 import { FE_GUIDE_SAMPLE_LOGIN, isFeGuidePreview } from "@/utils/feGuidePreview";
 import { formatLoginError } from "@/utils/loginError";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
@@ -106,71 +109,146 @@ async function handleLogin() {
 
 <style scoped>
 .login-page {
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  padding: 16px;
-  background: #f5f6f8;
+  padding: 24px 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 38%, rgba(255, 255, 255, 0.9) 0%, transparent 70%),
+    linear-gradient(165deg, #e8edf5 0%, #f4f6fa 42%, #eef2f8 100%);
+}
+
+.login-hero {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.login-bg-logo {
+  width: min(94vw, 620px);
+  max-height: min(72vh, 620px);
+  object-fit: contain;
+  opacity: 0.38;
+  transform: translateY(-6%);
+  filter: drop-shadow(0 18px 48px rgba(15, 23, 42, 0.08));
 }
 
 .login-stack {
-  width: 360px;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-}
-
-.login-only-logo {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: contain;
+  position: relative;
+  z-index: 1;
+  width: min(100%, 380px);
 }
 
 .login-card {
-  width: 100%;
   box-sizing: border-box;
+  width: 100%;
+  padding: 22px 20px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  box-shadow:
+    0 10px 40px rgba(15, 23, 42, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .login-card-title {
   text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 14px;
+  letter-spacing: -0.02em;
 }
 
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+}
+
+.login-form label {
+  display: block;
 }
 
 .login-label {
   font-size: 12px;
-  margin-bottom: 2px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 4px;
+}
+
+.login-form :deep(input[type="text"]),
+.login-form :deep(input[type="password"]) {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(255, 255, 255, 0.94);
+  color: #0f172a;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.login-form :deep(input[type="text"]:focus),
+.login-form :deep(input[type="password"]:focus) {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.65);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.login-submit {
+  margin-top: 4px;
+  min-height: 42px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
 }
 
 .login-error {
   color: #dc2626;
   font-size: 12px;
+  font-weight: 500;
   margin: 0;
 }
 
 .login-issue-block {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid #e2e8f0;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.28);
   text-align: center;
 }
 
 .login-issue-text {
   margin: 0 0 8px;
   font-size: 13px;
-  color: #64748b;
+  color: #475569;
 }
 
 .login-issue-btn {
   width: 100%;
   min-height: 40px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  font-weight: 600;
+}
+
+@media (max-width: 420px) {
+  .login-bg-logo {
+    width: min(108vw, 520px);
+    opacity: 0.34;
+  }
+
+  .login-card {
+    padding: 20px 16px 16px;
+    border-radius: 16px;
+  }
 }
 </style>
