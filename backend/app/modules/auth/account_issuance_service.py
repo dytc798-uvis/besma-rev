@@ -184,6 +184,64 @@ def _canonical_site_registry_for_manager(
     return reg
 
 
+def _registry_from_worker_site_code(
+    db: Session,
+    *,
+    period_id: int,
+    name: str,
+    birth6: str,
+    site_code: str | None = None,
+) -> FunctionalEvalSiteRegistry | None:
+    target = fe_service._normalize_role_identifier(name)
+    query = (
+        db.query(FunctionalEvalWorker)
+        .filter(
+            FunctionalEvalWorker.period_id == period_id,
+            FunctionalEvalWorker.is_active.is_(True),
+            FunctionalEvalWorker.is_on_reference_roster.is_(True),
+            FunctionalEvalWorker.is_site_manager.is_(True),
+        )
+    )
+    if site_code:
+        query = query.filter(FunctionalEvalWorker.site_code == site_code)
+    workers = query.all()
+    matched = [
+        worker
+        for worker in workers
+        if fe_service._normalize_role_identifier(worker.name) == target
+        and _rrn_front_from_worker(worker) == birth6
+    ]
+    if len(matched) != 1:
+        return None
+
+    registry_candidates: list[FunctionalEvalSiteRegistry] = []
+    for worker in matched:
+        assigned = (worker.assigned_evaluator_login_id or "").strip()
+        if assigned:
+            registry_candidates.extend(
+                db.query(FunctionalEvalSiteRegistry)
+                .filter(
+                    (FunctionalEvalSiteRegistry.site_code == assigned)
+                    | (FunctionalEvalSiteRegistry.manager_login_id == assigned)
+                )
+                .all()
+            )
+
+    registry_candidates.extend(db.query(FunctionalEvalSiteRegistry).all())
+    regs_by_code: dict[str, FunctionalEvalSiteRegistry] = {}
+    for reg in registry_candidates:
+        if fe_service._normalize_role_identifier(reg.manager_name) != target:
+            continue
+        regs_by_code[reg.site_code] = _canonical_site_registry_for_manager(db, reg)
+    regs = list(regs_by_code.values())
+    normal_regs = [reg for reg in regs if not _is_temporary_site_registry(reg)]
+    if len(normal_regs) == 1:
+        return normal_regs[0]
+    if len(regs) == 1:
+        return regs[0]
+    return None
+
+
 def _daily_roster_files() -> list[Path]:
     roots = [
         Path(__file__).resolve().parents[4],
@@ -395,16 +453,36 @@ def issue_site_accounts(
     request_ip: str | None,
 ) -> dict[str, Any]:
     site_code = (site_code or "").strip()
+    requested_site_code = site_code
     name = (name or "").strip()
     birth6 = _normalize_birth6(birth6_raw)
     fingerprint = _fingerprint("site", site_code=site_code, name=name, birth6=birth6, department=None)
     _check_rate_limits(db, fingerprint=fingerprint, request_ip=request_ip)
+
+    period = _latest_period(db)
+    if period is None:
+        raise AccountIssuanceError(GENERIC_FAILURE, internal_reason="no_period")
 
     reg = (
         db.query(FunctionalEvalSiteRegistry)
         .filter(FunctionalEvalSiteRegistry.site_code == site_code)
         .first()
     )
+    if reg is None:
+        reg = _registry_from_worker_site_code(
+            db,
+            period_id=period.id,
+            site_code=site_code,
+            name=name,
+            birth6=birth6,
+        )
+    if reg is None:
+        reg = _registry_from_worker_site_code(
+            db,
+            period_id=period.id,
+            name=name,
+            birth6=birth6,
+        )
     if reg is None:
         _log_attempt(
             db,
@@ -422,6 +500,21 @@ def issue_site_accounts(
         db.commit()
         raise AccountIssuanceError(GENERIC_FAILURE, internal_reason="site_not_found")
 
+    if fe_service._normalize_role_identifier(reg.manager_name) != fe_service._normalize_role_identifier(name):
+        alternate_reg = _registry_from_worker_site_code(
+            db,
+            period_id=period.id,
+            site_code=site_code,
+            name=name,
+            birth6=birth6,
+        ) or _registry_from_worker_site_code(
+            db,
+            period_id=period.id,
+            name=name,
+            birth6=birth6,
+        )
+        if alternate_reg is not None:
+            reg = alternate_reg
     if fe_service._normalize_role_identifier(reg.manager_name) != fe_service._normalize_role_identifier(name):
         _log_attempt(
             db,
@@ -442,16 +535,19 @@ def issue_site_accounts(
     reg = _canonical_site_registry_for_manager(db, reg)
     site_code = reg.site_code
 
-    period = _latest_period(db)
-    if period is None:
-        raise AccountIssuanceError(GENERIC_FAILURE, internal_reason="no_period")
-
     manager_rrn = _find_worker_rrn_front(
         db,
         period_id=period.id,
         site_code=site_code,
         person_name=reg.manager_name,
     )
+    if manager_rrn != birth6 and requested_site_code != site_code:
+        manager_rrn = _find_worker_rrn_front(
+            db,
+            period_id=period.id,
+            site_code=requested_site_code,
+            person_name=reg.manager_name,
+        )
     if manager_rrn != birth6:
         _log_attempt(
             db,
