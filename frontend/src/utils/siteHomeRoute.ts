@@ -7,9 +7,10 @@ export function isSamsungRecognitionSiteLogin(loginId?: string | null): boolean 
 /** SITE account default route. Samsung recognition pilot accounts stay out of functional eval. */
 export function siteMobileOrDesktopHomeName(
   loginId?: string | null,
-): "site-dashboard" | "site-functional-eval" {
+): "site-mobile-ops" | "site-functional-eval" {
   if (isSamsungRecognitionSiteLogin(loginId)) {
-    return "site-dashboard";
+    return "site-mobile-ops";
   }
   return "site-functional-eval";
 }
+
