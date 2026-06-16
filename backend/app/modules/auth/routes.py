@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+﻿from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.config.security import get_password_hash, verify_password
@@ -31,10 +31,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 def _resolve_default_pilot_site(db, user: User) -> int | None:
     """
-    SITE 계정이 site 미연결일 때 기본 연결할 현장을 찾는다.
-    우선순위:
-    1) site_code == SITE002 (파일럿: 청라 C18BL)
-    2) site_name에 C18BL 또는 청라C18 포함
+    SITE 怨꾩젙??site 誘몄뿰寃곗씪 ??湲곕낯 ?곌껐???꾩옣??李얜뒗??
+    ?곗꽑?쒖쐞:
+    1) site_code == SITE002 (?뚯씪?? 泥?씪 C18BL)
+    2) site_name??C18BL ?먮뒗 泥?씪C18 ?ы븿
     """
     if user.role != Role.SITE:
         return user.site_id
@@ -46,7 +46,7 @@ def _resolve_default_pilot_site(db, user: User) -> int | None:
         candidates = (
             db.query(Site)
             .filter(
-                (Site.site_name.contains("C18BL")) | (Site.site_name.contains("청라C18")),
+                (Site.site_name.contains("C18BL")) | (Site.site_name.contains("泥?씪C18")),
                 Site.address.isnot(None),
                 Site.address != "",
             )
@@ -57,11 +57,11 @@ def _resolve_default_pilot_site(db, user: User) -> int | None:
             return None
         return candidates[0]
 
-    # 기존에 연결된 site가 C18 중복의 주소 없는 항목이면, 주소 있는 C18로 교정한다.
+    # 湲곗〈???곌껐??site媛 C18 以묐났??二쇱냼 ?녿뒗 ??ぉ?대㈃, 二쇱냼 ?덈뒗 C18濡?援먯젙?쒕떎.
     if user.site_id:
         current = db.query(Site).filter(Site.id == user.site_id).first()
         if current is not None:
-            is_c18 = ("C18BL" in (current.site_name or "")) or ("청라C18" in (current.site_name or ""))
+            is_c18 = ("C18BL" in (current.site_name or "")) or ("泥?씪C18" in (current.site_name or ""))
             has_address = bool((current.address or "").strip())
             if is_c18 and not has_address:
                 preferred = _preferred_c18_site()
@@ -83,7 +83,7 @@ def _resolve_default_pilot_site(db, user: User) -> int | None:
 
     fallback = _preferred_c18_site() or (
         db.query(Site)
-        .filter((Site.site_name.contains("C18BL")) | (Site.site_name.contains("청라C18")))
+        .filter((Site.site_name.contains("C18BL")) | (Site.site_name.contains("泥?씪C18")))
         .order_by(Site.id.asc())
         .first()
     )
@@ -134,11 +134,6 @@ def issue_accounts(payload: IssueAccountRequest, request: Request, db: DbDep) ->
     client_ip = request.client.host if request.client else None
     try:
         if scope == "site":
-            if not (payload.site_code or "").strip():
-                raise AccountIssuanceError(
-                    "입력한 정보와 일치하는 계정을 찾을 수 없습니다. 정보를 확인 후 다시 시도해 주세요.",
-                    internal_reason="missing_site_code",
-                )
             result = issue_site_accounts(
                 db,
                 site_code=payload.site_code or "",
@@ -156,7 +151,7 @@ def issue_accounts(payload: IssueAccountRequest, request: Request, db: DbDep) ->
             )
         else:
             raise AccountIssuanceError(
-                "입력한 정보와 일치하는 계정을 찾을 수 없습니다. 정보를 확인 후 다시 시도해 주세요.",
+                "?낅젰???뺣낫? ?쇱튂?섎뒗 怨꾩젙??李얠쓣 ???놁뒿?덈떎. ?뺣낫瑜??뺤씤 ???ㅼ떆 ?쒕룄??二쇱꽭??",
                 internal_reason="bad_scope",
             )
     except AccountIssuanceError as exc:
@@ -165,7 +160,7 @@ def issue_accounts(payload: IssueAccountRequest, request: Request, db: DbDep) ->
     accounts = [IssuedAccountItem.model_validate(item) for item in result.get("accounts", [])]
     return IssueAccountResponse(
         scope=result["scope"],
-        message=result.get("message", "아이디 발급이 완료되었습니다."),
+        message=result.get("message", "?꾩씠??諛쒓툒???꾨즺?섏뿀?듬땲??"),
         site_code=result.get("site_code"),
         site_label=result.get("site_label"),
         recipient_name=result.get("recipient_name"),
@@ -198,12 +193,13 @@ def change_password(
     db.commit()
     db.refresh(current_user)
 
-    return {"result": "ok", "message": "비밀번호가 변경되었습니다."}
+    return {"result": "ok", "message": "鍮꾨?踰덊샇媛 蹂寃쎈릺?덉뒿?덈떎."}
 
 
 @router.post("/logout")
 def logout() -> dict[str, str]:
-    # MVP에서는 토큰 무효화(블랙리스트) 미구현.
-    # 프론트에서 토큰 삭제 후 로그인 화면으로 이동한다.
+    # MVP?먯꽌???좏겙 臾댄슚??釉붾옓由ъ뒪?? 誘멸뎄??
+    # ?꾨줎?몄뿉???좏겙 ??젣 ??濡쒓렇???붾㈃?쇰줈 ?대룞?쒕떎.
     return {"result": "ok"}
+
 

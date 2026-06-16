@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="issue-backdrop" @click.self="emit('close')">
     <div class="issue-modal" role="dialog" aria-modal="true" aria-labelledby="issue-title">
       <header class="issue-head">
@@ -28,7 +28,7 @@
 
         <form class="issue-form" @submit.prevent="submitIssue">
           <label v-if="scope === 'site'">
-            <span>현장코드</span>
+            <span>현장코드 (선택)</span>
             <input v-model="siteCode" type="text" inputmode="numeric" autocomplete="off" placeholder="예: 24044" />
           </label>
           <label v-else>
@@ -44,7 +44,7 @@
             <input v-model="birth6" type="text" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="예: 640303" />
           </label>
           <button class="primary issue-submit" type="submit" :disabled="loading">
-            {{ loading ? "발급 중…" : "아이디 발급" }}
+            {{ loading ? "발급 중..." : "아이디 발급" }}
           </button>
           <p v-if="errorMessage" class="issue-error" role="alert">{{ errorMessage }}</p>
         </form>
@@ -136,7 +136,7 @@ async function submitIssue() {
   try {
     const res = await api.post("/auth/issue-accounts", {
       scope: scope.value,
-      site_code: scope.value === "site" ? siteCode.value.trim() : undefined,
+      site_code: scope.value === "site" ? siteCode.value.trim() || undefined : undefined,
       department: scope.value === "hq" ? department.value.trim() || undefined : undefined,
       name: name.value.trim(),
       birth6: birth6.value.trim(),
@@ -175,13 +175,12 @@ async function copyResult() {
   const text = buildCopyText();
   try {
     await navigator.clipboard.writeText(text);
-    copyMessage.value = "복사되었습니다.";
+    copyMessage.value = "복사했습니다.";
   } catch {
     copyMessage.value = "복사에 실패했습니다. 내용을 직접 선택해 복사해 주세요.";
   }
 }
 </script>
-
 <style scoped>
 .issue-backdrop {
   position: fixed;
@@ -314,3 +313,5 @@ async function copyResult() {
   color: #15803d;
 }
 </style>
+
+

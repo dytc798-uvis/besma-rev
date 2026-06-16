@@ -242,6 +242,33 @@ def _registry_from_worker_site_code(
     return None
 
 
+def _registry_from_manager_identity(
+    db: Session,
+    *,
+    name: str,
+    birth6: str,
+) -> FunctionalEvalSiteRegistry | None:
+    target = fe_service._normalize_role_identifier(name)
+    candidates = [
+        _canonical_site_registry_for_manager(db, reg)
+        for reg in db.query(FunctionalEvalSiteRegistry).all()
+        if fe_service._normalize_role_identifier(reg.manager_name) == target
+    ]
+    by_code = {reg.site_code: reg for reg in candidates}
+    regs = list(by_code.values())
+    normal_regs = [reg for reg in regs if not _is_temporary_site_registry(reg)]
+    if len(normal_regs) == 1:
+        reg = normal_regs[0]
+    elif len(regs) == 1:
+        reg = regs[0]
+    else:
+        return None
+
+    if _find_daily_roster_rrn_front(person_name=name) == birth6:
+        return reg
+    return None
+
+
 def _daily_roster_files() -> list[Path]:
     roots = [
         Path(__file__).resolve().parents[4],
@@ -484,6 +511,12 @@ def issue_site_accounts(
             birth6=birth6,
         )
     if reg is None:
+        reg = _registry_from_manager_identity(
+            db,
+            name=name,
+            birth6=birth6,
+        )
+    if reg is None:
         _log_attempt(
             db,
             scope="site",
@@ -548,6 +581,19 @@ def issue_site_accounts(
             site_code=requested_site_code,
             person_name=reg.manager_name,
         )
+    if manager_rrn != birth6:
+        identity_reg = _registry_from_worker_site_code(
+            db,
+            period_id=period.id,
+            name=name,
+            birth6=birth6,
+        ) or _registry_from_manager_identity(
+            db,
+            name=name,
+            birth6=birth6,
+        )
+        if identity_reg is not None and identity_reg.site_code == reg.site_code:
+            manager_rrn = birth6
     if manager_rrn != birth6:
         _log_attempt(
             db,
