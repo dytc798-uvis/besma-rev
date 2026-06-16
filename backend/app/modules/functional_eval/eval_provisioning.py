@@ -17,6 +17,7 @@ from app.modules.functional_eval.attendance import ParsedAttendanceRow, parse_at
 from app.modules.functional_eval.models import (
     FunctionalEvalAttendanceEntry,
     FunctionalEvalAttendanceImportBatch,
+    FunctionalEvalConsent,
     FunctionalEvalPeriod,
     FunctionalEvalSiteRegistry,
     FunctionalEvalWorker,
@@ -27,6 +28,7 @@ from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
 from app.modules.functional_eval.import_diff import entry_tuple, row_tuple, worker_needs_attendance_update
 from app.modules.functional_eval.rep_name import is_person_rep_name, resolve_team_rep_name
 from app.modules.functional_eval.site_alias import build_eval_login_id, derive_site_alias
+from app.modules.functional_eval.team_leader_login import reconcile_team_leader_assignments
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 
@@ -254,12 +256,18 @@ def _upsert_eval_user(
         )
         db.add(user)
     else:
+        consent_exists = (
+            db.query(FunctionalEvalConsent.id).filter(FunctionalEvalConsent.user_id == user.id).first()
+            is not None
+        )
+        should_reset_initial_password = user.password_changed_at is None and not consent_exists
         user.name = name
         user.role = Role.SITE_FUNCTIONAL_EVAL
         user.ui_type = UIType.SITE
         user.site_id = site.id
-        user.password_hash = get_password_hash(password_plain)
-        user.must_change_password = False
+        if should_reset_initial_password:
+            user.password_hash = get_password_hash(password_plain)
+            user.must_change_password = False
         db.add(user)
     return user
 
@@ -600,6 +608,8 @@ def _provision_evaluators_from_attendance(
                         worker.assigned_evaluator_login_id = evaluator_login
                     db.add(worker)
                     assigned_workers += 1
+
+        reconcile_team_leader_assignments(db, period, site_code)
 
     return {
         "created_accounts": created_accounts,

@@ -11,11 +11,18 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.config.security import get_password_hash, verify_password
+from app.core.datetime_utils import utc_now
 from app.core.database import Base
 from app.core.enums import Role, UIType
 from app.modules.auth.account_issuance_models import AccountIssuanceLog  # noqa: F401
 from app.modules.auth.routes import router as auth_router
-from app.modules.functional_eval.models import FunctionalEvalPeriod, FunctionalEvalSiteRegistry, FunctionalEvalWorker
+from app.modules.functional_eval.eval_provisioning import _upsert_eval_user
+from app.modules.functional_eval.models import (
+    FunctionalEvalConsent,
+    FunctionalEvalPeriod,
+    FunctionalEvalSiteRegistry,
+    FunctionalEvalWorker,
+)
 from app.modules.functional_eval.roster import hash_rrn
 from app.modules.sites.models import Site  # noqa: F401
 from app.modules.users.models import User  # noqa: F401
@@ -105,6 +112,133 @@ def test_issue_accounts_generic_failure(tmp_path: Path):
         )
         assert res.status_code == 400
         assert "일치하는 계정" in res.json()["detail"]
+    finally:
+        db.close()
+
+
+def test_reissue_site_account_preserves_changed_password_and_consent(tmp_path: Path):
+    client, SessionLocal = _client(tmp_path)
+    db = SessionLocal()
+    try:
+        site = Site(site_code="24044", site_name="롯데효성", manager_name="김영호")
+        db.add(site)
+        db.flush()
+        db.add(
+            FunctionalEvalSiteRegistry(
+                site_code="24044",
+                erp_site_label="롯데효성",
+                site_alias="롯데효성",
+                manager_name="김영호",
+                manager_login_id="롯데효성-김영호",
+                erp_headcount=10,
+            )
+        )
+        period = FunctionalEvalPeriod(title="2026-06", deadline_date=date(2026, 6, 30))
+        db.add(period)
+        db.flush()
+        user = User(
+            name="김영호",
+            login_id="롯데효성-김영호",
+            password_hash=get_password_hash("changed-pass"),
+            role=Role.SITE_FUNCTIONAL_EVAL,
+            ui_type=UIType.SITE,
+            site_id=site.id,
+            must_change_password=False,
+            password_changed_at=utc_now(),
+            initial_password_issued=True,
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+        db.add(
+            FunctionalEvalConsent(
+                user_id=user.id,
+                login_id=user.login_id,
+                consent_version="test",
+                consent_kind="evaluator",
+                signature_data="data:image/png;base64,test",
+                signature_hash="hash",
+                signed_at=utc_now(),
+            )
+        )
+        db.add(
+            FunctionalEvalWorker(
+                period_id=period.id,
+                site_code="24044",
+                row_no=1,
+                name="김영호",
+                rrn_hash=hash_rrn("6403031234567"),
+                rrn_masked="640303-1******",
+                is_active=True,
+                is_on_reference_roster=True,
+                assigned_evaluator_login_id="롯데효성-김영호",
+            )
+        )
+        db.commit()
+
+        res = client.post(
+            "/auth/issue-accounts",
+            json={"scope": "site", "site_code": "24044", "name": "김영호", "birth6": "640303"},
+        )
+        assert res.status_code == 200, res.text
+
+        db.expire_all()
+        refreshed = db.query(User).filter(User.login_id == "롯데효성-김영호").one()
+        assert refreshed.must_change_password is False
+        assert verify_password("changed-pass", refreshed.password_hash)
+        assert not verify_password("640303", refreshed.password_hash)
+    finally:
+        db.close()
+
+
+def test_attendance_provision_preserves_changed_password_and_consent(tmp_path: Path):
+    _, SessionLocal = _client(tmp_path)
+    db = SessionLocal()
+    try:
+        site = Site(site_code="24044", site_name="롯데효성", manager_name="김영호")
+        db.add(site)
+        db.flush()
+        user = User(
+            name="김영호",
+            login_id="롯데효성-김영호",
+            password_hash=get_password_hash("changed-pass"),
+            role=Role.SITE_FUNCTIONAL_EVAL,
+            ui_type=UIType.SITE,
+            site_id=site.id,
+            must_change_password=False,
+            password_changed_at=utc_now(),
+            initial_password_issued=True,
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+        db.add(
+            FunctionalEvalConsent(
+                user_id=user.id,
+                login_id=user.login_id,
+                consent_version="test",
+                consent_kind="evaluator",
+                signature_data="data:image/png;base64,test",
+                signature_hash="hash",
+                signed_at=utc_now(),
+            )
+        )
+        db.commit()
+
+        _upsert_eval_user(
+            db,
+            login_id="롯데효성-김영호",
+            name="김영호",
+            password_plain="640303",
+            site=site,
+        )
+        db.commit()
+
+        db.expire_all()
+        refreshed = db.query(User).filter(User.login_id == "롯데효성-김영호").one()
+        assert refreshed.must_change_password is False
+        assert verify_password("changed-pass", refreshed.password_hash)
+        assert not verify_password("640303", refreshed.password_hash)
     finally:
         db.close()
 

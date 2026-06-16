@@ -18,6 +18,7 @@ from app.modules.auth.account_issuance_models import AccountIssuanceLog
 from app.modules.functional_eval import service as fe_service
 from app.modules.functional_eval.eval_provisioning import _rrn_front_password
 from app.modules.functional_eval.models import (
+    FunctionalEvalConsent,
     FunctionalEvalPeriod,
     FunctionalEvalSiteRegistry,
     FunctionalEvalWorker,
@@ -204,12 +205,18 @@ def _issue_eval_account(
         )
         db.add(user)
     else:
+        consent_exists = (
+            db.query(FunctionalEvalConsent.id).filter(FunctionalEvalConsent.user_id == user.id).first()
+            is not None
+        )
+        should_reset_initial_password = user.password_changed_at is None and not consent_exists
         user.name = name.strip()
         user.role = Role.SITE_FUNCTIONAL_EVAL
         user.ui_type = UIType.SITE
         user.site_id = site.id
-        user.password_hash = get_password_hash(password_plain)
-        user.must_change_password = True
+        if should_reset_initial_password:
+            user.password_hash = get_password_hash(password_plain)
+            user.must_change_password = True
         user.initial_password_issued = True
         user.account_issued_by = issued_by
         user.account_issued_at = now
@@ -395,7 +402,15 @@ def issue_site_accounts(
 
     workers = fe_service._site_attendance_workers(db, period, site_code)
     manager_login_norm = manager_login
-    team_logins = sorted(fe_service._collect_team_leader_evaluator_logins(workers, manager_login_norm))
+    team_logins = sorted(
+        fe_service._collect_team_leader_evaluator_logins(
+            workers,
+            manager_login_norm,
+            db=db,
+            site_code=site_code,
+            period_id=period.id,
+        )
+    )
     for tl_login in team_logins:
         tl_name = fe_service._normalize_login_to_name(tl_login)
         if not tl_name:
