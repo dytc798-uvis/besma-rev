@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="login-page">
     <div class="login-hero" aria-hidden="true">
       <img :src="ONLY_LOGO_SRC" alt="" class="login-bg-logo" />
@@ -93,7 +93,7 @@ async function handleLogin() {
     } else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
       await router.push({ name: "site-functional-eval" });
     } else if (auth.user?.ui_type === "SITE") {
-      await router.push({ name: siteMobileOrDesktopHomeName() });
+      await router.push({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     } else if (auth.user?.ui_type === "HQ_OTHER") {
       await router.push({ name: "hq-other-dashboard" });
     } else {
@@ -106,7 +106,6 @@ async function handleLogin() {
   }
 }
 </script>
-
 <style scoped>
 .login-page {
   position: relative;
@@ -252,3 +251,5 @@ async function handleLogin() {
   }
 }
 </style>
+
+

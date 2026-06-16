@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, RouteRecordRaw } from "vue-router";
+﻿import { createRouter, createWebHistory, RouteRecordRaw } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import LoginPage from "@/pages/LoginPage.vue";
 import HQSafeLayout from "@/layouts/HQSafeLayout.vue";
@@ -66,7 +66,7 @@ import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
 import HQSystemBackupPage from "@/pages/hq/HQSystemBackupPage.vue";
 import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
 import PdfSigningPublicPage from "@/pages/pdf-signing/PdfSigningPublicPage.vue";
-import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
+import { isSamsungRecognitionSiteLogin, siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
 import { isPublicSignPath, normalizePublicSignPath } from "@/utils/publicSignRoute";
 
@@ -367,12 +367,12 @@ router.beforeEach(async (to, _from, next) => {
     return;
   }
 
-  // dev 페르소나·기타 분기보다 먼저: 초기/초기화 비밀번호·동의서 미완료 시 우회 불가
+  // dev ?섎Ⅴ?뚮굹쨌湲고? 遺꾧린蹂대떎 癒쇱?: 珥덇린/珥덇린??鍮꾨?踰덊샇쨌?숈쓽??誘몄셿猷????고쉶 遺덇?
   if (auth.isAuthenticated && auth.needsFeOnboarding && to.name !== "fe-onboarding") {
     next({ name: "fe-onboarding" });
     return;
   }
-  // needsFeOnboarding 이면 FeOnboardingPage에서 비밀번호·동의를 처리 — change-password 로내면 무한 리다이렉트
+  // needsFeOnboarding ?대㈃ FeOnboardingPage?먯꽌 鍮꾨?踰덊샇쨌?숈쓽瑜?泥섎━ ??change-password 濡쒕궡硫?臾댄븳 由щ떎?대젆??
   if (
     auth.isAuthenticated &&
     auth.mustChangePassword &&
@@ -413,6 +413,10 @@ router.beforeEach(async (to, _from, next) => {
 
   const isFunctionalEvalUser = role === "SITE_FUNCTIONAL_EVAL";
   const goingFunctionalEval = to.path.startsWith("/site/functional-eval");
+  if (goingFunctionalEval && isSamsungRecognitionSiteLogin(auth.user?.login_id)) {
+    next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
+    return;
+  }
   if (
     auth.isAuthenticated &&
     isFunctionalEvalUser &&
@@ -444,14 +448,14 @@ router.beforeEach(async (to, _from, next) => {
 
   if (to.meta.requiresPdfSigning && !canAccessHqSafeWorkspace(auth.user?.role)) {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
-    else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
+    else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next({ name: "login" });
     return;
   }
   if (to.meta.requiresAccidentAdmin && auth.user?.role !== "ACCIDENT_ADMIN") {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
-    else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
+    else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next({ name: "login" });
     return;
@@ -472,7 +476,7 @@ router.beforeEach(async (to, _from, next) => {
         return;
       }
       if (auth.effectivePersona === "SITE_MANAGER") {
-        next({ name: siteMobileOrDesktopHomeName() });
+        next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
         return;
       }
       if (auth.effectiveUiType === "HQ_SAFE") {
@@ -481,7 +485,7 @@ router.beforeEach(async (to, _from, next) => {
       }
       if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
-      else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
+      else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
       else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next();
       return;
@@ -489,7 +493,7 @@ router.beforeEach(async (to, _from, next) => {
 
     if (to.meta.persona && auth.effectivePersona && to.meta.persona !== auth.effectivePersona) {
       if (auth.effectivePersona === "HQ_ADMIN") next({ name: hqSafeHomeRouteName() });
-      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: siteMobileOrDesktopHomeName() });
+      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
       else next({ name: "worker-mobile-list" });
       return;
     }
@@ -497,14 +501,14 @@ router.beforeEach(async (to, _from, next) => {
     if (to.meta.uiType && auth.effectiveUiType && to.meta.uiType !== auth.effectiveUiType) {
       if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.effectiveUiType === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
-      else if (auth.effectiveUiType === "SITE") next({ name: siteMobileOrDesktopHomeName() });
+      else if (auth.effectiveUiType === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
       else next({ name: "hq-other-dashboard" });
       return;
     }
   } else if (to.meta.uiType && auth.user && auth.user.ui_type !== to.meta.uiType) {
     if (auth.user.role === "WORKER") next({ name: "worker-mobile-list" });
     else if (auth.user.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
-    else if (auth.user.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
+    else if (auth.user.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     else if (auth.user.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next({ name: "login" });
     return;
@@ -521,11 +525,11 @@ router.beforeEach(async (to, _from, next) => {
     }
     if (auth.isTestPersonaMode) {
       if (auth.effectivePersona === "HQ_ADMIN") next({ name: hqSafeHomeRouteName() });
-      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: siteMobileOrDesktopHomeName() });
+      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
       else if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
-      else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
+      else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
       else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next();
     } else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
@@ -533,7 +537,7 @@ router.beforeEach(async (to, _from, next) => {
     else if (auth.user?.role === "HQ_BUDGET_ESTIMATE" || auth.user?.role === "HQ_OUTSOURCING_PURCHASE")
       next({ name: "hq-safe-new-site-deployment" });
     else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
-    else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName() });
+    else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next();
     return;
@@ -541,4 +545,6 @@ router.beforeEach(async (to, _from, next) => {
 
   next();
 });
+
+
 
