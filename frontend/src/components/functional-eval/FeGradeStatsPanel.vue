@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="fe-grade-stats" :class="{ 'fe-grade-stats--compact': compact }">
     <div v-if="title" class="fe-grade-stats__title-row">
       <h3 class="fe-grade-stats__title">{{ title }}</h3>
@@ -49,6 +49,11 @@
       </div>
 
       <table class="data-table fe-grade-stats__table">
+        <colgroup>
+          <col class="fe-grade-stats__col-grade" />
+          <col class="fe-grade-stats__col-count" />
+          <col class="fe-grade-stats__col-rate" />
+        </colgroup>
         <thead>
           <tr>
             <th>등급</th>
@@ -223,7 +228,7 @@ const donutStyle = computed(() => {
 }
 .fe-grade-stats__body {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 220px minmax(320px, 620px);
   gap: 20px;
   align-items: start;
 }
@@ -310,10 +315,23 @@ const donutStyle = computed(() => {
 .fe-grade-stats__table {
   margin: 0;
   font-size: 13px;
+  width: 100%;
+  table-layout: fixed;
+  justify-self: start;
 }
 .fe-grade-stats__table th,
 .fe-grade-stats__table td {
   padding: 8px 10px;
+  text-align: center;
+  vertical-align: middle;
+  font-variant-numeric: tabular-nums;
+}
+.fe-grade-stats__col-grade {
+  width: 34%;
+}
+.fe-grade-stats__col-count,
+.fe-grade-stats__col-rate {
+  width: 33%;
 }
 .fe-grade-stats__foot-note {
   font-size: 12px;

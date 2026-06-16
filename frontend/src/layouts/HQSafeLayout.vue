@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div
     class="hq-safe-shell layout-root"
     :class="{
@@ -14,10 +14,11 @@
       @click="mobileDrawerOpen = false"
     />
     <aside class="layout-sidebar">
-      <h1 class="sidebar-brand">{{ isFeViewer ? "BESMA · 기능인인정제 조회" : "BESMA CSMS 안전보건플랫폼 · HQ 안전" }}</h1>
+      <h1 class="sidebar-brand">{{ isFeViewer ? "BESMA · 기능인인정제 조회" : "BESMA CSMS 안전보건 플랫폼 · HQ 안전" }}</h1>
       <nav class="layout-menu layout-menu-hq" @click="onMobileNavClick">
         <template v-if="isFeViewer">
-          <RouterLink class="hq-fe-menu-highlight" to="/hq-safe/functional-eval">기능인정제 평가 조회</RouterLink>
+          <RouterLink class="hq-fe-menu-highlight" to="/hq-safe/functional-eval">기능인인정제 평가</RouterLink>
+          <RouterLink class="hq-fe-menu-highlight" to="/hq-safe/functional-eval-monitoring">기능인인정제 모니터링</RouterLink>
         </template>
         <template v-else>
         <RouterLink class="hq-menu-dashboard" to="/hq-safe/dashboard">대시보드</RouterLink>
@@ -29,7 +30,14 @@
             :style="menuOrderPrimaryStyle('functional-eval')"
             to="/hq-safe/functional-eval"
           >
-            기능인정제 평가
+            기능인인정제 평가
+          </RouterLink>
+          <RouterLink
+            class="hq-fe-menu-highlight"
+            :style="menuOrderPrimaryStyle('functional-eval-monitoring')"
+            to="/hq-safe/functional-eval-monitoring"
+          >
+            기능인인정제 모니터링
           </RouterLink>
           <RouterLink
             :style="menuOrderPrimaryStyle('user-guide')"
@@ -53,7 +61,7 @@
             :style="menuOrderPrimaryStyle('document-explorer')"
             to="/hq-safe/document-explorer"
           >
-            문서 탐색
+            문서 검색
           </RouterLink>
           <RouterLink
             :class="hqMenuEmphasisClass('documents')"
@@ -94,7 +102,7 @@
           <p class="hq-menu-section-label">부가 메뉴</p>
           <RouterLink :style="menuOrderSecondaryStyle('site-search')" to="/hq-safe/site-search">현장 검색</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('opinions')" to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
-          <RouterLink :style="menuOrderSecondaryStyle('settings')" to="/hq-safe/settings">안전문서 설정관리</RouterLink>
+          <RouterLink :style="menuOrderSecondaryStyle('settings')" to="/hq-safe/settings">문서 설정</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
           <RouterLink
@@ -102,7 +110,7 @@
             :style="menuOrderSecondaryStyle('pdf-signing')"
             to="/hq-safe/pdf-signing"
           >
-            PDF 외부서명(임시)
+            PDF 전자서명(임시)
           </RouterLink>
           <RouterLink
             v-if="canSystemBackup"
@@ -122,12 +130,12 @@
           <button
             type="button"
             class="sidebar-toggle-btn sidebar-toggle-btn--mobile"
-            :aria-label="mobileDrawerOpen ? '메뉴 닫기' : '메뉴 펼치기'"
+            :aria-label="mobileDrawerOpen ? '메뉴 닫기' : '메뉴 열기'"
             :aria-expanded="mobileDrawerOpen"
             @click="mobileDrawerOpen = !mobileDrawerOpen"
           >
             <span aria-hidden="true">☰</span>
-            <span class="menu-toggle-label">{{ mobileDrawerOpen ? "메뉴 닫기" : "메뉴 펼치기" }}</span>
+            <span class="menu-toggle-label">{{ mobileDrawerOpen ? "메뉴 닫기" : "메뉴 열기" }}</span>
           </button>
           <button class="sidebar-toggle-btn sidebar-toggle-btn--desktop" type="button" @click="toggleSidebar">
             {{ sidebarCollapsed ? "펼치기" : "접기" }}
@@ -195,7 +203,7 @@ const isFunctionalEvalRoute = computed(() => route.path.includes("/functional-ev
 const headerTitle = computed(() => {
   if (isMobileViewport.value && isFunctionalEvalRoute.value) return "기능인인정제";
   if (isMobileViewport.value) return "HQ 안전";
-  return "BESMA CSMS 안전보건플랫폼 · HQ_SAFE";
+  return "BESMA CSMS 안전보건 플랫폼 · HQ_SAFE";
 });
 
 function onMobileNavClick(event: MouseEvent) {
@@ -589,3 +597,5 @@ function handleLogout() {
 }
 
 </style>
+
+

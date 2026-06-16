@@ -1159,6 +1159,24 @@ def _attendance_target_workers(
     return q.all()
 
 
+def _summarize_worker_eval_status(
+    workers: list[FunctionalEvalWorker],
+    assess_map: dict[int, dict[str, Any]],
+) -> dict[str, int]:
+    counts = {"not_started": 0, "in_progress": 0, "completed": 0}
+    for worker in workers:
+        payload = _worker_assess_payload(assess_map, worker.id)
+        if _is_fully_evaluated(payload):
+            counts["completed"] += 1
+        elif (payload.get("functional_assessment") or {}).get("is_complete") or (
+            payload.get("safety_assessment") or {}
+        ).get("is_complete"):
+            counts["in_progress"] += 1
+        else:
+            counts["not_started"] += 1
+    return counts
+
+
 def _list_eval_complete_site_submit_blockers(
     db: Session,
     period: FunctionalEvalPeriod,
@@ -1303,6 +1321,7 @@ def build_hq_sites_overview(
         row["attendance_pending"] = False
 
     has_attendance = bool(attendance_site_codes)
+    worker_status_counts = _summarize_worker_eval_status(workers, assess_map)
     gaps = {
         "sites_missing_evaluator_account": sorted(
             code for code in attendance_site_codes if code not in evaluator_site_codes
@@ -1342,6 +1361,7 @@ def build_hq_sites_overview(
             "fully_complete": fully,
             "incomplete": total_workers - fully,
         },
+        "worker_status_counts": worker_status_counts,
         "site_buckets": _summarize_hq_site_buckets(sites),
         "review_queue": build_hq_review_queue(db, period),
         "sites": sites,
@@ -2637,6 +2657,17 @@ def build_hq_summary_response(
         sort_dir=sort_dir,
         site_code=site_code,
     )
+
+
+def build_hq_monitoring_summary(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
+    summary = build_hq_sites_overview(db, period, sort_by="progress", sort_dir="desc")
+    return {
+        "period": summary["period"],
+        "attendance_message": summary.get("attendance_message"),
+        "totals": summary["totals"],
+        "worker_status_counts": summary["worker_status_counts"],
+        "site_buckets": summary["site_buckets"],
+    }
 
 
 def _diff_row(existing: FunctionalEvalWorker | None, row: ParsedRosterRow) -> RosterDiffItem:

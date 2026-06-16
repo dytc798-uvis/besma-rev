@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -23,6 +24,7 @@ from app.modules.functional_eval.models import (
     FunctionalEvalSiteRegistry,
     FunctionalEvalWorker,
 )
+from app.modules.functional_eval.roster import parse_daily_roster
 from app.modules.functional_eval.site_alias import build_eval_login_id
 from app.modules.sites.models import Site
 from app.modules.users.hq_safe_accounts import HQ_SAFE_ACCOUNT_SPECS
@@ -152,6 +154,75 @@ def _rrn_front_from_worker(worker: FunctionalEvalWorker) -> str | None:
     return _rrn_front_password(worker.rrn_masked or "")
 
 
+def _is_temporary_site_registry(reg: FunctionalEvalSiteRegistry) -> bool:
+    label = (reg.erp_site_label or "").strip()
+    alias = (reg.site_alias or "").strip()
+    label_upper = label.upper()
+    return (
+        alias.startswith("\ud604\uc7a5\ud604\uc7a5")
+        or label_upper.startswith("[AS")
+        or "AS\ud604\uc7a5" in label_upper
+    )
+
+
+def _canonical_site_registry_for_manager(
+    db: Session,
+    reg: FunctionalEvalSiteRegistry,
+) -> FunctionalEvalSiteRegistry:
+    if not _is_temporary_site_registry(reg):
+        return reg
+
+    manager_key = fe_service._normalize_role_identifier(reg.manager_name)
+    candidates = [
+        row
+        for row in db.query(FunctionalEvalSiteRegistry).all()
+        if fe_service._normalize_role_identifier(row.manager_name) == manager_key
+    ]
+    normal_candidates = [row for row in candidates if not _is_temporary_site_registry(row)]
+    if len(normal_candidates) == 1:
+        return normal_candidates[0]
+    return reg
+
+
+def _daily_roster_files() -> list[Path]:
+    roots = [
+        Path(__file__).resolve().parents[4],
+        Path.cwd().parent,
+        Path.cwd(),
+    ]
+    files: dict[Path, float] = {}
+    pattern = "\uc77c\uc6a9\uc9c1\uc0ac\uc6d0\ub9ac\uc2a4\ud2b8_*.xls*"
+    for root in roots:
+        docs = root / "docs"
+        if not docs.exists():
+            continue
+        for path in docs.glob(pattern):
+            try:
+                files[path.resolve()] = path.stat().st_mtime
+            except OSError:
+                continue
+    return sorted(files, key=lambda p: files[p], reverse=True)
+
+
+def _find_daily_roster_rrn_front(*, person_name: str) -> str | None:
+    target = fe_service._normalize_role_identifier(person_name)
+    fronts: set[str] = set()
+    for path in _daily_roster_files()[:3]:
+        try:
+            rows = parse_daily_roster(path)
+        except Exception:
+            continue
+        for row in rows:
+            if fe_service._normalize_role_identifier(row.name) != target:
+                continue
+            front = _rrn_front_password(row.rrn_masked or row.rrn_raw or "")
+            if front:
+                fronts.add(front)
+    if len(fronts) == 1:
+        return next(iter(fronts))
+    return None
+
+
 def _find_worker_rrn_front(
     db: Session,
     *,
@@ -174,7 +245,29 @@ def _find_worker_rrn_front(
             front = _rrn_front_from_worker(worker)
             if front:
                 return front
-    return None
+
+    # Some ERP roster rows carry the manager under a different site code than
+    # the site registry row. Use the roster-wide match only when the name maps
+    # to a single birth front, so duplicate names still fail closed.
+    roster_matches = (
+        db.query(FunctionalEvalWorker)
+        .filter(
+            FunctionalEvalWorker.period_id == period_id,
+            FunctionalEvalWorker.is_active.is_(True),
+            FunctionalEvalWorker.is_on_reference_roster.is_(True),
+        )
+        .all()
+    )
+    fronts = {
+        front
+        for worker in roster_matches
+        if fe_service._normalize_role_identifier(worker.name) == target
+        for front in [_rrn_front_from_worker(worker)]
+        if front
+    }
+    if len(fronts) == 1:
+        return next(iter(fronts))
+    return _find_daily_roster_rrn_front(person_name=person_name)
 
 
 def _issue_eval_account(
@@ -345,6 +438,9 @@ def issue_site_accounts(
         )
         db.commit()
         raise AccountIssuanceError(GENERIC_FAILURE, internal_reason="manager_name_mismatch")
+
+    reg = _canonical_site_registry_for_manager(db, reg)
+    site_code = reg.site_code
 
     period = _latest_period(db)
     if period is None:

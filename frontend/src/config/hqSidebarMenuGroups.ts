@@ -6,6 +6,7 @@
 /** 주요업무 기본 순서: 기능인제 → 기능인제 설명 → 강조 메뉴 → … → 신규현장 배포(맨 아래) */
 export const HQ_SIDEBAR_PRIMARY_KEYS = [
   "functional-eval",
+  "functional-eval-monitoring",
   "user-guide",
   "notices",
   "safety-policy-goals",

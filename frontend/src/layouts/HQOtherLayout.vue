@@ -5,6 +5,7 @@
       <nav class="layout-menu">
         <RouterLink to="/hq-other/dashboard">대시보드</RouterLink>
         <RouterLink to="/hq-other/documents">조회 가능한 문서</RouterLink>
+        <RouterLink to="/hq-other/functional-eval-monitoring">기능인인정제 모니터링</RouterLink>
         <RouterLink to="/hq-other/opinions">운영 아이디어 제안</RouterLink>
         <RouterLink to="/hq-other/settings">설정 (placeholder)</RouterLink>
       </nav>

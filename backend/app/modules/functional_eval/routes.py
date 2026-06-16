@@ -16,6 +16,7 @@ from app.core.permissions import (
     CurrentUserDep,
     assert_fe_hq_admin,
     assert_fe_hq_read,
+    assert_fe_hq_monitoring,
     assert_hq_safe_workspace,
 )
 from app.modules.functional_eval import approval_workflow, service, signature_ops
@@ -1076,6 +1077,14 @@ def hq_summary(
         sort_dir=sort_dir,
         site_code=site_code,
     )
+
+
+@router.get("/hq/monitoring-summary")
+def hq_monitoring_summary(db: DbDep, current_user: CurrentUserDep):
+    """운영지표 전용 모니터링 집계(접속중/평가중/평가완료)."""
+    assert_fe_hq_monitoring(current_user)
+    period = service.get_or_create_active_period(db)
+    return service.build_hq_monitoring_summary(db, period)
 
 
 @router.get("/hq/sites/{site_code}/evaluations")

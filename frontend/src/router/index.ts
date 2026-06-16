@@ -60,6 +60,7 @@ import FunctionalEvalLayout from "@/layouts/FunctionalEvalLayout.vue";
 import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPage.vue";
 import SiteNewSiteDeploymentPage from "@/pages/site/SiteNewSiteDeploymentPage.vue";
 import HQFunctionalEvalPage from "@/pages/hq/HQFunctionalEvalPage.vue";
+import HQFunctionalEvalMonitoringPage from "@/pages/hq/HQFunctionalEvalMonitoringPage.vue";
 import HQFunctionalEvalGradeReportPage from "@/pages/hq/HQFunctionalEvalGradeReportPage.vue";
 import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
 import HQSystemBackupPage from "@/pages/hq/HQSystemBackupPage.vue";
@@ -223,6 +224,7 @@ const routes: RouteRecordRaw[] = [
       },
       { path: "user-guide", name: "hq-safe-user-guide", component: UserGuidePage },
       { path: "functional-eval", name: "hq-safe-functional-eval", component: HQFunctionalEvalPage },
+      { path: "functional-eval-monitoring", name: "hq-safe-functional-eval-monitoring", component: HQFunctionalEvalMonitoringPage },
       {
         path: "functional-eval/grade-report",
         name: "hq-safe-functional-eval-grade-report",
@@ -294,6 +296,7 @@ const routes: RouteRecordRaw[] = [
       { path: "documents", name: "hq-other-documents", component: DocumentListPage },
       { path: "documents/:id", name: "hq-other-document-detail", component: DocumentDetailPage },
       { path: "documents/:id/tbm-view", name: "hq-other-document-tbm-view", component: RedirectLegacyTbmViewPage },
+      { path: "functional-eval-monitoring", name: "hq-other-functional-eval-monitoring", component: HQFunctionalEvalMonitoringPage },
       { path: "opinions", name: "hq-other-opinions", component: OpinionListPage },
       { path: "opinions/:id", name: "hq-other-opinion-detail", component: OpinionDetailPage },
     ],
@@ -424,7 +427,9 @@ router.beforeEach(async (to, _from, next) => {
 
   const isFeViewer = isFunctionalEvalViewer(role);
   const goingFeViewerArea =
-    to.path.startsWith("/hq-safe/functional-eval") || to.name === "hq-safe-functional-eval-grade-report";
+    to.path.startsWith("/hq-safe/functional-eval") ||
+    to.path.startsWith("/hq-safe/functional-eval-monitoring") ||
+    to.name === "hq-safe-functional-eval-grade-report";
   if (
     auth.isAuthenticated &&
     isFeViewer &&
