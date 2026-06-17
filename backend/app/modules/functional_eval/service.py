@@ -2881,7 +2881,7 @@ def apply_daily_roster_diff(
 
     from app.modules.functional_eval import grade_stats_cache
 
-    grade_stats_cache.rebuild_and_persist(db, period)
+    grade_stats_cache.mark_dirty(db, period)
 
     return {
         "batch_id": batch.id,
@@ -3033,7 +3033,7 @@ def save_worker_assessment(
     db.refresh(row)
     from app.modules.functional_eval import grade_stats_cache
 
-    grade_stats_cache.rebuild_and_persist(db, period)
+    grade_stats_cache.mark_dirty(db, period)
     bonus = _worker_bonus_points_total(db, worker_id) if eval_type == "SAFETY" else 0
     penalty = _worker_penalty_points_total(db, worker_id) if eval_type == "SAFETY" else 0
     return _serialize_assessment(row, eval_type, bonus_points=bonus, penalty_points=penalty)
@@ -3076,7 +3076,7 @@ def save_hq_assessment_override(
     db.commit()
     from app.modules.functional_eval import grade_stats_cache
 
-    grade_stats_cache.rebuild_and_persist(db, period)
+    grade_stats_cache.mark_dirty(db, period)
     return {"assessment": assessment}
 
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from app.modules.functional_eval.constants import (
 from app.modules.functional_eval.models import FunctionalEvalPeriod, FunctionalEvalSiteRegistry
 
 GRADE_STAT_CODES: tuple[str, ...] = ("S", "A", "B", "C")
+HQ_GRADE_STATS_CACHE_TTL = timedelta(hours=1)
 
 
 def _live_from_date(period: FunctionalEvalPeriod) -> date:
@@ -344,6 +345,9 @@ def compute_hq_grade_stats(db: Session, period: FunctionalEvalPeriod) -> dict[st
 
 def rebuild_and_persist(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
     payload = compute_hq_grade_stats(db, period)
+    payload["is_stale"] = False
+    payload["stale_reason"] = None
+    payload["stale_marked_at"] = None
     period.hq_grade_stats_json = payload
     period.hq_grade_stats_computed_at = utc_now()
     db.add(period)
@@ -352,12 +356,34 @@ def rebuild_and_persist(db: Session, period: FunctionalEvalPeriod) -> dict[str, 
     return payload
 
 
+def mark_dirty(db: Session, period: FunctionalEvalPeriod, *, reason: str = "source_changed") -> None:
+    cached = period.hq_grade_stats_json
+    if not isinstance(cached, dict) or not cached.get("overall"):
+        return
+    cached = dict(cached)
+    cached["is_stale"] = True
+    cached["stale_reason"] = reason
+    cached["stale_marked_at"] = utc_now().isoformat()
+    period.hq_grade_stats_json = cached
+    db.add(period)
+    db.commit()
+    db.refresh(period)
+
+
+def _cache_expired(period: FunctionalEvalPeriod) -> bool:
+    computed_at = period.hq_grade_stats_computed_at
+    if computed_at is None:
+        return True
+    return utc_now() - computed_at >= HQ_GRADE_STATS_CACHE_TTL
+
+
 def get_hq_grade_stats(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
     expected_mode = _expected_grade_stats_mode(period)
     cached = period.hq_grade_stats_json
     if isinstance(cached, dict) and cached.get("overall"):
         if cached.get("grade_stats_mode") == expected_mode:
-            return cached
+            if not _cache_expired(period):
+                return cached
     return rebuild_and_persist(db, period)
 
 

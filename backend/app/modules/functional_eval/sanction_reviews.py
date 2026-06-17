@@ -105,7 +105,7 @@ def approve_sanction(
     )
     db.commit()
     db.refresh(row)
-    grade_stats_cache.rebuild_and_persist(db, period)
+    grade_stats_cache.mark_dirty(db, period)
     strike_sequence = fe_service._strike_sequence_for_person(db, worker.rrn_hash)
     return fe_service._serialize_sanction(row, worker.name, db, strike_sequence=strike_sequence)
 
