@@ -1,4 +1,4 @@
-"""로그인 화면 아이디 자가 발급."""
+﻿"""濡쒓렇???붾㈃ ?꾩씠???먭? 諛쒓툒."""
 
 from __future__ import annotations
 
@@ -31,11 +31,11 @@ from app.modules.users.hq_safe_accounts import HQ_SAFE_ACCOUNT_SPECS
 from app.modules.users.models import User
 
 GENERIC_FAILURE = (
-    "입력한 정보와 일치하는 계정을 찾을 수 없습니다. 정보를 확인 후 다시 시도해 주세요."
+    "?낅젰???뺣낫? ?쇱튂?섎뒗 怨꾩젙??李얠쓣 ???놁뒿?덈떎. ?뺣낫瑜??뺤씤 ???ㅼ떆 ?쒕룄??二쇱꽭??"
 )
-RATE_LIMIT_MESSAGE = "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."
+RATE_LIMIT_MESSAGE = "?붿껌???덈Т 留롮뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄??二쇱꽭??"
 
-# 본사 자가 발급 대상: 안전보건실·조회전용(부현본사-*) 등
+# 蹂몄궗 ?먭? 諛쒓툒 ??? ?덉쟾蹂닿굔?ㅒ룹“?뚯쟾??遺?꾨낯??*) ??
 _ISSUABLE_HQ_ROLES = HQ_SAFE_WORKSPACE_ROLES | FUNCTIONAL_EVAL_VIEWER_ROLES
 
 MAX_FAILS_PER_FINGERPRINT = 5
@@ -269,6 +269,113 @@ def _registry_from_manager_identity(
     return None
 
 
+def _manager_site_codes_from_workers(
+    db: Session,
+    *,
+    period_id: int,
+    name: str,
+    birth6: str,
+) -> set[str]:
+    target = fe_service._normalize_role_identifier(name)
+    rows = (
+        db.query(FunctionalEvalWorker)
+        .filter(
+            FunctionalEvalWorker.period_id == period_id,
+            FunctionalEvalWorker.is_active.is_(True),
+            FunctionalEvalWorker.is_on_reference_roster.is_(True),
+            FunctionalEvalWorker.is_site_manager.is_(True),
+        )
+        .all()
+    )
+    return {
+        (row.site_code or "").strip()
+        for row in rows
+        if (row.site_code or "").strip()
+        and fe_service._normalize_role_identifier(row.name) == target
+        and _rrn_front_from_worker(row) == birth6
+    }
+
+
+def _site_registry_for_issue(
+    db: Session,
+    *,
+    site_code: str,
+    manager_name: str,
+) -> FunctionalEvalSiteRegistry:
+    code = (site_code or "").strip()
+    reg = db.query(FunctionalEvalSiteRegistry).filter(FunctionalEvalSiteRegistry.site_code == code).first()
+    if reg is not None:
+        if not (reg.manager_name or "").strip():
+            reg.manager_name = manager_name
+        return reg
+
+    site = db.query(Site).filter(Site.site_code == code).first()
+    site_label = (site.site_name or "").strip() if site is not None else ""
+    if not site_label or site_label == f"?꾩옣 {code}":
+        site_label = code
+    reg = FunctionalEvalSiteRegistry(
+        site_code=code,
+        erp_site_label=site_label,
+        site_alias=code,
+        manager_name=manager_name,
+        manager_login_id=build_eval_login_id(code, manager_name),
+    )
+    db.add(reg)
+    db.flush()
+    return reg
+
+
+def _registries_for_site_issue(
+    db: Session,
+    *,
+    period_id: int,
+    requested_site_code: str,
+    name: str,
+    birth6: str,
+) -> list[FunctionalEvalSiteRegistry]:
+    target = fe_service._normalize_role_identifier(name)
+    site_codes = _manager_site_codes_from_workers(db, period_id=period_id, name=name, birth6=birth6)
+    if requested_site_code:
+        site_codes.add(requested_site_code)
+
+    regs_by_code: dict[str, FunctionalEvalSiteRegistry] = {}
+    for code in site_codes:
+        reg = _site_registry_for_issue(db, site_code=code, manager_name=name)
+        if fe_service._normalize_role_identifier(reg.manager_name) == target:
+            regs_by_code[reg.site_code] = reg
+
+    for reg in db.query(FunctionalEvalSiteRegistry).all():
+        if fe_service._normalize_role_identifier(reg.manager_name) != target:
+            continue
+        rrn = _find_worker_rrn_front(db, period_id=period_id, site_code=reg.site_code, person_name=reg.manager_name)
+        if rrn == birth6 or reg.site_code in site_codes or (rrn is None and site_codes):
+            regs_by_code[reg.site_code] = reg
+
+    if regs_by_code:
+        return sorted(
+            regs_by_code.values(),
+            key=lambda row: (0 if row.site_code == requested_site_code else 1, row.site_code),
+        )
+
+    fallback = _registry_from_worker_site_code(
+        db,
+        period_id=period_id,
+        site_code=requested_site_code,
+        name=name,
+        birth6=birth6,
+    ) or _registry_from_worker_site_code(
+        db,
+        period_id=period_id,
+        name=name,
+        birth6=birth6,
+    ) or _registry_from_manager_identity(
+        db,
+        name=name,
+        birth6=birth6,
+    )
+    return [fallback] if fallback is not None else []
+
+
 def _daily_roster_files() -> list[Path]:
     roots = [
         Path(__file__).resolve().parents[4],
@@ -490,33 +597,14 @@ def issue_site_accounts(
     if period is None:
         raise AccountIssuanceError(GENERIC_FAILURE, internal_reason="no_period")
 
-    reg = (
-        db.query(FunctionalEvalSiteRegistry)
-        .filter(FunctionalEvalSiteRegistry.site_code == site_code)
-        .first()
+    registries = _registries_for_site_issue(
+        db,
+        period_id=period.id,
+        requested_site_code=requested_site_code,
+        name=name,
+        birth6=birth6,
     )
-    if reg is None:
-        reg = _registry_from_worker_site_code(
-            db,
-            period_id=period.id,
-            site_code=site_code,
-            name=name,
-            birth6=birth6,
-        )
-    if reg is None:
-        reg = _registry_from_worker_site_code(
-            db,
-            period_id=period.id,
-            name=name,
-            birth6=birth6,
-        )
-    if reg is None:
-        reg = _registry_from_manager_identity(
-            db,
-            name=name,
-            birth6=birth6,
-        )
-    if reg is None:
+    if not registries:
         _log_attempt(
             db,
             scope="site",
@@ -533,22 +621,11 @@ def issue_site_accounts(
         db.commit()
         raise AccountIssuanceError(GENERIC_FAILURE, internal_reason="site_not_found")
 
-    if fe_service._normalize_role_identifier(reg.manager_name) != fe_service._normalize_role_identifier(name):
-        alternate_reg = _registry_from_worker_site_code(
-            db,
-            period_id=period.id,
-            site_code=site_code,
-            name=name,
-            birth6=birth6,
-        ) or _registry_from_worker_site_code(
-            db,
-            period_id=period.id,
-            name=name,
-            birth6=birth6,
-        )
-        if alternate_reg is not None:
-            reg = alternate_reg
-    if fe_service._normalize_role_identifier(reg.manager_name) != fe_service._normalize_role_identifier(name):
+    target_name = fe_service._normalize_role_identifier(name)
+    registries = [
+        reg for reg in registries if fe_service._normalize_role_identifier(reg.manager_name) == target_name
+    ]
+    if not registries:
         _log_attempt(
             db,
             scope="site",
@@ -565,144 +642,140 @@ def issue_site_accounts(
         db.commit()
         raise AccountIssuanceError(GENERIC_FAILURE, internal_reason="manager_name_mismatch")
 
-    reg = _canonical_site_registry_for_manager(db, reg)
-    site_code = reg.site_code
-
-    manager_rrn = _find_worker_rrn_front(
+    identity_site_codes = _manager_site_codes_from_workers(
         db,
         period_id=period.id,
-        site_code=site_code,
-        person_name=reg.manager_name,
+        name=name,
+        birth6=birth6,
     )
-    if manager_rrn != birth6 and requested_site_code != site_code:
+    verified_regs: list[FunctionalEvalSiteRegistry] = []
+    for reg in registries:
         manager_rrn = _find_worker_rrn_front(
             db,
             period_id=period.id,
-            site_code=requested_site_code,
+            site_code=reg.site_code,
             person_name=reg.manager_name,
         )
-    if manager_rrn != birth6:
-        identity_reg = _registry_from_worker_site_code(
-            db,
-            period_id=period.id,
-            name=name,
-            birth6=birth6,
-        ) or _registry_from_manager_identity(
-            db,
-            name=name,
-            birth6=birth6,
-        )
-        if identity_reg is not None and identity_reg.site_code == reg.site_code:
-            manager_rrn = birth6
-    if manager_rrn != birth6:
+        if manager_rrn == birth6 or reg.site_code in identity_site_codes or (manager_rrn is None and identity_site_codes):
+            verified_regs.append(reg)
+    if not verified_regs:
         _log_attempt(
             db,
             scope="site",
-            site_code=site_code,
+            site_code=requested_site_code,
             department=None,
             name=name,
             fingerprint=fingerprint,
             request_ip=request_ip,
             success=False,
-            recipient_name=reg.manager_name,
+            recipient_name=name,
             accounts=None,
             failure_reason="birth_mismatch",
         )
         db.commit()
         raise AccountIssuanceError(GENERIC_FAILURE, internal_reason="birth_mismatch")
 
-    site = db.query(Site).filter(Site.site_code == site_code).first()
-    if site is None:
-        site = Site(site_code=site_code, site_name=reg.erp_site_label or site_code, manager_name=reg.manager_name)
-        db.add(site)
-        db.flush()
-
-    manager_login = (reg.manager_login_id or "").strip() or build_eval_login_id(reg.site_alias, reg.manager_name)
-    reg.manager_login_id = manager_login
-
     issued_rows: list[dict[str, Any]] = []
-    _issue_eval_account(
-        db,
-        login_id=manager_login,
-        name=reg.manager_name,
-        password_plain=birth6,
-        site=site,
-        issued_by="self_service_site",
-    )
-    issued_rows.append(
-        {
-            "role_label": "소장",
-            "name": reg.manager_name,
-            "login_id": manager_login,
-            "initial_password": birth6,
-        }
-    )
+    primary_reg = verified_regs[0]
+    for reg in verified_regs:
+        issue_site_code = reg.site_code
+        site = db.query(Site).filter(Site.site_code == issue_site_code).first()
+        if site is None:
+            site = Site(site_code=issue_site_code, site_name=reg.erp_site_label or issue_site_code, manager_name=reg.manager_name)
+            db.add(site)
+            db.flush()
+        elif not (site.manager_name or "").strip():
+            site.manager_name = reg.manager_name
 
-    workers = fe_service._site_attendance_workers(db, period, site_code)
-    manager_login_norm = manager_login
-    team_logins = sorted(
-        fe_service._collect_team_leader_evaluator_logins(
-            workers,
-            manager_login_norm,
-            db=db,
-            site_code=site_code,
-            period_id=period.id,
-        )
-    )
-    for tl_login in team_logins:
-        tl_name = fe_service._normalize_login_to_name(tl_login)
-        if not tl_name:
-            continue
-        tl_birth = _find_worker_rrn_front(
-            db,
-            period_id=period.id,
-            site_code=site_code,
-            person_name=tl_name,
-        )
-        if not tl_birth:
-            tl_birth = birth6
-        display_name = next(
-            (w.name for w in workers if fe_service._normalize_role_identifier(w.name) == fe_service._normalize_role_identifier(tl_name)),
-            tl_name,
-        )
+        manager_login = (reg.manager_login_id or "").strip() or build_eval_login_id(reg.site_alias, reg.manager_name)
+        reg.manager_login_id = manager_login
+        site_label = (reg.erp_site_label or reg.site_alias or issue_site_code).strip()
+
         _issue_eval_account(
             db,
-            login_id=tl_login,
-            name=display_name,
-            password_plain=tl_birth,
+            login_id=manager_login,
+            name=reg.manager_name,
+            password_plain=birth6,
             site=site,
             issued_by="self_service_site",
         )
         issued_rows.append(
             {
-                "role_label": "팀장",
-                "name": display_name,
-                "login_id": tl_login,
-                "initial_password": tl_birth,
+                "role_label": "소장",
+                "name": reg.manager_name,
+                "login_id": manager_login,
+                "initial_password": birth6,
+                "site_code": issue_site_code,
+                "site_label": site_label,
             }
         )
+
+        workers = fe_service._site_attendance_workers(db, period, issue_site_code)
+        team_logins = sorted(
+            fe_service._collect_team_leader_evaluator_logins(
+                workers,
+                manager_login,
+                db=db,
+                site_code=issue_site_code,
+                period_id=period.id,
+            )
+        )
+        for tl_login in team_logins:
+            tl_name = fe_service._normalize_login_to_name(tl_login)
+            if not tl_name:
+                continue
+            tl_birth = _find_worker_rrn_front(
+                db,
+                period_id=period.id,
+                site_code=issue_site_code,
+                person_name=tl_name,
+            )
+            if not tl_birth:
+                tl_birth = birth6
+            display_name = next(
+                (w.name for w in workers if fe_service._normalize_role_identifier(w.name) == fe_service._normalize_role_identifier(tl_name)),
+                tl_name,
+            )
+            _issue_eval_account(
+                db,
+                login_id=tl_login,
+                name=display_name,
+                password_plain=tl_birth,
+                site=site,
+                issued_by="self_service_site",
+            )
+            issued_rows.append(
+                {
+                    "role_label": "팀장",
+                    "name": display_name,
+                    "login_id": tl_login,
+                    "initial_password": tl_birth,
+                    "site_code": issue_site_code,
+                    "site_label": site_label,
+                }
+            )
 
     _log_attempt(
         db,
         scope="site",
-        site_code=site_code,
+        site_code=primary_reg.site_code,
         department=None,
         name=name,
         fingerprint=fingerprint,
         request_ip=request_ip,
         success=True,
-        recipient_name=reg.manager_name,
+        recipient_name=primary_reg.manager_name,
         accounts=[{"login_id": r["login_id"], "name": r["name"], "role_label": r["role_label"]} for r in issued_rows],
         failure_reason=None,
     )
     db.commit()
 
-    site_label = (reg.erp_site_label or reg.site_alias or site_code).strip()
+    site_label = (primary_reg.erp_site_label or primary_reg.site_alias or primary_reg.site_code).strip()
     return {
         "scope": "site",
-        "site_code": site_code,
+        "site_code": primary_reg.site_code,
         "site_label": site_label,
-        "recipient_name": reg.manager_name,
+        "recipient_name": primary_reg.manager_name,
         "accounts": issued_rows,
         "message": "아이디 발급이 완료되었습니다.",
     }
@@ -742,7 +815,7 @@ def issue_hq_account(
 
     user = candidates
     _issue_hq_account(db, user, password_plain=birth6, issued_by="self_service_hq")
-    role_label = (user.department or "본사").strip()
+    role_label = (user.department or "蹂몄궗").strip()
     issued_rows = [
         {
             "role_label": role_label,
@@ -770,5 +843,5 @@ def issue_hq_account(
         "recipient_name": user.name,
         "role_label": role_label,
         "accounts": issued_rows,
-        "message": "아이디 발급이 완료되었습니다.",
+        "message": "?꾩씠??諛쒓툒???꾨즺?섏뿀?듬땲??",
     }

@@ -162,3 +162,81 @@ def test_re_attendance_reactivates_worker_and_preserves_assessment(db_session):
     )
     assert assessment is not None
     assert assessment.grade_code == "S"
+
+
+def test_worker_site_move_preserves_assessment(db_session):
+    session, period, _tmp_path = db_session
+    rrn = "900101-1234567"
+    digits = rrn.replace("-", "")
+    target_site_label = "[5.Korea Univ] Central Plaza Electrical Work"
+
+    session.add(
+        FunctionalEvalSiteRegistry(
+            site_code="26040",
+            erp_site_label=target_site_label,
+            site_alias="korea-univ",
+            manager_name="site-manager-b",
+            manager_login_id="korea-univ-manager",
+            erp_headcount=10,
+        )
+    )
+    session.commit()
+
+    apply_attendance_report_diff(
+        session,
+        period,
+        [_attendance_row(work_date=date(2026, 6, 10), name="moving-worker", rrn=rrn)],
+        original_filename="att-site-a.xlsx",
+        stored_path="storage/att-site-a.xlsx",
+    )
+    worker = session.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.name == "moving-worker").first()
+    assert worker is not None
+    worker_id = worker.id
+    assert worker.site_code == "24025"
+
+    session.add(
+        FunctionalEvalAssessment(
+            worker_id=worker_id,
+            eval_type="FUNCTIONAL",
+            scores_json={"A1": "5"},
+            total_score=88,
+            max_score=100,
+            grade_code="A",
+            grade_label="A",
+        )
+    )
+    session.commit()
+
+    apply_attendance_report_diff(
+        session,
+        period,
+        [
+            ParsedAttendanceRow(
+                work_date=date(2026, 6, 15),
+                name="moving-worker",
+                rrn_raw=digits,
+                rrn_hash=_rrn_hash(digits),
+                rrn_masked=None,
+                job_name="6",
+                rep_name="site-manager-b",
+                erp_site_label=target_site_label,
+            )
+        ],
+        original_filename="att-site-b.xlsx",
+        stored_path="storage/att-site-b.xlsx",
+    )
+
+    session.refresh(worker)
+    assert worker.id == worker_id
+    assert worker.site_code == "26040"
+
+    assessment = (
+        session.query(FunctionalEvalAssessment)
+        .filter(
+            FunctionalEvalAssessment.worker_id == worker_id,
+            FunctionalEvalAssessment.eval_type == "FUNCTIONAL",
+        )
+        .first()
+    )
+    assert assessment is not None
+    assert assessment.grade_code == "A"

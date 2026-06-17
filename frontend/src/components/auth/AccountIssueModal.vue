@@ -59,6 +59,9 @@
           <h3 v-if="scope === 'site' && account.role_label === '소장'">소장 계정</h3>
           <h3 v-else-if="scope === 'site'">팀장 계정 {{ teamLeaderIndex(account, idx) }}</h3>
           <h3 v-else>발급 계정</h3>
+          <p v-if="account.site_label || account.site_code" class="issue-result-meta">
+            현장: {{ account.site_label || account.site_code }} {{ account.site_code || "" }}
+          </p>
           <p>아이디: {{ account.login_id }}</p>
           <p>초기 비밀번호: {{ account.initial_password }}</p>
           <p v-if="account.role_label && scope === 'hq'" class="issue-result-meta">역할: {{ account.role_label }}</p>
@@ -89,6 +92,8 @@ export interface IssuedAccount {
   name: string;
   login_id: string;
   initial_password: string;
+  site_code?: string;
+  site_label?: string;
 }
 
 interface IssueResult {
@@ -162,6 +167,9 @@ function buildCopyText(): string {
   result.value.accounts.forEach((account, idx) => {
     if (scope.value === "site") {
       lines.push(account.role_label === "소장" ? "[소장 계정]" : `[팀장 계정 ${teamLeaderIndex(account, idx)}]`);
+      if (account.site_label || account.site_code) {
+        lines.push(`현장: ${account.site_label || account.site_code} ${account.site_code || ""}`.trim());
+      }
     }
     lines.push(`아이디: ${account.login_id}`);
     lines.push(`초기 비밀번호: ${account.initial_password}`);

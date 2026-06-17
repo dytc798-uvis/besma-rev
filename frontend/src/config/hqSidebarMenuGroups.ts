@@ -7,6 +7,7 @@
 export const HQ_SIDEBAR_PRIMARY_KEYS = [
   "functional-eval",
   "functional-eval-monitoring",
+  "functional-eval-rewards-sanctions",
   "user-guide",
   "notices",
   "safety-policy-goals",

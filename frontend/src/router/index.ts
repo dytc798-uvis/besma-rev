@@ -61,6 +61,7 @@ import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPa
 import SiteNewSiteDeploymentPage from "@/pages/site/SiteNewSiteDeploymentPage.vue";
 import HQFunctionalEvalPage from "@/pages/hq/HQFunctionalEvalPage.vue";
 import HQFunctionalEvalMonitoringPage from "@/pages/hq/HQFunctionalEvalMonitoringPage.vue";
+import HQFunctionalEvalRewardsSanctionsPage from "@/pages/hq/HQFunctionalEvalRewardsSanctionsPage.vue";
 import HQFunctionalEvalGradeReportPage from "@/pages/hq/HQFunctionalEvalGradeReportPage.vue";
 import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
 import HQSystemBackupPage from "@/pages/hq/HQSystemBackupPage.vue";
@@ -225,6 +226,11 @@ const routes: RouteRecordRaw[] = [
       { path: "user-guide", name: "hq-safe-user-guide", component: UserGuidePage },
       { path: "functional-eval", name: "hq-safe-functional-eval", component: HQFunctionalEvalPage },
       { path: "functional-eval-monitoring", name: "hq-safe-functional-eval-monitoring", component: HQFunctionalEvalMonitoringPage },
+      {
+        path: "functional-eval-rewards-sanctions",
+        name: "hq-safe-functional-eval-rewards-sanctions",
+        component: HQFunctionalEvalRewardsSanctionsPage,
+      },
       {
         path: "functional-eval/grade-report",
         name: "hq-safe-functional-eval-grade-report",

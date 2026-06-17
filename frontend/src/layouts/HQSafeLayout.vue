@@ -40,6 +40,14 @@
             기능인인정제 모니터링
           </RouterLink>
           <RouterLink
+            class="hq-fe-menu-highlight"
+            :style="menuOrderPrimaryStyle('functional-eval-rewards-sanctions')"
+            to="/hq-safe/functional-eval-rewards-sanctions"
+          >
+            기능인인정제 안전보건실 승인 및 포상/제재
+            <span v-if="feReviewPendingCount > 0" class="hq-menu-count-badge">{{ feReviewPendingCount }}</span>
+          </RouterLink>
+          <RouterLink
             :style="menuOrderPrimaryStyle('user-guide')"
             to="/hq-safe/user-guide"
           >
@@ -198,6 +206,7 @@ const canAccessPdfSigning = computed(() =>
 const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
 const canSystemBackup = computed(() => userCanSystemBackup(auth.user));
 const deployIncompleteCount = ref(0);
+const feReviewPendingCount = ref(0);
 
 const isFunctionalEvalRoute = computed(() => route.path.includes("/functional-eval"));
 const headerTitle = computed(() => {
@@ -229,15 +238,18 @@ onMounted(() => {
   void loadUnreadCommunications();
   loadDynamicMenus();
   void loadDeploymentMenuStatus();
+  void loadFunctionalEvalReviewCount();
   window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   window.addEventListener("besma-hq-communication-read", handleCommunicationRead as EventListener);
   window.addEventListener("besma-nsd-updated", loadDeploymentMenuStatus as EventListener);
+  window.addEventListener("besma-fe-review-updated", loadFunctionalEvalReviewCount as EventListener);
 });
 
 onUnmounted(() => {
   window.removeEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   window.removeEventListener("besma-hq-communication-read", handleCommunicationRead as EventListener);
   window.removeEventListener("besma-nsd-updated", loadDeploymentMenuStatus as EventListener);
+  window.removeEventListener("besma-fe-review-updated", loadFunctionalEvalReviewCount as EventListener);
 });
 
 async function loadBadge() {
@@ -271,6 +283,31 @@ async function loadDeploymentMenuStatus() {
     deployIncompleteCount.value = res.data?.incomplete_count ?? 0;
   } catch {
     deployIncompleteCount.value = 0;
+  }
+}
+
+async function loadFunctionalEvalReviewCount() {
+  try {
+    const [approvalRes, rewardRes, sanctionRes] = await Promise.allSettled([
+      api.get("/functional-eval/hq/approvals/pending"),
+      api.get("/functional-eval/hq/customer-rewards/pending"),
+      api.get("/functional-eval/hq/sanctions/pending"),
+    ]);
+    const approvalCount =
+      approvalRes.status === "fulfilled" && Array.isArray(approvalRes.value.data?.items)
+        ? approvalRes.value.data.items.length
+        : 0;
+    const rewardCount =
+      rewardRes.status === "fulfilled" && Array.isArray(rewardRes.value.data?.items)
+        ? rewardRes.value.data.items.length
+        : 0;
+    const sanctionCount =
+      sanctionRes.status === "fulfilled" && Array.isArray(sanctionRes.value.data?.items)
+        ? sanctionRes.value.data.items.length
+        : 0;
+    feReviewPendingCount.value = approvalCount + rewardCount + sanctionCount;
+  } catch {
+    feReviewPendingCount.value = 0;
   }
 }
 

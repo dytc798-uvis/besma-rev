@@ -50,6 +50,8 @@ class IssuedAccountItem(BaseModel):
     name: str
     login_id: str
     initial_password: str
+    site_code: str | None = None
+    site_label: str | None = None
 
 
 class IssueAccountResponse(BaseModel):
@@ -73,4 +75,3 @@ class AdminPasswordResetResponse(BaseModel):
 
     temporary_password: str
     message: str = "임시 비밀번호가 발급되었습니다. 사용자에게 전달한 뒤, 로그인 후 비밀번호 변경을 안내하세요."
-
