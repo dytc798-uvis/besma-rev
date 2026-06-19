@@ -27,6 +27,8 @@ from app.modules.functional_eval.models import (  # noqa: E402
     FunctionalEvalSiteApproval,
 )
 
+CONFIRM_TOKEN = "RESET_FE_CONSENT_SIGNATURES_V1"
+
 
 def purge_signature_pdfs(*, dry_run: bool) -> int:
     sig_dir = settings.storage_root / "functional_eval" / "signatures"
@@ -44,7 +46,13 @@ def purge_signature_pdfs(*, dry_run: bool) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--confirm", default="")
     args = parser.parse_args()
+    if not args.dry_run and not args.apply:
+        parser.error("--dry-run 또는 --apply 중 하나를 지정하세요.")
+    if args.apply and args.confirm != CONFIRM_TOKEN:
+        parser.error(f"--confirm requires exact value '{CONFIRM_TOKEN}'")
 
     init_db()
     pdf_count = purge_signature_pdfs(dry_run=args.dry_run)

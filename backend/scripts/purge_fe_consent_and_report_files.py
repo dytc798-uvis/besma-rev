@@ -22,6 +22,8 @@ sys.path.insert(0, str(BACKEND))
 
 from app.config.settings import settings  # noqa: E402
 
+CONFIRM_TOKEN = "DELETE_CONSENT_REPORT_FILES"
+
 
 def signature_pdf_dir() -> Path:
     return settings.storage_root / "functional_eval" / "signatures"
@@ -39,7 +41,19 @@ def classify_pdf(name: str) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Purge FE consent/report PDF files only")
     parser.add_argument("--dry-run", action="store_true", help="List files without deleting")
+    parser.add_argument("--apply", action="store_true", help="Actually delete files (requires explicit --confirm)")
+    parser.add_argument(
+        "--confirm",
+        default="",
+        help=f"Type '{CONFIRM_TOKEN}' to allow deletion",
+    )
     args = parser.parse_args()
+    if not args.dry_run and not args.apply:
+        parser.error("set --dry-run (safe) or --apply (real deletion)")
+    if args.apply and args.confirm != CONFIRM_TOKEN:
+        parser.error(f"--confirm requires exact value '{CONFIRM_TOKEN}'")
+    if args.dry_run and args.confirm:
+        print("WARNING: --confirm is ignored in dry-run mode")
 
     sig_dir = signature_pdf_dir()
     if not sig_dir.is_dir():
