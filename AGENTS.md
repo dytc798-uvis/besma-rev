@@ -64,3 +64,14 @@
 ## 13. 변경 실행 전 증거 남기기
 - 스크립트 실행 전/후에는 대상 수치(`평가완료 수`, `미반영 수`, `DB row counts`)를 출력/기록한다.
 - 1) `git show <commit>`으로 삭제성능 수정이 있는지 확인, 2) `git diff`에 delete 쿼리/`delete()` 체인 존재 여부 점검, 3) 배포 직후 재집계 API 응답 비교를 수행한다.
+
+## 14. 자동 복구형 개발 루틴
+- 작업 단위는 `checkpoint commit`을 기본으로 운영한다. 세션 또는 기능 블록 종료 시:
+  1) `git add -A`
+  2) `git commit -m "checkpoint: <요약>"`  (필요 시 `--no-verify`)
+  3) 영향 범위가 확정되면 `git tag checkpoint/<YYYYMMDD>-<HHMMSS>` 를 동시에 생성
+- 가능하면 `checkpoint`는 자동 push 전제값으로 두고, 운영 push는 사용자 승인 `git push`로 분리한다.
+- 롤백 방법:
+  - 이전 상태로 되돌림: `git revert --no-edit <commit>` (공유된 이력 보존)
+  - 즉시 복구(로컬만): `git reset --hard <커밋>`
+  - 체크포인트 태그로 즉시 이동: `git checkout checkpoint/<태그>` 또는 `git switch -c hotfix/<태그> checkpoint/<태그>`
