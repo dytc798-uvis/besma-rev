@@ -1,5 +1,4 @@
-﻿<template>
-  <p v-if="consentLoading" class="fe-consent-loading" role="status">동의서 확인 중…</p>
+﻿<template>`r`n  <button class="ceo-floating-approve" type="button" @click="openCeoReviewArea">대표이사 최종 승인</button>`r`n<p v-if="consentLoading" class="fe-consent-loading" role="status">동의서 확인 중…</p>
   <FeConsentGate
     v-else-if="consentRequired"
     :open="consentRequired"
@@ -2421,8 +2420,40 @@ async function downloadSanctionExcel() {
     padding: 16px 14px;
   }
 }
+
+.ceo-floating-approve {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 900;
+  min-height: 72px;
+  padding: 0 34px;
+  border: 0;
+  border-radius: 18px;
+  background: #1d4ed8;
+  color: #fff;
+  box-shadow: 0 18px 36px rgba(29, 78, 216, 0.28);
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  cursor: pointer;
+}
+
+.ceo-floating-approve:hover {
+  background: #1e40af;
+}
+
+@media (max-width: 768px) {
+  .ceo-floating-approve {
+    top: auto;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    width: calc(100% - 28px);
+    min-height: 76px;
+    font-size: 30px;
+    border-radius: 20px;
+  }
+}
 </style>
-
-
-
 
