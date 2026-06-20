@@ -388,15 +388,8 @@
             </button>
           </div>
         </div>
-        <div v-show="approvalSectionsOpen.ceo" class="approval-collapse__body">
-          <div class="table-scroll">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>현장</th>
-                  <th>완료</th>
-                  <th>본사승인</th>
-                  <th></th>
+        <div v-show="approvalSectionsOpen.ceo || !ceoPendingApprovals.length" class="approval-collapse__body">
+          <div v-if="!ceoPendingApprovals.length" class="ceo-empty-approval"><p>현재 자동 집계된 대표 승인 대기 현장이 없습니다. 보고서 작성 중 임시 확인용으로 최종 승인 버튼을 표시합니다.</p><button class="stitch-btn-primary ceo-review-main-btn" type="button" @click="openCeoApproveAllModal">대표이사 최종 승인</button></div>`r`n          <div v-else class="table-scroll">`r`n            <table class="data-table">`r`n              <thead>`r`n                <tr>`r`n                  <th>현장</th>`r`n                  <th>완료</th>`r`n                  <th>본사승인</th>`r`n                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -2350,6 +2343,24 @@ async function downloadSanctionExcel() {
   color: #64748b;
 }
 
+.ceo-empty-approval {
+  display: grid;
+  gap: 18px;
+  justify-items: start;
+  padding: 28px;
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 2px dashed rgba(37, 99, 235, 0.28);
+}
+
+.ceo-empty-approval p {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.5;
+  color: #0f172a;
+  font-weight: 800;
+}
+
 .ceo-approval-section .approval-collapse__title,
 .ceo-approval-section .approval-collapse__count {
   font-size: 28px;
@@ -2403,4 +2414,6 @@ async function downloadSanctionExcel() {
   }
 }
 </style>
+
+
 
