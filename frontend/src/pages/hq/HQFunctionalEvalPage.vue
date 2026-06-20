@@ -389,7 +389,15 @@
           </div>
         </div>
         <div v-show="approvalSectionsOpen.ceo || !ceoPendingApprovals.length" class="approval-collapse__body">
-          <div v-if="!ceoPendingApprovals.length" class="ceo-empty-approval"><p>현재 자동 집계된 대표 승인 대기 현장이 없습니다. 보고서 작성 중 임시 확인용으로 최종 승인 버튼을 표시합니다.</p><button class="stitch-btn-primary ceo-review-main-btn" type="button" @click="openCeoApproveAllModal">대표이사 최종 승인</button></div>`r`n          <div v-else class="table-scroll">`r`n            <table class="data-table">`r`n              <thead>`r`n                <tr>`r`n                  <th>현장</th>`r`n                  <th>완료</th>`r`n                  <th>본사승인</th>`r`n                  <th></th>
+          <div v-if="!ceoPendingApprovals.length" class="ceo-empty-approval"><p>현재 자동 집계된 대표 승인 대기 현장이 없습니다. 보고서 작성 중 임시 확인용으로 최종 승인 버튼을 표시합니다.</p><button class="stitch-btn-primary ceo-review-main-btn" type="button" @click="openCeoApproveAllModal">대표이사 최종 승인</button></div>
+          <div v-else class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>현장</th>
+                  <th>완료</th>
+                  <th>본사승인</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -402,7 +410,7 @@
                   <td>{{ row.site_complete_workers }}/{{ row.site_total_workers }}</td>
                   <td>{{ formatDateTimeKst(row.hq_approved_at_label || row.hq_approved_at, "—") }}</td>
                   <td class="actions-inline">
-                    <button class="stitch-btn-secondary" type="button" @click="rejectCeo(String(row.site_code))">반려</button>
+                    <button class="stitch-btn-primary" type="button" @click="approveCeo(String(row.site_code))">검토·승인</button>`r`n                    <button class="stitch-btn-secondary" type="button" @click="rejectCeo(String(row.site_code))">반려</button>
                   </td>
                 </tr>
               </tbody>
@@ -2414,6 +2422,7 @@ async function downloadSanctionExcel() {
   }
 }
 </style>
+
 
 
 
