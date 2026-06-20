@@ -2292,3 +2292,115 @@ async function downloadSanctionExcel() {
 .badge.inline { margin-left: 4px; vertical-align: middle; }
 .empty-bucket { padding: 24px 0; text-align: center; }
 </style>
+
+<style scoped>
+.ceo-review-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: center;
+  padding: 34px 38px;
+  border: 2px solid rgba(37, 99, 235, 0.24);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(255, 255, 255, 0.96));
+}
+
+.ceo-review-kicker {
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 900;
+  color: #1d4ed8;
+}
+
+.ceo-review-hero h2 {
+  margin: 0 0 14px;
+  font-size: 42px;
+  line-height: 1.18;
+  letter-spacing: -0.04em;
+  color: #0f172a;
+}
+
+.ceo-review-hero p {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.ceo-review-actions {
+  display: grid;
+  gap: 12px;
+  justify-items: end;
+}
+
+.ceo-review-main-btn {
+  min-height: 64px;
+  padding: 0 28px;
+  border-radius: 16px;
+  font-size: 26px;
+  font-weight: 900;
+}
+
+.ceo-review-count {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.ceo-review-count--empty {
+  color: #64748b;
+}
+
+.ceo-approval-section .approval-collapse__title,
+.ceo-approval-section .approval-collapse__count {
+  font-size: 28px;
+}
+
+.ceo-approval-section .data-table th,
+.ceo-approval-section .data-table td {
+  font-size: 24px;
+  line-height: 1.5;
+  padding: 18px 16px;
+}
+
+.ceo-approval-section .stitch-btn-primary,
+.ceo-approval-section .stitch-btn-secondary {
+  min-height: 54px;
+  padding: 0 20px;
+  border-radius: 14px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+@media (max-width: 768px) {
+  .ceo-review-hero {
+    grid-template-columns: 1fr;
+    padding: 24px 20px;
+  }
+
+  .ceo-review-hero h2 {
+    font-size: 34px;
+  }
+
+  .ceo-review-kicker,
+  .ceo-review-hero p {
+    font-size: 22px;
+  }
+
+  .ceo-review-actions {
+    justify-items: stretch;
+  }
+
+  .ceo-review-main-btn {
+    width: 100%;
+    min-height: 72px;
+    font-size: 28px;
+  }
+
+  .ceo-approval-section .data-table th,
+  .ceo-approval-section .data-table td {
+    font-size: 22px;
+    padding: 16px 14px;
+  }
+}
+</style>
+
