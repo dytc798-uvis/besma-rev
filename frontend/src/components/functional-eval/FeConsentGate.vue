@@ -64,8 +64,7 @@ const consentDescription = computed(() => {
   if (siteFullName.value) lines.push(siteFullName.value);
   if (teamLabel.value) lines.push(teamLabel.value);
   lines.push("?????? ?? ?? ? ?? 1? ?????? ?????.");
-  return lines.join("
-");
+  return lines.join("\n");
 });
 
 function isUsableConsentText(value: string | null | undefined): boolean {
