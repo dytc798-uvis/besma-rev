@@ -48,6 +48,7 @@
             :s-reason="sOverLimitReason"
             @update:s-reason="sOverLimitReason = $event"
           />
+          <slot name="before-signature" />
           <SignaturePad ref="padRef" :width="560" :height="200" :disabled="signaturePadDisabled" />
           <p v-if="error" class="fe-sign-error">{{ error }}</p>
           <footer class="fe-sign-footer">

@@ -28,7 +28,12 @@
       <template v-else-if="step === 'consent'">
         <div class="card-title">{{ consentTitle }}</div>
         <p class="onboarding-lead">{{ consentLead }}</p>
-        <FeConsentGate :open="true" :prefill="consentPrefill" @completed="handleConsentCompleted" />
+        <FeConsentGate
+          :open="true"
+          :prefill="consentPrefill"
+          :require-password-change="auth.mustChangePassword"
+          @completed="handleConsentCompleted"
+        />
       </template>
 
       <template v-else>
@@ -89,12 +94,12 @@ const consentLead = computed(() =>
 );
 
 function resolveStep() {
-  if (auth.mustChangePassword) {
-    step.value = "password";
-    return;
-  }
   if (auth.needsFeConsent && auth.feConsentRequired) {
     step.value = "consent";
+    return;
+  }
+  if (auth.mustChangePassword) {
+    step.value = "password";
     return;
   }
   step.value = "done";
