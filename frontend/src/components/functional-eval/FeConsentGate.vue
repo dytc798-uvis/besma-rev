@@ -11,21 +11,22 @@
     @update:open="(v) => emit('update:open', v)"
     @submit="onSubmit"
   >
-    <template v-if="requirePasswordChange" #before-signature>
-      <form class="fe-consent-password" @submit.prevent>
+    <template v-if="requirePasswordChange" #before-signature="{ consentReady }">
+      <form class="fe-consent-password" :class="{ 'fe-consent-password--locked': !consentReady }" @submit.prevent>
         <h3>{{ passwordTitle }}</h3>
         <p>{{ passwordHelp }}</p>
+        <p v-if="!consentReady" class="fe-consent-password-lock">{{ passwordLockedHelp }}</p>
         <label>
           <span>{{ currentPasswordLabel }}</span>
-          <input v-model="currentPassword" type="password" autocomplete="current-password" />
+          <input v-model="currentPassword" type="password" autocomplete="current-password" :disabled="!consentReady" />
         </label>
         <label>
           <span>{{ newPasswordLabel }}</span>
-          <input v-model="newPassword" type="password" autocomplete="new-password" />
+          <input v-model="newPassword" type="password" autocomplete="new-password" :disabled="!consentReady" />
         </label>
         <label>
           <span>{{ newPasswordConfirmLabel }}</span>
-          <input v-model="newPasswordConfirm" type="password" autocomplete="new-password" />
+          <input v-model="newPasswordConfirm" type="password" autocomplete="new-password" :disabled="!consentReady" />
         </label>
       </form>
     </template>
@@ -62,6 +63,7 @@ const newPasswordConfirm = ref("");
 const submitLabel = "\ub3d9\uc758 \ubc0f \uc11c\uba85";
 const passwordTitle = "\ube44\ubc00\ubc88\ud638 \ubcc0\uacbd";
 const passwordHelp = "\ub3d9\uc758\uc11c \uc11c\uba85\uacfc \ud568\uaed8 \ucd08\uae30 \ube44\ubc00\ubc88\ud638\ub97c \uc0c8 \ube44\ubc00\ubc88\ud638\ub85c \ubcc0\uacbd\ud574\uc57c \ud569\ub2c8\ub2e4.";
+const passwordLockedHelp = "\ub3d9\uc758\uc11c\ub97c \ub05d\uae4c\uc9c0 \ud655\uc778\ud558\uace0 \ub3d9\uc758 \uccb4\ud06c\ub97c \ud55c \ub4a4 \ube44\ubc00\ubc88\ud638\ub97c \ubcc0\uacbd\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.";
 const currentPasswordLabel = "\ud604\uc7ac \ube44\ubc00\ubc88\ud638";
 const newPasswordLabel = "\uc0c8 \ube44\ubc00\ubc88\ud638";
 const newPasswordConfirmLabel = "\uc0c8 \ube44\ubc00\ubc88\ud638 \ud655\uc778";
@@ -185,6 +187,17 @@ async function onSubmit(payload: {
   color: #475569;
 }
 
+.fe-consent-password--locked {
+  opacity: 0.7;
+}
+
+.fe-consent-password-lock {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(251, 191, 36, 0.16);
+  color: #92400e !important;
+}
+
 .fe-consent-password label {
   display: grid;
   gap: 4px;
@@ -199,5 +212,10 @@ async function onSubmit(payload: {
   padding: 10px 12px;
   font-size: 16px;
   background: rgba(255, 255, 255, 0.94);
+}
+
+.fe-consent-password input:disabled {
+  cursor: not-allowed;
+  background: rgba(226, 232, 240, 0.72);
 }
 </style>

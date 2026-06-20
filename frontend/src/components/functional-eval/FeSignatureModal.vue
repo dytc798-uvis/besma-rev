@@ -52,7 +52,7 @@
             :s-reason="sOverLimitReason"
             @update:s-reason="sOverLimitReason = $event"
           />
-          <slot name="before-signature" />
+          <slot name="before-signature" :consent-ready="consentReady" />
           <SignaturePad ref="padRef" :width="560" :height="200" :disabled="signaturePadDisabled" />
           <p v-if="error" class="fe-sign-error">{{ error }}</p>
           <footer class="fe-sign-footer">
@@ -154,6 +154,13 @@ const consentControlsLocked = computed(
 );
 
 const signaturePadDisabled = computed(() => consentControlsLocked.value);
+
+const consentReady = computed(() => {
+  if (requiresConsentText.value && !hasConsentText.value) return false;
+  if (props.requireConsentScroll && !scrollCompleted.value) return false;
+  if (props.requireConsentCheck && !ackChecked.value) return false;
+  return true;
+});
 
 const scrollHintText = computed(() =>
   scrollCompleted.value ? scrollDoneText : scrollRequiredText,
