@@ -37,7 +37,7 @@ import { computed, ref, watch } from "vue";
 import { api } from "@/services/api";
 import type { FeConsentPrefill } from "@/composables/useFeConsentCheck";
 import FeSignatureModal from "@/components/functional-eval/FeSignatureModal.vue";
-import { applyFeConsentPrefill, FE_CONSENT_FALLBACK_BODY } from "@/utils/feConsentPrefill";
+import { applyFeConsentPrefill } from "@/utils/feConsentPrefill";
 
 const props = defineProps<{
   open: boolean;
@@ -69,9 +69,6 @@ const consentDescription = computed(() => {
 
 function applyPrefill(data: FeConsentPrefill | null | undefined) {
   applyFeConsentPrefill(data, { consentBody, consentTitle, teamLabel, siteFullName });
-  if (!consentBody.value) {
-    consentBody.value = FE_CONSENT_FALLBACK_BODY;
-  }
 }
 
 watch(
@@ -91,7 +88,7 @@ watch(
       const res = await api.get("/functional-eval/consent/status");
       applyPrefill(res.data as FeConsentPrefill);
     } catch {
-      consentBody.value = FE_CONSENT_FALLBACK_BODY;
+      consentBody.value = "";
     }
   },
   { immediate: true },

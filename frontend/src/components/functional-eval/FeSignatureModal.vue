@@ -7,13 +7,17 @@
             <h2>{{ title }}</h2>
             <p v-if="description" class="fe-sign-desc">{{ description }}</p>
           </header>
-          <div v-if="consentText" class="fe-sign-consent">
+          <div v-if="requiresConsentText" class="fe-sign-consent">
             <pre
+              v-if="hasConsentText"
               ref="consentBodyRef"
               class="fe-sign-consent-body"
               :class="{ 'fe-sign-consent-body--locked': requireConsentScroll && !scrollCompleted }"
               @scroll="onConsentScroll"
             >{{ consentText }}</pre>
+            <p v-else class="fe-sign-consent-loading" role="status">
+              ??? ??? ???? ????. ??? ??? ? ??? ??? ???.
+            </p>
             <p
               v-if="requireConsentScroll"
               class="fe-sign-scroll-hint"
@@ -122,6 +126,9 @@ const submitting = ref(false);
 const error = ref("");
 const scrollCompleted = ref(false);
 const readCompletedAt = ref<string | null>(null);
+const normalizedConsentText = computed(() => (props.consentText || "").trim());
+const requiresConsentText = computed(() => props.requireConsentScroll || props.requireConsentCheck || !!normalizedConsentText.value);
+const hasConsentText = computed(() => normalizedConsentText.value.length >= 80);
 
 const showOfficerComment = computed(() => {
   if (props.reviewMode === "officer" || props.reviewMode === "both") return true;
@@ -133,7 +140,7 @@ const showDirectorComment = computed(() => {
 });
 
 const consentControlsLocked = computed(
-  () => props.requireConsentScroll && props.consentText && !scrollCompleted.value,
+  () => requiresConsentText.value && (!hasConsentText.value || (props.requireConsentScroll && !scrollCompleted.value)),
 );
 
 const signaturePadDisabled = computed(() => consentControlsLocked.value);
@@ -145,7 +152,8 @@ const scrollHintText = computed(() =>
 );
 
 const canSubmit = computed(() => {
-  if (props.requireConsentScroll && props.consentText && !scrollCompleted.value) return false;
+  if (requiresConsentText.value && !hasConsentText.value) return false;
+  if (props.requireConsentScroll && !scrollCompleted.value) return false;
   if (props.requireConsentCheck && !ackChecked.value) return false;
   if (props.gradeReview?.s_over_limit && sOverLimitReason.value.trim().length < 10) return false;
   return true;
@@ -175,7 +183,7 @@ async function refreshConsentScrollState() {
     scrollCompleted.value = true;
     return;
   }
-  if (!props.consentText) {
+  if (!hasConsentText.value) {
     return;
   }
   await nextTick();
@@ -193,7 +201,7 @@ watch(
     if (typeof document !== "undefined") {
       document.body.classList.toggle(
         "fe-consent-modal-open",
-        Boolean(val && props.consentText),
+        Boolean(val && hasConsentText.value),
       );
     }
     if (val) {
@@ -300,6 +308,17 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
 
 .fe-sign-consent-body--locked {
   border-color: #fcd34d;
+}
+
+.fe-sign-consent-loading {
+  margin: 0 0 8px;
+  padding: 14px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 15px;
+  line-height: 1.55;
 }
 
 .fe-sign-scroll-hint {
