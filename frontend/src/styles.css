@@ -449,3 +449,160 @@ body.fe-sheet-open-body {
   margin: 0;
   box-shadow: 0 20px 48px rgba(15, 23, 42, 0.18);
 }
+
+/* Login-card modal system
+   Keep every modal visually aligned with the login page: glass card, soft
+   slate overlay, rounded edges, and quiet blue focus states. */
+:root {
+  --besma-modal-overlay:
+    radial-gradient(ellipse 80% 60% at 50% 38%, rgba(255, 255, 255, 0.22) 0%, transparent 70%),
+    rgba(15, 23, 42, 0.5);
+  --besma-modal-card-bg: rgba(255, 255, 255, 0.72);
+  --besma-modal-border: rgba(255, 255, 255, 0.72);
+  --besma-modal-shadow:
+    0 10px 40px rgba(15, 23, 42, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --besma-modal-radius: 18px;
+  --besma-modal-text: #0f172a;
+  --besma-modal-muted: #475569;
+  --besma-modal-field-border: rgba(148, 163, 184, 0.55);
+  --besma-modal-focus: rgba(37, 99, 235, 0.14);
+}
+
+.issue-backdrop,
+.modal-backdrop,
+.fe-sign-overlay,
+.fe-site-modal-overlay,
+.evidence-modal-backdrop,
+.hq-fe-overlay,
+.wf-modal-backdrop,
+.fe-overlay-backdrop,
+.fe-sheet-backdrop {
+  background: var(--besma-modal-overlay) !important;
+  backdrop-filter: blur(10px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+}
+
+.issue-modal,
+.modal-card,
+.modal-box,
+.fe-sign-modal,
+.fe-modal-panel,
+.fe-site-modal,
+.evidence-modal,
+.hq-fe-dialog,
+.wf-modal,
+.hq-modal,
+.fe-sheet.fe-dialog,
+.fe-sheet.fe-sheet-open {
+  color: var(--besma-modal-text) !important;
+  border-radius: var(--besma-modal-radius) !important;
+  border: 1px solid var(--besma-modal-border) !important;
+  background: var(--besma-modal-card-bg) !important;
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  box-shadow: var(--besma-modal-shadow) !important;
+}
+
+.fe-sheet.fe-sheet-open {
+  border-radius: 18px 18px 0 0 !important;
+}
+
+.issue-head h2,
+.modal-title,
+.fe-sign-header h2,
+.hq-fe-dialog .dialog-head h2,
+.wf-modal h2,
+.hq-modal-title {
+  color: var(--besma-modal-text) !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+}
+
+.issue-result-meta,
+.issue-note,
+.modal-sub,
+.modal-text,
+.fe-sign-desc,
+.evidence-modal-subtitle,
+.wf-modal p,
+.hq-modal .sub {
+  color: var(--besma-modal-muted) !important;
+}
+
+.issue-form input,
+.issue-form textarea,
+.issue-modal input,
+.issue-modal textarea,
+.modal-card input,
+.modal-card textarea,
+.modal-box input,
+.modal-box textarea,
+.fe-sign-modal input,
+.fe-sign-modal textarea,
+.fe-modal-panel input,
+.fe-modal-panel textarea,
+.fe-site-modal input,
+.fe-site-modal textarea,
+.hq-fe-dialog input,
+.hq-fe-dialog textarea,
+.wf-modal input,
+.wf-modal textarea,
+.hq-modal input,
+.hq-modal textarea {
+  border: 1px solid var(--besma-modal-field-border) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  color: var(--besma-modal-text) !important;
+  border-radius: 8px !important;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.issue-form input:focus,
+.issue-form textarea:focus,
+.issue-modal input:focus,
+.issue-modal textarea:focus,
+.modal-card input:focus,
+.modal-card textarea:focus,
+.modal-box input:focus,
+.modal-box textarea:focus,
+.fe-sign-modal input:focus,
+.fe-sign-modal textarea:focus,
+.fe-modal-panel input:focus,
+.fe-modal-panel textarea:focus,
+.fe-site-modal input:focus,
+.fe-site-modal textarea:focus,
+.hq-fe-dialog input:focus,
+.hq-fe-dialog textarea:focus,
+.wf-modal input:focus,
+.wf-modal textarea:focus,
+.hq-modal input:focus,
+.hq-modal textarea:focus {
+  outline: none !important;
+  border-color: rgba(37, 99, 235, 0.65) !important;
+  box-shadow:
+    0 0 0 3px var(--besma-modal-focus),
+    inset 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+.fe-sign-consent-body,
+.issue-account-block,
+.history-modal-comments,
+.evidence-modal-readonly {
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  background: rgba(255, 255, 255, 0.58) !important;
+  border-radius: 12px !important;
+}
+
+.issue-close,
+.dialog-close {
+  border-radius: 999px !important;
+  color: #64748b !important;
+  background: rgba(255, 255, 255, 0.52) !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+}
+
+@media (max-width: 768px) {
+  .fe-sign-modal {
+    border-radius: 0 !important;
+  }
+}
