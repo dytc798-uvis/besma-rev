@@ -12,7 +12,7 @@
     @submit="onSubmit"
   >
     <template v-if="requirePasswordChange" #before-signature>
-      <section class="fe-consent-password">
+      <form class="fe-consent-password" @submit.prevent>
         <h3>{{ passwordTitle }}</h3>
         <p>{{ passwordHelp }}</p>
         <label>
@@ -27,7 +27,7 @@
           <span>{{ newPasswordConfirmLabel }}</span>
           <input v-model="newPasswordConfirm" type="password" autocomplete="new-password" />
         </label>
-      </section>
+      </form>
     </template>
   </FeSignatureModal>
 </template>

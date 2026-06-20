@@ -397,16 +397,16 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   z-index: 600;
   background: rgba(15, 23, 42, 0.55);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
   overflow-y: auto;
 }
 
 .fe-sign-modal {
-  width: min(640px, 100%);
-  max-height: 90vh;
-  overflow: auto;
+  width: min(760px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   background: #fff;
   border-radius: 12px;
   padding: 20px;
@@ -425,14 +425,13 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   .fe-sign-modal {
     width: 100%;
     max-width: 100%;
-    max-height: 100dvh;
-    height: 100dvh;
+    max-height: none;
+    min-height: 100dvh;
     border-radius: 0;
     padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
     box-shadow: none;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    display: block;
+    overflow-y: auto;
   }
 
   .fe-sign-header {
@@ -449,17 +448,14 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   }
 
   .fe-sign-consent {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
+    display: block;
     margin-bottom: 8px;
   }
 
   .fe-sign-consent-body {
-    flex: 1;
-    min-height: 140px;
-    max-height: none;
+    min-height: 220px;
+    max-height: 42dvh;
+    overflow-y: auto;
   }
 
   .fe-sign-footer {

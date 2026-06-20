@@ -72,6 +72,7 @@ def get_current_user(
             "/auth/change-password",
             "/auth/logout",
             "/auth/me",
+            "/functional-eval/consent/status",
         }
         if request.url.path not in allowed_paths:
             raise HTTPException(status_code=403, detail="PASSWORD_CHANGE_REQUIRED")
