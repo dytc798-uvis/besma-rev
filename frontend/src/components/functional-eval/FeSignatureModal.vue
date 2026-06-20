@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div v-if="open">
     <Teleport to="body">
       <div class="fe-sign-overlay" @click.self="onCancel">
@@ -16,7 +16,7 @@
               @scroll="onConsentScroll"
             >{{ consentText }}</pre>
             <p v-else class="fe-sign-consent-loading" role="status">
-              ??? ??? ???? ????. ??? ??? ? ??? ??? ???.
+              {{ consentLoadingText }}
             </p>
             <p
               v-if="requireConsentScroll"
@@ -56,9 +56,9 @@
           <SignaturePad ref="padRef" :width="560" :height="200" :disabled="signaturePadDisabled" />
           <p v-if="error" class="fe-sign-error">{{ error }}</p>
           <footer class="fe-sign-footer">
-            <button type="button" class="stitch-btn-secondary" :disabled="submitting" @click="onCancel">취소</button>
+            <button type="button" class="stitch-btn-secondary" :disabled="submitting" @click="onCancel">{{ cancelLabel }}</button>
             <button type="button" class="stitch-btn-primary" :disabled="submitting || !canSubmit" @click="onSubmit">
-              {{ submitting ? "저장 중…" : submitLabel }}
+              {{ submitting ? submittingLabel : submitLabel }}
             </button>
           </footer>
         </div>
@@ -89,15 +89,15 @@ const props = withDefaults(
     gradeReview?: GradeInflationReview | null;
   }>(),
   {
-    title: "전자 서명",
-    submitLabel: "서명 완료",
-    consentCheckLabel: "위 내용을 확인하였으며 동의합니다.",
+    title: "\uc804\uc790 \uc11c\uba85",
+    submitLabel: "\uc11c\uba85 \uc644\ub8cc",
+    consentCheckLabel: "\uc704 \ub0b4\uc6a9\uc744 \ud655\uc778\ud558\uc600\uc73c\uba70 \ub3d9\uc758\ud569\ub2c8\ub2e4.",
     requireConsentCheck: false,
     requireConsentScroll: false,
     showReviewFields: false,
     reviewMode: "none",
-    officerCommentLabel: "안전보건 담당자 검토 코멘트",
-    directorCommentLabel: "안전보건실장 최종 코멘트",
+    officerCommentLabel: "\uc548\uc804\ubcf4\uac74 \ub2f4\ub2f9\uc790 \uac80\ud1a0 \ucf54\uba58\ud2b8",
+    directorCommentLabel: "\uc548\uc804\ubcf4\uac74\uc2e4\uc7a5 \ucd5c\uc885 \ucf54\uba58\ud2b8",
     gradeReview: null,
   },
 );
@@ -128,7 +128,17 @@ const scrollCompleted = ref(false);
 const readCompletedAt = ref<string | null>(null);
 const normalizedConsentText = computed(() => (props.consentText || "").trim());
 const requiresConsentText = computed(() => props.requireConsentScroll || props.requireConsentCheck || !!normalizedConsentText.value);
-const hasConsentText = computed(() => normalizedConsentText.value.length >= 80);
+const hasConsentText = computed(() => normalizedConsentText.value.length >= 80 && !/\?{3,}/.test(normalizedConsentText.value));
+
+const consentLoadingText = "\ub3d9\uc758\uc11c \ub0b4\uc6a9\uc744 \ubd88\ub7ec\uc624\ub294 \uc911\uc785\ub2c8\ub2e4. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \ud655\uc778\ud574 \uc8fc\uc138\uc694.";
+const cancelLabel = "\ucde8\uc18c";
+const submittingLabel = "\uc800\uc7a5 \uc911";
+const scrollDoneText = "\ub3d9\uc758\uc11c \ub0b4\uc6a9\uc744 \ubaa8\ub450 \ud655\uc778\ud588\uc2b5\ub2c8\ub2e4. \ub3d9\uc758 \ud6c4 \uc11c\uba85\ud574 \uc8fc\uc138\uc694.";
+const scrollRequiredText = "\ub3d9\uc758\uc11c \ub0b4\uc6a9\uc744 \ub05d\uae4c\uc9c0 \ud655\uc778\ud55c \ud6c4 \uc11c\uba85\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.";
+const scrollRequiredError = "\ub3d9\uc758\uc11c \ub0b4\uc6a9\uc744 \ub05d\uae4c\uc9c0 \ud655\uc778\ud574 \uc8fc\uc138\uc694.";
+const checkRequiredError = "\ub3d9\uc758\uc11c \ud655\uc778 \uccb4\ud06c\uac00 \ud544\uc694\ud569\ub2c8\ub2e4.";
+const sOverLimitReasonError = "\uae30\ub2a5/\uc548\uc804 S\ub4f1\uae09 \uad8c\uc7a5 \uae30\uc900 \ucd08\uacfc \uc0ac\uc720\ub97c 10\uc790 \uc774\uc0c1 \uc785\ub825\ud574 \uc8fc\uc138\uc694.";
+const signatureRequiredError = "\uc11c\uba85\uc744 \uc785\ub825\ud574 \uc8fc\uc138\uc694.";
 
 const showOfficerComment = computed(() => {
   if (props.reviewMode === "officer" || props.reviewMode === "both") return true;
@@ -146,9 +156,7 @@ const consentControlsLocked = computed(
 const signaturePadDisabled = computed(() => consentControlsLocked.value);
 
 const scrollHintText = computed(() =>
-  scrollCompleted.value
-    ? "동의서 내용을 모두 확인했습니다. 동의 후 서명해 주세요."
-    : "동의서 내용을 끝까지 확인한 후 서명할 수 있습니다.",
+  scrollCompleted.value ? scrollDoneText : scrollRequiredText,
 );
 
 const canSubmit = computed(() => {
@@ -238,20 +246,20 @@ function onCancel() {
 function onSubmit() {
   error.value = "";
   if (props.requireConsentScroll && props.consentText && !scrollCompleted.value) {
-    error.value = "동의서 내용을 끝까지 확인해 주세요.";
+    error.value = scrollRequiredError;
     return;
   }
   if (props.requireConsentCheck && !ackChecked.value) {
-    error.value = "동의서 확인 체크가 필요합니다.";
+    error.value = checkRequiredError;
     return;
   }
   if (props.gradeReview?.s_over_limit && sOverLimitReason.value.trim().length < 10) {
-    error.value = "기능/품질 S등급 권장 기준 초과 사유를 10자 이상 입력해 주세요.";
+    error.value = sOverLimitReasonError;
     return;
   }
   const dataUrl = padRef.value?.toDataUrl() || "";
   if (!dataUrl || dataUrl.length < 100) {
-    error.value = "서명을 입력해 주세요.";
+    error.value = signatureRequiredError;
     return;
   }
   emit("submit", {

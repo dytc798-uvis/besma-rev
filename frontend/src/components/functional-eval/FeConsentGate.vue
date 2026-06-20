@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <FeSignatureModal
     ref="modalRef"
     :open="open"
@@ -7,24 +7,24 @@
     :consent-text="consentBody"
     require-consent-check
     require-consent-scroll
-    submit-label="?? ? ??"
+    :submit-label="submitLabel"
     @update:open="(v) => emit('update:open', v)"
     @submit="onSubmit"
   >
     <template v-if="requirePasswordChange" #before-signature>
       <section class="fe-consent-password">
-        <h3>???? ??</h3>
-        <p>??? ??? ?? ?? ????? ? ????? ???? ???.</p>
+        <h3>{{ passwordTitle }}</h3>
+        <p>{{ passwordHelp }}</p>
         <label>
-          <span>?? ????</span>
+          <span>{{ currentPasswordLabel }}</span>
           <input v-model="currentPassword" type="password" autocomplete="current-password" />
         </label>
         <label>
-          <span>? ????</span>
+          <span>{{ newPasswordLabel }}</span>
           <input v-model="newPassword" type="password" autocomplete="new-password" />
         </label>
         <label>
-          <span>? ???? ??</span>
+          <span>{{ newPasswordConfirmLabel }}</span>
           <input v-model="newPasswordConfirm" type="password" autocomplete="new-password" />
         </label>
       </section>
@@ -52,18 +52,30 @@ const emit = defineEmits<{
 
 const modalRef = ref<InstanceType<typeof FeSignatureModal> | null>(null);
 const consentBody = ref("");
-const consentTitle = ref("?????? ?? ?? ? ???? ???");
+const consentTitle = ref("\uae30\ub2a5\uc778\uc778\uc815\uc81c \ud3c9\uac00 \uc218\ud589 \ubc0f \uc804\uc790\uc11c\uba85 \ub3d9\uc758\uc11c");
 const teamLabel = ref("");
 const siteFullName = ref("");
 const currentPassword = ref("");
 const newPassword = ref("");
 const newPasswordConfirm = ref("");
 
+const submitLabel = "\ub3d9\uc758 \ubc0f \uc11c\uba85";
+const passwordTitle = "\ube44\ubc00\ubc88\ud638 \ubcc0\uacbd";
+const passwordHelp = "\ub3d9\uc758\uc11c \uc11c\uba85\uacfc \ud568\uaed8 \ucd08\uae30 \ube44\ubc00\ubc88\ud638\ub97c \uc0c8 \ube44\ubc00\ubc88\ud638\ub85c \ubcc0\uacbd\ud574\uc57c \ud569\ub2c8\ub2e4.";
+const currentPasswordLabel = "\ud604\uc7ac \ube44\ubc00\ubc88\ud638";
+const newPasswordLabel = "\uc0c8 \ube44\ubc00\ubc88\ud638";
+const newPasswordConfirmLabel = "\uc0c8 \ube44\ubc00\ubc88\ud638 \ud655\uc778";
+const firstUseNotice = "\uae30\ub2a5\uc778\uc778\uc815\uc81c \ud654\uba74 \uc774\uc6a9 \uc804 \ucd5c\ucd08 1\ud68c \ub3d9\uc758\u00b7\uc11c\uba85\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.";
+const loadBeforeRetryMessage = "\ub3d9\uc758\uc11c \uc804\ubb38\uc744 \ubd88\ub7ec\uc628 \ub4a4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.";
+const passwordRequiredMessage = "\ube44\ubc00\ubc88\ud638 \ubcc0\uacbd \uc815\ubcf4\ub97c \ubaa8\ub450 \uc785\ub825\ud574 \uc8fc\uc138\uc694.";
+const passwordMismatchMessage = "\uc0c8 \ube44\ubc00\ubc88\ud638 \ud655\uc778\uc774 \uc77c\uce58\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.";
+const consentSaveFailedMessage = "\ub3d9\uc758\uc11c \uc800\uc7a5\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4.";
+
 const consentDescription = computed(() => {
   const lines: string[] = [];
   if (siteFullName.value) lines.push(siteFullName.value);
   if (teamLabel.value) lines.push(teamLabel.value);
-  lines.push("?????? ?? ?? ? ?? 1? ?????? ?????.");
+  lines.push(firstUseNotice);
   return lines.join("\n");
 });
 
@@ -115,17 +127,17 @@ async function onSubmit(payload: {
   read_completed_at?: string;
 }) {
   if (!isUsableConsentText(consentBody.value)) {
-    modalRef.value?.setError("??? ??? ??? ? ?? ??? ???.");
+    modalRef.value?.setError(loadBeforeRetryMessage);
     await loadConsentStatus();
     return;
   }
   if (props.requirePasswordChange) {
     if (!currentPassword.value || !newPassword.value || !newPasswordConfirm.value) {
-      modalRef.value?.setError("???? ?? ??? ?? ??? ???.");
+      modalRef.value?.setError(passwordRequiredMessage);
       return;
     }
     if (newPassword.value !== newPasswordConfirm.value) {
-      modalRef.value?.setError("? ???? ??? ???? ????.");
+      modalRef.value?.setError(passwordMismatchMessage);
       return;
     }
   }
@@ -143,7 +155,7 @@ async function onSubmit(payload: {
     emit("completed");
   } catch (err: unknown) {
     const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    modalRef.value?.setError(typeof detail === "string" ? detail : "??? ??? ??????.");
+    modalRef.value?.setError(typeof detail === "string" ? detail : consentSaveFailedMessage);
   } finally {
     modalRef.value?.setSubmitting(false);
   }
