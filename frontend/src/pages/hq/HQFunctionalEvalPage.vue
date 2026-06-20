@@ -1,4 +1,5 @@
-﻿<template>`r`n  <button class="ceo-floating-approve" type="button" @click="openCeoReviewArea">대표이사 최종 승인</button>`r`n<p v-if="consentLoading" class="fe-consent-loading" role="status">동의서 확인 중…</p>
+﻿<template>
+<p v-if="consentLoading" class="fe-consent-loading" role="status">동의서 확인 중…</p>
   <FeConsentGate
     v-else-if="consentRequired"
     :open="consentRequired"
@@ -58,6 +59,14 @@
     </p>
     <p v-if="loadError" class="load-error">{{ loadError }}</p>
 
+    <section class="ceo-top-review-card">
+      <div class="ceo-top-review-status">평가완료</div>
+      <div class="ceo-top-review-copy">
+        <h2>대표이사 최종 검토/승인</h2>
+        <p>전체 평가 현황을 확인하고 결재함에서 대표이사 서명을 진행합니다.</p>
+      </div>
+      <button class="ceo-top-review-button" type="button" @click="openCeoReviewArea">검토</button>
+    </section>
     <!-- 등급 통계 (승인 목록보다 위 — 원그래프 즉시 확인) -->
     <section v-if="gradeStats" class="panel grade-stats-panel">
       <h2 class="section-heading">등급 통계</h2>
@@ -94,6 +103,32 @@
       </div>
     </section>
 
+    <section v-if="gradeStats" ref="ceoReviewPanelRef" class="panel ceo-final-review-panel">
+      <div class="ceo-final-review-head">
+        <div>
+          <p class="ceo-review-kicker">대표이사 검토화면</p>
+          <h2>전체 평가 현황</h2>
+          <p>전체 근로자 기준 등급 분포를 크게 확인한 뒤 결재함에서 최종 승인합니다.</p>
+        </div>
+        <button class="ceo-orange-btn" type="button" @click="openCeoApproveAllModal">대표이사 서명/승인</button>
+      </div>
+      <div class="ceo-final-review-chart">
+        <FeGradeStatsPanel
+          title="전체 근로자"
+          :stats="overallGradeStats"
+          :subtitle="gradeStatsOverallSubtitle"
+        />
+      </div>
+      <div class="ceo-approval-box">
+        <div class="ceo-approval-box__title">결재함</div>
+        <div class="ceo-approval-box__steps">
+          <div class="ceo-approval-step">최종 소장 서명 확인</div>
+          <div class="ceo-approval-step">안전보건 담당 서명 확인</div>
+          <div class="ceo-approval-step">안전보건실장 서명 확인</div>
+          <button class="ceo-orange-btn" type="button" @click="openCeoApproveAllModal">대표이사 서명</button>
+        </div>
+      </div>
+    </section>
     <section class="panel hq-daily-report-panel">
       <div class="hq-review-head">
         <div>
@@ -409,7 +444,8 @@
                   <td>{{ row.site_complete_workers }}/{{ row.site_total_workers }}</td>
                   <td>{{ formatDateTimeKst(row.hq_approved_at_label || row.hq_approved_at, "—") }}</td>
                   <td class="actions-inline">
-                    <button class="stitch-btn-primary" type="button" @click="approveCeo(String(row.site_code))">검토·승인</button>`r`n                    <button class="stitch-btn-secondary" type="button" @click="rejectCeo(String(row.site_code))">반려</button>
+                    <button class="stitch-btn-primary" type="button" @click="approveCeo(String(row.site_code))">검토·승인</button>
+                    <button class="stitch-btn-secondary" type="button" @click="rejectCeo(String(row.site_code))">반려</button>
                   </td>
                 </tr>
               </tbody>
@@ -1193,6 +1229,7 @@ const hqPendingApprovals = ref<Record<string, unknown>[]>([]);
 const ceoPendingApprovals = ref<Record<string, unknown>[]>([]);
 const hqSignatureModalOpen = ref(false);
 const hqSignatureModalRef = ref<InstanceType<typeof FeSignatureModal> | null>(null);
+const ceoReviewPanelRef = ref<HTMLElement | null>(null);
 const hqSignatureMode = ref<"officer-all" | "director-all" | "officer-site" | "director-site" | "ceo">("officer-all");
 const pendingApproveSiteCode = ref("");
 
@@ -1454,6 +1491,13 @@ function openSiteDirectorApprove(siteCode: string) {
   hqSignatureModalOpen.value = true;
 }
 
+function openCeoReviewArea() {
+  approvalSectionsOpen.value = { ...approvalSectionsOpen.value, ceo: true };
+  requestAnimationFrame(() => {
+    const target = ceoReviewPanelRef.value || document.querySelector(".ceo-final-review-panel") || document.querySelector(".ceo-approval-section");
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
 function openCeoApproveAllModal() {
   hqSignatureMode.value = "ceo";
   pendingApproveSiteCode.value = "";
@@ -2421,39 +2465,201 @@ async function downloadSanctionExcel() {
   }
 }
 
-.ceo-floating-approve {
-  position: fixed;
-  top: 18px;
-  right: 18px;
-  z-index: 900;
-  min-height: 72px;
-  padding: 0 34px;
-  border: 0;
-  border-radius: 18px;
-  background: #1d4ed8;
+
+.ceo-top-review-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 24px;
+  align-items: center;
+  margin: 18px 0 22px;
+  padding: 28px 34px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 48%, #fed7aa 100%);
+  border: 2px solid rgba(234, 88, 12, 0.22);
+  box-shadow: 0 22px 42px rgba(154, 52, 18, 0.12);
+}
+
+.ceo-top-review-status {
+  display: grid;
+  place-items: center;
+  min-width: 128px;
+  min-height: 76px;
+  border-radius: 22px;
+  background: #16a34a;
   color: #fff;
-  box-shadow: 0 18px 36px rgba(29, 78, 216, 0.28);
   font-size: 30px;
-  font-weight: 900;
-  letter-spacing: -0.04em;
+  font-weight: 1000;
+  letter-spacing: -0.05em;
+}
+
+.ceo-top-review-copy h2 {
+  margin: 0 0 8px;
+  font-size: 44px;
+  line-height: 1.12;
+  color: #7c2d12;
+  letter-spacing: -0.06em;
+}
+
+.ceo-top-review-copy p {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.4;
+  color: #9a3412;
+  font-weight: 800;
+}
+
+.ceo-top-review-button,
+.ceo-orange-btn {
+  min-height: 72px;
+  padding: 0 36px;
+  border: 0;
+  border-radius: 20px;
+  background: #ea580c;
+  color: #fff;
+  font-size: 30px;
+  font-weight: 1000;
+  letter-spacing: -0.05em;
+  box-shadow: 0 16px 30px rgba(234, 88, 12, 0.28);
   cursor: pointer;
 }
 
-.ceo-floating-approve:hover {
-  background: #1e40af;
+.ceo-top-review-button:hover,
+.ceo-orange-btn:hover {
+  background: #c2410c;
+}
+
+.ceo-final-review-panel {
+  margin-bottom: 20px;
+  padding: 34px;
+  border: 2px solid rgba(234, 88, 12, 0.22);
+  background: #fffaf5;
+}
+
+.ceo-final-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 26px;
+}
+
+.ceo-final-review-head h2 {
+  margin: 0 0 8px;
+  font-size: 46px;
+  line-height: 1.12;
+  color: #111827;
+  letter-spacing: -0.06em;
+}
+
+.ceo-final-review-head p {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.45;
+  color: #475569;
+  font-weight: 800;
+}
+
+.ceo-final-review-chart {
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border-radius: 24px;
+  background: #fff;
+  border: 1px solid #fed7aa;
+}
+
+.ceo-final-review-chart :deep(svg),
+.ceo-final-review-chart :deep(canvas) {
+  transform: scale(1.55);
+  transform-origin: center;
+}
+
+.ceo-final-review-chart :deep(.grade-donut-card) {
+  min-height: 420px;
+  width: min(780px, 100%);
+  font-size: 2em;
+}
+
+.ceo-approval-box {
+  margin-top: 24px;
+  padding: 24px;
+  border-radius: 24px;
+  background: #fff;
+  border: 2px solid #fed7aa;
+}
+
+.ceo-approval-box__title {
+  margin-bottom: 18px;
+  font-size: 34px;
+  font-weight: 1000;
+  color: #7c2d12;
+}
+
+.ceo-approval-box__steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.ceo-approval-step {
+  display: grid;
+  place-items: center;
+  min-height: 76px;
+  padding: 12px;
+  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+  font-size: 24px;
+  font-weight: 900;
+  text-align: center;
 }
 
 @media (max-width: 768px) {
-  .ceo-floating-approve {
-    top: auto;
-    left: 14px;
-    right: 14px;
-    bottom: 14px;
-    width: calc(100% - 28px);
+  .ceo-top-review-card {
+    grid-template-columns: 1fr;
+    padding: 22px;
+  }
+
+  .ceo-top-review-status {
+    min-height: 68px;
+    font-size: 28px;
+  }
+
+  .ceo-top-review-copy h2,
+  .ceo-final-review-head h2 {
+    font-size: 36px;
+  }
+
+  .ceo-top-review-copy p,
+  .ceo-final-review-head p {
+    font-size: 22px;
+  }
+
+  .ceo-top-review-button,
+  .ceo-orange-btn {
+    width: 100%;
     min-height: 76px;
     font-size: 30px;
-    border-radius: 20px;
+  }
+
+  .ceo-final-review-panel {
+    padding: 20px;
+  }
+
+  .ceo-final-review-head {
+    display: grid;
+  }
+
+  .ceo-approval-box__steps {
+    grid-template-columns: 1fr;
+  }
+
+  .ceo-approval-step {
+    font-size: 22px;
   }
 }
 </style>
+
 
