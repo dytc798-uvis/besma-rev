@@ -627,6 +627,8 @@
               <th>이름</th>
               <th>로그인 ID</th>
               <th>담당</th>
+              <th>완료</th>
+              <th>미평가</th>
               <th>분산</th>
             </tr>
           </thead>
@@ -637,6 +639,8 @@
               <td>{{ row.name }}</td>
               <td><code>{{ row.login_id }}</code></td>
               <td>{{ row.assigned_worker_count || "—" }}</td>
+              <td>{{ row.completed_worker_count || "—" }}</td>
+              <td>{{ row.incomplete_worker_count || "—" }}</td>
               <td>{{ row.team_split_active ? "팀장분산" : "소장전원" }}</td>
             </tr>
           </tbody>
@@ -947,6 +951,8 @@ interface EvaluatorAccountRow {
   login_id: string;
   role: string;
   assigned_worker_count: number;
+  completed_worker_count: number;
+  incomplete_worker_count: number;
   team_split_active: boolean;
 }
 
@@ -1588,10 +1594,10 @@ function downloadEvaluatorAccountsTxt() {
   const items = evaluatorAccountItems.value;
   if (!items.length) return;
   const lines = [
-    "현장코드\t별칭\t현장명\t역할\t이름\t로그인ID\t담당인원",
+    "현장코드\t별칭\t현장명\t역할\t이름\t로그인ID\t담당인원\t완료\t미평가",
     ...items.map(
       (r) =>
-        `${r.site_code}\t${r.site_alias}\t${r.site_name}\t${r.role}\t${r.name}\t${r.login_id}\t${r.assigned_worker_count}`,
+        `${r.site_code}\t${r.site_alias}\t${r.site_name}\t${r.role}\t${r.name}\t${r.login_id}\t${r.assigned_worker_count}\t${r.completed_worker_count}\t${r.incomplete_worker_count}`,
     ),
   ];
   const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });

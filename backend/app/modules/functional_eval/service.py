@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import csv
@@ -39,6 +39,7 @@ from app.modules.functional_eval.models import (
     FunctionalEvalPeriod,
     FunctionalEvalRosterImportBatch,
     FunctionalEvalSanction,
+    FunctionalEvalSiteApproval,
     FunctionalEvalSiteRegistry,
     FunctionalEvalWorker,
 )
@@ -1159,6 +1160,30 @@ def _attendance_target_workers(
     return q.all()
 
 
+def _workers_with_any_assessment(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    *,
+    site_code: str | None = None,
+) -> list[FunctionalEvalWorker]:
+    assessed_worker_ids = {
+        worker_id
+        for (worker_id,) in db.query(FunctionalEvalAssessment.worker_id)
+        .distinct()
+        .all()
+    }
+    if not assessed_worker_ids:
+        return []
+    q = db.query(FunctionalEvalWorker).filter(
+        FunctionalEvalWorker.period_id == period.id,
+        FunctionalEvalWorker.id.in_(assessed_worker_ids),
+        FunctionalEvalWorker.is_site_manager.is_(False),
+    )
+    if site_code:
+        q = q.filter(FunctionalEvalWorker.site_code == site_code)
+    return q.all()
+
+
 def _summarize_worker_eval_status(
     workers: list[FunctionalEvalWorker],
     assess_map: dict[int, dict[str, Any]],
@@ -1237,57 +1262,139 @@ def _list_eval_complete_site_submit_blockers(
     return blockers
 
 
-def build_hq_review_queue(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
-    """본사 검토·승인 대기 건수 (포상 승인 + 소장 제출 완료 현장)."""
-    from app.modules.functional_eval import approval_workflow, customer_rewards as reward_service
-    from app.modules.functional_eval import sanction_reviews as sanction_review_service
+def _list_eval_complete_site_submit_blockers_from_progress(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    site_progress: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    from app.modules.functional_eval.constants import (
+        APPROVAL_STATUS_CEO_APPROVED,
+        APPROVAL_STATUS_HQ_APPROVED,
+        APPROVAL_STATUS_HQ_OFFICER_APPROVED,
+        APPROVAL_STATUS_SITE_APPROVED,
+    )
 
-    pending_rewards = reward_service.list_pending_customer_rewards(db, period)
-    pending_sanctions = sanction_review_service.list_pending_sanctions(db, period)
-    pending_officer = approval_workflow.list_pending_hq_officer_approvals(db, period)
-    pending_director = approval_workflow.list_pending_hq_director_approvals(db, period)
-    pending_ceo = approval_workflow.list_pending_ceo_approvals(db, period)
-    site_submit_blockers = _list_eval_complete_site_submit_blockers(db, period)
+    submitted_statuses = {
+        APPROVAL_STATUS_SITE_APPROVED,
+        APPROVAL_STATUS_HQ_OFFICER_APPROVED,
+        APPROVAL_STATUS_HQ_APPROVED,
+        APPROVAL_STATUS_CEO_APPROVED,
+    }
+    approval_rows = (
+        db.query(FunctionalEvalSiteApproval)
+        .filter(FunctionalEvalSiteApproval.period_id == period.id)
+        .all()
+    )
+    status_by_site = {row.site_code: row.status for row in approval_rows}
+    blockers: list[dict[str, Any]] = []
+    for row in site_progress:
+        site_code = str(row.get("site_code") or "")
+        total = int(row.get("total") or row.get("site_total_workers") or 0)
+        complete = int(row.get("fully_complete") or row.get("site_complete_workers") or 0)
+        if not site_code or total <= 0 or complete < total:
+            continue
+        if status_by_site.get(site_code) in submitted_statuses:
+            continue
+        blockers.append(
+            {
+                "site_code": site_code,
+                "site_name": row.get("site_name") or f"현장 {site_code}",
+                "blocker_label": "소장 최종 제출 대기",
+                "blocker_stage": "site_manager_submit",
+                "team_leaders_all_signed": True,
+                "site_complete_workers": complete,
+                "site_total_workers": total,
+            }
+        )
+    return blockers
 
-    workers = _attendance_target_workers(db, period)
-    worker_ids = [w.id for w in workers]
-    sites_with_evidence: set[str] = set()
-    if worker_ids:
-        sanctioned_ids = {
-            wid
-            for (wid,) in db.query(FunctionalEvalSanction.worker_id)
-            .filter(FunctionalEvalSanction.worker_id.in_(worker_ids))
-            .distinct()
-            .all()
-        }
-        reward_ids = {
-            wid
-            for (wid,) in db.query(FunctionalEvalCustomerReward.worker_id)
-            .filter(
-                FunctionalEvalCustomerReward.period_id == period.id,
-                FunctionalEvalCustomerReward.worker_id.in_(worker_ids),
-            )
-            .distinct()
-            .all()
-        }
-        evidence_worker_ids = sanctioned_ids | reward_ids
-        for w in workers:
-            if w.id in evidence_worker_ids and w.site_code:
-                sites_with_evidence.add(w.site_code)
+
+def build_hq_review_queue(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    *,
+    site_progress: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    from app.modules.functional_eval.constants import (
+        APPROVAL_STATUS_HQ_APPROVED,
+        APPROVAL_STATUS_HQ_OFFICER_APPROVED,
+        APPROVAL_STATUS_SITE_APPROVED,
+    )
+
+    pending_reward_count = (
+        db.query(FunctionalEvalCustomerReward)
+        .filter(
+            FunctionalEvalCustomerReward.period_id == period.id,
+            FunctionalEvalCustomerReward.status == REWARD_STATUS_PENDING,
+        )
+        .count()
+    )
+    pending_sanction_count = (
+        db.query(FunctionalEvalSanction)
+        .filter(
+            FunctionalEvalSanction.period_id == period.id,
+            FunctionalEvalSanction.status == SANCTION_STATUS_PENDING,
+        )
+        .count()
+    )
+    pending_officer_count = (
+        db.query(FunctionalEvalSiteApproval)
+        .filter(
+            FunctionalEvalSiteApproval.period_id == period.id,
+            FunctionalEvalSiteApproval.status == APPROVAL_STATUS_SITE_APPROVED,
+        )
+        .count()
+    )
+    pending_director_count = (
+        db.query(FunctionalEvalSiteApproval)
+        .filter(
+            FunctionalEvalSiteApproval.period_id == period.id,
+            FunctionalEvalSiteApproval.status == APPROVAL_STATUS_HQ_OFFICER_APPROVED,
+        )
+        .count()
+    )
+    pending_ceo_count = (
+        db.query(FunctionalEvalSiteApproval)
+        .filter(
+            FunctionalEvalSiteApproval.period_id == period.id,
+            FunctionalEvalSiteApproval.status == APPROVAL_STATUS_HQ_APPROVED,
+        )
+        .count()
+    )
+    site_submit_blockers = (
+        _list_eval_complete_site_submit_blockers_from_progress(db, period, site_progress)
+        if site_progress is not None
+        else _list_eval_complete_site_submit_blockers(db, period)
+    )
+    evidence_sites = {
+        code
+        for (code,) in db.query(FunctionalEvalSanction.site_code)
+        .filter(FunctionalEvalSanction.period_id == period.id)
+        .distinct()
+        .all()
+        if code
+    } | {
+        code
+        for (code,) in db.query(FunctionalEvalWorker.site_code)
+        .join(FunctionalEvalCustomerReward, FunctionalEvalCustomerReward.worker_id == FunctionalEvalWorker.id)
+        .filter(FunctionalEvalCustomerReward.period_id == period.id)
+        .distinct()
+        .all()
+        if code
+    }
 
     return {
-        "pending_reward_count": len(pending_rewards),
-        "pending_sanction_count": len(pending_sanctions),
-        "pending_hq_officer_site_count": len(pending_officer),
-        "pending_hq_director_site_count": len(pending_director),
-        "pending_hq_site_count": len(pending_officer) + len(pending_director),
-        "pending_ceo_site_count": len(pending_ceo),
-        "total_hq_action_count": len(pending_rewards) + len(pending_sanctions) + len(pending_officer) + len(pending_director),
-        "sites_with_evidence_count": len(sites_with_evidence),
+        "pending_reward_count": pending_reward_count,
+        "pending_sanction_count": pending_sanction_count,
+        "pending_hq_officer_site_count": pending_officer_count,
+        "pending_hq_director_site_count": pending_director_count,
+        "pending_hq_site_count": pending_officer_count + pending_director_count,
+        "pending_ceo_site_count": pending_ceo_count,
+        "total_hq_action_count": pending_reward_count + pending_sanction_count + pending_officer_count + pending_director_count,
+        "sites_with_evidence_count": len(evidence_sites),
         "eval_complete_not_submitted_count": len(site_submit_blockers),
         "site_submit_blockers": site_submit_blockers,
     }
-
 
 def build_hq_sites_overview(
     db: Session,
@@ -1296,9 +1403,20 @@ def build_hq_sites_overview(
     sort_by: str = "site_code",
     sort_dir: str = "asc",
     site_code: str | None = None,
+    include_inactive: bool = False,
 ) -> dict[str, Any]:
-    """본사 현장 목록 = 기간 내 출역일보에 등장한 현장만 (출역 없는 소장 현장 제외)."""
+    """본사 현장 목록. 기본은 출역 근로자 기준, include_inactive면 평가 이력 근로자도 포함."""
     workers = _attendance_target_workers(db, period, site_code=site_code)
+    assessed_workers: list[FunctionalEvalWorker] = []
+    if include_inactive:
+        assessed_workers = _workers_with_any_assessment(db, period, site_code=site_code)
+    seen_worker_ids = {w.id for w in workers}
+    for assessed_worker in assessed_workers:
+        if assessed_worker.id not in seen_worker_ids:
+            workers.append(assessed_worker)
+            seen_worker_ids.add(assessed_worker.id)
+    all_worker_ids = [w.id for w in workers]
+    assess_map = _assessments_map(db, all_worker_ids)
     attendance_site_codes, erp_labels, rep_evaluators = _attendance_site_meta(db, period.id)
     if site_code:
         attendance_site_codes = {site_code} & attendance_site_codes
@@ -1307,7 +1425,6 @@ def build_hq_sites_overview(
     site_names = _site_name_map(db, all_codes)
     evaluator_site_codes = _hq_evaluator_site_codes(db)
     evaluators = _site_evaluator_map(db, all_codes)
-    assess_map = _assessments_map(db, [w.id for w in workers])
     sites = _aggregate_site_eval_stats(
         workers,
         assess_map,
@@ -1363,7 +1480,7 @@ def build_hq_sites_overview(
         },
         "worker_status_counts": worker_status_counts,
         "site_buckets": _summarize_hq_site_buckets(sites),
-        "review_queue": build_hq_review_queue(db, period),
+        "review_queue": build_hq_review_queue(db, period, site_progress=sites),
         "sites": sites,
         # 구버전 프론트( site_progress 키 ) 호환
         "site_progress": sites,
@@ -1438,7 +1555,7 @@ def list_hq_site_completed_evaluations(
         sort_by=sort_by,
         sort_dir=sort_dir,
         site_code=site_code,
-        include_inactive=False,
+        include_inactive=True,
     )
     site_names = _site_name_map(db, {site_code})
     evaluators = _site_evaluator_map(db, {site_code})
@@ -1478,7 +1595,7 @@ def list_hq_eval_export_rows(
         period,
         sort_by="site_code",
         sort_dir="asc",
-        include_inactive=False,
+        include_inactive=True,
         site_code=site_code,
     )
     rows: list[dict[str, Any]] = []
@@ -1872,6 +1989,7 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
         "incomplete_count": len(rows) - complete,
         "can_submit_site_approval": complete == len(rows) and len(rows) > 0
         and approval_workflow.is_site_evaluation_editable(status),
+        "can_self_reject_site_approval": status == "SITE_APPROVED",
         "evaluation_editable": approval_workflow.is_site_evaluation_editable(status),
         **grade_review,
     }
@@ -1956,7 +2074,7 @@ def list_hq_evaluator_accounts(db: Session, period: FunctionalEvalPeriod) -> dic
     work_date = get_latest_attendance_date(db, period.id)
     regs = {r.site_code: r for r in db.query(FunctionalEvalSiteRegistry).all()}
 
-    assignment_counts: Counter[str] = Counter()
+    assigned_workers_by_login: dict[str, list[FunctionalEvalWorker]] = defaultdict(list)
     if work_date:
         for site_code in regs:
             rrn_hashes = _attendance_rrn_hashes_for_date(db, period.id, work_date, site_code=site_code)
@@ -1975,7 +2093,18 @@ def list_hq_evaluator_accounts(db: Session, period: FunctionalEvalPeriod) -> dic
             for worker in workers:
                 assigned = (worker.assigned_evaluator_login_id or "").strip()
                 if assigned:
-                    assignment_counts[assigned] += 1
+                    assigned_workers_by_login[assigned].append(worker)
+    assess_map = _assessments_map(
+        db, [w.id for workers in assigned_workers_by_login.values() for w in workers]
+    )
+    completed_counts: Counter[str] = Counter()
+    incomplete_counts: Counter[str] = Counter()
+    for login_id, workers in assigned_workers_by_login.items():
+        for worker in workers:
+            if _is_fully_evaluated(_worker_assess_payload(assess_map, worker.id)):
+                completed_counts[login_id] += 1
+            else:
+                incomplete_counts[login_id] += 1
 
     site_names: dict[str, str] = {}
     for site in db.query(Site).all():
@@ -2004,7 +2133,9 @@ def list_hq_evaluator_accounts(db: Session, period: FunctionalEvalPeriod) -> dic
                 "name": (user.name or "").strip(),
                 "login_id": login_id,
                 "role": "소장" if is_manager else "팀장",
-                "assigned_worker_count": assignment_counts.get(login_id, 0),
+                "assigned_worker_count": len(assigned_workers_by_login.get(login_id, [])),
+                "completed_worker_count": completed_counts[login_id],
+                "incomplete_worker_count": incomplete_counts[login_id],
                 "team_split_active": _attendance_worker_count_for_site(db, period.id, site_code, work_date=work_date)
                 > TEAM_LEADER_SPLIT_THRESHOLD,
             }
@@ -2509,11 +2640,24 @@ def list_hq_summary(
     sanction_status: str | None = None,
     include_inactive: bool = False,
 ) -> list[dict[str, Any]]:
-    del include_inactive  # 출역 대상 기준; 명부 비활성과 무관
     workers = _attendance_target_workers(db, period, site_code=site_code)
+    assessed_workers: list[FunctionalEvalWorker] = []
+    if include_inactive:
+        assessed_workers = _workers_with_any_assessment(db, period, site_code=site_code)
+
+    all_worker_ids = [w.id for w in workers]
+    seen_worker_ids = {w.id for w in workers}
+    if include_inactive:
+        for assessed_worker in assessed_workers:
+            if assessed_worker.id not in seen_worker_ids:
+                workers.append(assessed_worker)
+                seen_worker_ids.add(assessed_worker.id)
+                all_worker_ids.append(assessed_worker.id)
+
     site_codes = {w.site_code for w in workers if w.site_code}
     site_names = _site_name_map(db, site_codes)
-    assess_map = _assessments_map(db, [w.id for w in workers])
+    assess_map = _assessments_map(db, all_worker_ids)
+
     items: list[dict[str, Any]] = []
     for worker in workers:
         worker_payload = serialize_worker(db, worker, assessments=assess_map.get(worker.id, {}))
@@ -2648,6 +2792,7 @@ def build_hq_summary_response(
     sort_by: str = "site_code",
     sort_dir: str = "asc",
     site_code: str | None = None,
+    include_inactive: bool = False,
 ) -> dict[str, Any]:
     """본사 평가 현황 — 현장 목록·진행률만 반환 (근로자 상세는 현장별 API)."""
     return build_hq_sites_overview(
@@ -2656,11 +2801,18 @@ def build_hq_summary_response(
         sort_by=sort_by,
         sort_dir=sort_dir,
         site_code=site_code,
+        include_inactive=include_inactive,
     )
 
 
 def build_hq_monitoring_summary(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
-    summary = build_hq_sites_overview(db, period, sort_by="progress", sort_dir="desc")
+    summary = build_hq_sites_overview(
+        db,
+        period,
+        sort_by="progress",
+        sort_dir="desc",
+        include_inactive=True,
+    )
     return {
         "period": summary["period"],
         "attendance_message": summary.get("attendance_message"),
@@ -3364,3 +3516,4 @@ def apply_attendance_report_file(
     )
     db.refresh(period)
     return {**result, "period": serialize_period(period, db)}
+
