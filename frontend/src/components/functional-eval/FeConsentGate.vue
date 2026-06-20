@@ -7,24 +7,24 @@
     :consent-text="consentBody"
     require-consent-check
     require-consent-scroll
-    submit-label="동의 및 서명"
+    submit-label="?? ? ??"
     @update:open="(v) => emit('update:open', v)"
     @submit="onSubmit"
   >
     <template v-if="requirePasswordChange" #before-signature>
       <section class="fe-consent-password">
-        <h3>비밀번호 변경</h3>
-        <p>동의서 서명과 함께 초기 비밀번호를 새 비밀번호로 변경해야 합니다.</p>
+        <h3>???? ??</h3>
+        <p>??? ??? ?? ?? ????? ? ????? ???? ???.</p>
         <label>
-          <span>현재 비밀번호</span>
+          <span>?? ????</span>
           <input v-model="currentPassword" type="password" autocomplete="current-password" />
         </label>
         <label>
-          <span>새 비밀번호</span>
+          <span>? ????</span>
           <input v-model="newPassword" type="password" autocomplete="new-password" />
         </label>
         <label>
-          <span>새 비밀번호 확인</span>
+          <span>? ???? ??</span>
           <input v-model="newPasswordConfirm" type="password" autocomplete="new-password" />
         </label>
       </section>
@@ -52,7 +52,7 @@ const emit = defineEmits<{
 
 const modalRef = ref<InstanceType<typeof FeSignatureModal> | null>(null);
 const consentBody = ref("");
-const consentTitle = ref("기능인인정제 평가 수행 및 전자서명 동의서");
+const consentTitle = ref("?????? ?? ?? ? ???? ???");
 const teamLabel = ref("");
 const siteFullName = ref("");
 const currentPassword = ref("");
@@ -63,18 +63,38 @@ const consentDescription = computed(() => {
   const lines: string[] = [];
   if (siteFullName.value) lines.push(siteFullName.value);
   if (teamLabel.value) lines.push(teamLabel.value);
-  lines.push("기능인인제 화면 이용 전 최초 1회 동의·서명이 필요합니다.");
-  return lines.join("\n");
+  lines.push("?????? ?? ?? ? ?? 1? ?????? ?????.");
+  return lines.join("
+");
 });
+
+function isUsableConsentText(value: string | null | undefined): boolean {
+  const text = (value || "").trim();
+  if (text.length < 80) return false;
+  if (/\?{3,}/.test(text)) return false;
+  return true;
+}
 
 function applyPrefill(data: FeConsentPrefill | null | undefined) {
   applyFeConsentPrefill(data, { consentBody, consentTitle, teamLabel, siteFullName });
+  if (!isUsableConsentText(consentBody.value)) {
+    consentBody.value = "";
+  }
+}
+
+async function loadConsentStatus() {
+  try {
+    const res = await api.get("/functional-eval/consent/status");
+    applyPrefill(res.data as FeConsentPrefill);
+  } catch {
+    consentBody.value = "";
+  }
 }
 
 watch(
   () => props.prefill,
   (data) => {
-    if (data) applyPrefill(data);
+    applyPrefill(data);
   },
   { immediate: true },
 );
@@ -82,14 +102,9 @@ watch(
 watch(
   () => props.open,
   async (isOpen) => {
-    if (!isOpen || props.prefill?.consent_body) return;
-    if (consentBody.value && consentBody.value !== FE_CONSENT_FALLBACK_BODY) return;
-    try {
-      const res = await api.get("/functional-eval/consent/status");
-      applyPrefill(res.data as FeConsentPrefill);
-    } catch {
-      consentBody.value = "";
-    }
+    if (!isOpen) return;
+    if (isUsableConsentText(consentBody.value)) return;
+    await loadConsentStatus();
   },
   { immediate: true },
 );
@@ -100,13 +115,18 @@ async function onSubmit(payload: {
   read_to_bottom_confirmed?: boolean;
   read_completed_at?: string;
 }) {
+  if (!isUsableConsentText(consentBody.value)) {
+    modalRef.value?.setError("??? ??? ??? ? ?? ??? ???.");
+    await loadConsentStatus();
+    return;
+  }
   if (props.requirePasswordChange) {
     if (!currentPassword.value || !newPassword.value || !newPasswordConfirm.value) {
-      modalRef.value?.setError("비밀번호 변경 정보를 모두 입력해 주세요.");
+      modalRef.value?.setError("???? ?? ??? ?? ??? ???.");
       return;
     }
     if (newPassword.value !== newPasswordConfirm.value) {
-      modalRef.value?.setError("새 비밀번호 확인이 일치하지 않습니다.");
+      modalRef.value?.setError("? ???? ??? ???? ????.");
       return;
     }
   }
@@ -124,7 +144,7 @@ async function onSubmit(payload: {
     emit("completed");
   } catch (err: unknown) {
     const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-    modalRef.value?.setError(typeof detail === "string" ? detail : "동의서 저장에 실패했습니다.");
+    modalRef.value?.setError(typeof detail === "string" ? detail : "??? ??? ??????.");
   } finally {
     modalRef.value?.setSubmitting(false);
   }
