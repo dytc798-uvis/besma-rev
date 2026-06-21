@@ -59,11 +59,10 @@
     </p>
     <p v-if="loadError" class="load-error">{{ loadError }}</p>
 
-    <section class="ceo-top-review-card">
-      <div class="ceo-top-review-status">평가완료</div>
+    <section v-if="showCeoReviewUi" class="ceo-top-review-card">
       <div class="ceo-top-review-copy">
         <h2>대표이사 최종 검토/승인</h2>
-        <p>전체 평가 현황을 확인하고 결재함에서 대표이사 서명을 진행합니다.</p>
+        <p>승인 대기 {{ ceoPendingApprovals.length }}개 현장 · 전체 평가 현황을 확인하고 결재함에서 대표이사 서명을 진행합니다.</p>
       </div>
       <button class="ceo-top-review-button" type="button" @click="openCeoReviewArea">검토</button>
     </section>
@@ -103,7 +102,7 @@
       </div>
     </section>
 
-    <section v-if="gradeStats" ref="ceoReviewPanelRef" class="panel ceo-final-review-panel">
+    <section v-if="showCeoReviewUi && gradeStats" ref="ceoReviewPanelRef" class="panel ceo-final-review-panel">
       <div class="ceo-final-review-head">
         <div>
           <p class="ceo-review-kicker">대표이사 검토화면</p>
@@ -229,7 +228,7 @@
             실장 일괄 최종승인 ({{ hqDirectorPending.length }}개)
           </button>
           <button
-            v-if="ceoPendingApprovals.length"
+            v-if="showCeoReviewUi"
             class="stitch-btn-primary"
             type="button"
             @click="openCeoApproveAllModal"
@@ -404,7 +403,7 @@
         </div>
       </div>
 
-      <div v-if="ceoPendingApprovals.length" class="inner-section approval-collapse">
+      <div v-if="showCeoReviewUi" class="inner-section approval-collapse">
         <div class="approval-collapse__head">
           <button
             type="button"
@@ -422,9 +421,8 @@
             </button>
           </div>
         </div>
-        <div v-show="approvalSectionsOpen.ceo || !ceoPendingApprovals.length" class="approval-collapse__body">
-          <div v-if="!ceoPendingApprovals.length" class="ceo-empty-approval"><p>현재 자동 집계된 대표 승인 대기 현장이 없습니다. 보고서 작성 중 임시 확인용으로 최종 승인 버튼을 표시합니다.</p><button class="stitch-btn-primary ceo-review-main-btn" type="button" @click="openCeoApproveAllModal">대표이사 최종 승인</button></div>
-          <div v-else class="table-scroll">
+        <div v-show="approvalSectionsOpen.ceo" class="approval-collapse__body">
+          <div class="table-scroll">
             <table class="data-table">
               <thead>
                 <tr>
@@ -1227,6 +1225,7 @@ function toggleApprovalSection(key: ApprovalSectionKey) {
 }
 const hqPendingApprovals = ref<Record<string, unknown>[]>([]);
 const ceoPendingApprovals = ref<Record<string, unknown>[]>([]);
+const ceoEligible = ref(false);
 const hqSignatureModalOpen = ref(false);
 const hqSignatureModalRef = ref<InstanceType<typeof FeSignatureModal> | null>(null);
 const ceoReviewPanelRef = ref<HTMLElement | null>(null);
@@ -1266,6 +1265,9 @@ const canDirectorApprove = computed(
 );
 const canBulkOfficerApprove = computed(() => canOfficerApprove.value);
 const canBulkDirectorApprove = computed(() => canDirectorApprove.value);
+const showCeoReviewUi = computed(
+  () => ceoEligible.value && ceoPendingApprovals.value.length > 0,
+);
 const canPrintGradeReport = computed(
   () =>
     loginId.value === HQ_OFFICER_LOGIN ||
@@ -1457,6 +1459,7 @@ function applyGuidePreviewScene() {
     approvalSectionsOpen.value = { ...approvalSectionsOpen.value, director: true };
   }
   if (scene === "ceo-approval") {
+    ceoEligible.value = true;
     ceoPendingApprovals.value = [
       {
         ...sampleSite,
@@ -1492,6 +1495,7 @@ function openSiteDirectorApprove(siteCode: string) {
 }
 
 function openCeoReviewArea() {
+  if (!showCeoReviewUi.value) return;
   approvalSectionsOpen.value = { ...approvalSectionsOpen.value, ceo: true };
   requestAnimationFrame(() => {
     const target = ceoReviewPanelRef.value || document.querySelector(".ceo-final-review-panel") || document.querySelector(".ceo-approval-section");
@@ -1499,6 +1503,7 @@ function openCeoReviewArea() {
   });
 }
 function openCeoApproveAllModal() {
+  if (!ceoEligible.value || !ceoPendingApprovals.value.length) return;
   hqSignatureMode.value = "ceo";
   pendingApproveSiteCode.value = "";
   hqSignatureModalOpen.value = true;
@@ -1554,6 +1559,8 @@ async function loadHqApprovals() {
     }
     ceoPendingApprovals.value =
       ceoRes.status === "fulfilled" ? ceoRes.value.data.items || [] : [];
+    ceoEligible.value =
+      ceoRes.status === "fulfilled" ? ceoRes.value.data.ceo_eligible === true : false;
     syncReviewQueueCounts();
   } finally {
     loadingHqApprovals.value = false;
