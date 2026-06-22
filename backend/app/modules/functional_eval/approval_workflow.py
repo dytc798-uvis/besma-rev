@@ -64,6 +64,11 @@ def is_site_evaluation_editable(status: str) -> bool:
     return status in {APPROVAL_STATUS_IN_PROGRESS, APPROVAL_STATUS_REJECTED}
 
 
+def assert_hq_approval_open(period: FunctionalEvalPeriod) -> None:
+    if utc_now().date() < period.deadline_date:
+        raise ValueError("HQ_APPROVAL_NOT_OPEN_UNTIL_DEADLINE")
+
+
 def serialize_site_approval(row: FunctionalEvalSiteApproval | None) -> dict[str, Any]:
     if row is None:
         return {
@@ -119,6 +124,7 @@ def submit_site_approval(
         raise ValueError("INVALID_APPROVAL_TRANSITION")
     now = utc_now()
     row.status = APPROVAL_STATUS_SITE_APPROVED
+    row.evaluation_completed_at = row.evaluation_completed_at or now
     row.site_submitted_at = now
     row.site_submitted_by_user_id = user.id
     row.hq_officer_approved_at = None
@@ -138,6 +144,35 @@ def submit_site_approval(
     return serialize_site_approval(row)
 
 
+def self_reject_site_approval(
+    db: Session,
+    *,
+    period: FunctionalEvalPeriod,
+    site_code: str,
+    user: User,
+    note: str | None = None,
+) -> dict[str, Any]:
+    row = get_or_create_site_approval(db, period.id, site_code)
+    if row.status != APPROVAL_STATUS_SITE_APPROVED:
+        raise ValueError("INVALID_APPROVAL_TRANSITION")
+    row.status = APPROVAL_STATUS_REJECTED
+    row.rejected_stage = "SITE"
+    row.reject_note = (note or "").strip() or "신규 출역자 추가 평가를 위한 현장 자체반려"
+    row.rejected_at = utc_now()
+    row.rejected_by_user_id = user.id
+    row.hq_officer_approved_at = None
+    row.hq_officer_approved_by_user_id = None
+    row.hq_officer_comment = None
+    row.hq_approved_at = None
+    row.hq_approved_by_user_id = None
+    row.ceo_approved_at = None
+    row.ceo_approved_by_user_id = None
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return serialize_site_approval(row)
+
+
 def approve_hq_officer(
     db: Session,
     *,
@@ -146,10 +181,16 @@ def approve_hq_officer(
     user: User,
     officer_comment: str | None = None,
 ) -> dict[str, Any]:
+    assert_hq_approval_open(period)
     row = get_or_create_site_approval(db, period.id, site_code)
-    if row.status != APPROVAL_STATUS_SITE_APPROVED:
+    locked_complete_waiting = (
+        row.evaluation_completed_at is not None
+        and row.status in {APPROVAL_STATUS_IN_PROGRESS, APPROVAL_STATUS_REJECTED}
+    )
+    if row.status != APPROVAL_STATUS_SITE_APPROVED and not locked_complete_waiting:
         raise ValueError("INVALID_APPROVAL_TRANSITION")
     now = utc_now()
+    row.site_submitted_at = row.site_submitted_at or now
     row.status = APPROVAL_STATUS_HQ_OFFICER_APPROVED
     row.hq_officer_approved_at = now
     row.hq_officer_approved_by_user_id = user.id
@@ -169,6 +210,7 @@ def approve_hq_director(
     site_code: str,
     user: User,
 ) -> dict[str, Any]:
+    assert_hq_approval_open(period)
     row = get_or_create_site_approval(db, period.id, site_code)
     if row.status != APPROVAL_STATUS_HQ_OFFICER_APPROVED:
         raise ValueError("INVALID_APPROVAL_TRANSITION")
@@ -200,6 +242,7 @@ def approve_ceo(
     site_code: str,
     user: User,
 ) -> dict[str, Any]:
+    assert_hq_approval_open(period)
     row = get_or_create_site_approval(db, period.id, site_code)
     if row.status != APPROVAL_STATUS_HQ_APPROVED:
         raise ValueError("INVALID_APPROVAL_TRANSITION")
@@ -246,13 +289,19 @@ def reject_approval(
 def list_pending_hq_officer_approvals(db: Session, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
     rows = (
         db.query(FunctionalEvalSiteApproval)
-        .filter(
-            FunctionalEvalSiteApproval.period_id == period.id,
-            FunctionalEvalSiteApproval.status == APPROVAL_STATUS_SITE_APPROVED,
-        )
+        .filter(FunctionalEvalSiteApproval.period_id == period.id)
         .order_by(FunctionalEvalSiteApproval.site_submitted_at.asc())
         .all()
     )
+    rows = [
+        row
+        for row in rows
+        if row.status == APPROVAL_STATUS_SITE_APPROVED
+        or (
+            row.evaluation_completed_at is not None
+            and row.status in {APPROVAL_STATUS_IN_PROGRESS, APPROVAL_STATUS_REJECTED}
+        )
+    ]
     return [_serialize_approval_queue_item(db, period, row) for row in rows]
 
 

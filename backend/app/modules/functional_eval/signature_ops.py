@@ -985,7 +985,7 @@ def submit_site_approval_with_signature(
     assert_consent_signed(db, user)
     summary = service.serialize_site_approval_summary(db, period, site_code)
     batch = max(active_site_batches(db, period, site_code))
-    if not all_team_leaders_signed(db, period, site_code, batch):
+    if not summary.get("completion_locked") and not all_team_leaders_signed(db, period, site_code, batch):
         raise ValueError("TEAM_LEADERS_NOT_SIGNED")
     if summary["incomplete_count"] > 0:
         raise ValueError("INCOMPLETE_EVALUATIONS")
@@ -1027,6 +1027,41 @@ def submit_site_approval_with_signature(
         user=user,
         incomplete_count=summary["incomplete_count"],
     )
+    return approval
+
+
+def self_reject_site_approval(
+    db: Session,
+    user: User,
+    period: FunctionalEvalPeriod,
+    site_code: str,
+    *,
+    reject_note: str | None = None,
+) -> dict[str, Any]:
+    from app.modules.functional_eval import service
+
+    if not service._is_primary_site_evaluator(db, user, site_code):
+        raise ValueError("MANAGER_ONLY")
+    batch = max(active_site_batches(db, period, site_code) or [0])
+    approval = approval_workflow.self_reject_site_approval(
+        db,
+        period=period,
+        site_code=site_code,
+        user=user,
+        note=reject_note,
+    )
+    (
+        db.query(FunctionalEvalSignature)
+        .filter(
+            FunctionalEvalSignature.period_id == period.id,
+            FunctionalEvalSignature.evaluation_batch == batch,
+            FunctionalEvalSignature.stage == STAGE_SITE,
+            FunctionalEvalSignature.site_code == site_code,
+            FunctionalEvalSignature.team_leader_login_id == SCOPE_EMPTY,
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
     return approval
 
 
@@ -1101,6 +1136,7 @@ def approve_hq_officer_site_with_signature(
 ) -> dict[str, Any]:
     approval_workflow.assert_hq_officer_approver(user)
     assert_consent_signed(db, user)
+    approval_workflow.assert_hq_approval_open(period)
     site_code = site_code.strip()
     scope = f"현장 {site_code} · 담당 검토"
     _persist_signature(
@@ -1140,6 +1176,7 @@ def approve_hq_officer_all_with_signature(
 ) -> dict[str, Any]:
     approval_workflow.assert_hq_officer_approver(user)
     assert_consent_signed(db, user)
+    approval_workflow.assert_hq_approval_open(period)
     pending = approval_workflow.list_pending_hq_officer_approvals(db, period)
     if not pending:
         raise ValueError("NO_PENDING_APPROVALS")
@@ -1198,6 +1235,7 @@ def approve_hq_director_site_with_signature(
 ) -> dict[str, Any]:
     approval_workflow.assert_hq_director_approver(user)
     assert_consent_signed(db, user)
+    approval_workflow.assert_hq_approval_open(period)
     site_code = site_code.strip()
     row = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
     officer_comment = row.hq_officer_comment or ""
@@ -1236,6 +1274,7 @@ def approve_hq_director_all_with_signature(
 ) -> dict[str, Any]:
     approval_workflow.assert_hq_director_approver(user)
     assert_consent_signed(db, user)
+    approval_workflow.assert_hq_approval_open(period)
     pending = approval_workflow.list_pending_hq_director_approvals(db, period)
     if not pending:
         raise ValueError("NO_PENDING_APPROVALS")
@@ -1317,6 +1356,7 @@ def approve_ceo_all_with_signature(
 ) -> dict[str, Any]:
     approval_workflow.assert_ceo_approver(user)
     assert_consent_signed(db, user)
+    approval_workflow.assert_hq_approval_open(period)
     pending = approval_workflow.list_pending_ceo_approvals(db, period)
     if not pending:
         raise ValueError("NO_PENDING_APPROVALS")

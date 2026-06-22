@@ -2094,12 +2094,17 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
             team_total += 1
             if _is_fully_evaluated(payload):
                 team_complete += 1
-    locked = site_code in _locked_completed_site_codes(db, period) or (len(rows) > 0 and complete >= len(rows))
+    currently_complete = len(rows) > 0 and complete >= len(rows)
+    locked = site_code in _locked_completed_site_codes(db, period) or currently_complete
+    approval_row = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
+    if currently_complete and approval_row.evaluation_completed_at is None:
+        approval_row.evaluation_completed_at = utc_now()
+        db.add(approval_row)
+        db.commit()
     if locked:
         complete = len(rows)
         direct_complete = direct_total
         team_complete = team_total
-    approval_row = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
     status = approval_row.status
     batches = sorted({r.evaluation_batch or 0 for r in rows})
     batch = batches[-1] if batches else 0
