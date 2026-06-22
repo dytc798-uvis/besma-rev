@@ -1,4 +1,4 @@
-"""functional eval HQ monitoring summary cache
+﻿"""functional eval HQ monitoring summary cache
 
 Revision ID: 20260622_0074
 Revises: 20260616_0073
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260622_0074"
-down_revision = "20260616_0073"
+down_revision = "20260617_0076"
 branch_labels = None
 depends_on = None
 
