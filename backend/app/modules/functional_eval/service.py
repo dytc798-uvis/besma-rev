@@ -3,6 +3,7 @@
 import hashlib
 import csv
 import io
+import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -2855,6 +2856,14 @@ def build_hq_monitoring_summary(db: Session, period: FunctionalEvalPeriod) -> di
 
 HQ_MONITORING_SUMMARY_CACHE_TTL = timedelta(hours=1)
 
+def _json_safe_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    def _default(value: Any) -> str:
+        if isinstance(value, date):
+            return value.isoformat()
+        return str(value)
+
+    return json.loads(json.dumps(payload, default=_default, ensure_ascii=False))
+
 
 def _hq_monitoring_summary_cache_expired(period: FunctionalEvalPeriod) -> bool:
     computed_at = period.hq_monitoring_summary_computed_at
@@ -2883,7 +2892,7 @@ def get_hq_monitoring_summary(db: Session, period: FunctionalEvalPeriod) -> dict
         "ttl_seconds": int(HQ_MONITORING_SUMMARY_CACHE_TTL.total_seconds()),
         "computed_at": now.isoformat(),
     }
-    period.hq_monitoring_summary_json = payload
+    period.hq_monitoring_summary_json = _json_safe_payload(payload)
     period.hq_monitoring_summary_computed_at = now
     db.add(period)
     db.commit()
