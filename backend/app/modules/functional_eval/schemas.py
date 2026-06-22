@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any
@@ -116,6 +116,9 @@ class FunctionalEvalConsentSubmit(BaseModel):
     consent_acknowledged: bool = Field(..., description="동의서 확인 체크")
     read_to_bottom_confirmed: bool | None = Field(default=None, description="동의서 끝까지 확인")
     read_completed_at: str | None = Field(default=None, max_length=64, description="스크롤 완료 시각(ISO)")
+    current_password: str | None = Field(default=None, max_length=255)
+    new_password: str | None = Field(default=None, max_length=255)
+    new_password_confirm: str | None = Field(default=None, max_length=255)
 
 
 class FunctionalEvalTeamReportReject(BaseModel):

@@ -67,7 +67,11 @@ const passwordLockedHelp = "\ub3d9\uc758\uc11c\ub97c \ub05d\uae4c\uc9c0 \ud655\u
 const currentPasswordLabel = "\ud604\uc7ac \ube44\ubc00\ubc88\ud638";
 const newPasswordLabel = "\uc0c8 \ube44\ubc00\ubc88\ud638";
 const newPasswordConfirmLabel = "\uc0c8 \ube44\ubc00\ubc88\ud638 \ud655\uc778";
-const firstUseNotice = "\uae30\ub2a5\uc778\uc778\uc815\uc81c \ud654\uba74 \uc774\uc6a9 \uc804 \ucd5c\ucd08 1\ud68c \ub3d9\uc758\u00b7\uc11c\uba85\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.";
+const firstUseNotice = computed(() =>
+  props.requirePasswordChange
+    ? "\uae30\ub2a5\uc778\uc778\uc815\uc81c \uc774\uc6a9 \uc804 \ucd5c\ucd08 1\ud68c \ub3d9\uc758·\uc11c\uba85\uacfc \ube44\ubc00\ubc88\ud638 \ubcc0\uacbd\uc774 \ud544\uc694\ud569\ub2c8\ub2e4."
+    : "\uae30\ub2a5\uc778\uc778\uc815\uc81c \ud654\uba74 \uc774\uc6a9 \uc804 \ucd5c\ucd08 1\ud68c \ub3d9\uc758\u00b7\uc11c\uba85\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.",
+);
 const loadBeforeRetryMessage = "\ub3d9\uc758\uc11c \uc804\ubb38\uc744 \ubd88\ub7ec\uc628 \ub4a4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.";
 const passwordRequiredMessage = "\ube44\ubc00\ubc88\ud638 \ubcc0\uacbd \uc815\ubcf4\ub97c \ubaa8\ub450 \uc785\ub825\ud574 \uc8fc\uc138\uc694.";
 const passwordMismatchMessage = "\uc0c8 \ube44\ubc00\ubc88\ud638 \ud655\uc778\uc774 \uc77c\uce58\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.";
@@ -77,7 +81,7 @@ const consentDescription = computed(() => {
   const lines: string[] = [];
   if (siteFullName.value) lines.push(siteFullName.value);
   if (teamLabel.value) lines.push(teamLabel.value);
-  lines.push(firstUseNotice);
+  lines.push(firstUseNotice.value);
   return lines.join("\n");
 });
 
@@ -168,10 +172,12 @@ async function onSubmit(payload: {
 .fe-consent-password {
   display: grid;
   gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
   margin: 14px 0;
   padding: 14px;
   border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 12px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.58);
 }
 
@@ -206,6 +212,7 @@ async function onSubmit(payload: {
 }
 
 .fe-consent-password input {
+  box-sizing: border-box;
   width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.55);
   border-radius: 8px;

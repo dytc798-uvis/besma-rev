@@ -1,14 +1,15 @@
-<template>
+﻿<template>
   <div class="fe-monitor-page">
     <div class="fe-monitor-header">
       <div>
         <h1 class="page-title">기능인인정제 운영지표 모니터링</h1>
         <p v-if="period" class="page-sub">
-          마지막 출역일: {{ period.last_attendance_date || "없음" }} ·
-          마감일: {{ period.deadline_date }}
+          마지막 출역일 {{ period.last_attendance_date || "없음" }} ·
+          마감일 {{ period.deadline_date }}
           <span :class="period.is_closed ? 'badge closed' : 'badge open'">
             {{ period.is_closed ? "마감" : "진행" }}
           </span>
+          <span v-if="cacheLabel" class="cache-label">· {{ cacheLabel }}</span>
         </p>
       </div>
       <button class="stitch-btn-secondary" type="button" :disabled="loading" @click="loadMonitoring">
@@ -21,10 +22,10 @@
 
     <section class="monitor-kpi-grid">
       <KpiCard
-        label="접속중"
+        label="미평가"
         :value="monitorCounts.not_started"
         accent="slate"
-        badge-text="접속중"
+        badge-text="미평가"
         badge-tone="neutral"
       />
       <KpiCard
@@ -89,6 +90,11 @@ const siteBuckets = ref({
   not_started: 0,
   completed: 0,
 });
+const cacheInfo = ref<{
+  mode?: string;
+  computed_at?: string | null;
+  ttl_seconds?: number;
+} | null>(null);
 
 const monitorCounts = computed(() => workerStatusCounts.value);
 const completionRate = computed(() => {
@@ -100,10 +106,15 @@ const completionRateLabel = computed(() => `${completionRate.value}%`);
 const bucketSummaryText = computed(() =>
   siteBuckets.value.in_progress + siteBuckets.value.not_started + siteBuckets.value.completed > 0,
 );
+const cacheLabel = computed(() => {
+  if (!cacheInfo.value?.computed_at) return "";
+  const mode = cacheInfo.value.mode === "cached" ? "캐시" : "갱신";
+  return `${mode} 기준 ${cacheInfo.value.computed_at.slice(0, 16).replace("T", " ")} · 1시간 주기`;
+});
 
 function assertMonitorRole() {
   const role = auth.user?.role ?? "";
-  return ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "HQ_OTHER"].includes(role);
+  return ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "HQ_OTHER", "FUNCTIONAL_EVAL_VIEWER"].includes(role);
 }
 
 async function loadMonitoring() {
@@ -122,10 +133,12 @@ async function loadMonitoring() {
       totals?: { sites: number; workers: number; fully_complete: number };
       worker_status_counts?: { not_started: number; in_progress: number; completed: number };
       site_buckets?: { in_progress: number; not_started: number; completed: number };
+      cache?: { mode?: string; computed_at?: string | null; ttl_seconds?: number };
     };
     period.value = data.period;
     totals.value = data.totals || null;
     attendanceMessage.value = data.attendance_message || "";
+    cacheInfo.value = data.cache || null;
     workerStatusCounts.value = {
       not_started: Number(data.worker_status_counts?.not_started || 0),
       in_progress: Number(data.worker_status_counts?.in_progress || 0),
@@ -171,6 +184,10 @@ onMounted(async () => {
 .page-sub {
   margin: 0;
   color: #334155;
+}
+
+.cache-label {
+  color: #64748b;
 }
 
 .badge {

@@ -6,7 +6,7 @@ import io
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +115,13 @@ def _site_code_from_login_id(login_id: str | None) -> str:
     if not raw:
         return ""
     return raw.split("-", 1)[0].strip()
+
+
+def _normalize_evaluator_login_id(login_id: str | None) -> str:
+    raw = (login_id or "").strip()
+    if raw and "-" in raw and not raw.isdigit():
+        return raw
+    return ""
 
 
 @dataclass
@@ -602,7 +609,11 @@ def _manager_candidates_for_user(db: Session, user: User) -> set[str]:
         site_code = (reg.site_code or "").strip()
         if not site_code:
             continue
-        manager_login = (reg.manager_login_id or "").strip()
+        manager_login = _normalize_evaluator_login_id(reg.manager_login_id)
+        if not manager_login:
+            manager_login = (
+                build_eval_login_id((reg.site_alias or "").strip(), (reg.manager_name or "").strip())
+            )
         if login_id and manager_login and login_id == manager_login:
             candidates.add(site_code)
             continue
@@ -1816,9 +1827,29 @@ def _manager_login_for_site(db: Session, site_code: str) -> str:
         .filter(FunctionalEvalSiteRegistry.site_code == site_code)
         .first()
     )
-    if reg and (reg.manager_login_id or "").strip():
-        return reg.manager_login_id.strip()
-    return site_code
+    normalized = _normalize_evaluator_login_id((reg.manager_login_id if reg else None))
+    if normalized:
+        return normalized
+    generated = (
+        build_eval_login_id((reg.site_alias or "").strip(), (reg.manager_name or "").strip())
+        if reg is not None
+        else ""
+    )
+    if generated:
+        return generated
+    if site_code and site_code.isdigit():
+        exists = (
+            db.query(User)
+            .filter(
+                User.login_id == site_code,
+                User.role == Role.SITE_FUNCTIONAL_EVAL,
+                User.is_active.is_(True),
+            )
+            .first()
+        )
+        if exists:
+            return site_code
+    return ""
 
 
 def _is_manager_user_for_site(db: Session, user: User, site_code: str) -> bool:
@@ -2822,6 +2853,44 @@ def build_hq_monitoring_summary(db: Session, period: FunctionalEvalPeriod) -> di
     }
 
 
+HQ_MONITORING_SUMMARY_CACHE_TTL = timedelta(hours=1)
+
+
+def _hq_monitoring_summary_cache_expired(period: FunctionalEvalPeriod) -> bool:
+    computed_at = period.hq_monitoring_summary_computed_at
+    if computed_at is None:
+        return True
+    return utc_now() - computed_at >= HQ_MONITORING_SUMMARY_CACHE_TTL
+
+
+def get_hq_monitoring_summary(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
+    cached = period.hq_monitoring_summary_json
+    if isinstance(cached, dict) and cached.get("period") and not _hq_monitoring_summary_cache_expired(period):
+        payload = dict(cached)
+        payload["cache"] = {
+            "mode": "cached",
+            "ttl_seconds": int(HQ_MONITORING_SUMMARY_CACHE_TTL.total_seconds()),
+            "computed_at": period.hq_monitoring_summary_computed_at.isoformat()
+            if period.hq_monitoring_summary_computed_at
+            else None,
+        }
+        return payload
+
+    payload = build_hq_monitoring_summary(db, period)
+    now = utc_now()
+    payload["cache"] = {
+        "mode": "fresh",
+        "ttl_seconds": int(HQ_MONITORING_SUMMARY_CACHE_TTL.total_seconds()),
+        "computed_at": now.isoformat(),
+    }
+    period.hq_monitoring_summary_json = payload
+    period.hq_monitoring_summary_computed_at = now
+    db.add(period)
+    db.commit()
+    db.refresh(period)
+    return payload
+
+
 def _diff_row(existing: FunctionalEvalWorker | None, row: ParsedRosterRow) -> RosterDiffItem:
     if existing is None:
         return RosterDiffItem(
@@ -2981,7 +3050,7 @@ def apply_daily_roster_diff(
                 rrn_masked=row.rrn_masked,
                 job_code=row.job_code,
                 phone_mobile=row.phone,
-                assigned_evaluator_login_id=row.site_code,
+                assigned_evaluator_login_id=_manager_login_for_site(db, row.site_code),
                 is_site_manager=row.is_site_manager,
                 is_active=True,
                 is_on_reference_roster=True,
@@ -2995,7 +3064,9 @@ def apply_daily_roster_diff(
             worker.job_code = row.job_code
             worker.phone_mobile = row.phone
             worker.rrn_masked = row.rrn_masked
-            worker.assigned_evaluator_login_id = worker.assigned_evaluator_login_id or row.site_code
+            worker.assigned_evaluator_login_id = (
+                worker.assigned_evaluator_login_id or _manager_login_for_site(db, row.site_code)
+            )
             worker.is_site_manager = row.is_site_manager
             worker.is_active = True
             worker.is_on_reference_roster = True
@@ -3516,4 +3587,3 @@ def apply_attendance_report_file(
     )
     db.refresh(period)
     return {**result, "period": serialize_period(period, db)}
-

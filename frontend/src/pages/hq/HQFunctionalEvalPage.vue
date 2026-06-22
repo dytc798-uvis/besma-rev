@@ -1,9 +1,10 @@
 ﻿<template>
-<p v-if="consentLoading" class="fe-consent-loading" role="status">동의서 확인 중…</p>
+  <p v-if="consentLoading" class="fe-consent-loading" role="status">동의서·비밀번호 상태 확인 중…</p>
   <FeConsentGate
     v-else-if="consentRequired"
     :open="consentRequired"
     :prefill="consentPrefill"
+    :require-password-change="auth.mustChangePassword"
     @completed="onConsentCompleted"
   />
   <div
@@ -19,6 +20,27 @@
       </div>
     </div>
     <p v-if="isFeViewer" class="viewer-banner" role="status">조회전용 계정입니다. 평가·승인·다운로드·수정은 할 수 없습니다.</p>
+    <section v-if="isFeViewer" class="viewer-demo-flow panel">
+      <div>
+        <p class="viewer-demo-kicker">운영과 분리된 흐름 안내</p>
+        <h2>팀장 평가 → 소장 제출 → 본사 검토</h2>
+        <p>외부조회용 계정에서는 실제 운영 데이터를 수정하지 않고, 기능인인정제 처리 순서와 현장별 진행 상태만 확인합니다.</p>
+      </div>
+      <ol class="viewer-demo-steps">
+        <li>
+          <strong>1. 데모 팀장</strong>
+          <span>배정 근로자의 기능·안전 평가를 저장하고 팀장 서명을 진행합니다.</span>
+        </li>
+        <li>
+          <strong>2. 데모 소장</strong>
+          <span>직영 평가와 팀장 보고서를 확인한 뒤 현장 제출을 완료합니다.</span>
+        </li>
+        <li>
+          <strong>3. 본사</strong>
+          <span>등급 통계, 병목 현장, 승인 대기 현황을 조회하고 검토 흐름을 확인합니다.</span>
+        </li>
+      </ol>
+    </section>
     <div class="page-head" :class="{ 'page-head--mobile': isMobileViewport }">
       <div>
         <h1 v-if="!isMobileViewport" class="page-title">{{ isFeViewer ? "기능인 인정제 · 본사 조회" : "기능인 인정제 · 본사" }}</h1>
@@ -2037,6 +2059,58 @@ async function downloadSanctionExcel() {
   color: #1e40af;
   font-size: 13px;
 }
+.viewer-demo-flow {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(360px, 1.4fr);
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 14px;
+  border-left: 4px solid #0f766e;
+}
+.viewer-demo-kicker {
+  margin: 0 0 6px;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 700;
+}
+.viewer-demo-flow h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: #0f172a;
+}
+.viewer-demo-flow p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.viewer-demo-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.viewer-demo-steps li {
+  min-height: 112px;
+  padding: 12px;
+  border: 1px solid #dbe4ea;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.viewer-demo-steps strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #0f172a;
+  font-size: 14px;
+}
+.viewer-demo-steps span {
+  display: block;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.45;
+}
 .viewer-provision-list {
   margin: 8px 0 0;
   padding-left: 18px;
@@ -2108,6 +2182,12 @@ async function downloadSanctionExcel() {
   .bucket-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
+  .viewer-demo-flow {
+    grid-template-columns: 1fr;
+  }
+  .viewer-demo-steps {
+    grid-template-columns: 1fr;
+  }
   .fe-consent-loading {
     margin: 24px 12px;
     text-align: center;

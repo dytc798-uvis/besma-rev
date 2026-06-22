@@ -12,7 +12,10 @@
               v-if="hasConsentText"
               ref="consentBodyRef"
               class="fe-sign-consent-body"
-              :class="{ 'fe-sign-consent-body--locked': requireConsentScroll && !scrollCompleted }"
+              :class="{
+                'fe-sign-consent-body--locked': requireConsentScroll && !scrollCompleted,
+                'fe-sign-consent-body--scroll-required': requireConsentScroll && !scrollCompleted,
+              }"
               @scroll="onConsentScroll"
             >{{ consentText }}</pre>
             <p v-else class="fe-sign-consent-loading" role="status">
@@ -52,8 +55,13 @@
             :s-reason="sOverLimitReason"
             @update:s-reason="sOverLimitReason = $event"
           />
-          <slot name="before-signature" :consent-ready="consentReady" />
-          <SignaturePad ref="padRef" :width="560" :height="200" :disabled="signaturePadDisabled" />
+          <div ref="followupRef" class="fe-sign-followup">
+            <slot name="before-signature" :consent-ready="consentReady" />
+            <section class="fe-sign-signature">
+              <h3>서명란</h3>
+              <SignaturePad ref="padRef" :width="560" :height="200" :disabled="signaturePadDisabled" />
+            </section>
+          </div>
           <p v-if="error" class="fe-sign-error">{{ error }}</p>
           <footer class="fe-sign-footer">
             <button type="button" class="stitch-btn-secondary" :disabled="submitting" @click="onCancel">{{ cancelLabel }}</button>
@@ -118,6 +126,7 @@ const emit = defineEmits<{
 
 const padRef = ref<InstanceType<typeof SignaturePad> | null>(null);
 const consentBodyRef = ref<HTMLElement | null>(null);
+const followupRef = ref<HTMLElement | null>(null);
 const ackChecked = ref(false);
 const officerComment = ref("");
 const directorComment = ref("");
@@ -125,6 +134,7 @@ const sOverLimitReason = ref("");
 const submitting = ref(false);
 const error = ref("");
 const scrollCompleted = ref(false);
+const autoScrolledToFollowup = ref(false);
 const readCompletedAt = ref<string | null>(null);
 const normalizedConsentText = computed(() => (props.consentText || "").trim());
 const requiresConsentText = computed(() => props.requireConsentScroll || props.requireConsentCheck || !!normalizedConsentText.value);
@@ -226,6 +236,7 @@ watch(
       sOverLimitReason.value = "";
       error.value = "";
       submitting.value = false;
+      autoScrolledToFollowup.value = false;
       padRef.value?.clear();
       void refreshConsentScrollState();
     }
@@ -242,6 +253,16 @@ watch(
   () => props.consentText,
   () => {
     if (props.open) void refreshConsentScrollState();
+  },
+);
+
+watch(
+  consentReady,
+  async (ready) => {
+    if (!ready || autoScrolledToFollowup.value) return;
+    autoScrolledToFollowup.value = true;
+    await nextTick();
+    followupRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
   },
 );
 
@@ -319,6 +340,29 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   margin: 0 0 8px;
   max-height: 220px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+.fe-sign-consent-body::-webkit-scrollbar {
+  width: 14px;
+}
+
+.fe-sign-consent-body::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+}
+
+.fe-sign-consent-body::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border: 3px solid #e2e8f0;
+  border-radius: 999px;
+}
+
+.fe-sign-consent-body--scroll-required {
+  background-image: linear-gradient(to bottom, rgba(248, 250, 252, 0) calc(100% - 36px), rgba(251, 191, 36, 0.22));
+  background-attachment: local;
 }
 
 .fe-sign-consent-body--locked {
@@ -395,9 +439,35 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   font-size: 13px;
   resize: vertical;
 }
+
+.fe-sign-followup {
+  width: 100%;
+}
+
+.fe-sign-signature {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.fe-sign-signature h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #0f172a;
+}
 </style>
 
 <style>
+.fe-sign-modal,
+.fe-sign-modal * {
+  box-sizing: border-box;
+}
+
 .fe-sign-overlay {
   position: fixed;
   inset: 0;
@@ -414,6 +484,7 @@ defineExpose({ setSubmitting, setError, scrollCompleted, consentBodyRef });
   width: min(760px, 100%);
   max-height: calc(100dvh - 32px);
   overflow-y: auto;
+  overflow-x: hidden;
   background: #fff;
   border-radius: 12px;
   padding: 20px;

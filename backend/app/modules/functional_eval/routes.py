@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import io
 import uuid
@@ -77,7 +77,7 @@ def _site_grade_workbook_response(content: bytes) -> StreamingResponse:
 
 @router.get("/my-site/export/site-grade-workbook")
 def export_my_site_grade_workbook(db: DbDep, current_user: CurrentUserDep):
-    """현장 — 템플릿 형식(1.인원현황 / 2-1 / 2-2) 엑셀 출력."""
+    """?꾩옣 ???쒗뵆由??뺤떇(1.?몄썝?꾪솴 / 2-1 / 2-2) ?묒? 異쒕젰."""
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
     site_code = service._site_code_for_user(current_user, db)
@@ -89,7 +89,7 @@ def export_my_site_grade_workbook(db: DbDep, current_user: CurrentUserDep):
         if str(exc) == "NO_ATTENDANCE_WORKERS":
             raise HTTPException(
                 status_code=404,
-                detail="출역 반영된 근로자가 없습니다. 본사에 출역일보 업로드를 요청하세요.",
+                detail="異쒖뿭 諛섏쁺??洹쇰줈?먭? ?놁뒿?덈떎. 蹂몄궗??異쒖뿭?쇰낫 ?낅줈?쒕? ?붿껌?섏꽭??",
             ) from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _site_grade_workbook_response(content)
@@ -101,7 +101,7 @@ def export_hq_site_grade_workbook(
     current_user: CurrentUserDep,
     site_code: str | None = Query(default=None),
 ):
-    """본사 — 전 현장(또는 site_code 지정) 현장별 기능인등급 엑셀."""
+    """蹂몄궗 ?????꾩옣(?먮뒗 site_code 吏?? ?꾩옣蹂?湲곕뒫?몃벑湲??묒?."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     try:
@@ -110,7 +110,7 @@ def export_hq_site_grade_workbook(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         if str(exc) == "NO_ATTENDANCE_WORKERS":
-            raise HTTPException(status_code=404, detail="출역 반영된 근로자가 없습니다.") from exc
+            raise HTTPException(status_code=404, detail="異쒖뿭 諛섏쁺??洹쇰줈?먭? ?놁뒿?덈떎.") from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _site_grade_workbook_response(content)
 
@@ -166,11 +166,11 @@ def save_worker_assessment(
     except ValueError as exc:
         code = str(exc)
         if code == "PERIOD_CLOSED":
-            raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
+            raise HTTPException(status_code=409, detail="留덇컧?쇱씠 吏???섏젙?????놁뒿?덈떎.") from exc
         if code == "EVAL_NOT_OPEN":
             raise HTTPException(
                 status_code=403,
-                detail="평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디·비밀번호 변경만 이용해 주세요.",
+                detail="?됯???2026??6??16???ㅼ쟾 6?쒕???媛?ν빀?덈떎. ?ㅻ뒛? ?꾩씠?붋룸퉬諛踰덊샇 蹂寃쎈쭔 ?댁슜??二쇱꽭??",
             ) from exc
         if code == "WORKER_NOT_FOUND":
             raise HTTPException(status_code=404, detail="Worker not found") from exc
@@ -179,13 +179,13 @@ def save_worker_assessment(
         if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER", "CANNOT_EVALUATE_SELF", "WORKER_INACTIVE"}:
             raise HTTPException(status_code=400, detail=code) from exc
         if code == "MANAGER_CANNOT_EDIT_TEAM_SCORES":
-            raise HTTPException(status_code=403, detail="소장은 팀장 담당 근로자의 점수를 수정할 수 없습니다. 반려만 가능합니다.") from exc
+            raise HTTPException(status_code=403, detail="?뚯옣? ????대떦 洹쇰줈?먯쓽 ?먯닔瑜??섏젙?????놁뒿?덈떎. 諛섎젮留?媛?ν빀?덈떎.") from exc
         if code in {"WORKER_NOT_ON_ATTENDANCE", "NO_ATTENDANCE_UPLOAD"}:
-            raise HTTPException(status_code=400, detail="당일 출역 명단에 없거나 출역일보가 반영되지 않았습니다.") from exc
+            raise HTTPException(status_code=400, detail="?뱀씪 異쒖뿭 紐낅떒???녾굅??異쒖뿭?쇰낫媛 諛섏쁺?섏? ?딆븯?듬땲??") from exc
         if code == "SITE_APPROVAL_LOCKED":
-            raise HTTPException(status_code=409, detail="승인 진행 중이라 평가를 수정할 수 없습니다.") from exc
+            raise HTTPException(status_code=409, detail="?뱀씤 吏꾪뻾 以묒씠???됯?瑜??섏젙?????놁뒿?덈떎.") from exc
         if code == "EVALUATION_SIGNATURE_LOCKED":
-            raise HTTPException(status_code=409, detail="서명 완료 후에는 평가를 수정할 수 없습니다.") from exc
+            raise HTTPException(status_code=409, detail="?쒕챸 ?꾨즺 ?꾩뿉???됯?瑜??섏젙?????놁뒿?덈떎.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return {"assessment": result}
 
@@ -213,16 +213,16 @@ def save_hq_assessment_override(
     except ValueError as exc:
         code = str(exc)
         if code == "PERIOD_CLOSED":
-            raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
+            raise HTTPException(status_code=409, detail="留덇컧?쇱씠 吏???섏젙?????놁뒿?덈떎.") from exc
         if code == "EVAL_NOT_OPEN":
             raise HTTPException(
                 status_code=403,
-                detail="평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디·비밀번호 변경만 이용해 주세요.",
+                detail="?됯???2026??6??16???ㅼ쟾 6?쒕???媛?ν빀?덈떎. ?ㅻ뒛? ?꾩씠?붋룸퉬諛踰덊샇 蹂寃쎈쭔 ?댁슜??二쇱꽭??",
             ) from exc
         if code == "WORKER_NOT_FOUND":
             raise HTTPException(status_code=404, detail="Worker not found") from exc
         if code in {"REVISION_REASON_REQUIRED"}:
-            raise HTTPException(status_code=400, detail="수정 사유를 입력하세요.") from exc
+            raise HTTPException(status_code=400, detail="?섏젙 ?ъ쑀瑜??낅젰?섏꽭??") from exc
         if code.startswith("INCOMPLETE:") or code.startswith("INVALID_GRADE:"):
             raise HTTPException(status_code=400, detail=code) from exc
         if code in {"CANNOT_EVALUATE_SITE_MANAGER", "HQ_ONLY"}:
@@ -284,7 +284,7 @@ def list_my_site_workers(db: DbDep, current_user: CurrentUserDep):
     period_payload = service.serialize_period(period, db)
     message = None
     if not period_payload.get("last_attendance_date"):
-        message = "출역일보가 아직 반영되지 않았습니다. 본사에 업로드를 요청하세요."
+        message = "異쒖뿭?쇰낫媛 ?꾩쭅 諛섏쁺?섏? ?딆븯?듬땲?? 蹂몄궗???낅줈?쒕? ?붿껌?섏꽭??"
     site_code = service._site_code_for_user(current_user, db)
     site_overview = service.list_site_overview_for_manager(db, current_user, period)
     approval = service.build_site_approval_payload(db, period, site_code)
@@ -311,24 +311,28 @@ def list_my_site_workers(db: DbDep, current_user: CurrentUserDep):
 
 def _signature_error(code: str) -> HTTPException:
     mapping = {
-        "CONSENT_REQUIRED": (403, "동의서 서명이 필요합니다."),
+        "CONSENT_REQUIRED": (403, "기능인인정제 이용 전 동의서 서명이 필요합니다."),
         "CONSENT_ACK_REQUIRED": (400, "동의서 확인 체크가 필요합니다."),
         "CONSENT_SCROLL_REQUIRED": (400, "동의서 내용을 끝까지 확인해야 합니다."),
-        "CONSENT_ALREADY_SIGNED": (409, "이미 동의서에 서명하였습니다."),
+        "CONSENT_ALREADY_SIGNED": (409, "이미 동의서에 서명했습니다."),
+        "PASSWORD_CHANGE_REQUIRED": (400, "동의서 서명과 함께 비밀번호 변경이 필요합니다."),
+        "CURRENT_PASSWORD_INCORRECT": (400, "현재 비밀번호가 일치하지 않습니다."),
+        "NEW_PASSWORD_CONFIRM_MISMATCH": (400, "새 비밀번호 확인이 일치하지 않습니다."),
         "signature_required": (400, "서명을 입력해 주세요."),
         "signature_too_small": (400, "서명이 너무 작습니다."),
         "invalid_signature_base64": (400, "서명 이미지 형식이 올바르지 않습니다."),
-        "SIGNATURE_ALREADY_EXISTS": (409, "이미 서명이 완료되었습니다."),
-        "EVALUATION_SIGNATURE_LOCKED": (409, "서명 완료 후에는 평가를 수정할 수 없습니다."),
-        "TEAM_LEADERS_NOT_SIGNED": (400, "모든 팀장의 평가완료 서명이 필요합니다."),
-        "TEAM_REPORTS_NOT_MANAGER_APPROVED": (400, "모든 팀장 평가완료보고서에 소장 승인이 필요합니다."),
-        "TEAM_LEADER_NOT_SIGNED": (400, "팀장 평가완료 서명이 필요합니다."),
-        "NO_PENDING_APPROVALS": (400, "승인 대기 항목이 없습니다."),
-        "NO_SUPPLEMENTAL_BATCH": (400, "추가평가 대상이 없습니다."),
-        "MANAGER_NOT_TEAM_LEADER": (403, "팀장만 사용할 수 있습니다."),
-        "MANAGER_ONLY": (403, "소장만 사용할 수 있습니다."),
-        "S_GRADE_OVER_LIMIT_REASON_REQUIRED": (400, "S등급 권장 기준(20%) 초과 사유를 10자 이상 입력해 주세요."),
-        "EVAL_NOT_OPEN": (403, "평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디·비밀번호 변경만 이용해 주세요."),
+        "SIGNATURE_ALREADY_EXISTS": (409, "?대? ?쒕챸???꾨즺?섏뿀?듬땲??"),
+        "EVALUATION_SIGNATURE_LOCKED": (409, "?쒕챸 ?꾨즺 ?꾩뿉???됯?瑜??섏젙?????놁뒿?덈떎."),
+        "TEAM_LEADERS_NOT_SIGNED": (400, "紐⑤뱺 ??μ쓽 ?됯??꾨즺 ?쒕챸???꾩슂?⑸땲??"),
+        "TEAM_REPORTS_NOT_MANAGER_APPROVED": (400, "紐⑤뱺 ????됯??꾨즺蹂닿퀬?쒖뿉 ?뚯옣 ?뱀씤???꾩슂?⑸땲??"),
+        "TEAM_LEADER_NOT_SIGNED": (400, "????됯??꾨즺 ?쒕챸???꾩슂?⑸땲??"),
+        "NO_PENDING_APPROVALS": (400, "?뱀씤 ?湲???ぉ???놁뒿?덈떎."),
+        "HQ_APPROVAL_NOT_OPEN_UNTIL_DEADLINE": (403, "본사 승인은 평가 마감일부터 가능합니다."),
+        "NO_SUPPLEMENTAL_BATCH": (400, "異붽??됯? ??곸씠 ?놁뒿?덈떎."),
+        "MANAGER_NOT_TEAM_LEADER": (403, "??λ쭔 ?ъ슜?????덉뒿?덈떎."),
+        "MANAGER_ONLY": (403, "?뚯옣留??ъ슜?????덉뒿?덈떎."),
+        "S_GRADE_OVER_LIMIT_REASON_REQUIRED": (400, "S?깃툒 沅뚯옣 湲곗?(20%) 珥덇낵 ?ъ쑀瑜?10???댁긽 ?낅젰??二쇱꽭??"),
+        "EVAL_NOT_OPEN": (403, "?됯???2026??6??16???ㅼ쟾 6?쒕???媛?ν빀?덈떎. ?ㅻ뒛? ?꾩씠?붋룸퉬諛踰덊샇 蹂寃쎈쭔 ?댁슜??二쇱꽭??"),
     }
     status_code, detail = mapping.get(code, (400, code))
     return HTTPException(status_code=status_code, detail=detail)
@@ -342,6 +346,25 @@ def get_consent_status(db: DbDep, current_user: CurrentUserDep):
 @router.post("/consent/submit")
 def submit_consent(body: FunctionalEvalConsentSubmit, request: Request, db: DbDep, current_user: CurrentUserDep):
     try:
+        password_fields = [body.current_password, body.new_password, body.new_password_confirm]
+        wants_password_change = any(v is not None for v in password_fields)
+        if getattr(current_user, "must_change_password", False) and not wants_password_change:
+            raise ValueError("PASSWORD_CHANGE_REQUIRED")
+        if wants_password_change:
+            if not body.current_password or not body.new_password or not body.new_password_confirm:
+                raise ValueError("PASSWORD_CHANGE_REQUIRED")
+            if not verify_password(body.current_password, current_user.password_hash):
+                raise ValueError("CURRENT_PASSWORD_INCORRECT")
+            if body.new_password != body.new_password_confirm:
+                raise ValueError("NEW_PASSWORD_CONFIRM_MISMATCH")
+            try:
+                validate_password_policy(body.new_password)
+            except ValueError as exc:
+                raise ValueError(str(exc)) from exc
+            current_user.password_hash = get_password_hash(body.new_password.strip())
+            current_user.must_change_password = False
+            current_user.password_changed_at = utc_now()
+            db.add(current_user)
         return signature_ops.submit_consent(
             db,
             current_user,
@@ -360,8 +383,8 @@ def download_consent_document(db: DbDep, current_user: CurrentUserDep):
     try:
         path = signature_ops.get_consent_document_path(db, current_user)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail="동의서 문서를 찾을 수 없습니다.") from exc
-    return FileResponse(path, media_type="application/pdf", filename="기능인제_동의서.pdf")
+        raise HTTPException(status_code=404, detail="?숈쓽??臾몄꽌瑜?李얠쓣 ???놁뒿?덈떎.") from exc
+    return FileResponse(path, media_type="application/pdf", filename="湲곕뒫?몄젣_?숈쓽??pdf")
 
 
 @router.get("/signatures/mine")
@@ -377,9 +400,9 @@ def download_signature_document(signature_id: int, db: DbDep, current_user: Curr
     except ValueError as exc:
         code = str(exc)
         if code == "FORBIDDEN":
-            raise HTTPException(status_code=403, detail="다운로드 권한이 없습니다.") from exc
-        raise HTTPException(status_code=404, detail="서명 문서를 찾을 수 없습니다.") from exc
-    return FileResponse(path, media_type="application/pdf", filename=f"기능인제_서명_{signature_id}.pdf")
+            raise HTTPException(status_code=403, detail="?ㅼ슫濡쒕뱶 沅뚰븳???놁뒿?덈떎.") from exc
+        raise HTTPException(status_code=404, detail="?쒕챸 臾몄꽌瑜?李얠쓣 ???놁뒿?덈떎.") from exc
+    return FileResponse(path, media_type="application/pdf", filename=f"湲곕뒫?몄젣_?쒕챸_{signature_id}.pdf")
 
 
 @router.get("/my-team/signoff-status")
@@ -423,7 +446,7 @@ def reject_team_leader_report(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """소장 — 팀장 평가완료보고서 반려 (점수 재작업)."""
+    """?뚯옣 ??????됯??꾨즺蹂닿퀬??諛섎젮 (?먯닔 ?ъ옉??."""
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
     site_code = service._site_code_for_user(current_user, db)
@@ -449,7 +472,7 @@ def approve_team_leader_report(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """소장 — 팀장 평가완료보고서 승인 서명."""
+    """?뚯옣 ??????됯??꾨즺蹂닿퀬???뱀씤 ?쒕챸."""
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
     site_code = service._site_code_for_user(current_user, db)
@@ -475,12 +498,12 @@ def submit_site_approval(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """소장 — 현장 전체 평가 승인(안전보건실 검토 요청)."""
+    """?뚯옣 ???꾩옣 ?꾩껜 ?됯? ?뱀씤(?덉쟾蹂닿굔??寃???붿껌)."""
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
     site_code = service._site_code_for_user(current_user, db)
     if not service._is_primary_site_evaluator(db, current_user, site_code):
-        raise HTTPException(status_code=403, detail="소장만 현장 승인할 수 있습니다.")
+        raise HTTPException(status_code=403, detail="?뚯옣留??꾩옣 ?뱀씤?????덉뒿?덈떎.")
     try:
         approval = signature_ops.submit_site_approval_with_signature(
             db,
@@ -498,9 +521,36 @@ def submit_site_approval(
             if code == "INCOMPLETE_EVALUATIONS":
                 raise HTTPException(
                     status_code=400,
-                    detail="전원 평가(기능+안전)가 완료되어야 소장 승인할 수 있습니다.",
+                    detail="?꾩썝 ?됯?(湲곕뒫+?덉쟾)媛 ?꾨즺?섏뼱???뚯옣 ?뱀씤?????덉뒿?덈떎.",
                 ) from exc
-            raise HTTPException(status_code=409, detail="이미 승인 요청되었거나 처리 중입니다.") from exc
+            raise HTTPException(status_code=409, detail="?대? ?뱀씤 ?붿껌?섏뿀嫄곕굹 泥섎━ 以묒엯?덈떎.") from exc
+        raise _signature_error(code) from exc
+    return {"approval": approval}
+
+
+@router.post("/my-site/approval/self-reject")
+def self_reject_site_approval(
+    body: FunctionalEvalTeamReportReject,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    _assert_site_functional_eval(current_user)
+    period = service.get_or_create_active_period(db)
+    site_code = service._site_code_for_user(current_user, db)
+    if not service._is_primary_site_evaluator(db, current_user, site_code):
+        raise HTTPException(status_code=403, detail="소장만 현장 자체반려를 할 수 있습니다.")
+    try:
+        approval = signature_ops.self_reject_site_approval(
+            db,
+            current_user,
+            period,
+            site_code,
+            reject_note=body.reject_note,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "INVALID_APPROVAL_TRANSITION":
+            raise HTTPException(status_code=409, detail="본사 승인 전 제출 완료 상태에서만 자체반려할 수 있습니다.") from exc
         raise _signature_error(code) from exc
     return {"approval": approval}
 
@@ -512,7 +562,7 @@ def submit_supplemental_site_signoff(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """추가평가 — 별도 서명 (기존 승인 상태 유지)."""
+    """異붽??됯? ??蹂꾨룄 ?쒕챸 (湲곗〈 ?뱀씤 ?곹깭 ?좎?)."""
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
     site_code = service._site_code_for_user(current_user, db)
@@ -532,7 +582,7 @@ def submit_supplemental_site_signoff(
 
 @router.get("/hq/approvals/pending")
 def list_hq_pending_approvals(db: DbDep, current_user: CurrentUserDep):
-    """안전보건실 — 담당/실장 검토 대기 현장 목록."""
+    """?덉쟾蹂닿굔?????대떦/?ㅼ옣 寃???湲??꾩옣 紐⑸줉."""
     assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     if current_user.role == Role.FUNCTIONAL_EVAL_VIEWER:
@@ -565,7 +615,7 @@ def approve_all_hq_officer(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """안전보건 담당 — 대기 현장 전체 검토·승인 + 서명."""
+    """?덉쟾蹂닿굔 ?대떦 ???湲??꾩옣 ?꾩껜 寃?졖룹듅??+ ?쒕챸."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     try:
@@ -580,7 +630,7 @@ def approve_all_hq_officer(
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_OFFICER_APPROVER_ONLY":
-            raise HTTPException(status_code=403, detail="안전보건 담당(차장) 권한이 필요합니다.") from exc
+            raise HTTPException(status_code=403, detail="?덉쟾蹂닿굔 ?대떦(李⑥옣) 沅뚰븳???꾩슂?⑸땲??") from exc
         raise _signature_error(code) from exc
 
 
@@ -592,7 +642,7 @@ def approve_site_hq_officer(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """안전보건 담당 — 현장별 검토·승인 + 서명."""
+    """?덉쟾蹂닿굔 ?대떦 ???꾩옣蹂?寃?졖룹듅??+ ?쒕챸."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     try:
@@ -608,7 +658,7 @@ def approve_site_hq_officer(
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_OFFICER_APPROVER_ONLY":
-            raise HTTPException(status_code=403, detail="안전보건 담당(차장) 권한이 필요합니다.") from exc
+            raise HTTPException(status_code=403, detail="?덉쟾蹂닿굔 ?대떦(李⑥옣) 沅뚰븳???꾩슂?⑸땲??") from exc
         raise _signature_error(code) from exc
     return {"approval": approval}
 
@@ -620,7 +670,7 @@ def approve_all_hq_director(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """안전보건실장 — 담당 승인 완료 현장 전체 최종승인 + 서명."""
+    """?덉쟾蹂닿굔?ㅼ옣 ???대떦 ?뱀씤 ?꾨즺 ?꾩옣 ?꾩껜 理쒖쥌?뱀씤 + ?쒕챸."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     try:
@@ -635,7 +685,7 @@ def approve_all_hq_director(
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_DIRECTOR_APPROVER_ONLY":
-            raise HTTPException(status_code=403, detail="안전보건실장(전무) 권한이 필요합니다.") from exc
+            raise HTTPException(status_code=403, detail="?덉쟾蹂닿굔?ㅼ옣(?꾨Т) 沅뚰븳???꾩슂?⑸땲??") from exc
         raise _signature_error(code) from exc
 
 
@@ -647,7 +697,7 @@ def approve_site_hq_director(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """안전보건실장 — 현장별 최종승인 + 서명."""
+    """?덉쟾蹂닿굔?ㅼ옣 ???꾩옣蹂?理쒖쥌?뱀씤 + ?쒕챸."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     try:
@@ -663,14 +713,14 @@ def approve_site_hq_director(
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_DIRECTOR_APPROVER_ONLY":
-            raise HTTPException(status_code=403, detail="안전보건실장(전무) 권한이 필요합니다.") from exc
+            raise HTTPException(status_code=403, detail="?덉쟾蹂닿굔?ㅼ옣(?꾨Т) 沅뚰븳???꾩슂?⑸땲??") from exc
         raise _signature_error(code) from exc
     return {"approval": approval}
 
 
 @router.post("/hq/approvals/approve-all")
 def approve_all_hq(body: FunctionalEvalHqApprovalSubmit, request: Request, db: DbDep, current_user: CurrentUserDep):
-    """하위 호환 — 로그인 역할에 따라 담당/실장 일괄 승인."""
+    """?섏쐞 ?명솚 ??濡쒓렇????븷???곕씪 ?대떦/?ㅼ옣 ?쇨큵 ?뱀씤."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     try:
@@ -686,7 +736,7 @@ def approve_all_hq(body: FunctionalEvalHqApprovalSubmit, request: Request, db: D
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_APPROVER_ONLY":
-            raise HTTPException(status_code=403, detail="안전보건실 권한이 필요합니다.") from exc
+            raise HTTPException(status_code=403, detail="?덉쟾蹂닿굔??沅뚰븳???꾩슂?⑸땲??") from exc
         raise _signature_error(code) from exc
 
 
@@ -698,7 +748,7 @@ def approve_site_hq(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """하위 호환 — 로그인 역할에 따라 담당/실장 현장별 승인."""
+    """?섏쐞 ?명솚 ??濡쒓렇????븷???곕씪 ?대떦/?ㅼ옣 ?꾩옣蹂??뱀씤."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     code = site_code.strip()
@@ -729,16 +779,16 @@ def approve_site_hq(
     except ValueError as exc:
         code = str(exc)
         if code == "INVALID_APPROVAL_TRANSITION":
-            raise HTTPException(status_code=409, detail="승인 가능한 상태가 아닙니다.") from exc
+            raise HTTPException(status_code=409, detail="?뱀씤 媛?ν븳 ?곹깭媛 ?꾨떃?덈떎.") from exc
         if code in {"HQ_OFFICER_APPROVER_ONLY", "HQ_DIRECTOR_APPROVER_ONLY"}:
-            raise HTTPException(status_code=403, detail="승인 권한이 없습니다.") from exc
+            raise HTTPException(status_code=403, detail="?뱀씤 沅뚰븳???놁뒿?덈떎.") from exc
         raise _signature_error(code) from exc
     return {"approval": approval}
 
 
 @router.post("/hq/approvals/{site_code}/reject")
 def reject_site_hq(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep, current_user: CurrentUserDep):
-    """안전보건실 반려 — 로그인 역할에 따라 담당/실장 단계."""
+    """?덉쟾蹂닿굔??諛섎젮 ??濡쒓렇????븷???곕씪 ?대떦/?ㅼ옣 ?④퀎."""
     assert_hq_safe_workspace(current_user)
     try:
         approval_workflow.assert_hq_approver(current_user)
@@ -755,14 +805,14 @@ def reject_site_hq(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep
         )
     except ValueError as exc:
         if str(exc) == "INVALID_APPROVAL_TRANSITION":
-            raise HTTPException(status_code=409, detail="반려할 수 없는 상태입니다.") from exc
+            raise HTTPException(status_code=409, detail="諛섎젮?????녿뒗 ?곹깭?낅땲??") from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"approval": approval}
 
 
 @router.get("/hq/ceo-approvals/pending")
 def list_ceo_pending_approvals(db: DbDep, current_user: CurrentUserDep):
-    """대표이사 — 안전보건실 승인 완료 현장 목록. 비대표 계정은 빈 목록."""
+    """??쒖씠?????덉쟾蹂닿굔???뱀씤 ?꾨즺 ?꾩옣 紐⑸줉. 鍮꾨???怨꾩젙? 鍮?紐⑸줉."""
     assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     if current_user.role == Role.FUNCTIONAL_EVAL_VIEWER:
@@ -788,7 +838,7 @@ def list_ceo_pending_approvals(db: DbDep, current_user: CurrentUserDep):
 
 @router.post("/hq/ceo-approvals/approve-all")
 def approve_all_ceo(body: FunctionalEvalSignatureSubmit, request: Request, db: DbDep, current_user: CurrentUserDep):
-    """대표이사 — 대기 현장 전체 일괄 최종승인 + 서명."""
+    """??쒖씠?????湲??꾩옣 ?꾩껜 ?쇨큵 理쒖쥌?뱀씤 + ?쒕챸."""
     period = service.get_or_create_active_period(db)
     try:
         return signature_ops.approve_ceo_all_with_signature(
@@ -797,7 +847,7 @@ def approve_all_ceo(body: FunctionalEvalSignatureSubmit, request: Request, db: D
     except ValueError as exc:
         code = str(exc)
         if code == "CEO_APPROVER_ONLY":
-            raise HTTPException(status_code=403, detail="대표이사(최고관리자) 권한이 필요합니다.") from exc
+            raise HTTPException(status_code=403, detail="??쒖씠??理쒓퀬愿由ъ옄) 沅뚰븳???꾩슂?⑸땲??") from exc
         raise _signature_error(code) from exc
 
 
@@ -809,7 +859,7 @@ def approve_site_ceo(
     db: DbDep,
     current_user: CurrentUserDep,
 ):
-    """대표이사 최종 승인."""
+    """??쒖씠??理쒖쥌 ?뱀씤."""
     try:
         approval_workflow.assert_ceo_approver(current_user)
         period = service.get_or_create_active_period(db)
@@ -817,16 +867,16 @@ def approve_site_ceo(
     except ValueError as exc:
         code = str(exc)
         if code == "INVALID_APPROVAL_TRANSITION":
-            raise HTTPException(status_code=409, detail="안전보건실 승인 대기 상태가 아닙니다.") from exc
+            raise HTTPException(status_code=409, detail="?덉쟾蹂닿굔???뱀씤 ?湲??곹깭媛 ?꾨떃?덈떎.") from exc
         if code == "CEO_APPROVER_ONLY":
-            raise HTTPException(status_code=403, detail="대표이사(최고관리자) 권한이 필요합니다.") from exc
+            raise HTTPException(status_code=403, detail="??쒖씠??理쒓퀬愿由ъ옄) 沅뚰븳???꾩슂?⑸땲??") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return {"approval": approval}
 
 
 @router.post("/hq/ceo-approvals/{site_code}/reject")
 def reject_site_ceo(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep, current_user: CurrentUserDep):
-    """대표이사 반려."""
+    """??쒖씠??諛섎젮."""
     try:
         approval_workflow.assert_ceo_approver(current_user)
         period = service.get_or_create_active_period(db)
@@ -840,7 +890,7 @@ def reject_site_ceo(site_code: str, body: FunctionalEvalApprovalReject, db: DbDe
         )
     except ValueError as exc:
         if str(exc) == "INVALID_APPROVAL_TRANSITION":
-            raise HTTPException(status_code=409, detail="반려할 수 없는 상태입니다.") from exc
+            raise HTTPException(status_code=409, detail="諛섎젮?????녿뒗 ?곹깭?낅땲??") from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"approval": approval}
 
@@ -867,7 +917,7 @@ def worker_history(worker_id: int, db: DbDep, current_user: CurrentUserDep):
 
 @router.get("/workers/{worker_id}/mileage")
 def worker_mileage_placeholder(worker_id: int, db: DbDep, current_user: CurrentUserDep):
-    """하위 호환 — 제재 감점·포상 가점 합산 (`/workers/{id}/adjustments`와 동일)."""
+    """?섏쐞 ?명솚 ???쒖옱 媛먯젏쨌?ъ긽 媛???⑹궛 (`/workers/{id}/adjustments`? ?숈씪)."""
     from app.modules.functional_eval.models import FunctionalEvalWorker
 
     worker = db.query(FunctionalEvalWorker).filter(FunctionalEvalWorker.id == worker_id).first()
@@ -928,29 +978,29 @@ async def create_sanction(
     except ValueError as exc:
         code = str(exc)
         if code == "PERIOD_CLOSED":
-            raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
+            raise HTTPException(status_code=409, detail="留덇컧?쇱씠 吏???섏젙?????놁뒿?덈떎.") from exc
         if code == "EVAL_NOT_OPEN":
             raise HTTPException(
                 status_code=403,
-                detail="평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디·비밀번호 변경만 이용해 주세요.",
+                detail="?됯???2026??6??16???ㅼ쟾 6?쒕???媛?ν빀?덈떎. ?ㅻ뒛? ?꾩씠?붋룸퉬諛踰덊샇 蹂寃쎈쭔 ?댁슜??二쇱꽭??",
             ) from exc
         if code in {"WORKER_NOT_FOUND", "SITE_MISMATCH", "CANNOT_SANCTION_SITE_MANAGER", "WORKER_INACTIVE"}:
             raise HTTPException(status_code=400, detail=code) from exc
         if code in {"WORKER_NOT_ON_ATTENDANCE", "NO_ATTENDANCE_UPLOAD"}:
             raise HTTPException(
                 status_code=400,
-                detail="당일 출역 명단에 없거나 출역일보가 반영되지 않았습니다.",
+                detail="?뱀씪 異쒖뿭 紐낅떒???녾굅??異쒖뿭?쇰낫媛 諛섏쁺?섏? ?딆븯?듬땲??",
             ) from exc
         if code == "UNKNOWN_VIOLATION":
-            raise HTTPException(status_code=400, detail="알 수 없는 위반 항목입니다.") from exc
+            raise HTTPException(status_code=400, detail="?????녿뒗 ?꾨컲 ??ぉ?낅땲??") from exc
         mapping = {
-            "SANCTION_EVIDENCE_COMMENT_REQUIRED": "제재 근거 코멘트를 입력하세요.",
-            "SANCTION_EVIDENCE_PHOTO_REQUIRED": "제재 근거 사진을 첨부하세요.",
-            "SANCTION_SIGNATURE_REQUIRED": "제재 등록을 위해 서명이 필요합니다.",
-            "INVALID_EVIDENCE_TYPE": "근거 유형이 올바르지 않습니다.",
-            "INVALID_SANCTION_PHOTO_TYPE": "jpg, png, webp 이미지만 업로드할 수 있습니다.",
-            "EMPTY_SANCTION_PHOTO": "빈 파일입니다.",
-            "SANCTION_PHOTO_TOO_LARGE": "8MB 이하 이미지만 업로드할 수 있습니다.",
+            "SANCTION_EVIDENCE_COMMENT_REQUIRED": "?쒖옱 洹쇨굅 肄붾찘?몃? ?낅젰?섏꽭??",
+            "SANCTION_EVIDENCE_PHOTO_REQUIRED": "?쒖옱 洹쇨굅 ?ъ쭊??泥⑤??섏꽭??",
+            "SANCTION_SIGNATURE_REQUIRED": "?쒖옱 ?깅줉???꾪빐 ?쒕챸???꾩슂?⑸땲??",
+            "INVALID_EVIDENCE_TYPE": "洹쇨굅 ?좏삎???щ컮瑜댁? ?딆뒿?덈떎.",
+            "INVALID_SANCTION_PHOTO_TYPE": "jpg, png, webp ?대?吏留??낅줈?쒗븷 ???덉뒿?덈떎.",
+            "EMPTY_SANCTION_PHOTO": "鍮??뚯씪?낅땲??",
+            "SANCTION_PHOTO_TOO_LARGE": "8MB ?댄븯 ?대?吏留??낅줈?쒗븷 ???덉뒿?덈떎.",
         }
         if code in mapping:
             raise HTTPException(status_code=400, detail=mapping[code]) from exc
@@ -1026,7 +1076,7 @@ def get_sanction_signature_image(sanction_id: int, db: DbDep, current_user: Curr
 
 @router.get("/hq/grade-stats")
 def hq_grade_stats(db: DbDep, current_user: CurrentUserDep):
-    """본사 — 전체·팀별·현장별 등급 분포."""
+    """蹂몄궗 ???꾩껜쨌?蹂꽷룻쁽?λ퀎 ?깃툒 遺꾪룷."""
     assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     return service.build_hq_grade_stats(db, period)
@@ -1034,20 +1084,20 @@ def hq_grade_stats(db: DbDep, current_user: CurrentUserDep):
 
 @router.get("/hq/sites/{site_code}/grade-stats")
 def hq_site_grade_stats(site_code: str, db: DbDep, current_user: CurrentUserDep):
-    """본사 — 특정 현장 등급 분포."""
+    """蹂몄궗 ???뱀젙 ?꾩옣 ?깃툒 遺꾪룷."""
     assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     try:
         return service.build_site_grade_stats(db, period, site_code.strip())
     except ValueError as exc:
         if str(exc) in {"NO_ATTENDANCE_WORKERS", "NO_SITE_IN_REGISTRY"}:
-            raise HTTPException(status_code=404, detail="출역 대상 근로자가 없습니다.") from exc
+            raise HTTPException(status_code=404, detail="異쒖뿭 ???洹쇰줈?먭? ?놁뒿?덈떎.") from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/my-site/grade-stats")
 def my_site_grade_stats(db: DbDep, current_user: CurrentUserDep):
-    """현장 — 당 현장 등급 분포."""
+    """?꾩옣 ?????꾩옣 ?깃툒 遺꾪룷."""
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
     site_code = service._site_code_for_user(current_user, db)
@@ -1055,7 +1105,7 @@ def my_site_grade_stats(db: DbDep, current_user: CurrentUserDep):
         return service.build_site_grade_stats(db, period, site_code)
     except ValueError as exc:
         if str(exc) in {"NO_ATTENDANCE_WORKERS", "NO_SITE_IN_REGISTRY"}:
-            raise HTTPException(status_code=404, detail="출역 대상 근로자가 없습니다.") from exc
+            raise HTTPException(status_code=404, detail="異쒖뿭 ???洹쇰줈?먭? ?놁뒿?덈떎.") from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -1066,8 +1116,9 @@ def hq_summary(
     sort_by: str = Query(default="site_code"),
     sort_dir: str = Query(default="asc"),
     site_code: str | None = Query(default=None),
+    include_inactive: bool = Query(default=True),
 ):
-    """현장별 평가 진행률 목록 (근로자 상세 미포함)."""
+    """?꾩옣蹂??됯? 吏꾪뻾瑜?紐⑸줉 (洹쇰줈???곸꽭 誘명룷??."""
     assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     return service.build_hq_summary_response(
@@ -1076,15 +1127,16 @@ def hq_summary(
         sort_by=sort_by,
         sort_dir=sort_dir,
         site_code=site_code,
+        include_inactive=include_inactive,
     )
 
 
 @router.get("/hq/monitoring-summary")
 def hq_monitoring_summary(db: DbDep, current_user: CurrentUserDep):
-    """운영지표 전용 모니터링 집계(접속중/평가중/평가완료)."""
+    """?댁쁺吏???꾩슜 紐⑤땲?곕쭅 吏묎퀎(?묒냽以??됯?以??됯??꾨즺)."""
     assert_fe_hq_monitoring(current_user)
     period = service.get_or_create_active_period(db)
-    return service.build_hq_monitoring_summary(db, period)
+    return service.get_hq_monitoring_summary(db, period)
 
 
 @router.get("/hq/sites/{site_code}/evaluations")
@@ -1095,7 +1147,7 @@ def hq_site_evaluations(
     sort_by: str = Query(default="name"),
     sort_dir: str = Query(default="asc"),
 ):
-    """현장별 평가 완료자만 (기능+안전 모두 완료)."""
+    """?꾩옣蹂??됯? ?꾨즺?먮쭔 (湲곕뒫+?덉쟾 紐⑤몢 ?꾨즺)."""
     assert_fe_hq_read(current_user)
     period = service.get_or_create_active_period(db)
     return service.list_hq_site_completed_evaluations(
@@ -1147,7 +1199,7 @@ async def site_aggregate_apply(
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ):
-    """월별현장별집계 xls — 현장코드·별칭(대우청라)·소장 로그인 ID 매핑."""
+    """?붾퀎?꾩옣蹂꾩쭛怨?xls ???꾩옣肄붾뱶쨌蹂꾩묶(??곗껌??쨌?뚯옣 濡쒓렇??ID 留ㅽ븨."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     tmp = await _save_upload(file, period.id)
@@ -1158,11 +1210,11 @@ async def site_aggregate_apply(
     except ValueError as exc:
         code = str(exc)
         if code == "EMPTY_FILE":
-            raise HTTPException(status_code=400, detail="파일이 비어 있습니다.") from exc
+            raise HTTPException(status_code=400, detail="?뚯씪??鍮꾩뼱 ?덉뒿?덈떎.") from exc
         if code == "NO_SITE_AGGREGATE_ROWS":
-            raise HTTPException(status_code=400, detail="현장 집계 행을 찾을 수 없습니다.") from exc
+            raise HTTPException(status_code=400, detail="?꾩옣 吏묎퀎 ?됱쓣 李얠쓣 ???놁뒿?덈떎.") from exc
         if code == "PERIOD_CLOSED":
-            raise HTTPException(status_code=409, detail="마감일이 지나 반영할 수 없습니다.") from exc
+            raise HTTPException(status_code=409, detail="留덇컧?쇱씠 吏??諛섏쁺?????놁뒿?덈떎.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return result
 
@@ -1173,7 +1225,7 @@ async def attendance_apply(
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ):
-    """ERP 출역일보 xls/xlsx — 집계 반영 후 1일 1회 업로드(별칭-이름 계정·팀장 자동)."""
+    """ERP 異쒖뿭?쇰낫 xls/xlsx ??吏묎퀎 諛섏쁺 ??1??1???낅줈??蹂꾩묶-?대쫫 怨꾩젙쨌????먮룞)."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     tmp = await _save_upload(file, period.id)
@@ -1184,25 +1236,25 @@ async def attendance_apply(
     except ValueError as exc:
         code = str(exc)
         if code == "EMPTY_FILE":
-            raise HTTPException(status_code=400, detail="파일이 비어 있습니다.") from exc
+            raise HTTPException(status_code=400, detail="?뚯씪??鍮꾩뼱 ?덉뒿?덈떎.") from exc
         if code == "NO_ATTENDANCE_ROWS":
-            raise HTTPException(status_code=400, detail="출역 근로자 행을 찾을 수 없습니다.") from exc
+            raise HTTPException(status_code=400, detail="異쒖뿭 洹쇰줈???됱쓣 李얠쓣 ???놁뒿?덈떎.") from exc
         if code == "MULTIPLE_WORK_DATES":
-            raise HTTPException(status_code=400, detail="한 파일에 출역일이 여러 개입니다.") from exc
+            raise HTTPException(status_code=400, detail="???뚯씪??異쒖뿭?쇱씠 ?щ윭 媛쒖엯?덈떎.") from exc
         if code == "SITE_REGISTRY_REQUIRED":
             raise HTTPException(
                 status_code=400,
-                detail="먼저 월별현장별집계 파일을 반영한 뒤 출역일보를 업로드하세요.",
+                detail="癒쇱? ?붾퀎?꾩옣蹂꾩쭛怨??뚯씪??諛섏쁺????異쒖뿭?쇰낫瑜??낅줈?쒗븯?몄슂.",
             ) from exc
         if code == "PERIOD_CLOSED":
-            raise HTTPException(status_code=409, detail="마감일이 지나 반영할 수 없습니다.") from exc
+            raise HTTPException(status_code=409, detail="留덇컧?쇱씠 吏??諛섏쁺?????놁뒿?덈떎.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return result
 
 
 @router.get("/hq/evaluator-accounts")
 def list_evaluator_accounts(db: DbDep, current_user: CurrentUserDep):
-    """소장·팀장(중간 평가자) 계정 목록 — 출역 반영·배정 현황 (본사 배포용)."""
+    """?뚯옣쨌???以묎컙 ?됯??? 怨꾩젙 紐⑸줉 ??異쒖뿭 諛섏쁺쨌諛곗젙 ?꾪솴 (蹂몄궗 諛고룷??."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     return service.list_hq_evaluator_accounts(db, period)
@@ -1214,7 +1266,7 @@ async def apply_team_leaders(
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ):
-    """10명 초과 현장에 팀장 계정 발급 및 팀원 배정(이하 현장은 소장이 전원 평가)."""
+    """10紐?珥덇낵 ?꾩옣?????怨꾩젙 諛쒓툒 諛????諛곗젙(?댄븯 ?꾩옣? ?뚯옣???꾩썝 ?됯?)."""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     tmp = await _save_upload(file, period.id)
@@ -1223,11 +1275,11 @@ async def apply_team_leaders(
     except ValueError as exc:
         code = str(exc)
         if code == "TEAM_ASSIGNMENT_UNSUPPORTED_FILE":
-            raise HTTPException(status_code=400, detail="지원 형식은 .txt/.xls/.xlsx 입니다.") from exc
+            raise HTTPException(status_code=400, detail="吏???뺤떇? .txt/.xls/.xlsx ?낅땲??") from exc
         if code == "TEAM_ASSIGNMENT_HEADER_INVALID":
-            raise HTTPException(status_code=400, detail="필수 컬럼(현장코드/팀장명/팀장주민번호/팀원명)을 확인하세요.") from exc
+            raise HTTPException(status_code=400, detail="?꾩닔 而щ읆(?꾩옣肄붾뱶/??λ챸/??μ＜誘쇰쾲????먮챸)???뺤씤?섏꽭??") from exc
         if code in {"NO_TEAM_ASSIGNMENT_ROWS", "EMPTY_FILE"}:
-            raise HTTPException(status_code=400, detail="반영 가능한 팀장/팀원 행이 없습니다.") from exc
+            raise HTTPException(status_code=400, detail="諛섏쁺 媛?ν븳 ???????됱씠 ?놁뒿?덈떎.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return {"period": service.serialize_period(period, db), **result}
 
@@ -1238,7 +1290,7 @@ async def import_roster_legacy(
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
 ):
-    """일용직 명부 적용 (DIFF 반영). `/hq/roster/apply` 와 동일."""
+    """?쇱슜吏?紐낅? ?곸슜 (DIFF 諛섏쁺). `/hq/roster/apply` ? ?숈씪."""
     return await roster_apply(db, current_user, file)
 
 
@@ -1248,7 +1300,7 @@ def export_hq_evaluations_excel(
     current_user: CurrentUserDep,
     site_code: str | None = Query(default=None),
 ):
-    """평가 현황 엑셀 — 전체 또는 현장별 근로자 평가상태표."""
+    """?됯? ?꾪솴 ?묒? ???꾩껜 ?먮뒗 ?꾩옣蹂?洹쇰줈???됯??곹깭??"""
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
 
@@ -1258,18 +1310,18 @@ def export_hq_evaluations_excel(
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "평가현황"
+    ws.title = "?됯??꾪솴"
     ws.append(
         [
-            "현장코드",
+            "?꾩옣肄붾뱶",
             "현장명",
-            "평가자(소장)",
-            "성명",
-            "평가상태",
-            "품질등급",
-            "안전등급",
-            "전체완료",
-            "비고",
+            "?됯????뚯옣)",
+            "?깅챸",
+            "?됯??곹깭",
+            "?덉쭏?깃툒",
+            "?덉쟾?깃툒",
+            "?꾩껜?꾨즺",
+            "鍮꾧퀬",
         ]
     )
     for row in service.list_hq_eval_export_rows(db, period, site_code=site_code):
@@ -1309,7 +1361,7 @@ def export_hq_excel(
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     if not service.period_is_closed(period):
-        raise HTTPException(status_code=409, detail="마감 후에만 다운로드할 수 있습니다.")
+        raise HTTPException(status_code=409, detail="留덇컧 ?꾩뿉留??ㅼ슫濡쒕뱶?????덉뒿?덈떎.")
 
     import io
 
@@ -1317,25 +1369,25 @@ def export_hq_excel(
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "제재현황"
+    ws.title = "?쒖옱?꾪솴"
     ws.append(
         [
-            "현장코드",
-            "성명",
-            "명부상태",
-            "제재상태",
-            "위반항목",
-            "제재결과",
-            "누적차수",
-            "비고",
-            "등록일시",
+            "?꾩옣肄붾뱶",
+            "?깅챸",
+            "紐낅??곹깭",
+            "?쒖옱?곹깭",
+            "?꾨컲??ぉ",
+            "?쒖옱寃곌낵",
+            "?꾩쟻李⑥닔",
+            "鍮꾧퀬",
+            "?깅줉?쇱떆",
         ]
     )
     items = service.list_hq_summary(db, period, sort_by=sort_by, sort_dir=sort_dir, include_inactive=True)
     for item in items:
         worker = item["worker"]
         sanctions = item["sanctions"]
-        active_label = "재직" if worker.get("is_active") else "명부제외"
+        active_label = "?ъ쭅" if worker.get("is_active") else "紐낅??쒖쇅"
         if not sanctions:
             ws.append(
                 [
@@ -1402,13 +1454,13 @@ async def submit_customer_reward(
         code = str(exc)
         mapping = {
             "WORKER_NOT_FOUND": (404, "Worker not found"),
-            "SITE_ONLY": (403, "현장 계정만 제출할 수 있습니다."),
-            "REWARD_ALREADY_PENDING": (409, "승인 대기 중인 포상 제출이 있습니다."),
-            "REWARD_ALREADY_SUBMITTED": (409, "이미 제출된 포상 사진은 회수·변경할 수 없습니다."),
-            "INVALID_REWARD_PHOTO_TYPE": (400, "jpg, png, webp 이미지만 업로드할 수 있습니다."),
-            "EMPTY_REWARD_PHOTO": (400, "빈 파일입니다."),
-            "REWARD_PHOTO_TOO_LARGE": (400, "8MB 이하 이미지만 업로드할 수 있습니다."),
-            "PERIOD_CLOSED": (409, "평가 마감 후에는 포상·제재 이력만 등록할 수 있습니다."),
+            "SITE_ONLY": (403, "?꾩옣 怨꾩젙留??쒖텧?????덉뒿?덈떎."),
+            "REWARD_ALREADY_PENDING": (409, "?뱀씤 ?湲?以묒씤 ?ъ긽 ?쒖텧???덉뒿?덈떎."),
+            "REWARD_ALREADY_SUBMITTED": (409, "?대? ?쒖텧???ъ긽 ?ъ쭊? ?뚯닔쨌蹂寃쏀븷 ???놁뒿?덈떎."),
+            "INVALID_REWARD_PHOTO_TYPE": (400, "jpg, png, webp ?대?吏留??낅줈?쒗븷 ???덉뒿?덈떎."),
+            "EMPTY_REWARD_PHOTO": (400, "鍮??뚯씪?낅땲??"),
+            "REWARD_PHOTO_TOO_LARGE": (400, "8MB ?댄븯 ?대?吏留??낅줈?쒗븷 ???덉뒿?덈떎."),
+            "PERIOD_CLOSED": (409, "?됯? 留덇컧 ?꾩뿉???ъ긽쨌?쒖옱 ?대젰留??깅줉?????덉뒿?덈떎."),
         }
         if code in mapping:
             status_code, detail = mapping[code]
@@ -1624,7 +1676,7 @@ def download_hq_daily_report_document(report_id: int, db: DbDep, current_user: C
     path = daily_report_service.resolve_report_path(row.report_path)
     if path is None:
         raise HTTPException(status_code=404, detail="REPORT_FILE_MISSING")
-    filename = f"기능인인정제_일일진행현황_{row.report_date.strftime('%Y%m%d')}.pdf"
+    filename = f"湲곕뒫?몄씤?뺤젣_?쇱씪吏꾪뻾?꾪솴_{row.report_date.strftime('%Y%m%d')}.pdf"
     return FileResponse(path, media_type="application/pdf", filename=filename)
 
 
@@ -1633,7 +1685,7 @@ def generate_hq_daily_report(
     db: DbDep,
     current_user: CurrentUserDep,
     report_date: date | None = Query(None),
-    force: bool = Query(False, description="같은 날짜 보고서 재생성(버전 증가)"),
+    force: bool = Query(False, description="媛숈? ?좎쭨 蹂닿퀬???ъ깮??踰꾩쟾 利앷?)"),
 ):
     assert_hq_safe_workspace(current_user)
     from app.modules.functional_eval import daily_report_service
@@ -1653,7 +1705,7 @@ def generate_hq_daily_report(
         )
     except ValueError as exc:
         if str(exc) == "REPORT_ALREADY_EXISTS":
-            raise HTTPException(status_code=409, detail="이미 해당 날짜 보고서가 있습니다. force=true 로 재생성하세요.") from exc
+            raise HTTPException(status_code=409, detail="?대? ?대떦 ?좎쭨 蹂닿퀬?쒓? ?덉뒿?덈떎. force=true 濡??ъ깮?깊븯?몄슂.") from exc
         raise
     return daily_report_service.serialize_daily_report_row(row)
 

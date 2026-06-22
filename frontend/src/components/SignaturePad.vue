@@ -120,10 +120,15 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 
 .signature-canvas {
+  display: block;
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
   border: 1px solid #d1d5db;
   border-radius: 8px;
   background: #fff;

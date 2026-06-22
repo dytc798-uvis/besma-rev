@@ -22,7 +22,7 @@
             class="fe-tl-step fe-tl-step--consent fe-tl-step--done"
             disabled
           >
-            ① 동의서
+            ① 동의서 및 비밀번호
           </button>
           <button
             type="button"
@@ -129,11 +129,12 @@
         </div>
       </header>
       <main class="layout-main layout-main-fe">
-        <p v-if="consentLoading" class="fe-consent-loading" role="status">동의서 확인 중…</p>
+        <p v-if="consentLoading" class="fe-consent-loading" role="status">동의서·비밀번호 상태 확인 중…</p>
         <FeConsentGate
           v-else-if="consentRequired"
           :open="consentRequired"
           :prefill="consentPrefill"
+          :require-password-change="auth.mustChangePassword"
           @completed="onConsentCompleted"
         />
         <RouterView v-else />
@@ -529,4 +530,3 @@ function logout() {
   }
 }
 </style>
-

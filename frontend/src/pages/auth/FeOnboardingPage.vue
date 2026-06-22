@@ -1,33 +1,9 @@
 <template>
   <div class="onboarding-shell">
     <div class="card onboarding-card">
-      <template v-if="step === 'password'">
-        <div class="card-title">최초 로그인 설정</div>
-        <p class="onboarding-lead">보안을 위해 비밀번호를 변경해 주세요.</p>
+      <p v-if="consentLoading" class="onboarding-lead">���Ǽ�����й�ȣ ���� Ȯ�� �ߡ�</p>
 
-        <form class="onboarding-form" @submit.prevent="handleChangePassword">
-          <label>
-            <span>현재 비밀번호</span>
-            <input v-model="currentPassword" type="password" autocomplete="current-password" />
-          </label>
-          <label>
-            <span>새 비밀번호</span>
-            <input v-model="newPassword" type="password" autocomplete="new-password" />
-          </label>
-          <label>
-            <span>새 비밀번호 확인</span>
-            <input v-model="newPasswordConfirm" type="password" autocomplete="new-password" />
-          </label>
-          <button class="primary" type="submit" :disabled="loading">
-            {{ loading ? "변경 중…" : consentNext ? "다음" : "완료" }}
-          </button>
-          <p v-if="errorMessage" class="onboarding-error" role="alert">{{ errorMessage }}</p>
-        </form>
-      </template>
-
-      <template v-else-if="step === 'consent'">
-        <div class="card-title">{{ consentTitle }}</div>
-        <p class="onboarding-lead">{{ consentLead }}</p>
+      <template v-else-if="consentRequired">
         <FeConsentGate
           :open="true"
           :prefill="consentPrefill"
@@ -37,28 +13,27 @@
       </template>
 
       <template v-else>
-        <div class="card-title">설정 완료</div>
-        <p v-if="evaluationOpen" class="onboarding-lead">비밀번호 변경 및 동의서 서명이 완료되었습니다.</p>
-        <p v-else class="onboarding-lead">비밀번호 변경이 완료되었습니다.</p>
-        <p v-if="evaluationOpen" class="onboarding-sub">이제 기능인인정제를 이용할 수 있습니다.</p>
+        <div class="card-title">�Ϸ�</div>
+        <p v-if="evaluationOpen" class="onboarding-lead">���ǰ� �Ϸ�Ǿ� ��������� ������ �����մϴ�.</p>
+        <p v-else class="onboarding-lead">���ǰ� ���� �ݿ����� �ʾ� ���߿� ���� �����մϴ�.</p>
+        <p v-if="evaluationOpen" class="onboarding-sub">�Է� �Ϸ� �� ��������� ȭ������ �̵��մϴ�.</p>
         <p v-else class="onboarding-sub">
-          평가는 <strong>{{ evaluationOpensAtLabel || "6월 16일 오전 6시" }}</strong>부터 가능합니다.
-          오늘은 비밀번호 변경만 완료하시면 됩니다.
+          ������ <strong>{{ evaluationOpensAtLabel || "6/16 ����" }}</strong> �Դϴ�.
+          ��������� ������ �ش� ���� ���Ŀ� �����մϴ�.
         </p>
-        <button class="primary onboarding-done-btn" type="button" @click="goHome">{{ evaluationOpen ? "시작하기" : "확인" }}</button>
+        <button class="primary onboarding-done-btn" type="button" @click="goHome">{{ evaluationOpen ? "�����ϱ�" : "Ȯ��" }}</button>
       </template>
 
       <p class="onboarding-logout">
-        <button type="button" class="secondary" @click="handleLogout">다른 계정으로 로그인</button>
+        <button type="button" class="secondary" @click="handleLogout">�α׾ƿ�</button>
       </p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { onMounted } from "vue";
 import { useRouter } from "vue-router";
-import axios from "axios";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
@@ -68,97 +43,32 @@ import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
 
 const router = useRouter();
 const auth = useAuthStore();
-const { consentPrefill, checkConsent, onConsentCompleted: markConsentDone, evaluationOpen, evaluationOpensAtLabel } = useFeConsentCheck();
-
-const currentPassword = ref("");
-const newPassword = ref("");
-const newPasswordConfirm = ref("");
-const loading = ref(false);
-const errorMessage = ref("");
-const step = ref<"password" | "consent" | "done">("password");
-
-const consentNext = computed(() => auth.needsFeConsent && auth.feConsentRequired);
-
-const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
-const consentTitle = computed(
-  () =>
-    (consentPrefill.value?.consent_title as string | undefined) ||
-    (isFeViewer.value
-      ? "기능인인정제 평가정보 조회 및 비밀유지 동의서"
-      : "기능인인정제 평가 수행 및 전자서명 동의서"),
-);
-const consentLead = computed(() =>
-  isFeViewer.value
-    ? "조회한 평가정보를 무단 복사·배포하지 않으며, 업무 목적 범위 내에서만 조회함을 확인합니다."
-    : "평가 업무 수행, 전자서명 및 평가 내용에 대한 책임 사항을 확인하였으며 이에 동의합니다.",
-);
-
-function resolveStep() {
-  if (auth.needsFeConsent && auth.feConsentRequired) {
-    step.value = "consent";
-    return;
-  }
-  if (auth.mustChangePassword) {
-    step.value = "password";
-    return;
-  }
-  step.value = "done";
-}
+const {
+  consentPrefill,
+  consentLoading,
+  consentRequired,
+  checkConsent,
+  onConsentCompleted: markConsentDone,
+  evaluationOpen,
+  evaluationOpensAtLabel,
+} = useFeConsentCheck();
 
 onMounted(async () => {
   if (!auth.user) {
     await auth.loadMe({ skipAuthRedirect: true });
   }
-  void checkConsent();
-  resolveStep();
-  if (step.value === "consent") {
-    await checkConsent();
-  }
-  if (step.value === "done") {
+  await checkConsent();
+  if (!auth.mustChangePassword && !consentRequired.value) {
     void goHome();
   }
 });
 
-function formatApiError(err: unknown): string {
-  if (axios.isAxiosError(err)) {
-    const d = err.response?.data?.detail;
-    if (typeof d === "string") {
-      if (d === "CURRENT_PASSWORD_INCORRECT") return "현재 비밀번호가 올바르지 않습니다.";
-      if (d === "NEW_PASSWORD_CONFIRM_MISMATCH") return "새 비밀번호 확인이 일치하지 않습니다.";
-      return d;
-    }
-  }
-  return "요청을 처리할 수 없습니다.";
-}
-
-async function handleChangePassword() {
-  loading.value = true;
-  errorMessage.value = "";
-  try {
-    await api.post("/auth/change-password", {
-      current_password: currentPassword.value,
-      new_password: newPassword.value,
-      new_password_confirm: newPasswordConfirm.value,
-    });
-    await auth.loadMe({ skipAuthRedirect: true });
-    if (auth.needsFeConsent && auth.feConsentRequired) {
-      step.value = "consent";
-      await checkConsent();
-      return;
-    }
-    step.value = "done";
-    await goHome();
-  } catch (e) {
-    errorMessage.value = formatApiError(e);
-  } finally {
-    loading.value = false;
-  }
-}
-
 async function handleConsentCompleted() {
   markConsentDone();
   await auth.loadMe({ skipAuthRedirect: true });
-  step.value = "done";
+  if (!consentRequired.value) {
+    await goHome();
+  }
 }
 
 async function goHome() {
@@ -211,29 +121,6 @@ async function handleLogout() {
   margin: 0 0 16px;
   font-size: 13px;
   color: #64748b;
-}
-.onboarding-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.onboarding-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: #475569;
-}
-.onboarding-form input {
-  font-size: 16px;
-  padding: 10px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-}
-.onboarding-error {
-  margin: 0;
-  color: #b91c1c;
-  font-size: 13px;
 }
 .onboarding-done-btn {
   width: 100%;

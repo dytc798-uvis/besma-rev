@@ -17,6 +17,8 @@ class FunctionalEvalPeriod(Base):
     last_attendance_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     hq_grade_stats_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     hq_grade_stats_computed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    hq_monitoring_summary_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    hq_monitoring_summary_computed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     grade_stats_live_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

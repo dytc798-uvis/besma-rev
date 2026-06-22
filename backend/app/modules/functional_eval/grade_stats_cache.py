@@ -15,7 +15,7 @@ from app.modules.functional_eval.constants import (
 from app.modules.functional_eval.models import FunctionalEvalPeriod, FunctionalEvalSiteRegistry
 
 GRADE_STAT_CODES: tuple[str, ...] = ("S", "A", "B", "C")
-HQ_GRADE_STATS_CACHE_TTL = timedelta(hours=1)
+HQ_GRADE_STATS_CACHE_TTL = timedelta(days=1)
 
 
 def _live_from_date(period: FunctionalEvalPeriod) -> date:
