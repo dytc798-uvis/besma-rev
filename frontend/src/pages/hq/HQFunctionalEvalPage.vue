@@ -21,25 +21,73 @@
     </div>
     <p v-if="isFeViewer" class="viewer-banner" role="status">조회전용 계정입니다. 평가·승인·다운로드·수정은 할 수 없습니다.</p>
     <section v-if="isFeViewer" class="viewer-demo-flow panel">
-      <div>
-        <p class="viewer-demo-kicker">운영과 분리된 흐름 안내</p>
+      <div class="viewer-demo-copy">
+        <p class="viewer-demo-kicker">운영과 분리된 데모 흐름</p>
         <h2>팀장 평가 → 소장 제출 → 본사 검토</h2>
-        <p>외부조회용 계정에서는 실제 운영 데이터를 수정하지 않고, 기능인인정제 처리 순서와 현장별 진행 상태만 확인합니다.</p>
+        <p>
+          외부조회용 계정에서는 실제 운영 데이터를 수정하지 않고, 아래 데모 보드로 기능인인정제 처리 흐름을 한 번에 확인합니다.
+        </p>
       </div>
-      <ol class="viewer-demo-steps">
-        <li>
-          <strong>1. 데모 팀장</strong>
-          <span>배정 근로자의 기능·안전 평가를 저장하고 팀장 서명을 진행합니다.</span>
-        </li>
-        <li>
-          <strong>2. 데모 소장</strong>
-          <span>직영 평가와 팀장 보고서를 확인한 뒤 현장 제출을 완료합니다.</span>
-        </li>
-        <li>
-          <strong>3. 본사</strong>
-          <span>등급 통계, 병목 현장, 승인 대기 현황을 조회하고 검토 흐름을 확인합니다.</span>
-        </li>
-      </ol>
+      <div class="viewer-demo-board" aria-label="기능인인정제 데모 흐름">
+        <article class="viewer-demo-screen viewer-demo-screen--team">
+          <div class="viewer-demo-screen__top">
+            <span class="viewer-demo-step-no">1</span>
+            <div>
+              <strong>데모 팀장</strong>
+              <small>배정 근로자 평가 저장</small>
+            </div>
+            <span class="viewer-demo-status viewer-demo-status--done">평가중</span>
+          </div>
+          <div class="viewer-demo-worker-card">
+            <span>김기능</span>
+            <strong>기능 B · 안전 S</strong>
+          </div>
+          <div class="viewer-demo-grid">
+            <span>작업숙련도</span><b>B</b>
+            <span>작업태도</span><b>A</b>
+            <span>안전수칙</span><b>S</b>
+          </div>
+          <button type="button" class="viewer-demo-button" disabled>평가 저장 데모</button>
+        </article>
+
+        <div class="viewer-demo-arrow" aria-hidden="true">→</div>
+
+        <article class="viewer-demo-screen viewer-demo-screen--manager">
+          <div class="viewer-demo-screen__top">
+            <span class="viewer-demo-step-no">2</span>
+            <div>
+              <strong>데모 소장</strong>
+              <small>직영 평가 + 팀장 보고서 확인</small>
+            </div>
+            <span class="viewer-demo-status viewer-demo-status--ready">제출대기</span>
+          </div>
+          <div class="viewer-demo-progress">
+            <div><span>직영</span><strong>12/12</strong></div>
+            <div><span>팀장 보고서</span><strong>3/3</strong></div>
+            <div><span>현장 완료율</span><strong>100%</strong></div>
+          </div>
+          <div class="viewer-demo-signline">소장 평가완료보고서 서명 후 본사 제출</div>
+        </article>
+
+        <div class="viewer-demo-arrow" aria-hidden="true">→</div>
+
+        <article class="viewer-demo-screen viewer-demo-screen--hq">
+          <div class="viewer-demo-screen__top">
+            <span class="viewer-demo-step-no">3</span>
+            <div>
+              <strong>본사</strong>
+              <small>등급 통계 · 병목 · 승인 대기 확인</small>
+            </div>
+            <span class="viewer-demo-status viewer-demo-status--review">검토</span>
+          </div>
+          <div class="viewer-demo-kpis">
+            <div><span>완료 현장</span><strong>63</strong></div>
+            <div><span>병목 현장</span><strong>0</strong></div>
+            <div><span>통계 캐시</span><strong>1일</strong></div>
+          </div>
+          <div class="viewer-demo-review-line">안전보건 담당 → 안전보건실장 → 대표 승인 흐름 확인</div>
+        </article>
+      </div>
     </section>
     <div class="page-head" :class="{ 'page-head--mobile': isMobileViewport }">
       <div>
@@ -2747,6 +2795,119 @@ async function downloadSanctionExcel() {
     font-size: 22px;
   }
 }
+
+.viewer-demo-board {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 28px minmax(220px, 1fr) 28px minmax(220px, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+.viewer-demo-screen {
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.viewer-demo-screen--team { border-top: 4px solid #2563eb; }
+.viewer-demo-screen--manager { border-top: 4px solid #f97316; }
+.viewer-demo-screen--hq { border-top: 4px solid #16a34a; }
+.viewer-demo-screen__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.viewer-demo-screen__top strong { display: block; font-size: 15px; color: #0f172a; }
+.viewer-demo-screen__top small { display: block; color: #64748b; margin-top: 2px; }
+.viewer-demo-step-no {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #fff;
+  font-weight: 800;
+}
+.viewer-demo-status {
+  margin-left: auto;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.viewer-demo-status--done { background: #dbeafe; color: #1d4ed8; }
+.viewer-demo-status--ready { background: #ffedd5; color: #c2410c; }
+.viewer-demo-status--review { background: #dcfce7; color: #15803d; }
+.viewer-demo-worker-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+.viewer-demo-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 10px;
+  padding: 10px;
+  border: 1px dashed #bfdbfe;
+  border-radius: 12px;
+}
+.viewer-demo-grid span, .viewer-demo-progress span, .viewer-demo-kpis span { color: #64748b; font-size: 12px; }
+.viewer-demo-grid b { color: #0f172a; }
+.viewer-demo-button {
+  margin-top: auto;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+  opacity: 0.7;
+}
+.viewer-demo-progress, .viewer-demo-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.viewer-demo-progress div, .viewer-demo-kpis div {
+  padding: 10px;
+  border-radius: 12px;
+  background: #f1f5f9;
+}
+.viewer-demo-progress strong, .viewer-demo-kpis strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 17px;
+  color: #0f172a;
+}
+.viewer-demo-signline, .viewer-demo-review-line {
+  margin-top: auto;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-weight: 700;
+}
+.viewer-demo-review-line { background: #f0fdf4; color: #166534; }
+.viewer-demo-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 24px;
+  font-weight: 900;
+}
+@media (max-width: 1100px) {
+  .viewer-demo-board { grid-template-columns: 1fr; }
+  .viewer-demo-arrow { transform: rotate(90deg); min-height: 24px; }
+}
 </style>
-
-
