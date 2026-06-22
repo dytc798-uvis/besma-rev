@@ -1,4 +1,4 @@
-/** 기능인인정제 설명 — 슬라이드 정의 (캡처는 UI 요소 단위, 강조 오버레이 없음) */
+﻿/** 기능인인정제 설명 — 슬라이드 정의 (캡처는 UI 요소 단위, 강조 오버레이 없음) */
 
 export type FeGuideImageLayout = "single" | "dual" | "triple" | "phone-reward";
 
@@ -45,7 +45,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
         "최초 1회만 표시됩니다. 동의문 확인 후 체크 · 서명 · 「동의 및 서명」",
         "서명 완료 후에는 다시 표시되지 않습니다.",
       ],
-      images: [img("consent_modal.png")],
+      images: [img("fe-onboarding-password-consent-modal.png")],
       layout: "single",
     },
     {
@@ -110,7 +110,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
     {
       title: "2. 기능인인정제 평가 동의서를 읽고 서명합니다.",
       bullets: ["최초 1회 동의·서명 후 기능인제 업무를 수행합니다."],
-      images: [img("consent_modal.png")],
+      images: [img("fe-onboarding-password-consent-modal.png")],
       layout: "single",
     },
     {
@@ -178,7 +178,7 @@ export const FE_GUIDE_SLIDES: Record<string, FeGuideSlide[]> = {
     {
       title: "2. 기능인인정제 평가 동의서(최초 1회)",
       bullets: ["본사·대표 계정도 최초 접속 시 동의·서명이 필요합니다."],
-      images: [img("consent_modal.png")],
+      images: [img("fe-onboarding-password-consent-modal.png")],
       layout: "single",
     },
     {

@@ -208,6 +208,7 @@ class FunctionalEvalSiteApproval(Base):
     period_id: Mapped[int] = mapped_column(ForeignKey("functional_eval_periods.id"), nullable=False, index=True)
     site_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="IN_PROGRESS", index=True)
+    evaluation_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     site_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     site_submitted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     hq_officer_approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

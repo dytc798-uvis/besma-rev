@@ -37,6 +37,7 @@ from app.modules.functional_eval.models import (
     FunctionalEvalAttendanceEntry,
     FunctionalEvalAttendanceImportBatch,
     FunctionalEvalCustomerReward,
+    FunctionalEvalDailyReport,
     FunctionalEvalPeriod,
     FunctionalEvalRosterImportBatch,
     FunctionalEvalSanction,
@@ -1152,6 +1153,87 @@ def _aggregate_site_eval_stats(
     return sites
 
 
+def _site_completed_in_report_snapshot(snapshot: dict[str, Any] | None, site_code: str) -> bool:
+    if not snapshot:
+        return False
+    for row in snapshot.get("sites") or []:
+        if str(row.get("site_code") or "") != str(site_code or ""):
+            continue
+        total = int(row.get("total_workers") or row.get("total") or 0)
+        completed = int(row.get("completed_workers") or row.get("fully_complete") or 0)
+        rate = float(row.get("completion_rate_pct") or row.get("progress_pct") or 0)
+        if total > 0 and (completed >= total or rate >= 100):
+            return True
+    return False
+
+
+def _locked_completed_site_codes(db: Session, period: FunctionalEvalPeriod) -> set[str]:
+    codes: set[str] = set()
+    approval_rows = (
+        db.query(FunctionalEvalSiteApproval)
+        .filter(FunctionalEvalSiteApproval.period_id == period.id)
+        .all()
+    )
+    for row in approval_rows:
+        status = (row.status or "").strip()
+        if row.evaluation_completed_at or row.site_submitted_at or status not in {"IN_PROGRESS", "REJECTED"}:
+            codes.add(str(row.site_code or ""))
+    reports = (
+        db.query(FunctionalEvalDailyReport)
+        .filter(FunctionalEvalDailyReport.period_id == period.id)
+        .all()
+    )
+    for report in reports:
+        snapshot = report.report_json_snapshot or {}
+        for site in snapshot.get("sites") or []:
+            code = str(site.get("site_code") or "")
+            if code and _site_completed_in_report_snapshot(snapshot, code):
+                codes.add(code)
+    return codes
+
+
+def _mark_site_eval_completed(db: Session, period: FunctionalEvalPeriod, site_code: str) -> None:
+    if not site_code:
+        return
+    row = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
+    if row.evaluation_completed_at is None:
+        row.evaluation_completed_at = utc_now()
+        db.add(row)
+
+
+def _apply_site_completion_locks(
+    db: Session,
+    period: FunctionalEvalPeriod,
+    sites: list[dict[str, Any]],
+) -> None:
+    locked_codes = _locked_completed_site_codes(db, period)
+    touched = False
+    for row in sites:
+        code = str(row.get("site_code") or "")
+        total = int(row.get("total") or 0)
+        fully = int(row.get("fully_complete") or 0)
+        currently_complete = total > 0 and fully >= total
+        locked = code in locked_codes or currently_complete
+        if not locked:
+            continue
+        if currently_complete:
+            _mark_site_eval_completed(db, period, code)
+            touched = True
+        row["completion_locked"] = True
+        row["completion_lock_reason"] = "site_once_completed"
+        row["fully_complete"] = total
+        row["functional_complete"] = max(int(row.get("functional_complete") or 0), total)
+        row["safety_complete"] = max(int(row.get("safety_complete") or 0), total)
+        row["incomplete"] = 0
+        row["progress"] = f"{total}/{total}"
+        row["progress_pct"] = 100 if total > 0 else 0
+        row["has_completed"] = total > 0
+        row["bucket"] = HQ_SITE_BUCKET_COMPLETED if total > 0 else HQ_SITE_BUCKET_NOT_STARTED
+        row["bucket_label"] = _hq_site_bucket_label(row["bucket"])
+    if touched:
+        db.commit()
+
+
 def _attendance_target_workers(
     db: Session,
     period: FunctionalEvalPeriod,
@@ -1446,6 +1528,7 @@ def build_hq_sites_overview(
         rep_evaluators=rep_evaluators,
         evaluator_site_codes=evaluator_site_codes,
     )
+    _apply_site_completion_locks(db, period, sites)
     for row in sites:
         row["attendance_pending"] = False
 
@@ -1473,7 +1556,11 @@ def build_hq_sites_overview(
 
     sites.sort(key=_key, reverse=reverse)
     total_workers = len(workers)
-    fully = sum(1 for w in workers if _is_fully_evaluated(_worker_assess_payload(assess_map, w.id)))
+    fully = sum(int(row.get("fully_complete") or 0) for row in sites)
+    worker_status_counts["completed"] = fully
+    remaining = max(0, total_workers - fully)
+    worker_status_counts["in_progress"] = min(int(worker_status_counts.get("in_progress") or 0), remaining)
+    worker_status_counts["not_started"] = max(0, remaining - worker_status_counts["in_progress"])
     attendance_message = None
     if not has_attendance:
         attendance_message = (
@@ -1573,6 +1660,9 @@ def list_hq_site_completed_evaluations(
     evaluators = _site_evaluator_map(db, {site_code})
     total = len(items)
     fully = sum(1 for i in items if _is_fully_evaluated(i["worker"]))
+    locked = site_code in _locked_completed_site_codes(db, period) or (total > 0 and fully >= total)
+    if locked:
+        fully = total
     first = items[0]["worker"] if items else {}
     site_row = {
         "site_code": site_code,
@@ -1583,6 +1673,7 @@ def list_hq_site_completed_evaluations(
         "progress": f"{fully}/{total}",
         "progress_pct": round((fully / total) * 100) if total > 0 else 0,
         "has_completed": fully > 0,
+        "completion_locked": locked,
         "bucket": classify_hq_site_bucket(fully_complete=fully, total=total),
         "bucket_label": _hq_site_bucket_label(classify_hq_site_bucket(fully_complete=fully, total=total)),
     }
@@ -2003,6 +2094,11 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
             team_total += 1
             if _is_fully_evaluated(payload):
                 team_complete += 1
+    locked = site_code in _locked_completed_site_codes(db, period) or (len(rows) > 0 and complete >= len(rows))
+    if locked:
+        complete = len(rows)
+        direct_complete = direct_total
+        team_complete = team_total
     approval_row = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
     status = approval_row.status
     batches = sorted({r.evaluation_batch or 0 for r in rows})
@@ -2019,6 +2115,7 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
         "team_total": team_total,
         "team_complete": team_complete,
         "incomplete_count": len(rows) - complete,
+        "completion_locked": locked,
         "can_submit_site_approval": complete == len(rows) and len(rows) > 0
         and approval_workflow.is_site_evaluation_editable(status),
         "can_self_reject_site_approval": status == "SITE_APPROVED",
