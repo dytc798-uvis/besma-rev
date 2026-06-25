@@ -377,7 +377,7 @@
       <p v-if="uploadError" class="upload-error">{{ uploadError }}</p>
       <div class="modal-actions">
         <button class="secondary" @click="closeUpload">취소</button>
-        <button class="primary" :disabled="!selectedFile || uploading" @click="submitUpload">
+        <button class="primary" :disabled="(!selectedFile && selectedAppendFiles.length === 0) || uploading" @click="submitUpload">
           {{
             uploading
               ? "업로드 중..."
@@ -595,6 +595,7 @@ const completionUploadEnabled = ref(false);
 const uploadTarget = ref<RequirementStatusItem | null>(null);
 const uploadMode = ref<"upload" | "replace">("upload");
 const selectedFile = ref<File | null>(null);
+const selectedAppendFiles = ref<File[]>([]);
 const uploading = ref(false);
 const uploadError = ref("");
 const historyTarget = ref<RequirementStatusItem | null>(null);
@@ -919,6 +920,7 @@ function openUpload(item: RequirementStatusItem) {
   uploadMode.value = "upload";
   uploadTarget.value = item;
   selectedFile.value = null;
+  selectedAppendFiles.value = [];
   uploadError.value = "";
 }
 
@@ -928,6 +930,7 @@ function openReplace(item: RequirementStatusItem) {
   uploadMode.value = "replace";
   uploadTarget.value = item;
   selectedFile.value = null;
+  selectedAppendFiles.value = [];
   uploadError.value = "";
 }
 
@@ -935,6 +938,7 @@ function closeUpload() {
   uploadMode.value = "upload";
   uploadTarget.value = null;
   selectedFile.value = null;
+  selectedAppendFiles.value = [];
   uploadError.value = "";
 }
 
@@ -969,6 +973,11 @@ function onFileChange(e: Event) {
   selectedFile.value = target.files?.[0] ?? null;
 }
 
+function onAppendFilesChange(e: Event) {
+  const target = e.target as HTMLInputElement;
+  selectedAppendFiles.value = target.files ? Array.from(target.files) : [];
+}
+
 function reuploadInstanceId(item: RequirementStatusItem | null) {
   if (!item) return null;
   return item.unresolved_rejected_instance_id || item.current_cycle_instance_id || null;
@@ -994,14 +1003,27 @@ function canReplaceReworkDocument(item: RequirementStatusItem) {
 }
 
 async function submitUpload() {
-  if (!uploadTarget.value || !selectedFile.value || !siteId.value) return;
+  if (!uploadTarget.value || (!selectedFile.value && selectedAppendFiles.value.length === 0) || !siteId.value) return;
   if (uploadTarget.value.section === "COMPLETION" && !completionUploadEnabled.value) return;
   uploading.value = true;
   uploadError.value = "";
   try {
     const form = new FormData();
-    form.append("file", selectedFile.value);
-    if (uploadMode.value === "replace") {
+    if (selectedFile.value) {
+      form.append("file", selectedFile.value);
+    }
+    if (!selectedFile.value && selectedAppendFiles.value.length > 0) {
+      const instId = reuploadInstanceId(uploadTarget.value);
+      if (!instId) throw new Error("append instance missing");
+      form.append("instance_id", String(instId));
+      form.append("append_only", "true");
+      for (const appendFile of selectedAppendFiles.value) {
+        form.append("append_files", appendFile);
+      }
+      await api.post("/document-submissions/upload", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    } else if (uploadMode.value === "replace") {
       const instId = replaceInstanceId(uploadTarget.value);
       if (!instId) throw new Error("replace instance missing");
       form.append("instance_id", String(instId));
@@ -1017,6 +1039,9 @@ async function submitUpload() {
       form.append("requirement_id", String(uploadTarget.value.requirement_id));
       form.append("document_type_code", uploadTarget.value.document_type_code);
       form.append("work_date", targetDate.value);
+      for (const appendFile of selectedAppendFiles.value) {
+        form.append("append_files", appendFile);
+      }
       await api.post("/document-submissions/upload", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });

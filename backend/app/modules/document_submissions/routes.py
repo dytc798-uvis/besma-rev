@@ -72,6 +72,33 @@ MERGE_APPEND_DOCUMENT_CODES = frozenset(
 )
 
 
+def _mb(value: int) -> int:
+    return value // (1024 * 1024)
+
+
+def _raise_upload_too_large(message: str) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        detail=message,
+    )
+
+
+def _reject_raw_upload_if_too_large(content: bytes, *, source_name: str) -> None:
+    if len(content) <= settings.document_upload_reject_max_bytes:
+        return
+    _raise_upload_too_large(
+        f"File is too large. Raw upload limit is {_mb(settings.document_upload_reject_max_bytes)}MB. "
+        "Upload the document PDF without embedded photos when possible, then attach photos separately."
+    )
+
+
+def _raise_optimized_upload_too_large() -> None:
+    _raise_upload_too_large(
+        f"File is too large after optimization. Final saved PDF limit is {_mb(settings.document_upload_max_bytes)}MB. "
+        "Upload the document PDF without photos and attach photos separately."
+    )
+
+
 def _ensure_documents_dir() -> Path:
     d = settings.storage_root / settings.documents_dir_name
     d.mkdir(parents=True, exist_ok=True)
@@ -167,6 +194,7 @@ async def _collect_pdf_parts_from_uploads(files: list[UploadFile]) -> list[bytes
     for uf in files:
         raw = await uf.read()
         name = uf.filename or "file.bin"
+        _reject_raw_upload_if_too_large(raw, source_name=name)
         ctype = uf.content_type
         if is_image_upload(name, ctype):
             try:
@@ -333,11 +361,6 @@ async def upload_document_for_instance(
         except LookupError:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instance not found")
         ledger_append = (inst_append.document_type_code or "").strip()
-        if ledger_append not in MERGE_APPEND_DOCUMENT_CODES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="attachment append is not enabled for this document type",
-            )
         assert_not_ledger_managed_document_type(ledger_append)
         if current_user.role == Role.SITE and inst_append.site_id != current_user.site_id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
@@ -381,10 +404,7 @@ async def upload_document_for_instance(
                 detail=f"pdf_merge_failed: {exc}",
             ) from exc
         if len(merged_append) > settings.document_upload_max_bytes:
-            raise HTTPException(
-                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail=f"파일 크기는 최적화 후 기준 {settings.document_upload_max_bytes // (1024 * 1024)}MB 이하만 업로드할 수 있습니다.",
-            )
+            _raise_optimized_upload_too_large()
         _record_upload_history(db, doc=doc_append, action_type="BEFORE_REUPLOAD")
         doc_append.version_no = (doc_append.version_no or 1) + 1
         storage_dir_append = _ensure_documents_dir()
@@ -515,6 +535,7 @@ async def upload_document_for_instance(
     storage_dir = _ensure_documents_dir()
     source_name = file.filename or "upload.bin"
     content = await file.read()
+    _reject_raw_upload_if_too_large(content, source_name=source_name)
     primary_content, primary_ext = _optimize_uploaded_content(content, source_name, file.content_type)
     original_file_path: str | None = None
     optimized_file_path: str | None = None
@@ -534,12 +555,8 @@ async def upload_document_for_instance(
         primary_ext = ".pdf"
 
     ledger_merge = (inst.document_type_code or document_type_code or "").strip()
-    if append_list and ledger_merge not in MERGE_APPEND_DOCUMENT_CODES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="append_files are only allowed for daily merge-enabled document types",
-        )
-    if append_list and ledger_merge in MERGE_APPEND_DOCUMENT_CODES:
+    if append_list:
+        assert_not_ledger_managed_document_type(ledger_merge)
         if primary_ext != ".pdf":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -558,10 +575,7 @@ async def upload_document_for_instance(
             ) from exc
 
     if len(primary_content) > settings.document_upload_max_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"파일 크기는 최적화 후 기준 {settings.document_upload_max_bytes // (1024 * 1024)}MB 이하만 업로드할 수 있습니다.",
-        )
+        _raise_optimized_upload_too_large()
     requirement_title = (
         db.query(DocumentRequirement.title)
         .filter(DocumentRequirement.id == inst.selected_requirement_id)
@@ -730,6 +744,7 @@ async def replace_uploaded_document_file(
 
     source_name = file.filename or "upload.bin"
     content = await file.read()
+    _reject_raw_upload_if_too_large(content, source_name=source_name)
     primary_content, primary_ext = _optimize_uploaded_content(content, source_name, file.content_type)
     original_file_path: str | None = None
     optimized_file_path: str | None = None
@@ -750,10 +765,7 @@ async def replace_uploaded_document_file(
         primary_ext = ".pdf"
 
     if len(primary_content) > settings.document_upload_max_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"파일 크기는 최적화 후 기준 {settings.document_upload_max_bytes // (1024 * 1024)}MB 이하만 업로드할 수 있습니다.",
-        )
+        _raise_optimized_upload_too_large()
 
     requirement_title = (
         db.query(DocumentRequirement.title)
@@ -962,4 +974,3 @@ def download_export(
     if not zip_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export not found")
     return FileResponse(path=zip_path, filename=zip_path.name)
-
