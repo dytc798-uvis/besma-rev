@@ -174,7 +174,15 @@ def _get_current_worker_voice_ledger(db, site_id: int | None):
 
 
 def _get_or_create_worker_voice_ledger(db, current_user, site_id: int | None):
-    ledger = _get_current_worker_voice_ledger(db, site_id)
+    ledger = (
+        db.query(WorkerVoiceLedger)
+        .filter(
+            WorkerVoiceLedger.site_id == site_id,
+            WorkerVoiceLedger.source_type == "MANUAL",
+        )
+        .order_by(WorkerVoiceLedger.uploaded_at.desc(), WorkerVoiceLedger.id.desc())
+        .first()
+    )
     if ledger is not None:
         return ledger
     ledger = WorkerVoiceLedger(
@@ -237,6 +245,18 @@ def _worker_voice_import_key(row: dict) -> str:
             _norm_key_part(row.get("worker_birth_date")),
             _norm_key_part(row.get("worker_phone_number")),
             _norm_key_part(row.get("opinion_text")),
+        ]
+    )
+
+
+def _worker_voice_item_dedupe_key(item: WorkerVoiceItem, ledger: WorkerVoiceLedger) -> str:
+    return "|".join(
+        [
+            str(ledger.site_id or ""),
+            _norm_key_part(item.worker_name),
+            _norm_key_part(item.worker_birth_date),
+            _norm_key_part(item.worker_phone_number),
+            _norm_key_part(item.opinion_text),
         ]
     )
 
@@ -880,6 +900,15 @@ def list_worker_voice_items(db: DbDep, current_user: CurrentUserDep):
     if current_user.role == Role.SITE:
         q = q.filter(WorkerVoiceLedger.site_id == current_user.site_id)
     rows = q.order_by(WorkerVoiceLedger.uploaded_at.desc(), WorkerVoiceItem.row_no.asc(), WorkerVoiceItem.id.asc()).all()
+    deduped_rows: list[tuple[WorkerVoiceItem, WorkerVoiceLedger]] = []
+    seen_keys: set[str] = set()
+    for item, ledger in rows:
+        key = _worker_voice_item_dedupe_key(item, ledger)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped_rows.append((item, ledger))
+    rows = deduped_rows
     item_ids = [row[0].id for row in rows]
     comments = (
         db.query(WorkerVoiceComment)
