@@ -108,8 +108,8 @@ const bucketSummaryText = computed(() =>
 );
 const cacheLabel = computed(() => {
   if (!cacheInfo.value?.computed_at) return "";
-  const mode = cacheInfo.value.mode === "cached" ? "캐시" : "갱신";
-  return `${mode} 기준 ${cacheInfo.value.computed_at.slice(0, 16).replace("T", " ")} · 1시간 주기`;
+  const mode = cacheInfo.value.mode === "cached" ? "캐시" : "최신";
+  return `${mode} 기준 ${cacheInfo.value.computed_at.slice(0, 16).replace("T", " ")} · 실시간 집계`;
 });
 
 function assertMonitorRole() {

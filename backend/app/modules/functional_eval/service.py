@@ -2975,23 +2975,11 @@ def _hq_monitoring_summary_cache_expired(period: FunctionalEvalPeriod) -> bool:
 
 
 def get_hq_monitoring_summary(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
-    cached = period.hq_monitoring_summary_json
-    if isinstance(cached, dict) and cached.get("period") and not _hq_monitoring_summary_cache_expired(period):
-        payload = dict(cached)
-        payload["cache"] = {
-            "mode": "cached",
-            "ttl_seconds": int(HQ_MONITORING_SUMMARY_CACHE_TTL.total_seconds()),
-            "computed_at": period.hq_monitoring_summary_computed_at.isoformat()
-            if period.hq_monitoring_summary_computed_at
-            else None,
-        }
-        return payload
-
     payload = build_hq_monitoring_summary(db, period)
     now = utc_now()
     payload["cache"] = {
         "mode": "fresh",
-        "ttl_seconds": int(HQ_MONITORING_SUMMARY_CACHE_TTL.total_seconds()),
+        "ttl_seconds": 0,
         "computed_at": now.isoformat(),
     }
     period.hq_monitoring_summary_json = _json_safe_payload(payload)
