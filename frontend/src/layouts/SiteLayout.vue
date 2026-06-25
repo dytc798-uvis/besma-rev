@@ -61,6 +61,9 @@
           <span class="menu-link-label">내 현장 문서</span>
           <span v-if="badge.incomplete_count > 0" class="menu-count-badge" aria-label="미완료 문서 수">{{ badge.incomplete_count }}</span>
         </RouterLink>
+        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" :style="menuOrderStyle('worker-voice')" to="/site/worker-voice">
+          근로자의견청취
+        </RouterLink>
         <RouterLink :class="menuLinkClass('communications', '/site/communications')" :style="menuOrderStyle('communications')" to="/site/communications">
           소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span>
         </RouterLink>
@@ -80,6 +83,9 @@
         <RouterLink :class="menuLinkClass('documents', '/site/documents')" to="/site/documents" @click="closeMobileDrawer">
           <span class="menu-link-label">내 현장 문서</span>
           <span v-if="badge.incomplete_count > 0" class="menu-count-badge" aria-label="미완료 문서 수">{{ badge.incomplete_count }}</span>
+        </RouterLink>
+        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" to="/site/worker-voice" @click="closeMobileDrawer">
+          근로자의견청취
         </RouterLink>
         <RouterLink
           :class="menuLinkClass('mobile-communications', '/site/mobile/communications')"
@@ -212,6 +218,7 @@ const SITE_FIXED_MENU_KEYS = [
   "mobile",
   "mobile-site-search",
   "documents",
+  "worker-voice",
   "communications",
   "opinions",
   "info",
@@ -233,6 +240,7 @@ const PRIMARY_MENUS = [
   "risk-library",
   "document-explorer",
   "documents",
+  "worker-voice",
 ] as const;
 
 onMounted(() => {

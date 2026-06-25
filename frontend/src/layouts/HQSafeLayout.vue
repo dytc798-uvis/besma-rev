@@ -80,6 +80,13 @@
             문서 취합 현황
           </RouterLink>
           <RouterLink
+            :class="hqMenuEmphasisClass('worker-voice')"
+            :style="menuOrderPrimaryStyle('worker-voice')"
+            to="/hq-safe/worker-voice"
+          >
+            근로자의견청취
+          </RouterLink>
+          <RouterLink
             :class="hqMenuEmphasisClass('approvals-history')"
             :style="menuOrderPrimaryStyle('approvals-history')"
             to="/hq-safe/communications"
