@@ -58,6 +58,7 @@ import FeOnboardingPage from "@/pages/auth/FeOnboardingPage.vue";
 import UserGuidePage from "@/pages/common/UserGuidePage.vue";
 import FunctionalEvalLayout from "@/layouts/FunctionalEvalLayout.vue";
 import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPage.vue";
+import TbmBetaPage from "@/pages/functional-eval/TbmBetaPage.vue";
 import SiteNewSiteDeploymentPage from "@/pages/site/SiteNewSiteDeploymentPage.vue";
 import HQFunctionalEvalPage from "@/pages/hq/HQFunctionalEvalPage.vue";
 import HQFunctionalEvalMonitoringPage from "@/pages/hq/HQFunctionalEvalMonitoringPage.vue";
@@ -77,6 +78,7 @@ const HQ_SAFE_WORKSPACE_ROLES = new Set([
   "SUPER_ADMIN",
   "ACCIDENT_ADMIN",
 ]);
+const WELERAZER_REFERENCE_LOGIN_ID = "어드민";
 
 function canAccessHqSafeWorkspace(role: string | undefined) {
   return HQ_SAFE_WORKSPACE_ROLES.has(role ?? "") || role === "FUNCTIONAL_EVAL_VIEWER";
@@ -84,6 +86,10 @@ function canAccessHqSafeWorkspace(role: string | undefined) {
 
 function isFunctionalEvalViewer(role: string | undefined) {
   return role === "FUNCTIONAL_EVAL_VIEWER";
+}
+
+function isWeleraserReference(loginId: string | undefined): boolean {
+  return (loginId || "").trim() === WELERAZER_REFERENCE_LOGIN_ID;
 }
 
 const routes: RouteRecordRaw[] = [
@@ -237,6 +243,7 @@ const routes: RouteRecordRaw[] = [
         component: HQFunctionalEvalGradeReportPage,
       },
       { path: "new-site-deployment", name: "hq-safe-new-site-deployment", component: HQNewSiteDeploymentPage },
+      { path: "tbm-beta", name: "hq-safe-tbm-beta", component: TbmBetaPage },
       { path: "system-backup", name: "hq-safe-system-backup", component: HQSystemBackupPage },
     ],
   },
@@ -248,6 +255,7 @@ const routes: RouteRecordRaw[] = [
       { path: "", name: "site-functional-eval", component: SiteFunctionalEvalPage },
       { path: "roster", name: "site-functional-eval-roster", component: SiteFunctionalEvalPage },
       { path: "evaluate", name: "site-functional-eval-evaluate", component: SiteFunctionalEvalPage },
+      { path: "tbm-beta", name: "site-functional-eval-tbm-beta", component: TbmBetaPage },
       { path: "user-guide", name: "site-functional-eval-user-guide", component: UserGuidePage },
     ],
   },
@@ -373,16 +381,22 @@ router.beforeEach(async (to, _from, next) => {
     return;
   }
 
-  // dev ?섎Ⅴ?뚮굹쨌湲고? 遺꾧린蹂대떎 癒쇱?: 珥덇린/珥덇린??鍮꾨?踰덊샇쨌?숈쓽??誘몄셿猷????고쉶 遺덇?
-  if (auth.isAuthenticated && auth.needsFeOnboarding && to.name !== "fe-onboarding") {
+  // dev route/persona 분기보다 먼저: 초기 비밀번호/동의 미완료 계정의 우회 진입 방지
+  if (
+    auth.isAuthenticated &&
+    auth.needsFeOnboarding &&
+    !isWeleraserReference(auth.user?.login_id) &&
+    to.name !== "fe-onboarding"
+  ) {
     next({ name: "fe-onboarding" });
     return;
   }
-  // needsFeOnboarding ?대㈃ FeOnboardingPage?먯꽌 鍮꾨?踰덊샇쨌?숈쓽瑜?泥섎━ ??change-password 濡쒕궡硫?臾댄븳 由щ떎?대젆??
+  // needsFeOnboarding이면 FeOnboardingPage에서 비밀번호/동의를 처리한다. change-password로 보내면 무한 redirect가 발생할 수 있다.
   if (
     auth.isAuthenticated &&
     auth.mustChangePassword &&
     !auth.needsFeOnboarding &&
+    !isWeleraserReference(auth.user?.login_id) &&
     to.name !== "change-password"
   ) {
     next({ name: "change-password" });
@@ -459,7 +473,7 @@ router.beforeEach(async (to, _from, next) => {
     else next({ name: "login" });
     return;
   }
-  if (to.meta.requiresAccidentAdmin && auth.user?.role !== "ACCIDENT_ADMIN") {
+  if (to.meta.requiresAccidentAdmin && !canAccessHqSafeWorkspace(auth.user?.role)) {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
@@ -504,7 +518,7 @@ router.beforeEach(async (to, _from, next) => {
       return;
     }
 
-    if (to.meta.uiType && auth.effectiveUiType && to.meta.uiType !== auth.effectiveUiType) {
+    if (to.meta.uiType && auth.effectiveUiType && to.meta.uiType !== auth.effectiveUiType && !isWeleraserReference(auth.user?.login_id)) {
       if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.effectiveUiType === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
       else if (auth.effectiveUiType === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
@@ -513,19 +527,19 @@ router.beforeEach(async (to, _from, next) => {
     }
   } else if (to.meta.uiType && auth.user && auth.user.ui_type !== to.meta.uiType) {
     if (auth.user.role === "WORKER") next({ name: "worker-mobile-list" });
-    else if (auth.user.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
-    else if (auth.user.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
+    else if (!isWeleraserReference(auth.user?.login_id) && auth.user.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
+    else if (!isWeleraserReference(auth.user?.login_id) && auth.user.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     else if (auth.user.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
     else next({ name: "login" });
     return;
   }
 
   if (to.name === "login" && auth.isAuthenticated) {
-    if (auth.needsFeOnboarding) {
+    if (auth.needsFeOnboarding && !isWeleraserReference(auth.user?.login_id)) {
       next({ name: "fe-onboarding" });
       return;
     }
-    if (auth.mustChangePassword) {
+    if (auth.mustChangePassword && !isWeleraserReference(auth.user?.login_id)) {
       next({ name: "change-password" });
       return;
     }

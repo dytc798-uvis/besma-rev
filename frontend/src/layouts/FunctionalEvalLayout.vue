@@ -89,6 +89,14 @@
         >
           기능인인정제 설명
         </RouterLink>
+        <RouterLink
+          class="fe-menu-subitem"
+          :class="{ active: isTbmBetaRoute }"
+          :to="{ name: 'site-functional-eval-tbm-beta' }"
+          @click="closeMobileDrawer"
+        >
+          TBM(베타테스트)
+        </RouterLink>
       </nav>
     </aside>
     <section class="layout-content">
@@ -202,6 +210,7 @@ const showSiteFooter = computed(() => !consentLoading.value && !consentRequired.
 
 const isEvaluateRoute = computed(() => route.name === "site-functional-eval-evaluate");
 const isGuideRoute = computed(() => route.name === "site-functional-eval-user-guide");
+const isTbmBetaRoute = computed(() => route.name === "site-functional-eval-tbm-beta");
 
 function isEvalMenuActive(statusKey: string) {
   return route.name === "site-functional-eval-evaluate" && route.query.eval_status === statusKey;

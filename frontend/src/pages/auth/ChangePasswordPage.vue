@@ -1,29 +1,37 @@
 <template>
-  <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px">
-    <div class="card" style="width: 420px">
+  <div class="change-password-page">
+    <div class="card change-password-card">
       <div class="card-title">비밀번호 변경</div>
+      <div class="ascii-title">Change Password</div>
 
-      <p v-if="auth.mustChangePassword" style="font-size: 13px; color: #334155; margin: 0 0 12px">
+      <p v-if="auth.mustChangePassword" class="help-text">
         초기 비밀번호를 변경해야 서비스를 이용할 수 있습니다.
       </p>
 
-      <p style="font-size: 12px; color: #64748b; margin: 0 0 12px">
-        비밀번호는 4자리 이상이면 설정할 수 있습니다.
+      <p class="hint-text">
+        현재 비밀번호에는 발급받은 초기 비밀번호를 입력하고, 새 비밀번호는 4자리 이상으로 설정해 주세요.
       </p>
 
-      <form @submit.prevent="handleChangePassword" style="display: flex; flex-direction: column; gap: 10px">
+      <p class="ascii-help">
+        Current password = issued initial password. New password = at least 4 characters.
+      </p>
+
+      <form class="form-stack" @submit.prevent="handleChangePassword">
         <label>
-          <div style="font-size: 12px; margin-bottom: 2px">현재 비밀번호</div>
+          <div class="field-label">현재 비밀번호</div>
+          <div class="field-label-ascii">Current password</div>
           <input v-model="currentPassword" type="password" autocomplete="current-password" />
         </label>
 
         <label>
-          <div style="font-size: 12px; margin-bottom: 2px">새 비밀번호</div>
+          <div class="field-label">새 비밀번호</div>
+          <div class="field-label-ascii">New password</div>
           <input v-model="newPassword" type="password" autocomplete="new-password" />
         </label>
 
         <label>
-          <div style="font-size: 12px; margin-bottom: 2px">새 비밀번호 확인</div>
+          <div class="field-label">새 비밀번호 확인</div>
+          <div class="field-label-ascii">Confirm new password</div>
           <input v-model="newPasswordConfirm" type="password" autocomplete="new-password" />
         </label>
 
@@ -31,11 +39,13 @@
           {{ loading ? "변경 중..." : "비밀번호 변경" }}
         </button>
 
-        <p v-if="successMessage" style="color: #15803d; font-size: 12px; margin: 0">{{ successMessage }}</p>
-        <p v-if="errorMessage" style="color: #dc2626; font-size: 12px; margin: 0">{{ errorMessage }}</p>
+        <p v-if="successMessage" class="success-message">{{ successMessage }}</p>
+        <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
 
-        <p style="margin: 8px 0 0; font-size: 12px">
-          <button type="button" class="secondary" style="width: 100%" @click="handleLogout">다른 계정으로 로그인</button>
+        <p class="logout-row">
+          <button type="button" class="secondary logout-button" @click="handleLogout">
+            다른 계정으로 로그인
+          </button>
         </p>
       </form>
     </div>
@@ -128,4 +138,76 @@ async function handleLogout() {
 }
 </script>
 
-<style scoped></style>
+<style scoped>
+.change-password-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.change-password-card {
+  width: min(420px, 100%);
+}
+
+.ascii-title {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.help-text {
+  margin: 12px 0;
+  color: #334155;
+  font-size: 13px;
+}
+
+.hint-text,
+.ascii-help {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field-label {
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field-label-ascii {
+  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.success-message {
+  margin: 0;
+  color: #15803d;
+  font-size: 12px;
+}
+
+.error-message {
+  margin: 0;
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.logout-row {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.logout-button {
+  width: 100%;
+}
+</style>

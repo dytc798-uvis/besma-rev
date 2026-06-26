@@ -41,6 +41,12 @@
           </RouterLink>
           <RouterLink
             class="hq-fe-menu-highlight"
+            to="/hq-safe/tbm-beta"
+          >
+            TBM(베타테스트)
+          </RouterLink>
+          <RouterLink
+            class="hq-fe-menu-highlight"
             :style="menuOrderPrimaryStyle('functional-eval-rewards-sanctions')"
             to="/hq-safe/functional-eval-rewards-sanctions"
           >
@@ -206,7 +212,9 @@ const sidebarCollapsed = ref(false);
 const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
 const menuOrderPrimary = ref<Record<string, number>>({});
 const menuOrderSecondary = ref<Record<string, number>>({});
-const canAccessAccidents = computed(() => auth.user?.role === "ACCIDENT_ADMIN");
+const canAccessAccidents = computed(() =>
+  ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
+);
 const canAccessPdfSigning = computed(() =>
   ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
 );

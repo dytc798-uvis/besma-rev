@@ -371,3 +371,10 @@ flowchart TB
 ---
 
 *작성: 2026-06-08 · 운영 HEAD `be1d5ca` 기준 · VS Code/Cursor 병행용*
+## 2026-06-25 작업 보존 기록 (로컬 only)
+- 요청 반영: 로컬 작업 상태를 안전하게 백업하고 작업트리는 클린 유지. 운영 서버 자원 영향 없음.
+- 백업 위치: git stash (로컬 .git 내부). 원격 push 없음 -> 서버 용량 사용 없음.
+- 최신 스태시: `stash@{0}: On main: temp-backup-operational-only-2026-06-25` (그 외: stash@{1}, stash@{2} 순차 보존).
+- 현재 브랜치/커밋: main / 0a4851d
+- 현재 작업트리: `git status --short` => 클린(변경 없음)
+- 복구 방법: `git stash apply <stash-id>` (예: `git stash apply stash@{0}`)

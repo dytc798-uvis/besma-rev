@@ -4,6 +4,7 @@ import App from "./App.vue";
 import { router } from "./router";
 import { useAuthStore } from "./stores/auth";
 import { isPublicSignPath } from "./utils/publicSignRoute";
+import { installBundleFreshnessGuard } from "./utils/textSafety";
 
 import "./tailwind.css";
 import "./styles.css";
@@ -13,6 +14,7 @@ import "./styles/functional-eval-senior.css";
 import "./styles/new-site-deployment-menu.css";
 
 async function bootstrap() {
+  installBundleFreshnessGuard();
   const app = createApp(App);
   const pinia = createPinia();
   app.use(pinia);

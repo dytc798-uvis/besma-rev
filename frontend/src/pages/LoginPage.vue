@@ -19,6 +19,9 @@
           <button class="primary login-submit" type="submit" :disabled="loading">
             {{ loading ? "로그인 중..." : "로그인" }}
           </button>
+          <p class="login-mobile-tip">
+            기능인인정제 평가는 서명과 화면 조작이 편한 휴대폰으로 진행하시는 것을 권장합니다.
+          </p>
           <p v-if="errorMessage" class="login-error" role="alert">{{ errorMessage }}</p>
         </form>
 
@@ -150,8 +153,8 @@ async function handleLogin() {
   width: 100%;
   padding: 22px 20px 18px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  background: rgba(255, 255, 255, 0.56);
   backdrop-filter: blur(18px) saturate(1.25);
   -webkit-backdrop-filter: blur(18px) saturate(1.25);
   box-shadow:
@@ -190,7 +193,7 @@ async function handleLogin() {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid rgba(148, 163, 184, 0.55);
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.88);
   color: #0f172a;
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 }
@@ -208,6 +211,18 @@ async function handleLogin() {
   font-size: 14px;
   font-weight: 600;
   border-radius: 8px;
+}
+
+.login-mobile-tip {
+  margin: 2px 0 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  background: rgba(239, 246, 255, 0.68);
+  color: #1d4ed8;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: keep-all;
 }
 
 .login-error {
@@ -234,7 +249,7 @@ async function handleLogin() {
   width: 100%;
   min-height: 40px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(148, 163, 184, 0.45);
   font-weight: 600;
 }
@@ -242,7 +257,7 @@ async function handleLogin() {
 @media (max-width: 420px) {
   .login-bg-logo {
     width: min(108vw, 520px);
-    opacity: 0.34;
+    opacity: 0.32;
   }
 
   .login-card {

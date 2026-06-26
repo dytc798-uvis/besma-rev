@@ -1,7 +1,7 @@
 <template>
   <div class="onboarding-shell">
     <div class="card onboarding-card">
-      <p v-if="consentLoading" class="onboarding-lead">동의서·비밀번호 상태 확인 중…</p>
+      <p v-if="consentLoading" class="onboarding-lead">{{ copy.loading }}</p>
 
       <template v-else-if="consentRequired">
         <FeConsentGate
@@ -13,19 +13,25 @@
       </template>
 
       <template v-else>
-        <div class="card-title">완료</div>
-        <p v-if="evaluationOpen" class="onboarding-lead">동의가 완료되어 기능인정제 접속이 가능합니다.</p>
-        <p v-else class="onboarding-lead">동의가 아직 반영되지 않아 나중에 접속 가능합니다.</p>
-        <p v-if="evaluationOpen" class="onboarding-sub">입력 완료 후 기능인정제 화면으로 이동합니다.</p>
-        <p v-else class="onboarding-sub">
-          평가일은 <strong>{{ evaluationOpensAtLabel || "6/16 이후" }}</strong> 입니다.
-          기능인정제 접속은 해당 시점 이후에 가능합니다.
+        <div class="card-title">{{ copy.completeTitle }}</div>
+        <div class="onboarding-ascii-title">Ready</div>
+        <p v-if="evaluationOpen" class="onboarding-lead">{{ copy.openLead }}</p>
+        <p v-else class="onboarding-lead">{{ copy.closedLead }}</p>
+        <p class="onboarding-ascii">
+          If Korean text is broken, close this browser tab completely and open www.besma.co.kr again.
         </p>
-        <button class="primary onboarding-done-btn" type="button" @click="goHome">{{ evaluationOpen ? "시작하기" : "확인" }}</button>
+        <p v-if="evaluationOpen" class="onboarding-sub">{{ copy.openSub }}</p>
+        <p v-else class="onboarding-sub">
+          {{ copy.evalDatePrefix }} <strong>{{ evaluationOpensAtLabel || copy.evalDateFallback }}</strong>{{ copy.evalDateSuffix }}
+          {{ copy.closedSub }}
+        </p>
+        <button class="primary onboarding-done-btn" type="button" @click="goHome">
+          {{ evaluationOpen ? copy.startButton : copy.confirmButton }}
+        </button>
       </template>
 
       <p class="onboarding-logout">
-        <button type="button" class="secondary" @click="handleLogout">로그아웃</button>
+        <button type="button" class="secondary" @click="handleLogout">{{ copy.logoutButton }}</button>
       </p>
     </div>
   </div>
@@ -40,6 +46,22 @@ import FeConsentGate from "@/components/functional-eval/FeConsentGate.vue";
 import { useFeConsentCheck } from "@/composables/useFeConsentCheck";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
+import { safeKo } from "@/utils/textSafety";
+
+const copy = {
+  loading: safeKo("\ub3d9\uc758\uc11c\u00b7\ube44\ubc00\ubc88\ud638 \uc0c1\ud0dc \ud655\uc778 \uc911...", "\ub3d9\uc758\uc11c\u00b7\ube44\ubc00\ubc88\ud638 \uc0c1\ud0dc \ud655\uc778 \uc911..."),
+  completeTitle: safeKo("\uc644\ub8cc", "\uc644\ub8cc"),
+  openLead: safeKo("\ub3d9\uc758\uac00 \uc644\ub8cc\ub418\uc5b4 \uae30\ub2a5\uc778\uc778\uc815\uc81c \uc811\uc18d\uc774 \uac00\ub2a5\ud569\ub2c8\ub2e4.", "\ub3d9\uc758\uac00 \uc644\ub8cc\ub418\uc5b4 \uae30\ub2a5\uc778\uc778\uc815\uc81c \uc811\uc18d\uc774 \uac00\ub2a5\ud569\ub2c8\ub2e4."),
+  closedLead: safeKo("\ub3d9\uc758\uac00 \uc544\uc9c1 \ubc18\uc601\ub418\uc9c0 \uc54a\uc544 \ub098\uc911\uc5d0 \uc811\uc18d \uac00\ub2a5\ud569\ub2c8\ub2e4.", "\ub3d9\uc758\uac00 \uc544\uc9c1 \ubc18\uc601\ub418\uc9c0 \uc54a\uc544 \ub098\uc911\uc5d0 \uc811\uc18d \uac00\ub2a5\ud569\ub2c8\ub2e4."),
+  openSub: safeKo("\uc785\ub825 \uc644\ub8cc \ud6c4 \uae30\ub2a5\uc778\uc778\uc815\uc81c \ud654\uba74\uc73c\ub85c \uc774\ub3d9\ud569\ub2c8\ub2e4.", "\uc785\ub825 \uc644\ub8cc \ud6c4 \uae30\ub2a5\uc778\uc778\uc815\uc81c \ud654\uba74\uc73c\ub85c \uc774\ub3d9\ud569\ub2c8\ub2e4."),
+  evalDatePrefix: safeKo("\ud3c9\uac00\uc77c\uc740", "\ud3c9\uac00\uc77c\uc740"),
+  evalDateFallback: safeKo("6/16 \uc774\ud6c4", "6/16 \uc774\ud6c4"),
+  evalDateSuffix: safeKo(" \uc785\ub2c8\ub2e4.", " \uc785\ub2c8\ub2e4."),
+  closedSub: safeKo("\uae30\ub2a5\uc778\uc778\uc815\uc81c \uc811\uc18d\uc740 \ud574\ub2f9 \uc2dc\uc810 \uc774\ud6c4\uc5d0 \uac00\ub2a5\ud569\ub2c8\ub2e4.", "\uae30\ub2a5\uc778\uc778\uc815\uc81c \uc811\uc18d\uc740 \ud574\ub2f9 \uc2dc\uc810 \uc774\ud6c4\uc5d0 \uac00\ub2a5\ud569\ub2c8\ub2e4."),
+  startButton: safeKo("\uc2dc\uc791\ud558\uae30", "\uc2dc\uc791\ud558\uae30"),
+  confirmButton: safeKo("\ud655\uc778", "\ud655\uc778"),
+  logoutButton: safeKo("\ub85c\uadf8\uc544\uc6c3", "\ub85c\uadf8\uc544\uc6c3"),
+};
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -111,11 +133,23 @@ async function handleLogout() {
 .onboarding-card {
   width: min(520px, 100%);
 }
+.onboarding-ascii-title {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
 .onboarding-lead {
   margin: 0 0 12px;
   font-size: 14px;
   line-height: 1.55;
   color: #334155;
+}
+.onboarding-ascii {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #64748b;
 }
 .onboarding-sub {
   margin: 0 0 16px;

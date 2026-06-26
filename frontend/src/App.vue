@@ -7,6 +7,14 @@ import { onMounted } from "vue";
 
 const LOCAL_TEST_NOTICE_KEY = "besma_local_test_notice_v1";
 
+const localDevNotice = {
+  title: "\ub85c\uceec \ud14c\uc2a4\ud2b8 \ud658\uacbd\uc785\ub2c8\ub2e4.",
+  frontendLabel: "\ud504\ub860\ud2b8",
+  warning: "\uae30\ub2a5\uc778\uc778\uc815\uc81c \ub610\ub294 \ubcf8\uc0ac \uc811\uc218 \uc218\uc815 \uc804\uc5d0 \uba3c\uc800 \ud655\uc778\ud55c \ud6c4 \ubc30\ud3ec\ud558\uc138\uc694.",
+  backend: "\ubc31\uc5d4\ub4dc\ub294 backend\uc5d0\uc11c uvicorn --port 8001",
+  fallback: "\ub610\ub294 run_local_mvp.bat",
+};
+
 function isLocalDevHost(): boolean {
   const host = window.location.hostname;
   return host === "localhost" || host === "127.0.0.1" || host === "118.36.137.127";
@@ -23,15 +31,15 @@ function maybeShowLocalTestNotice() {
 
   const apiBase = `${window.location.protocol}//${window.location.hostname}:8001`;
   const lines = [
-    "로컬 테스트 환경입니다.",
+    localDevNotice.title,
     "",
-    `프론트: ${window.location.origin}`,
+    `${localDevNotice.frontendLabel}: ${window.location.origin}`,
     `API: ${apiBase}`,
     "",
-    "기능인제(제재·본사 점수 수정 등)는 여기서 먼저 확인한 뒤 배포하세요.",
+    localDevNotice.warning,
     "",
-    "백엔드: backend에서 uvicorn --port 8001",
-    "또는 run_local_mvp.bat",
+    localDevNotice.backend,
+    localDevNotice.fallback,
   ];
   window.alert(lines.join("\n"));
 
