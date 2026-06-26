@@ -166,11 +166,11 @@ def save_worker_assessment(
     except ValueError as exc:
         code = str(exc)
         if code == "PERIOD_CLOSED":
-            raise HTTPException(status_code=409, detail="留덇컧?쇱씠 吏???섏젙?????놁뒿?덈떎.") from exc
+            raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
         if code == "EVAL_NOT_OPEN":
             raise HTTPException(
                 status_code=403,
-                detail="?됯???2026??6??16???ㅼ쟾 6?쒕???媛?ν빀?덈떎. ?ㅻ뒛? ?꾩씠?붋룸퉬諛踰덊샇 蹂寃쎈쭔 ?댁슜??二쇱꽭??",
+                detail="평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디/비밀번호 변경만 이용해 주세요.",
             ) from exc
         if code == "WORKER_NOT_FOUND":
             raise HTTPException(status_code=404, detail="Worker not found") from exc
@@ -179,13 +179,13 @@ def save_worker_assessment(
         if code in {"SITE_MISMATCH", "CANNOT_EVALUATE_SITE_MANAGER", "CANNOT_EVALUATE_SELF", "WORKER_INACTIVE"}:
             raise HTTPException(status_code=400, detail=code) from exc
         if code == "MANAGER_CANNOT_EDIT_TEAM_SCORES":
-            raise HTTPException(status_code=403, detail="?뚯옣? ????대떦 洹쇰줈?먯쓽 ?먯닔瑜??섏젙?????놁뒿?덈떎. 諛섎젮留?媛?ν빀?덈떎.") from exc
+            raise HTTPException(status_code=403, detail="소장은 팀장 담당 근로자의 점수를 수정할 수 없습니다. 반려만 가능합니다.") from exc
         if code in {"WORKER_NOT_ON_ATTENDANCE", "NO_ATTENDANCE_UPLOAD"}:
-            raise HTTPException(status_code=400, detail="?뱀씪 異쒖뿭 紐낅떒???녾굅??異쒖뿭?쇰낫媛 諛섏쁺?섏? ?딆븯?듬땲??") from exc
+            raise HTTPException(status_code=400, detail="당일 출역 명단에 없거나 출역일보가 반영되지 않았습니다.") from exc
         if code == "SITE_APPROVAL_LOCKED":
-            raise HTTPException(status_code=409, detail="?뱀씤 吏꾪뻾 以묒씠???됯?瑜??섏젙?????놁뒿?덈떎.") from exc
+            raise HTTPException(status_code=409, detail="승인 진행 중인 평가는 수정할 수 없습니다.") from exc
         if code == "EVALUATION_SIGNATURE_LOCKED":
-            raise HTTPException(status_code=409, detail="?쒕챸 ?꾨즺 ?꾩뿉???됯?瑜??섏젙?????놁뒿?덈떎.") from exc
+            raise HTTPException(status_code=409, detail="서명 완료 후에는 평가를 수정할 수 없습니다.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return {"assessment": result}
 
@@ -213,16 +213,16 @@ def save_hq_assessment_override(
     except ValueError as exc:
         code = str(exc)
         if code == "PERIOD_CLOSED":
-            raise HTTPException(status_code=409, detail="留덇컧?쇱씠 吏???섏젙?????놁뒿?덈떎.") from exc
+            raise HTTPException(status_code=409, detail="마감일이 지나 수정할 수 없습니다.") from exc
         if code == "EVAL_NOT_OPEN":
             raise HTTPException(
                 status_code=403,
-                detail="?됯???2026??6??16???ㅼ쟾 6?쒕???媛?ν빀?덈떎. ?ㅻ뒛? ?꾩씠?붋룸퉬諛踰덊샇 蹂寃쎈쭔 ?댁슜??二쇱꽭??",
+                detail="평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디/비밀번호 변경만 이용해 주세요.",
             ) from exc
         if code == "WORKER_NOT_FOUND":
             raise HTTPException(status_code=404, detail="Worker not found") from exc
         if code in {"REVISION_REASON_REQUIRED"}:
-            raise HTTPException(status_code=400, detail="?섏젙 ?ъ쑀瑜??낅젰?섏꽭??") from exc
+            raise HTTPException(status_code=400, detail="수정 사유를 입력하세요.") from exc
         if code.startswith("INCOMPLETE:") or code.startswith("INVALID_GRADE:"):
             raise HTTPException(status_code=400, detail=code) from exc
         if code in {"CANNOT_EVALUATE_SITE_MANAGER", "HQ_ONLY"}:
@@ -321,18 +321,18 @@ def _signature_error(code: str) -> HTTPException:
         "signature_required": (400, "서명을 입력해 주세요."),
         "signature_too_small": (400, "서명이 너무 작습니다."),
         "invalid_signature_base64": (400, "서명 이미지 형식이 올바르지 않습니다."),
-        "SIGNATURE_ALREADY_EXISTS": (409, "?대? ?쒕챸???꾨즺?섏뿀?듬땲??"),
-        "EVALUATION_SIGNATURE_LOCKED": (409, "?쒕챸 ?꾨즺 ?꾩뿉???됯?瑜??섏젙?????놁뒿?덈떎."),
-        "TEAM_LEADERS_NOT_SIGNED": (400, "紐⑤뱺 ??μ쓽 ?됯??꾨즺 ?쒕챸???꾩슂?⑸땲??"),
-        "TEAM_REPORTS_NOT_MANAGER_APPROVED": (400, "紐⑤뱺 ????됯??꾨즺蹂닿퀬?쒖뿉 ?뚯옣 ?뱀씤???꾩슂?⑸땲??"),
-        "TEAM_LEADER_NOT_SIGNED": (400, "????됯??꾨즺 ?쒕챸???꾩슂?⑸땲??"),
-        "NO_PENDING_APPROVALS": (400, "?뱀씤 ?湲???ぉ???놁뒿?덈떎."),
+        "SIGNATURE_ALREADY_EXISTS": (409, "이미 서명이 완료되었습니다."),
+        "EVALUATION_SIGNATURE_LOCKED": (409, "서명 완료 후에는 평가를 수정할 수 없습니다."),
+        "TEAM_LEADERS_NOT_SIGNED": (400, "모든 팀장의 평가 완료 서명이 필요합니다."),
+        "TEAM_REPORTS_NOT_MANAGER_APPROVED": (400, "모든 팀장 평가 완료보고서에 소장 승인이 필요합니다."),
+        "TEAM_LEADER_NOT_SIGNED": (400, "팀장 평가 완료 서명이 필요합니다."),
+        "NO_PENDING_APPROVALS": (400, "승인 대기 항목이 없습니다."),
         "HQ_APPROVAL_NOT_OPEN_UNTIL_DEADLINE": (403, "본사 승인은 평가 마감일부터 가능합니다."),
-        "NO_SUPPLEMENTAL_BATCH": (400, "異붽??됯? ??곸씠 ?놁뒿?덈떎."),
-        "MANAGER_NOT_TEAM_LEADER": (403, "??λ쭔 ?ъ슜?????덉뒿?덈떎."),
-        "MANAGER_ONLY": (403, "?뚯옣留??ъ슜?????덉뒿?덈떎."),
-        "S_GRADE_OVER_LIMIT_REASON_REQUIRED": (400, "S?깃툒 沅뚯옣 湲곗?(20%) 珥덇낵 ?ъ쑀瑜?10???댁긽 ?낅젰??二쇱꽭??"),
-        "EVAL_NOT_OPEN": (403, "?됯???2026??6??16???ㅼ쟾 6?쒕???媛?ν빀?덈떎. ?ㅻ뒛? ?꾩씠?붋룸퉬諛踰덊샇 蹂寃쎈쭔 ?댁슜??二쇱꽭??"),
+        "NO_SUPPLEMENTAL_BATCH": (400, "추가 평가 대상이 없습니다."),
+        "MANAGER_NOT_TEAM_LEADER": (403, "팀장만 사용할 수 있습니다."),
+        "MANAGER_ONLY": (403, "소장만 사용할 수 있습니다."),
+        "S_GRADE_OVER_LIMIT_REASON_REQUIRED": (400, "S등급 권장 기준(20%) 초과 사유를 10자 이상 입력해 주세요."),
+        "EVAL_NOT_OPEN": (403, "평가는 2026년 6월 16일 오전 6시부터 가능합니다. 오늘은 아이디/비밀번호 변경만 이용해 주세요."),
     }
     status_code, detail = mapping.get(code, (400, code))
     return HTTPException(status_code=status_code, detail=detail)
