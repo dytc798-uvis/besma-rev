@@ -192,9 +192,7 @@ interface RiskRule {
   countermeasure: string;
 }
 
-const RAW_SAMPLE_HINT = `?怨쀫츋??? 2026-06-25
-?熬곣뫗?®춯? [24025][1.????⑤슡??? 嶺??李?8BL ???덈룛???댟?
-?????? ?꾩룆踰좑㎖??;
+const RAW_SAMPLE_HINT = "출역일: 2026-06-25\n현장명: [24025][1.대우건설] 청라C18BL 오피스텔\n담당자: 박명석\n금일 작업내용\n명일 작업내용";
 
 const rawInput = ref(RAW_SAMPLE_HINT);
 const parseResult = ref<ReturnType<typeof parseErpWorklogForNextDayTbm> | null>(null);
