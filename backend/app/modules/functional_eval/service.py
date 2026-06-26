@@ -280,8 +280,14 @@ def _worker_has_assessments(db: Session, worker_id: int) -> bool:
 def _assert_worker_attendance_eligible(
     db: Session, period: FunctionalEvalPeriod, worker: FunctionalEvalWorker
 ) -> None:
-    """당일 출역 목록 또는 기간 내 출역·기존 평가가 있으면 입력 허용."""
+    """평가 화면에 표시되는 활성 roster 근로자는 입력을 허용한다.
+
+    출역일보는 평가 대상 산정의 기준으로 사용하되, 현재 화면에 이미 노출된
+    활성 근로자는 저장 단계에서 다시 출역 여부로 막지 않는다.
+    """
     if _worker_has_assessments(db, worker.id):
+        return
+    if worker.is_active:
         return
     if worker.rrn_hash in _period_attendance_rrn_hashes(db, period.id, site_code=worker.site_code):
         return
