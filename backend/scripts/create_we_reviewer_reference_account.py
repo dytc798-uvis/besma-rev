@@ -32,7 +32,7 @@ from app.modules.users.models import User  # noqa: E402
 REFERENCE_LOGIN_ID = "어드민"
 REFERENCE_NAME = "위레이저 참고용"
 REFERENCE_PASSWORD = "boohyun2026!"
-REFERENCE_ROLE = Role.HQ_SAFE
+REFERENCE_ROLE = Role.ACCIDENT_ADMIN
 REFERENCE_UI_TYPE = UIType.HQ_SAFE
 
 

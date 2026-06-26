@@ -68,7 +68,7 @@ import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
 import HQSystemBackupPage from "@/pages/hq/HQSystemBackupPage.vue";
 import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
 import PdfSigningPublicPage from "@/pages/pdf-signing/PdfSigningPublicPage.vue";
-import { isSamsungRecognitionSiteLogin, siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
+import { isMobileOpsSiteLogin, siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
 import { isPublicSignPath, normalizePublicSignPath } from "@/utils/publicSignRoute";
 
@@ -433,7 +433,7 @@ router.beforeEach(async (to, _from, next) => {
 
   const isFunctionalEvalUser = role === "SITE_FUNCTIONAL_EVAL";
   const goingFunctionalEval = to.path.startsWith("/site/functional-eval");
-  if (goingFunctionalEval && isSamsungRecognitionSiteLogin(auth.user?.login_id)) {
+  if (goingFunctionalEval && isMobileOpsSiteLogin(auth.user?.login_id)) {
     next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     return;
   }
