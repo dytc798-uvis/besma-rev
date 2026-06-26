@@ -82,7 +82,12 @@ from app.modules.functional_eval.eval_schedule import (
     evaluation_opens_at_kst_iso,
     evaluation_opens_at_kst_label,
 )
-from app.modules.functional_eval.constants import TEAM_LEADER_SPLIT_THRESHOLD
+from app.modules.functional_eval.constants import (
+    APPROVAL_STATUS_IN_PROGRESS,
+    APPROVAL_STATUS_REJECTED,
+    APPROVAL_STATUS_SITE_APPROVED,
+    TEAM_LEADER_SPLIT_THRESHOLD,
+)
 from app.modules.functional_eval.signature_service import batch_label
 from app.modules.functional_eval.site_alias import build_eval_login_id
 from app.modules.functional_eval import approval_workflow
@@ -1312,6 +1317,8 @@ def _list_eval_complete_site_submit_blockers(
         APPROVAL_STATUS_CEO_APPROVED,
         APPROVAL_STATUS_HQ_APPROVED,
         APPROVAL_STATUS_HQ_OFFICER_APPROVED,
+        APPROVAL_STATUS_IN_PROGRESS,
+        APPROVAL_STATUS_REJECTED,
         APPROVAL_STATUS_SITE_APPROVED,
     )
 
@@ -1328,6 +1335,11 @@ def _list_eval_complete_site_submit_blockers(
             continue
 
         approval = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
+        if approval.evaluation_completed_at is not None and approval.status in {
+            APPROVAL_STATUS_IN_PROGRESS,
+            APPROVAL_STATUS_REJECTED,
+        }:
+            continue
         if approval.status in {
             APPROVAL_STATUS_SITE_APPROVED,
             APPROVAL_STATUS_HQ_OFFICER_APPROVED,
@@ -1386,6 +1398,7 @@ def _list_eval_complete_site_submit_blockers_from_progress(
         .all()
     )
     status_by_site = {row.site_code: row.status for row in approval_rows}
+    completed_at_by_site = {row.site_code: row.evaluation_completed_at for row in approval_rows}
     blockers: list[dict[str, Any]] = []
     for row in site_progress:
         site_code = str(row.get("site_code") or "")
@@ -1393,7 +1406,13 @@ def _list_eval_complete_site_submit_blockers_from_progress(
         complete = int(row.get("fully_complete") or row.get("site_complete_workers") or 0)
         if not site_code or total <= 0 or complete < total:
             continue
-        if status_by_site.get(site_code) in submitted_statuses:
+        status = status_by_site.get(site_code)
+        if status in submitted_statuses:
+            continue
+        if completed_at_by_site.get(site_code) is not None and status in {
+            APPROVAL_STATUS_IN_PROGRESS,
+            APPROVAL_STATUS_REJECTED,
+        }:
             continue
         blockers.append(
             {
@@ -1439,9 +1458,13 @@ def build_hq_review_queue(
     )
     pending_officer_count = (
         db.query(FunctionalEvalSiteApproval)
+        .filter(FunctionalEvalSiteApproval.period_id == period.id)
         .filter(
-            FunctionalEvalSiteApproval.period_id == period.id,
-            FunctionalEvalSiteApproval.status == APPROVAL_STATUS_SITE_APPROVED,
+            (FunctionalEvalSiteApproval.status == APPROVAL_STATUS_SITE_APPROVED)
+            | (
+                FunctionalEvalSiteApproval.evaluation_completed_at.isnot(None)
+                & FunctionalEvalSiteApproval.status.in_({APPROVAL_STATUS_IN_PROGRESS, APPROVAL_STATUS_REJECTED})
+            )
         )
         .count()
     )

@@ -317,7 +317,7 @@
         <div class="review-kpi-card">
           <span class="review-kpi-label">담당 검토 대기</span>
           <strong class="review-kpi-value">{{ reviewQueue.pending_hq_officer_site_count ?? hqOfficerPending.length }}</strong>
-          <span class="review-kpi-hint">정상익 차장 · 소장 제출 완료</span>
+          <span class="review-kpi-hint">정상익 차장 · 제출 완료/평가완료 잠금</span>
         </div>
         <div class="review-kpi-card">
           <span class="review-kpi-label">실장 승인 대기</span>
@@ -327,7 +327,7 @@
         <div class="review-kpi-card review-kpi-card--warn">
           <span class="review-kpi-label">평가 완료·제출 전</span>
           <strong class="review-kpi-value">{{ reviewQueue.eval_complete_not_submitted_count }}</strong>
-          <span class="review-kpi-hint">팀장 서명 또는 소장 제출 대기</span>
+          <span class="review-kpi-hint">본사 검토 전 보완 필요</span>
         </div>
       </div>
 
@@ -345,14 +345,14 @@
             @click="toggleApprovalSection('submitBlockers')"
           >
             <span class="approval-collapse__chevron" :class="{ 'is-open': approvalSectionsOpen.submitBlockers }">▸</span>
-            <span class="approval-collapse__title">평가 완료 — 본사 서명 전 현장</span>
+            <span class="approval-collapse__title">평가 완료 — 담당 검토 전 보완 현장</span>
             <span class="approval-collapse__count">{{ siteSubmitBlockers.length }}곳</span>
           </button>
         </div>
         <div v-show="approvalSectionsOpen.submitBlockers" class="approval-collapse__body">
           <p class="panel-sub">
-            「완료 현장」은 <strong>전원 평가 완료</strong>를 뜻합니다. 본사 검토·서명은 아래 순서가 끝난 뒤 가능합니다.
-            <strong>팀장 보고서 서명 → 소장 최종 제출 → 본사 검토·서명</strong>
+            담당 검토 대기열로 넘어가기 전 보완이 필요한 현장입니다.
+            <strong>팀장 보고서 서명 등 필수 절차</strong>가 남아 있는지 확인하세요.
           </p>
           <div class="table-scroll">
             <table class="data-table">

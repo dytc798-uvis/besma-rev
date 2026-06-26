@@ -406,10 +406,19 @@ def build_daily_report_snapshot(
             bottlenecks["high_incomplete_sites"].append({"site_code": code, "site_name": name, "incomplete": row["incomplete_workers"]})
         if row["team_leader_required"] > row["team_leader_signed"]:
             bottlenecks["team_signoff_pending_sites"].append({"site_code": code, "site_name": name})
-        if row["completed_workers"] == row["total_workers"] and row["total_workers"] > 0 and not row["site_submitted"]:
-            bottlenecks["site_submit_pending_sites"].append({"site_code": code, "site_name": name})
         approval = approval_workflow.get_or_create_site_approval(db, period.id, code)
-        if approval.status == APPROVAL_STATUS_SITE_APPROVED:
+        officer_pending_by_completion_lock = (
+            approval.evaluation_completed_at is not None
+            and approval.status in {APPROVAL_STATUS_IN_PROGRESS, APPROVAL_STATUS_REJECTED}
+        )
+        if (
+            row["completed_workers"] == row["total_workers"]
+            and row["total_workers"] > 0
+            and not row["site_submitted"]
+            and not officer_pending_by_completion_lock
+        ):
+            bottlenecks["site_submit_pending_sites"].append({"site_code": code, "site_name": name})
+        if approval.status == APPROVAL_STATUS_SITE_APPROVED or officer_pending_by_completion_lock:
             bottlenecks["hq_officer_pending_sites"].append({"site_code": code, "site_name": name})
         if approval.status == APPROVAL_STATUS_HQ_OFFICER_APPROVED:
             bottlenecks["hq_director_pending_sites"].append({"site_code": code, "site_name": name})
