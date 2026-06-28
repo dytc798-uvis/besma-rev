@@ -305,6 +305,39 @@ class FunctionalEvalSanction(Base):
     worker: Mapped[FunctionalEvalWorker] = relationship("FunctionalEvalWorker", back_populates="sanctions")
 
 
+class FunctionalEvalAccidentHistory(Base):
+    __tablename__ = "functional_eval_accident_histories"
+    __table_args__ = (
+        UniqueConstraint("source_key", name="uq_fe_accident_history_source_key"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    source_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    source_sheet: Mapped[str] = mapped_column(String(50), nullable=False, default="")
+    source_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    accident_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    worker_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    birth6: Mapped[str | None] = mapped_column(String(6), nullable=True, index=True)
+    rrn_hash: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    accident_site_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    accident_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    accident_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prevention_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    disease_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    matched_worker_id: Mapped[int | None] = mapped_column(ForeignKey("functional_eval_workers.id"), nullable=True, index=True)
+    matched_period_id: Mapped[int | None] = mapped_column(ForeignKey("functional_eval_periods.id"), nullable=True, index=True)
+    matched_site_code: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    match_status: Mapped[str] = mapped_column(String(20), nullable=False, default="UNMATCHED", index=True)
+    safety_penalty_applied: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    safety_penalty_points: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    sanction_id: Mapped[int | None] = mapped_column(ForeignKey("functional_eval_sanctions.id"), nullable=True, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
 class FunctionalEvalConsent(Base):
     """기능인제 최초 로그인 동의서 — 사용자당 1회."""
 

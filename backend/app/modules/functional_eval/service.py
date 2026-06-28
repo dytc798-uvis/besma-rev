@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session
 
 from app.config.security import get_password_hash
@@ -36,6 +37,7 @@ from app.modules.functional_eval.models import (
     FunctionalEvalAssessmentRevision,
     FunctionalEvalAttendanceEntry,
     FunctionalEvalAttendanceImportBatch,
+    FunctionalEvalAccidentHistory,
     FunctionalEvalCustomerReward,
     FunctionalEvalDailyReport,
     FunctionalEvalPeriod,
@@ -2976,12 +2978,70 @@ def build_hq_monitoring_summary(db: Session, period: FunctionalEvalPeriod) -> di
         sort_dir="desc",
         include_inactive=True,
     )
+    history_cards = build_hq_history_cards(db, period)
     return {
         "period": summary["period"],
         "attendance_message": summary.get("attendance_message"),
         "totals": summary["totals"],
         "worker_status_counts": summary["worker_status_counts"],
         "site_buckets": summary["site_buckets"],
+        "history_cards": history_cards,
+    }
+
+
+def build_hq_history_cards(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
+    accident_workers = (
+        db.query(func.count(distinct(FunctionalEvalAccidentHistory.matched_worker_id)))
+        .filter(
+            FunctionalEvalAccidentHistory.matched_period_id == period.id,
+            FunctionalEvalAccidentHistory.matched_worker_id.isnot(None),
+        )
+        .scalar()
+        or 0
+    )
+    unmatched_accidents = (
+        db.query(func.count(FunctionalEvalAccidentHistory.id))
+        .filter(FunctionalEvalAccidentHistory.match_status == "UNMATCHED")
+        .scalar()
+        or 0
+    )
+    sanction_workers = (
+        db.query(func.count(distinct(FunctionalEvalSanction.worker_id)))
+        .filter(
+            FunctionalEvalSanction.period_id == period.id,
+            FunctionalEvalSanction.status == SANCTION_STATUS_APPROVED,
+            ~FunctionalEvalSanction.note.like("사고이력 자동반영 - %"),
+        )
+        .scalar()
+        or 0
+    )
+    reward_workers = (
+        db.query(func.count(distinct(FunctionalEvalCustomerReward.worker_id)))
+        .filter(
+            FunctionalEvalCustomerReward.period_id == period.id,
+            FunctionalEvalCustomerReward.status == REWARD_STATUS_APPROVED,
+        )
+        .scalar()
+        or 0
+    )
+    accident_total = db.query(func.count(FunctionalEvalAccidentHistory.id)).scalar() or 0
+    return {
+        "accident": {
+            "count": int(accident_workers),
+            "total_records": int(accident_total),
+            "unmatched_records": int(unmatched_accidents),
+            "description": (
+                "사고·질병 이력 중 현재 기능인제 명부와 매칭되어 안전점수 감점 또는 재출역 경고 대상인 인원입니다."
+            ),
+        },
+        "sanction": {
+            "count": int(sanction_workers),
+            "description": "현장·본사에서 승인된 제재 이력이 있는 인원입니다. 사고이력 자동반영 건은 사고이력 카드로 분리했습니다.",
+        },
+        "reward": {
+            "count": int(reward_workers),
+            "description": "고객사 포상 등 본사 승인으로 안전평가 가점이 반영된 인원입니다.",
+        },
     }
 
 

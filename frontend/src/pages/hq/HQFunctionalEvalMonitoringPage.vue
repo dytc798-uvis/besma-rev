@@ -57,6 +57,30 @@
       <KpiCard label="평가완료 현장" :value="siteBuckets.completed" accent="emerald" compact />
       <KpiCard label="총 현장" :value="totals?.sites || 0" accent="slate" compact />
     </section>
+
+    <section class="history-card-grid" v-if="historyCards">
+      <article class="history-card">
+        <div class="history-card-top">
+          <span class="history-label">사고이력</span>
+          <strong>{{ historyCards.accident.count }}</strong>
+        </div>
+        <p>{{ historyCards.accident.description }}</p>
+      </article>
+      <article class="history-card">
+        <div class="history-card-top">
+          <span class="history-label">제재이력</span>
+          <strong>{{ historyCards.sanction.count }}</strong>
+        </div>
+        <p>{{ historyCards.sanction.description }}</p>
+      </article>
+      <article class="history-card">
+        <div class="history-card-top">
+          <span class="history-label">포상이력</span>
+          <strong>{{ historyCards.reward.count }}</strong>
+        </div>
+        <p>{{ historyCards.reward.description }}</p>
+      </article>
+    </section>
   </div>
 </template>
 
@@ -94,6 +118,11 @@ const cacheInfo = ref<{
   mode?: string;
   computed_at?: string | null;
   ttl_seconds?: number;
+} | null>(null);
+const historyCards = ref<{
+  accident: { count: number; total_records?: number; unmatched_records?: number; description: string };
+  sanction: { count: number; description: string };
+  reward: { count: number; description: string };
 } | null>(null);
 
 const monitorCounts = computed(() => workerStatusCounts.value);
@@ -133,6 +162,7 @@ async function loadMonitoring() {
       totals?: { sites: number; workers: number; fully_complete: number };
       worker_status_counts?: { not_started: number; in_progress: number; completed: number };
       site_buckets?: { in_progress: number; not_started: number; completed: number };
+      history_cards?: typeof historyCards.value;
       cache?: { mode?: string; computed_at?: string | null; ttl_seconds?: number };
     };
     period.value = data.period;
@@ -149,6 +179,7 @@ async function loadMonitoring() {
       not_started: Number(data.site_buckets?.not_started || 0),
       completed: Number(data.site_buckets?.completed || 0),
     };
+    historyCards.value = data.history_cards || null;
   } catch {
     loadError.value = "운영지표 조회에 실패했습니다. 잠시 후 새로고침하세요.";
   } finally {
@@ -213,6 +244,46 @@ onMounted(async () => {
   gap: 12px;
 }
 
+.history-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.history-card {
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+  min-height: 122px;
+}
+
+.history-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.history-label {
+  font-size: 13px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.history-card strong {
+  font-size: 28px;
+  color: #0f172a;
+}
+
+.history-card p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.45;
+  font-size: 13px;
+}
+
 .load-error {
   color: #dc2626;
   margin: 0;
@@ -226,6 +297,10 @@ onMounted(async () => {
 @media (max-width: 900px) {
   .monitor-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .history-card-grid {
+    grid-template-columns: 1fr;
   }
 }
 
