@@ -104,6 +104,11 @@ async function handleChangePassword() {
       return;
     }
 
+    if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
+      router.replace({ name: "site-functional-eval-field-form-uploads" });
+      return;
+    }
+
     if (auth.user?.ui_type === "HQ_SAFE") {
       router.replace({ name: hqSafeHomeRouteName() });
       return;
@@ -115,7 +120,7 @@ async function handleChangePassword() {
     }
 
     if (auth.user?.ui_type === "HQ_OTHER") {
-      router.replace({ name: "hq-other-dashboard" });
+      router.replace({ name: "hq-other-field-form-uploads" });
       return;
     }
 

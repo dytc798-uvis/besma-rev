@@ -15,6 +15,14 @@
     <aside class="layout-sidebar">
       <h1>기능인 인정제 평가</h1>
       <nav class="layout-menu">
+        <RouterLink
+          class="fe-field-form-highlight"
+          :class="{ active: isFieldFormUploadRoute }"
+          :to="{ name: 'site-functional-eval-field-form-uploads' }"
+          @click="closeMobileDrawer"
+        >
+          현장 양식 업로드
+        </RouterLink>
         <p v-if="!navHydrated" class="fe-menu-loading" role="status">메뉴 불러오는 중…</p>
         <template v-else-if="isTeamLeaderNav">
           <button
@@ -62,7 +70,7 @@
           <RouterLink
             class="fe-menu-highlight"
             :class="{ active: isRosterMenuActive }"
-            :to="{ name: 'site-functional-eval' }"
+            :to="{ name: 'site-functional-eval-roster' }"
             @click="closeMobileDrawer"
           >
             등급현황
@@ -137,9 +145,9 @@
         </div>
       </header>
       <main class="layout-main layout-main-fe">
-        <p v-if="consentLoading" class="fe-consent-loading" role="status">동의서·비밀번호 상태 확인 중…</p>
+        <p v-if="consentLoading && !isFieldFormUploadRoute" class="fe-consent-loading" role="status">동의서·비밀번호 상태 확인 중…</p>
         <FeConsentGate
-          v-else-if="consentRequired"
+          v-else-if="consentRequired && !isFieldFormUploadRoute"
           :open="consentRequired"
           :prefill="consentPrefill"
           :require-password-change="auth.mustChangePassword"
@@ -199,7 +207,7 @@ const evalMenuStatuses = [
 ];
 
 const isRosterMenuActive = computed(
-  () => route.name === "site-functional-eval" || route.name === "site-functional-eval-roster",
+  () => route.name === "site-functional-eval-roster",
 );
 
 const navHydrated = computed(() => feSiteSession.navHydrated);
@@ -211,6 +219,7 @@ const showSiteFooter = computed(() => !consentLoading.value && !consentRequired.
 const isEvaluateRoute = computed(() => route.name === "site-functional-eval-evaluate");
 const isGuideRoute = computed(() => route.name === "site-functional-eval-user-guide");
 const isTbmBetaRoute = computed(() => route.name === "site-functional-eval-tbm-beta");
+const isFieldFormUploadRoute = computed(() => route.name === "site-functional-eval-field-form-uploads");
 
 function isEvalMenuActive(statusKey: string) {
   return route.name === "site-functional-eval-evaluate" && route.query.eval_status === statusKey;
@@ -218,7 +227,7 @@ function isEvalMenuActive(statusKey: string) {
 
 function goRoster() {
   mobileDrawerOpen.value = false;
-  void router.push({ name: "site-functional-eval" });
+  void router.push({ name: "site-functional-eval-roster" });
 }
 
 function goTeamStep(step: "evaluate" | "report" | "results") {
@@ -227,7 +236,7 @@ function goTeamStep(step: "evaluate" | "report" | "results") {
     void router.push({ name: "site-functional-eval-evaluate" });
     return;
   }
-  void router.push({ name: "site-functional-eval", query: { team_step: step } });
+  void router.push({ name: "site-functional-eval-roster", query: { team_step: step } });
 }
 
 function closeMobileDrawer() {
@@ -467,6 +476,26 @@ function logout() {
   background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%);
   color: #fff;
   font-weight: 600;
+}
+
+.fe-field-form-highlight {
+  display: block;
+  margin: 0 10px 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a3412;
+  border-left: 4px solid #f97316;
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.fe-field-form-highlight.active,
+.fe-field-form-highlight.router-link-active {
+  background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%);
+  color: #fff;
+  border-left-color: #fed7aa;
 }
 
 @media (min-width: 769px) {

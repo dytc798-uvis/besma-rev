@@ -66,6 +66,7 @@ import HQFunctionalEvalRewardsSanctionsPage from "@/pages/hq/HQFunctionalEvalRew
 import HQFunctionalEvalGradeReportPage from "@/pages/hq/HQFunctionalEvalGradeReportPage.vue";
 import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
 import HQSystemBackupPage from "@/pages/hq/HQSystemBackupPage.vue";
+import FieldFormUploadPage from "@/pages/field-form-uploads/FieldFormUploadPage.vue";
 import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
 import PdfSigningPublicPage from "@/pages/pdf-signing/PdfSigningPublicPage.vue";
 import { isMobileOpsSiteLogin, siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
@@ -145,8 +146,9 @@ const routes: RouteRecordRaw[] = [
     component: HQSafeLayout,
     meta: { requiresAuth: true, uiType: "HQ_SAFE" },
     children: [
-      { path: "", redirect: { name: "hq-safe-functional-eval" } },
+      { path: "", redirect: { name: "hq-safe-field-form-uploads" } },
       { path: "dashboard", name: "hq-safe-dashboard", component: HQSafeDashboard },
+      { path: "field-form-uploads", name: "hq-safe-field-form-uploads", component: FieldFormUploadPage },
       { path: "documents", name: "hq-safe-documents", component: HQDocumentsDashboardPage },
       {
         path: "document-instances/:instanceId",
@@ -252,9 +254,10 @@ const routes: RouteRecordRaw[] = [
     component: FunctionalEvalLayout,
     meta: { requiresAuth: true, uiType: "SITE", requiresFunctionalEval: true },
     children: [
-      { path: "", name: "site-functional-eval", component: SiteFunctionalEvalPage },
+      { path: "", redirect: { name: "site-functional-eval-field-form-uploads" } },
       { path: "roster", name: "site-functional-eval-roster", component: SiteFunctionalEvalPage },
       { path: "evaluate", name: "site-functional-eval-evaluate", component: SiteFunctionalEvalPage },
+      { path: "field-form-uploads", name: "site-functional-eval-field-form-uploads", component: FieldFormUploadPage },
       { path: "tbm-beta", name: "site-functional-eval-tbm-beta", component: TbmBetaPage },
       { path: "user-guide", name: "site-functional-eval-user-guide", component: UserGuidePage },
     ],
@@ -264,6 +267,8 @@ const routes: RouteRecordRaw[] = [
     component: SiteLayout,
     meta: { requiresAuth: true, uiType: "SITE" },
     children: [
+      { path: "", redirect: { name: "site-field-form-uploads" } },
+      { path: "field-form-uploads", name: "site-field-form-uploads", component: FieldFormUploadPage },
       { path: "dashboard", name: "site-dashboard", component: SiteDashboard },
       { path: "notices", name: "site-notices", component: SiteNoticeBoardPage },
       { path: "safety-policy-goals", name: "site-safety-policy-goals", component: SafetyPolicyGoalsPage },
@@ -306,6 +311,8 @@ const routes: RouteRecordRaw[] = [
     component: HQOtherLayout,
     meta: { requiresAuth: true, uiType: "HQ_OTHER" },
     children: [
+      { path: "", redirect: { name: "hq-other-field-form-uploads" } },
+      { path: "field-form-uploads", name: "hq-other-field-form-uploads", component: FieldFormUploadPage },
       { path: "dashboard", name: "hq-other-dashboard", component: HQOtherDashboard },
       { path: "documents", name: "hq-other-documents", component: DocumentListPage },
       { path: "documents/:id", name: "hq-other-document-detail", component: DocumentDetailPage },
@@ -433,7 +440,8 @@ router.beforeEach(async (to, _from, next) => {
 
   const isFunctionalEvalUser = role === "SITE_FUNCTIONAL_EVAL";
   const goingFunctionalEval = to.path.startsWith("/site/functional-eval");
-  if (goingFunctionalEval && isMobileOpsSiteLogin(auth.user?.login_id)) {
+  const goingFunctionalEvalFieldForm = to.name === "site-functional-eval-field-form-uploads";
+  if (goingFunctionalEval && !goingFunctionalEvalFieldForm && isMobileOpsSiteLogin(auth.user?.login_id)) {
     next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     return;
   }
@@ -445,7 +453,7 @@ router.beforeEach(async (to, _from, next) => {
     to.path !== "/fe-onboarding" &&
     to.name !== "login"
   ) {
-    next({ name: "site-functional-eval" });
+    next({ name: "site-functional-eval-field-form-uploads" });
     return;
   }
 
@@ -469,14 +477,14 @@ router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresPdfSigning && !canAccessHqSafeWorkspace(auth.user?.role)) {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
     else next({ name: "login" });
     return;
   }
   if (to.meta.requiresAccidentAdmin && !canAccessHqSafeWorkspace(auth.user?.role)) {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
     else next({ name: "login" });
     return;
   }
@@ -506,7 +514,7 @@ router.beforeEach(async (to, _from, next) => {
       if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
       else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-      else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+      else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
       else next();
       return;
     }
@@ -522,14 +530,14 @@ router.beforeEach(async (to, _from, next) => {
       if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.effectiveUiType === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
       else if (auth.effectiveUiType === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-      else next({ name: "hq-other-dashboard" });
+      else next({ name: "hq-other-field-form-uploads" });
       return;
     }
   } else if (to.meta.uiType && auth.user && auth.user.ui_type !== to.meta.uiType) {
     if (auth.user.role === "WORKER") next({ name: "worker-mobile-list" });
     else if (!isWeleraserReference(auth.user?.login_id) && auth.user.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (!isWeleraserReference(auth.user?.login_id) && auth.user.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    else if (auth.user.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+    else if (auth.user.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
     else next({ name: "login" });
     return;
   }
@@ -550,15 +558,15 @@ router.beforeEach(async (to, _from, next) => {
       else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
       else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-      else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+      else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
       else next();
     } else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
-    else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") next({ name: "site-functional-eval" });
+    else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") next({ name: "site-functional-eval-field-form-uploads" });
     else if (auth.user?.role === "HQ_BUDGET_ESTIMATE" || auth.user?.role === "HQ_OUTSOURCING_PURCHASE")
       next({ name: "hq-safe-new-site-deployment" });
     else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
     else next();
     return;
   }

@@ -20,7 +20,7 @@
             {{ loading ? "로그인 중..." : "로그인" }}
           </button>
           <p class="login-mobile-tip">
-            기능인인정제 평가는 서명과 화면 조작이 편한 휴대폰으로 진행하시는 것을 권장합니다.
+            로그인 후 현장 양식 업로드 메뉴에서 작성 서류를 zip 파일로 업로드해 주세요.
           </p>
           <p v-if="errorMessage" class="login-error" role="alert">{{ errorMessage }}</p>
         </form>
@@ -94,11 +94,11 @@ async function handleLogin() {
     } else if (auth.user?.ui_type === "HQ_SAFE") {
       await router.push({ name: hqSafeHomeRouteName() });
     } else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
-      await router.push({ name: "site-functional-eval" });
+      await router.push({ name: "site-functional-eval-field-form-uploads" });
     } else if (auth.user?.ui_type === "SITE") {
       await router.push({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     } else if (auth.user?.ui_type === "HQ_OTHER") {
-      await router.push({ name: "hq-other-dashboard" });
+      await router.push({ name: "hq-other-field-form-uploads" });
     } else {
       await router.push({ name: hqSafeHomeRouteName() });
     }
