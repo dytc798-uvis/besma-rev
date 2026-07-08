@@ -19,7 +19,7 @@ from app.core.permissions import CurrentUserDep, HQ_SAFE_WORKSPACE_ROLES
 
 router = APIRouter(prefix="/field-form-uploads", tags=["field-form-uploads"])
 
-UPLOAD_DEADLINE = date(2026, 7, 20)
+UPLOAD_DEADLINE = date(2026, 7, 13)
 ZIP_ONLY_MESSAGE = "압축하여 업로드 바랍니다. zip 확장자만 업로드 가능합니다."
 _LEDGER_LOCK = Lock()
 

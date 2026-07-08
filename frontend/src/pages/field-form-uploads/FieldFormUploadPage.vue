@@ -1,7 +1,7 @@
 <template>
   <section class="field-form-page">
     <div class="page-heading">
-      <p class="deadline">업로드 기한: 2026년 7월 20일까지</p>
+      <p class="deadline">업로드 기한: 2026년 7월 13일까지</p>
       <h2>현장 양식 업로드</h2>
     </div>
 
