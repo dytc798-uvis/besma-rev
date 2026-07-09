@@ -1,5 +1,23 @@
 <template>
   <section class="field-form-page">
+    <aside v-if="!isHqView && rightRankItems.length > 0" class="rank-rail rank-rail-right" aria-label="제출 현장 순위">
+      <h3>제출 현장</h3>
+      <ol>
+        <li v-for="item in rightRankItems" :key="`right-${item.rank}`">
+          <span class="rank-no">{{ item.rank }}위</span>
+          <span class="rank-site">{{ item.site_name }}</span>
+        </li>
+      </ol>
+    </aside>
+    <aside v-if="!isHqView && leftRankItems.length > 0" class="rank-rail rank-rail-left" aria-label="제출 현장 순위 추가 목록">
+      <h3>제출 현장</h3>
+      <ol>
+        <li v-for="item in leftRankItems" :key="`left-${item.rank}`">
+          <span class="rank-no">{{ item.rank }}위</span>
+          <span class="rank-site">{{ item.site_name }}</span>
+        </li>
+      </ol>
+    </aside>
     <div class="page-heading">
       <p class="deadline">업로드 기한: 2026년 7월 13일까지</p>
       <h2>현장 양식 업로드</h2>
@@ -89,6 +107,7 @@ const ZIP_ONLY_MESSAGE = "압축하여 업로드 바랍니다. zip 확장자만 
 
 const auth = useAuthStore();
 const uploads = ref<FieldFormUpload[]>([]);
+const submittedSites = ref<Array<{ rank: number; site_name: string }>>([]);
 const loading = ref(false);
 const uploading = ref(false);
 const isDragging = ref(false);
@@ -96,8 +115,11 @@ const message = ref("");
 const warning = ref("");
 const uploadOpen = ref(true);
 const isHqView = computed(() => auth.user?.ui_type === "HQ_SAFE" || auth.user?.ui_type === "HQ_OTHER");
+const rightRankItems = computed(() => submittedSites.value.slice(0, 31));
+const leftRankItems = computed(() => submittedSites.value.slice(31, 62));
 
 onMounted(() => {
+  void loadSubmittedSites();
   if (isHqView.value) {
     void loadUploads();
   } else {
@@ -111,6 +133,15 @@ async function loadDeadline() {
     uploadOpen.value = res.data?.upload_open !== false;
   } catch {
     uploadOpen.value = true;
+  }
+}
+
+async function loadSubmittedSites() {
+  try {
+    const res = await api.get("/field-form-uploads/submitted-sites", { skipAuthRedirect: true });
+    submittedSites.value = Array.isArray(res.data?.items) ? res.data.items : [];
+  } catch {
+    submittedSites.value = [];
   }
 }
 
@@ -166,6 +197,7 @@ async function uploadFile(file: File) {
     });
     const storedFilename = res.data?.stored_filename || file.name;
     message.value = `${storedFilename} 파일이 업로드 되었습니다.`;
+    await loadSubmittedSites();
   } catch (err: any) {
     warning.value = err?.response?.data?.detail || ZIP_ONLY_MESSAGE;
   } finally {
@@ -201,8 +233,72 @@ async function downloadUpload(item: FieldFormUpload) {
 
 <style scoped>
 .field-form-page {
+  position: relative;
   min-height: calc(100vh - 120px);
   color: #0f172a;
+}
+
+.rank-rail {
+  position: fixed;
+  top: 88px;
+  z-index: 4;
+  width: 220px;
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: rgba(255, 247, 237, 0.96);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+}
+
+.rank-rail-right {
+  right: 16px;
+}
+
+.rank-rail-left {
+  left: 256px;
+}
+
+.rank-rail h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #9a3412;
+}
+
+.rank-rail ol {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rank-rail li {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.rank-no {
+  color: #ea580c;
+  font-weight: 800;
+}
+
+.rank-site {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #334155;
 }
 
 .page-heading {
@@ -433,6 +529,19 @@ async function downloadUpload(item: FieldFormUpload) {
 
   .drop-zone {
     min-height: 240px;
+  }
+}
+
+@media (max-width: 1279px) {
+  .rank-rail {
+    position: static;
+    width: auto;
+    max-height: none;
+    margin: 0 auto 14px;
+  }
+
+  .rank-rail-left {
+    margin-top: -6px;
   }
 }
 </style>

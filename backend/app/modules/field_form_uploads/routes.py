@@ -108,6 +108,36 @@ def get_deadline() -> dict:
     }
 
 
+def _submitted_site_rows() -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    rows: list[dict[str, Any]] = []
+    items = sorted(_read_ledger(), key=lambda row: (row.get("uploaded_at") or "", row.get("id") or 0))
+    for item in items:
+        key = str(item.get("site_id") or item.get("site_name") or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "rank": len(rows) + 1,
+                "site_id": item.get("site_id"),
+                "site_name": item.get("site_name") or "",
+                "uploaded_by_name": item.get("uploaded_by_name") or "",
+                "uploaded_by_login_id": item.get("uploaded_by_login_id") or "",
+                "document_count": item.get("document_count") or 0,
+                "uploaded_at": item.get("uploaded_at") or "",
+            }
+        )
+        if len(rows) >= 62:
+            break
+    return rows
+
+
+@router.get("/submitted-sites")
+def list_submitted_sites(current_user: CurrentUserDep):
+    return {"items": _submitted_site_rows(), "limit": 62}
+
+
 @router.post("")
 async def upload_field_forms(
     current_user: CurrentUserDep,
