@@ -21,6 +21,10 @@ router = APIRouter(prefix="/field-form-uploads", tags=["field-form-uploads"])
 
 UPLOAD_DEADLINE = date(2026, 7, 13)
 ZIP_ONLY_MESSAGE = "압축하여 업로드 바랍니다. zip 확장자만 업로드 가능합니다."
+MAX_UPLOADS_PER_SITE = 2
+FIELD_FORM_UPLOAD_MAX_BYTES = 20 * 1024 * 1024
+UPLOAD_LIMIT_MESSAGE = "현장별 업로드는 최대 2개까지만 가능합니다."
+UPLOAD_SIZE_MESSAGE = "파일 크기는 20MB 이하만 업로드할 수 있습니다."
 _LEDGER_LOCK = Lock()
 
 
@@ -55,6 +59,12 @@ def _write_ledger(items: list[dict[str, Any]]) -> None:
 def _next_upload_id(items: list[dict[str, Any]]) -> int:
     ids = [int(row.get("id") or 0) for row in items if isinstance(row, dict)]
     return (max(ids) if ids else 0) + 1
+
+
+def _site_upload_count(items: list[dict[str, Any]], site_id: int | None) -> int:
+    if site_id is None:
+        return 0
+    return sum(1 for row in items if int(row.get("site_id") or 0) == int(site_id))
 
 
 def _safe_filename_part(value: str) -> str:
@@ -105,6 +115,8 @@ def get_deadline() -> dict:
     return {
         "deadline": UPLOAD_DEADLINE.isoformat(),
         "upload_open": kst_today() <= UPLOAD_DEADLINE,
+        "max_uploads_per_site": MAX_UPLOADS_PER_SITE,
+        "max_upload_size_bytes": FIELD_FORM_UPLOAD_MAX_BYTES,
     }
 
 
@@ -151,11 +163,14 @@ async def upload_field_forms(
     if not source_name.lower().endswith(".zip"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ZIP_ONLY_MESSAGE)
 
+    if _site_upload_count(_read_ledger(), current_user.site_id) >= MAX_UPLOADS_PER_SITE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=UPLOAD_LIMIT_MESSAGE)
+
     content = await file.read()
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="빈 파일은 업로드할 수 없습니다.")
-    if len(content) > settings.upload_max_part_size_bytes:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="파일 용량이 너무 큽니다.")
+    if len(content) > FIELD_FORM_UPLOAD_MAX_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=UPLOAD_SIZE_MESSAGE)
 
     storage_dir = _ensure_upload_dir()
     site_label = _safe_filename_part(_site_name(current_user))
@@ -174,6 +189,9 @@ async def upload_field_forms(
 
     with _LEDGER_LOCK:
         items = _read_ledger()
+        if _site_upload_count(items, current_user.site_id) >= MAX_UPLOADS_PER_SITE:
+            final_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=UPLOAD_LIMIT_MESSAGE)
         row = {
             "id": _next_upload_id(items),
             "site_id": current_user.site_id,

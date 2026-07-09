@@ -79,6 +79,7 @@
           <input type="file" accept=".zip,application/zip" :disabled="!uploadOpen || uploading" @change="handleFileInput" />
           <strong>드래그 앤 드롭</strong>
           <span>또는 파일 선택 버튼으로 zip 파일을 업로드하세요.</span>
+          <span class="upload-policy">현장별 최대 2개, 파일당 20MB 이하만 업로드 가능합니다.</span>
           <span class="select-file-btn" aria-hidden="true">{{ uploading ? "업로드 중" : "파일 선택" }}</span>
           <p v-if="!uploadOpen" class="deadline-ended">현장 양식 업로드 기한이 종료되었습니다.</p>
           <p v-if="message" class="upload-message">{{ message }}</p>
@@ -104,6 +105,8 @@ interface FieldFormUpload {
 }
 
 const ZIP_ONLY_MESSAGE = "압축하여 업로드 바랍니다. zip 확장자만 업로드 가능합니다.";
+const MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024;
+const UPLOAD_SIZE_MESSAGE = "파일 크기는 20MB 이하만 업로드할 수 있습니다.";
 
 const auth = useAuthStore();
 const uploads = ref<FieldFormUpload[]>([]);
@@ -184,6 +187,10 @@ async function uploadFile(file: File) {
   warning.value = "";
   if (!file.name.toLowerCase().endsWith(".zip")) {
     warning.value = ZIP_ONLY_MESSAGE;
+    return;
+  }
+  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    warning.value = UPLOAD_SIZE_MESSAGE;
     return;
   }
   const form = new FormData();
@@ -404,6 +411,13 @@ async function downloadUpload(item: FieldFormUpload) {
 
 .drop-zone span {
   color: #475569;
+}
+
+.drop-zone .upload-policy {
+  margin-top: 6px;
+  color: #b45309;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .drop-zone-active {
