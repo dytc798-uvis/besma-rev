@@ -2,7 +2,13 @@
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app.config.security import get_password_hash, verify_password
-from app.core.auth import authenticate_user, create_user_access_token, DbDep, get_current_user
+from app.core.auth import (
+    _load_erp_login_aliases,
+    authenticate_user,
+    create_user_access_token,
+    DbDep,
+    get_current_user,
+)
 from app.core.datetime_utils import utc_now
 from app.core.password_policy import validate_password_policy
 from app.core.permissions import Role
@@ -18,15 +24,85 @@ from app.modules.users.models import User
 from app.core.system_backup_access import can_system_backup
 from app.schemas.auth import (
     ChangePasswordRequest,
+    FindLoginIdsRequest,
+    FindLoginIdsResponse,
     IssueAccountRequest,
     IssueAccountResponse,
     IssuedAccountItem,
+    LoginIdLookupItem,
+    PublicPasswordResetRequest,
+    PublicPasswordResetResponse,
     Token,
     UserMe,
 )
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _role_label(role: str) -> str:
+    return {
+        "HQ_SAFE": "본사",
+        "HQ_SAFE_ADMIN": "본사",
+        "ACCIDENT_ADMIN": "본사",
+        "SUPER_ADMIN": "관리자",
+        "HQ_OTHER": "본사",
+        "SITE": "현장",
+        "SITE_FUNCTIONAL_EVAL": "현장",
+        "FUNCTIONAL_EVAL_VIEWER": "조회",
+        "HQ_BUDGET_ESTIMATE": "본사",
+        "HQ_OUTSOURCING_PURCHASE": "본사",
+    }.get(role, role)
+
+
+def _clean_birth6(value: str | None) -> str:
+    return "".join(ch for ch in (value or "").strip() if ch.isdigit())[:6]
+
+
+def _erp_alias_for_identity(name: str, birth6: str, erp_login_id: str | None = None) -> dict[str, str] | None:
+    clean_name = (name or "").strip()
+    clean_birth6 = _clean_birth6(birth6)
+    clean_erp = (erp_login_id or "").strip().lower()
+    if not clean_name or len(clean_birth6) != 6:
+        return None
+
+    aliases = _load_erp_login_aliases()
+    if clean_erp:
+        row = aliases.get(clean_erp)
+        if row and row.get("name") == clean_name and _clean_birth6(row.get("birth6")) == clean_birth6:
+            return row
+        return None
+
+    matches = [
+        row
+        for row in aliases.values()
+        if row.get("name") == clean_name and _clean_birth6(row.get("birth6")) == clean_birth6
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _active_account_candidates(db, *, name: str) -> list[User]:
+    return (
+        db.query(User)
+        .filter(
+            User.name == name,
+            User.is_active.is_(True),
+            ~User.role.in_(["WORKER"]),
+        )
+        .order_by(User.role.asc(), User.login_id.asc())
+        .all()
+    )
+
+
+def _select_identity_account(candidates: list[User]) -> User | None:
+    if len(candidates) == 1:
+        return candidates[0]
+    site_candidates = [u for u in candidates if getattr(u.role, "value", u.role) == "SITE"]
+    if len(site_candidates) == 1:
+        return site_candidates[0]
+    return None
 
 
 def _resolve_default_pilot_site(db, user: User) -> int | None:
@@ -167,6 +243,66 @@ def issue_accounts(payload: IssueAccountRequest, request: Request, db: DbDep) ->
         role_label=result.get("role_label"),
         accounts=accounts,
     )
+
+
+@router.post("/find-login-ids", response_model=FindLoginIdsResponse)
+def find_login_ids(payload: FindLoginIdsRequest, db: DbDep) -> FindLoginIdsResponse:
+    alias = _erp_alias_for_identity(payload.name, payload.birth6, payload.erp_login_id)
+    if not alias:
+        raise HTTPException(
+            status_code=400,
+            detail="입력한 정보와 일치하는 계정을 찾을 수 없습니다. 이름, 생년월일, ERP 아이디를 확인해 주세요.",
+        )
+
+    candidates = _active_account_candidates(db, name=alias["name"])
+    if not candidates:
+        raise HTTPException(
+            status_code=400,
+            detail="입력한 정보와 일치하는 계정을 찾을 수 없습니다. 이름, 생년월일, ERP 아이디를 확인해 주세요.",
+        )
+
+    accounts = [
+        LoginIdLookupItem(
+            login_id=user.login_id,
+            name=user.name,
+            role_label=_role_label(getattr(user.role, "value", user.role)),
+        )
+        for user in candidates
+    ]
+    return FindLoginIdsResponse(message="조회 가능한 아이디입니다.", accounts=accounts)
+
+
+@router.post("/reset-password-public", response_model=PublicPasswordResetResponse)
+def reset_password_public(payload: PublicPasswordResetRequest, db: DbDep) -> PublicPasswordResetResponse:
+    alias = _erp_alias_for_identity(payload.name, payload.birth6, payload.erp_login_id)
+    if not alias:
+        raise HTTPException(
+            status_code=400,
+            detail="입력한 정보와 일치하는 계정을 찾을 수 없습니다. 이름, 생년월일, ERP 아이디를 확인해 주세요.",
+        )
+
+    if payload.new_password != payload.new_password_confirm:
+        raise HTTPException(status_code=400, detail="새 비밀번호 확인이 일치하지 않습니다.")
+
+    try:
+        validate_password_policy(payload.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    candidates = _active_account_candidates(db, name=alias["name"])
+    user = _select_identity_account(candidates)
+    if user is None:
+        raise HTTPException(
+            status_code=400,
+            detail="대상 계정이 여러 개입니다. 정상익 차장에게 문의해 주세요.",
+        )
+
+    user.password_hash = get_password_hash(payload.new_password.strip())
+    user.must_change_password = False
+    user.password_changed_at = utc_now()
+    db.add(user)
+    db.commit()
+    return PublicPasswordResetResponse(message="비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.")
 
 
 @router.post("/change-password")

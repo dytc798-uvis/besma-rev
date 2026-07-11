@@ -56,6 +56,7 @@ def _load_erp_login_aliases() -> dict[str, dict[str, str]]:
                 if not erp_login_id or not name:
                     continue
                 aliases[erp_login_id] = {
+                    "erp_login_id": erp_login_id,
                     "name": name,
                     "birth6": (row.get("birth6") or "").strip(),
                     "employee_code": (row.get("employee_code") or "").strip(),

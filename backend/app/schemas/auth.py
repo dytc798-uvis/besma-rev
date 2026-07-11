@@ -64,6 +64,36 @@ class IssueAccountResponse(BaseModel):
     accounts: list[IssuedAccountItem]
 
 
+class FindLoginIdsRequest(BaseModel):
+    name: str
+    birth6: str
+    erp_login_id: str | None = None
+
+
+class LoginIdLookupItem(BaseModel):
+    login_id: str
+    name: str
+    role_label: str
+
+
+class FindLoginIdsResponse(BaseModel):
+    message: str
+    accounts: list[LoginIdLookupItem]
+
+
+class PublicPasswordResetRequest(BaseModel):
+    name: str
+    birth6: str
+    erp_login_id: str
+    new_password: str
+    new_password_confirm: str
+
+
+class PublicPasswordResetResponse(BaseModel):
+    result: str = "ok"
+    message: str
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str

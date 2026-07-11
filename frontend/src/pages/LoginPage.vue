@@ -36,9 +36,9 @@
         </form>
 
         <div class="login-issue-block">
-          <p class="login-issue-text">아이디를 받지 못하셨나요?</p>
+          <p class="login-issue-text">아이디 또는 비밀번호가 기억나지 않나요?</p>
           <button type="button" class="secondary login-issue-btn" @click="showIssueModal = true">
-            아이디 발급
+            나의 아이디 확인
           </button>
         </div>
       </div>
