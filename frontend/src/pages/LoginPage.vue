@@ -10,17 +10,27 @@
         <form class="login-form" @submit.prevent="handleLogin">
           <label>
             <div class="login-label">로그인 ID</div>
-            <input v-model="loginId" type="text" autocomplete="username" />
+            <input
+              v-model="loginId"
+              type="text"
+              autocomplete="username"
+              placeholder="BESMA 아이디 또는 ERP 아이디"
+            />
           </label>
           <label>
             <div class="login-label">비밀번호</div>
-            <input v-model="password" type="password" autocomplete="current-password" />
+            <input
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="기존 비밀번호 또는 초기 비밀번호"
+            />
           </label>
           <button class="primary login-submit" type="submit" :disabled="loading">
             {{ loading ? "로그인 중..." : "로그인" }}
           </button>
           <p class="login-mobile-tip">
-            기능인인정제 평가는 서명과 화면 조작이 편한 휴대폰으로 진행하시는 것을 권장합니다.
+            현장 소장님은 BESMA 아이디 또는 ERP 아이디로 로그인할 수 있습니다. 비밀번호는 기존 BESMA 비밀번호 또는 안내받은 초기 비밀번호를 입력해 주세요.
           </p>
           <p v-if="errorMessage" class="login-error" role="alert">{{ errorMessage }}</p>
         </form>
@@ -58,6 +68,7 @@ const showIssueModal = ref(false);
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
+const NAVIGATION_TIMEOUT_MS = 5_000;
 
 onMounted(() => {
   auth.prepareLoginPage();
@@ -87,22 +98,40 @@ async function handleLogin() {
       return;
     }
     const redirectPath = typeof route.query.redirect === "string" ? route.query.redirect : "";
-    if (redirectPath) {
-      await router.push(redirectPath);
-    } else if (auth.user?.role === "WORKER") {
-      await router.push({ name: "worker-mobile-list" });
-    } else if (auth.user?.ui_type === "HQ_SAFE") {
-      await router.push({ name: hqSafeHomeRouteName() });
-    } else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
-      await router.push({ name: "site-functional-eval" });
-    } else if (auth.user?.ui_type === "SITE") {
-      await router.push({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    } else if (auth.user?.ui_type === "HQ_OTHER") {
-      await router.push({ name: "hq-other-dashboard" });
-    } else {
-      await router.push({ name: hqSafeHomeRouteName() });
-    }
+    const target = redirectPath
+      ? redirectPath
+      : auth.user?.role === "WORKER"
+        ? { name: "worker-mobile-list" }
+        : auth.user?.ui_type === "HQ_SAFE"
+            ? { name: hqSafeHomeRouteName() }
+          : auth.user?.role === "SITE_FUNCTIONAL_EVAL"
+            ? { name: "site-functional-eval-field-form-uploads" }
+            : auth.user?.ui_type === "SITE"
+              ? { name: siteMobileOrDesktopHomeName(auth.user?.login_id) }
+              : auth.user?.ui_type === "HQ_OTHER"
+                ? { name: "hq-other-field-form-uploads" }
+                : { name: hqSafeHomeRouteName() };
+    loading.value = false;
+    await Promise.race([
+      router.push(target),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("LOGIN_NAVIGATION_TIMEOUT")), NAVIGATION_TIMEOUT_MS);
+      }),
+    ]);
+    return;
   } catch (err) {
+    if (err instanceof Error && err.message === "LOGIN_NAVIGATION_TIMEOUT") {
+      const fallback =
+        auth.user?.role === "SITE_FUNCTIONAL_EVAL"
+          ? "/site/functional-eval/field-form-uploads"
+          : auth.user?.ui_type === "HQ_SAFE"
+            ? "/hq-safe/field-form-uploads"
+            : auth.user?.ui_type === "SITE"
+              ? "/site/field-form-uploads"
+              : "/";
+      window.location.assign(fallback);
+      return;
+    }
     errorMessage.value = formatLoginError(err);
   } finally {
     loading.value = false;
