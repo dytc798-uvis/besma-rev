@@ -85,6 +85,9 @@ def _authenticate_erp_login_alias(db: Session, login_id: str, password: str) -> 
     )
     matched = [user for user in candidates if verify_password(password, user.password_hash)]
     if len(matched) != 1:
+        named_login_matched = [user for user in matched if "-" in (user.login_id or "")]
+        if len(named_login_matched) == 1:
+            return named_login_matched[0]
         site_matched = [user for user in matched if user.role == Role.SITE]
         if len(site_matched) == 1:
             return site_matched[0]
