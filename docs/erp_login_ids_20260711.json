@@ -1,0 +1,699 @@
+{
+  "source_file": "사원리스트_20260711095355.xlsx",
+  "total_rows": 77,
+  "rows": [
+    {
+      "name": "강현석",
+      "birth6": "681125",
+      "employee_code": "054",
+      "department": "01",
+      "position": "9",
+      "email": "khs8298@hanmail.net",
+      "erp_login_id": "khs8298"
+    },
+    {
+      "name": "고명래",
+      "birth6": "680424",
+      "employee_code": "339",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "kmr0424"
+    },
+    {
+      "name": "권혁근",
+      "birth6": "650426",
+      "employee_code": "359",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "khk0426"
+    },
+    {
+      "name": "김기배",
+      "birth6": "720525",
+      "employee_code": "028",
+      "department": "01",
+      "position": "9",
+      "email": "kimkb7375@naver.com",
+      "erp_login_id": "kkb7370"
+    },
+    {
+      "name": "김길수",
+      "birth6": "610706",
+      "employee_code": "009",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "kks0983"
+    },
+    {
+      "name": "김대용",
+      "birth6": "810406",
+      "employee_code": "023",
+      "department": "15",
+      "position": "9",
+      "email": "",
+      "erp_login_id": ""
+    },
+    {
+      "name": "김대호",
+      "birth6": "700521",
+      "employee_code": "290",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "kdh0521"
+    },
+    {
+      "name": "김명호",
+      "birth6": "660530",
+      "employee_code": "085",
+      "department": "01",
+      "position": "9",
+      "email": "kimhoo9869@hanmail.net",
+      "erp_login_id": "kimhoo9869"
+    },
+    {
+      "name": "김성수",
+      "birth6": "720929",
+      "employee_code": "045",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "kss8876"
+    },
+    {
+      "name": "김승모",
+      "birth6": "700824",
+      "employee_code": "006",
+      "department": "01",
+      "position": "9",
+      "email": "looker96@naver.com",
+      "erp_login_id": "ksm2380"
+    },
+    {
+      "name": "김영기",
+      "birth6": "721231",
+      "employee_code": "032",
+      "department": "01",
+      "position": "9",
+      "email": "legs1109@naver.com",
+      "erp_login_id": "kyk7205"
+    },
+    {
+      "name": "김영진",
+      "birth6": "700904",
+      "employee_code": "186",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "kyj0904"
+    },
+    {
+      "name": "김영호",
+      "birth6": "640303",
+      "employee_code": "008",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "kyh6225"
+    },
+    {
+      "name": "김영환",
+      "birth6": "590310",
+      "employee_code": "312",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "kyh0310"
+    },
+    {
+      "name": "김용호",
+      "birth6": "650906",
+      "employee_code": "281",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "kyh0906"
+    },
+    {
+      "name": "김재덕",
+      "birth6": "770807",
+      "employee_code": "036",
+      "department": "01",
+      "position": "9",
+      "email": "tntlover@naver.com",
+      "erp_login_id": "kjd7532"
+    },
+    {
+      "name": "김재익",
+      "birth6": "551208",
+      "employee_code": "099",
+      "department": "01",
+      "position": "9",
+      "email": "kjk6998@hanmail.net",
+      "erp_login_id": ""
+    },
+    {
+      "name": "김충남",
+      "birth6": "730907",
+      "employee_code": "077",
+      "department": "01",
+      "position": "9",
+      "email": "narodokim1@naver.com",
+      "erp_login_id": "kcn7132"
+    },
+    {
+      "name": "김태주",
+      "birth6": "720910",
+      "employee_code": "078",
+      "department": "01",
+      "position": "9",
+      "email": "kmtj30@hanmail.net",
+      "erp_login_id": "ktj6118"
+    },
+    {
+      "name": "나상섭",
+      "birth6": "671023",
+      "employee_code": "321",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "nss1023"
+    },
+    {
+      "name": "노강철",
+      "birth6": "680505",
+      "employee_code": "331",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": ""
+    },
+    {
+      "name": "노승호",
+      "birth6": "740112",
+      "employee_code": "024",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "nsh7777"
+    },
+    {
+      "name": "노진호",
+      "birth6": "760520",
+      "employee_code": "091",
+      "department": "01",
+      "position": "9",
+      "email": "loveroh76@naver.com",
+      "erp_login_id": "njh4348"
+    },
+    {
+      "name": "데이터이관",
+      "birth6": "111111",
+      "employee_code": "097",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "testtest"
+    },
+    {
+      "name": "도유훈",
+      "birth6": "760611",
+      "employee_code": "344",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "dyh0611"
+    },
+    {
+      "name": "맹효덕",
+      "birth6": "540525",
+      "employee_code": "002",
+      "department": "01",
+      "position": "9",
+      "email": "mhd6321@naver.com",
+      "erp_login_id": "mhd2759"
+    },
+    {
+      "name": "문상훈",
+      "birth6": "790202",
+      "employee_code": "025",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "msh0812"
+    },
+    {
+      "name": "문우남",
+      "birth6": "761113",
+      "employee_code": "128",
+      "department": "01",
+      "position": "9",
+      "email": "m7870@naver.com",
+      "erp_login_id": "mwn2911"
+    },
+    {
+      "name": "박기훈",
+      "birth6": "760922",
+      "employee_code": "345",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": ""
+    },
+    {
+      "name": "박명식",
+      "birth6": "661123",
+      "employee_code": "233",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "mspark1123"
+    },
+    {
+      "name": "박성호",
+      "birth6": "690630",
+      "employee_code": "039",
+      "department": "01",
+      "position": "9",
+      "email": "skyland69@naver.com",
+      "erp_login_id": "psh5357"
+    },
+    {
+      "name": "박재만",
+      "birth6": "650220",
+      "employee_code": "081",
+      "department": "01",
+      "position": "9",
+      "email": "jmjm0220@naver.com",
+      "erp_login_id": "pjm5636"
+    },
+    {
+      "name": "박천복",
+      "birth6": "611123",
+      "employee_code": "024",
+      "department": "15",
+      "position": "9",
+      "email": "",
+      "erp_login_id": ""
+    },
+    {
+      "name": "백대진",
+      "birth6": "690505",
+      "employee_code": "017",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "bdj1592"
+    },
+    {
+      "name": "백봉진",
+      "birth6": "740526",
+      "employee_code": "075",
+      "department": "01",
+      "position": "9",
+      "email": "bbjkka6738@daum.net",
+      "erp_login_id": "bbj2692"
+    },
+    {
+      "name": "백성모",
+      "birth6": "690902",
+      "employee_code": "335",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "bsm0902"
+    },
+    {
+      "name": "백화종",
+      "birth6": "660415",
+      "employee_code": "051",
+      "department": "01",
+      "position": "9",
+      "email": "back0382@naver.com",
+      "erp_login_id": "bhj0382"
+    },
+    {
+      "name": "석영주",
+      "birth6": "611206",
+      "employee_code": "014",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "syj8187"
+    },
+    {
+      "name": "신진석",
+      "birth6": "780122",
+      "employee_code": "273",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "sjs3229"
+    },
+    {
+      "name": "안남규",
+      "birth6": "790217",
+      "employee_code": "353",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "ank0217"
+    },
+    {
+      "name": "양정훈",
+      "birth6": "771121",
+      "employee_code": "241",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "yjh1121"
+    },
+    {
+      "name": "양홍규",
+      "birth6": "610117",
+      "employee_code": "240",
+      "department": "01",
+      "position": "9",
+      "email": "yhk6798@naver.com",
+      "erp_login_id": "yhk0117"
+    },
+    {
+      "name": "오민태",
+      "birth6": "750205",
+      "employee_code": "309",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "omt0205"
+    },
+    {
+      "name": "오준석",
+      "birth6": "710423",
+      "employee_code": "294",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "ojs0423"
+    },
+    {
+      "name": "오춘남",
+      "birth6": "680830",
+      "employee_code": "010",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "ocn3599"
+    },
+    {
+      "name": "윤인수",
+      "birth6": "750122",
+      "employee_code": "307",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "yis0122"
+    },
+    {
+      "name": "이만재",
+      "birth6": "631204",
+      "employee_code": "026",
+      "department": "01",
+      "position": "9",
+      "email": "lmj4524@naver.com",
+      "erp_login_id": "lmj1530"
+    },
+    {
+      "name": "이병삼",
+      "birth6": "650122",
+      "employee_code": "324",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "lbs0122"
+    },
+    {
+      "name": "이봉래",
+      "birth6": "710210",
+      "employee_code": "048",
+      "department": "01",
+      "position": "9",
+      "email": "hanbar0125@naver.com",
+      "erp_login_id": "lbr0350"
+    },
+    {
+      "name": "이봉수",
+      "birth6": "730327",
+      "employee_code": "316",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "lbs0327"
+    },
+    {
+      "name": "이상갑",
+      "birth6": "720713",
+      "employee_code": "029",
+      "department": "15",
+      "position": "9",
+      "email": "",
+      "erp_login_id": ""
+    },
+    {
+      "name": "이상민",
+      "birth6": "800801",
+      "employee_code": "047",
+      "department": "01",
+      "position": "9",
+      "email": "ipce9910718@hanmail.net",
+      "erp_login_id": "lsm6630"
+    },
+    {
+      "name": "이석두",
+      "birth6": "660115",
+      "employee_code": "192",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "lsd0115"
+    },
+    {
+      "name": "이성영",
+      "birth6": "610314",
+      "employee_code": "003",
+      "department": "01",
+      "position": "9",
+      "email": "lsy10314@hanmail,net",
+      "erp_login_id": "lsy6754"
+    },
+    {
+      "name": "이세환",
+      "birth6": "720109",
+      "employee_code": "308",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "lsh0109"
+    },
+    {
+      "name": "이용수",
+      "birth6": "660516",
+      "employee_code": "096",
+      "department": "01",
+      "position": "9",
+      "email": "young666@naver.com",
+      "erp_login_id": "lys2411"
+    },
+    {
+      "name": "이정재",
+      "birth6": "601101",
+      "employee_code": "165",
+      "department": "01",
+      "position": "9",
+      "email": "ljj1336@hanmail.net",
+      "erp_login_id": "ljj4425"
+    },
+    {
+      "name": "이종국",
+      "birth6": "760528",
+      "employee_code": "139",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "ljk4382"
+    },
+    {
+      "name": "이종우",
+      "birth6": "750209",
+      "employee_code": "198",
+      "department": "01",
+      "position": "9",
+      "email": "paper10044@hanmail.net",
+      "erp_login_id": "jwlee"
+    },
+    {
+      "name": "이혜석",
+      "birth6": "680924",
+      "employee_code": "269",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "lhs0924"
+    },
+    {
+      "name": "이호준",
+      "birth6": "840108",
+      "employee_code": "251",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "lhj0108"
+    },
+    {
+      "name": "임춘수",
+      "birth6": "651128",
+      "employee_code": "146",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "lcs3351"
+    },
+    {
+      "name": "장천식",
+      "birth6": "770702",
+      "employee_code": "351",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "jcs0702"
+    },
+    {
+      "name": "전정환",
+      "birth6": "730123",
+      "employee_code": "173",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "jjh9566"
+    },
+    {
+      "name": "정광표",
+      "birth6": "780830",
+      "employee_code": "156",
+      "department": "01",
+      "position": "9",
+      "email": "638782@hanmail.net",
+      "erp_login_id": "jgp7340"
+    },
+    {
+      "name": "정규청",
+      "birth6": "800107",
+      "employee_code": "293",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "juc0107"
+    },
+    {
+      "name": "정인근",
+      "birth6": "731114",
+      "employee_code": "018",
+      "department": "01",
+      "position": "9",
+      "email": "j1792@paran.com",
+      "erp_login_id": "jig1792"
+    },
+    {
+      "name": "정재호",
+      "birth6": "740502",
+      "employee_code": "333",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "jjh0502"
+    },
+    {
+      "name": "정정용",
+      "birth6": "650102",
+      "employee_code": "227",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "jjy6773"
+    },
+    {
+      "name": "정해은",
+      "birth6": "640721",
+      "employee_code": "202",
+      "department": "01",
+      "position": "9",
+      "email": "jhe2004@hanmail.net",
+      "erp_login_id": "jhe3823"
+    },
+    {
+      "name": "조원호",
+      "birth6": "710806",
+      "employee_code": "327",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "jwh0806"
+    },
+    {
+      "name": "주현덕",
+      "birth6": "690402",
+      "employee_code": "013",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "jhd9180"
+    },
+    {
+      "name": "천인식",
+      "birth6": "731007",
+      "employee_code": "243",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "cis7276"
+    },
+    {
+      "name": "최장영",
+      "birth6": "720301",
+      "employee_code": "034",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "cjy0301"
+    },
+    {
+      "name": "최종림",
+      "birth6": "651221",
+      "employee_code": "104",
+      "department": "01",
+      "position": "9",
+      "email": "cjr0459@naver.com",
+      "erp_login_id": "cjl1169"
+    },
+    {
+      "name": "한규석",
+      "birth6": "710607",
+      "employee_code": "318",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "hks0607"
+    },
+    {
+      "name": "홍지수",
+      "birth6": "801113",
+      "employee_code": "287",
+      "department": "01",
+      "position": "9",
+      "email": "",
+      "erp_login_id": "hjs1113"
+    }
+  ]
+}

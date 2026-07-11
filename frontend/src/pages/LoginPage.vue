@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="login-page">
     <div class="login-hero" aria-hidden="true">
       <img :src="ONLY_LOGO_SRC" alt="" class="login-bg-logo" />
@@ -10,17 +10,27 @@
         <form class="login-form" @submit.prevent="handleLogin">
           <label>
             <div class="login-label">로그인 ID</div>
-            <input v-model="loginId" type="text" autocomplete="username" />
+            <input
+              v-model="loginId"
+              type="text"
+              autocomplete="username"
+              placeholder="BESMA 아이디 또는 ERP 아이디"
+            />
           </label>
           <label>
             <div class="login-label">비밀번호</div>
-            <input v-model="password" type="password" autocomplete="current-password" />
+            <input
+              v-model="password"
+              type="password"
+              autocomplete="current-password"
+              placeholder="기존 비밀번호 또는 초기 비밀번호"
+            />
           </label>
           <button class="primary login-submit" type="submit" :disabled="loading">
             {{ loading ? "로그인 중..." : "로그인" }}
           </button>
           <p class="login-mobile-tip">
-            로그인 후 현장 양식 업로드 메뉴에서 작성 서류를 zip 파일로 업로드해 주세요.
+            현장 소장님은 BESMA 아이디 또는 ERP 아이디로 로그인할 수 있습니다. 비밀번호는 기존 BESMA 비밀번호 또는 안내받은 초기 비밀번호를 입력해 주세요.
           </p>
           <p v-if="errorMessage" class="login-error" role="alert">{{ errorMessage }}</p>
         </form>

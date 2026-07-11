@@ -1,5 +1,6 @@
 from datetime import timedelta
 from typing import Annotated, Optional
+import csv
 import os
 
 from fastapi import Depends, HTTPException, Request, status
@@ -7,8 +8,9 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.config.security import create_access_token, verify_password
-from app.config.settings import settings
+from app.config.settings import BASE_DIR, settings
 from app.core.database import SessionLocal
+from app.core.enums import Role
 from app.modules.users import models as user_models
 
 
@@ -27,8 +29,70 @@ def get_db() -> Session:
 DbDep = Annotated[Session, Depends(get_db)]
 
 
+_ERP_LOGIN_ALIAS_FILE = BASE_DIR / "docs" / "erp_login_ids_20260711.csv"
+_ERP_LOGIN_ALIAS_MTIME: float | None = None
+_ERP_LOGIN_ALIAS_MAP: dict[str, dict[str, str]] = {}
+
+
+def _load_erp_login_aliases() -> dict[str, dict[str, str]]:
+    global _ERP_LOGIN_ALIAS_MTIME, _ERP_LOGIN_ALIAS_MAP
+
+    try:
+        stat = _ERP_LOGIN_ALIAS_FILE.stat()
+    except OSError:
+        _ERP_LOGIN_ALIAS_MTIME = None
+        _ERP_LOGIN_ALIAS_MAP = {}
+        return {}
+
+    if _ERP_LOGIN_ALIAS_MTIME == stat.st_mtime:
+        return _ERP_LOGIN_ALIAS_MAP
+
+    aliases: dict[str, dict[str, str]] = {}
+    try:
+        with _ERP_LOGIN_ALIAS_FILE.open("r", encoding="utf-8-sig", newline="") as f:
+            for row in csv.DictReader(f):
+                erp_login_id = (row.get("erp_login_id") or "").strip().lower()
+                name = (row.get("name") or "").strip()
+                if not erp_login_id or not name:
+                    continue
+                aliases[erp_login_id] = {
+                    "name": name,
+                    "birth6": (row.get("birth6") or "").strip(),
+                    "employee_code": (row.get("employee_code") or "").strip(),
+                }
+    except OSError:
+        aliases = {}
+
+    _ERP_LOGIN_ALIAS_MTIME = stat.st_mtime
+    _ERP_LOGIN_ALIAS_MAP = aliases
+    return aliases
+
+
+def _authenticate_erp_login_alias(db: Session, login_id: str, password: str) -> Optional[user_models.User]:
+    alias = _load_erp_login_aliases().get((login_id or "").strip().lower())
+    if not alias:
+        return None
+
+    allowed_roles = {Role.SITE.value, Role.SITE_FUNCTIONAL_EVAL.value}
+    candidates = (
+        db.query(user_models.User)
+        .filter(
+            user_models.User.name == alias["name"],
+            user_models.User.is_active.is_(True),
+            user_models.User.role.in_(allowed_roles),
+        )
+        .all()
+    )
+    matched = [user for user in candidates if verify_password(password, user.password_hash)]
+    if len(matched) != 1:
+        return None
+    return matched[0]
+
+
 def authenticate_user(db: Session, login_id: str, password: str) -> Optional[user_models.User]:
     user = db.query(user_models.User).filter(user_models.User.login_id == login_id).first()
+    if not user or not user.is_active:
+        user = _authenticate_erp_login_alias(db, login_id, password)
     if not user or not user.is_active:
         return None
     if not verify_password(password, user.password_hash):
