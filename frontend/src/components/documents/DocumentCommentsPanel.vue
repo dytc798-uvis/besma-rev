@@ -43,7 +43,43 @@
             {{ deletingId === item.id ? "삭제 중..." : "삭제" }}
           </button>
         </div>
-        <p class="doc-comment-text">{{ item.comment_text }}</p>
+        <div v-if="editingApprovalHistoryId === approvalHistoryId(item)" class="doc-comment-edit">
+          <textarea
+            v-model="approvalEditDraft"
+            class="doc-comment-textarea"
+            rows="3"
+            aria-label="승인 코멘트 수정"
+            @keydown.ctrl.enter.prevent="saveApprovalComment(item)"
+          />
+          <p v-if="approvalEditError" class="doc-comments-error">{{ approvalEditError }}</p>
+          <div class="doc-comment-edit-actions">
+            <button
+              type="button"
+              class="stitch-btn-secondary"
+              :disabled="approvalEditSaving"
+              @click="cancelApprovalEdit"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              class="stitch-btn-primary"
+              :disabled="approvalEditSaving || !approvalEditDraft.trim()"
+              @click="saveApprovalComment(item)"
+            >
+              {{ approvalEditSaving ? "저장 중..." : "수정 저장" }}
+            </button>
+          </div>
+        </div>
+        <p
+          v-else
+          class="doc-comment-text"
+          :class="{ 'doc-comment-text-editable': canEditApprovalComment(item) }"
+          :title="canEditApprovalComment(item) ? '연속으로 세 번 더블클릭하면 승인 코멘트를 수정할 수 있습니다.' : undefined"
+          @dblclick="handleApprovalDoubleClick(item)"
+        >
+          {{ item.comment_text }}
+        </p>
       </article>
       <p v-if="comments.length === 0" class="doc-comments-muted">등록된 코멘트가 없습니다.</p>
     </div>
@@ -86,6 +122,8 @@ interface DocumentCommentItem {
   created_at: string;
   source?: string;
   review_action?: string | null;
+  approval_history_id?: number | null;
+  review_comment?: string | null;
   file_context_label?: string | null;
   deletable?: boolean;
 }
@@ -113,10 +151,77 @@ const submitting = ref(false);
 const submitError = ref("");
 const deletingId = ref<number | null>(null);
 const deleteError = ref("");
+const editingApprovalHistoryId = ref<number | null>(null);
+const approvalEditDraft = ref("");
+const approvalEditSaving = ref(false);
+const approvalEditError = ref("");
+const approvalGesture = ref<{ historyId: number; count: number; lastAt: number } | null>(null);
 
 const auth = useAuthStore();
 
 const canSubmit = computed(() => Boolean(props.documentId && draft.value.trim()));
+
+const APPROVAL_EDIT_ROLES = new Set(["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"]);
+const APPROVAL_GESTURE_MAX_GAP_MS = 2500;
+
+function approvalHistoryId(item: DocumentCommentItem): number | null {
+  if (item.source !== "approval") return null;
+  if (item.approval_history_id && item.approval_history_id > 0) return item.approval_history_id;
+  return item.id < 0 ? -item.id : null;
+}
+
+function canEditApprovalComment(item: DocumentCommentItem): boolean {
+  const historyId = approvalHistoryId(item);
+  const role = String(auth.user?.role || "");
+  return Boolean(historyId && item.review_action === "APPROVE" && APPROVAL_EDIT_ROLES.has(role));
+}
+
+function handleApprovalDoubleClick(item: DocumentCommentItem) {
+  if (!canEditApprovalComment(item)) return;
+  const historyId = approvalHistoryId(item);
+  if (!historyId) return;
+
+  const now = Date.now();
+  const previous = approvalGesture.value;
+  const count =
+    previous && previous.historyId === historyId && now - previous.lastAt <= APPROVAL_GESTURE_MAX_GAP_MS
+      ? previous.count + 1
+      : 1;
+  approvalGesture.value = { historyId, count, lastAt: now };
+  if (count < 3) return;
+
+  approvalGesture.value = null;
+  editingApprovalHistoryId.value = historyId;
+  approvalEditDraft.value = item.review_comment || "";
+  approvalEditError.value = "";
+}
+
+function cancelApprovalEdit() {
+  editingApprovalHistoryId.value = null;
+  approvalEditDraft.value = "";
+  approvalEditError.value = "";
+}
+
+async function saveApprovalComment(item: DocumentCommentItem) {
+  const documentId = props.documentId;
+  const historyId = approvalHistoryId(item);
+  const commentText = approvalEditDraft.value.trim();
+  if (!documentId || !historyId || !commentText || approvalEditSaving.value) return;
+
+  approvalEditSaving.value = true;
+  approvalEditError.value = "";
+  try {
+    await api.patch(`/documents/${documentId}/approval-comments/${historyId}`, {
+      comment_text: commentText,
+    });
+    cancelApprovalEdit();
+    await loadComments();
+  } catch {
+    approvalEditError.value = "승인 코멘트를 수정하지 못했습니다.";
+  } finally {
+    approvalEditSaving.value = false;
+  }
+}
 
 function canDeleteComment(item: DocumentCommentItem): boolean {
   if (item.source === "approval" || item.deletable === false) return false;
@@ -200,6 +305,8 @@ watch(
     draft.value = "";
     submitError.value = "";
     deleteError.value = "";
+    approvalGesture.value = null;
+    cancelApprovalEdit();
     void loadComments();
   },
   { immediate: true },
@@ -328,6 +435,22 @@ watch(
   color: #0f172a;
   font-size: 14px;
   line-height: 1.5;
+}
+
+.doc-comment-text-editable {
+  cursor: text;
+  user-select: none;
+}
+
+.doc-comment-edit {
+  margin-top: 10px;
+}
+
+.doc-comment-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .doc-comment-form {

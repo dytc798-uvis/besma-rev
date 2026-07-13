@@ -16,8 +16,10 @@ from app.core.auth import get_current_user_with_bypass, get_db
 from app.core.datetime_utils import utc_now
 from app.core.database import Base
 from app.core.enums import Role
+from app.modules.approvals.models import ApprovalAction, ApprovalHistory
 from app.modules.document_generation.models import DocumentInstance, WorkflowStatus
 from app.modules.document_settings.models import DocumentRequirement, DocumentTypeMaster, SubmissionCycle
+from app.modules.document_submissions.models import DocumentReviewHistory, ReviewAction
 from app.modules.document_submissions.routes import router as document_submissions_router
 from app.modules.documents.models import Document, DocumentStatus
 from app.modules.documents.routes import router as documents_router
@@ -72,7 +74,15 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
         site_id=site_id,
         role=Role.HQ_SAFE,
     )
-    setup_db.add_all([site_user, hq_user])
+    hq_other_user = User(
+        id=3,
+        name="hq-other",
+        login_id="hq_other_viewer",
+        password_hash="x",
+        site_id=site_id,
+        role=Role.HQ_OTHER,
+    )
+    setup_db.add_all([site_user, hq_user, hq_other_user])
     setup_db.commit()
     setup_db.close()
 
@@ -199,6 +209,99 @@ def test_document_upload_review_basic_flow(tmp_path: Path):
     assert timeline[0]["comment_text"] == "현장 확인 요청 사항 메모"
     assert timeline[1]["comment_text"] == "본사 검토 예정, 추가 자료는 승인 흐름과 별개로 남깁니다."
     assert "[파일:" in timeline[2]["comment_text"] and "승인" in timeline[2]["comment_text"]
+    assert timeline[0]["approval_history_id"] is None
+    assert timeline[0]["review_comment"] is None
+    assert timeline[2]["approval_history_id"] is not None
+    assert timeline[2]["review_comment"] == "승인"
+
+    approval_history_id = int(timeline[2]["approval_history_id"])
+    db_check = TestingSessionLocal()
+    try:
+        approval_history = (
+            db_check.query(ApprovalHistory)
+            .filter(ApprovalHistory.id == approval_history_id)
+            .one()
+        )
+        review_history = (
+            db_check.query(DocumentReviewHistory)
+            .filter(
+                DocumentReviewHistory.document_id == first_document_id,
+                DocumentReviewHistory.action_type == ReviewAction.APPROVE,
+            )
+            .one()
+        )
+        approval_action_at = approval_history.action_at
+        review_action_at = review_history.action_at
+        review_from_status = review_history.from_workflow_status
+        review_to_status = review_history.to_workflow_status
+        approval_history_count = db_check.query(ApprovalHistory).count()
+        review_history_count = db_check.query(DocumentReviewHistory).count()
+    finally:
+        db_check.close()
+
+    forbidden_path = f"/documents/{first_document_id}/approval-comments/{approval_history_id}"
+    site_forbidden_res = client.patch(forbidden_path, json={"comment_text": "현장 계정 수정 시도"})
+    assert site_forbidden_res.status_code == 403
+
+    current_user["value"] = SimpleNamespace(
+        id=3,
+        role=Role.HQ_OTHER,
+        site_id=site_id,
+        login_id="hq_other_viewer",
+    )
+    hq_other_forbidden_res = client.patch(forbidden_path, json={"comment_text": "조회 전용 수정 시도"})
+    assert hq_other_forbidden_res.status_code == 403
+
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=site_id, login_id="hq_doc_reviewer")
+    empty_comment_res = client.patch(forbidden_path, json={"comment_text": "   "})
+    assert empty_comment_res.status_code == 400
+
+    updated_comment = "확인하였습니다. 감사합니다. 안전작업 부탁드립니다."
+    update_res = client.patch(forbidden_path, json={"comment_text": f"  {updated_comment}  "})
+    assert update_res.status_code == 200
+    assert update_res.json()["approval_history_id"] == approval_history_id
+    assert update_res.json()["review_comment"] == updated_comment
+    assert updated_comment in update_res.json()["comment_text"]
+
+    updated_timeline_res = client.get(f"/documents/{first_document_id}/comments")
+    assert updated_timeline_res.status_code == 200
+    updated_approval_row = next(
+        row
+        for row in updated_timeline_res.json()
+        if row["approval_history_id"] == approval_history_id
+    )
+    assert updated_approval_row["review_comment"] == updated_comment
+
+    db_check = TestingSessionLocal()
+    try:
+        approval_history = (
+            db_check.query(ApprovalHistory)
+            .filter(ApprovalHistory.id == approval_history_id)
+            .one()
+        )
+        review_history = (
+            db_check.query(DocumentReviewHistory)
+            .filter(
+                DocumentReviewHistory.document_id == first_document_id,
+                DocumentReviewHistory.action_type == ReviewAction.APPROVE,
+            )
+            .one()
+        )
+        doc = db_check.query(Document).filter(Document.id == first_document_id).one()
+        inst = db_check.query(DocumentInstance).filter(DocumentInstance.id == first_instance_id).one()
+        assert approval_history.action_type == ApprovalAction.APPROVE
+        assert approval_history.comment == updated_comment
+        assert approval_history.action_at == approval_action_at
+        assert review_history.comment == updated_comment
+        assert review_history.action_at == review_action_at
+        assert review_history.from_workflow_status == review_from_status
+        assert review_history.to_workflow_status == review_to_status
+        assert db_check.query(ApprovalHistory).count() == approval_history_count
+        assert db_check.query(DocumentReviewHistory).count() == review_history_count
+        assert doc.current_status == DocumentStatus.APPROVED
+        assert inst.workflow_status == WorkflowStatus.APPROVED
+    finally:
+        db_check.close()
 
     comment_rows = [row for row in timeline if row.get("source", "comment") == "comment"]
     site_comment_id = int(comment_rows[0]["id"])
