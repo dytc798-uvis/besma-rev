@@ -99,6 +99,9 @@ def _active_account_candidates(db, *, name: str) -> list[User]:
 def _select_identity_account(candidates: list[User]) -> User | None:
     if len(candidates) == 1:
         return candidates[0]
+    named_login_candidates = [u for u in candidates if "-" in (u.login_id or "")]
+    if len(named_login_candidates) == 1:
+        return named_login_candidates[0]
     site_candidates = [u for u in candidates if getattr(u.role, "value", u.role) == "SITE"]
     if len(site_candidates) == 1:
         return site_candidates[0]
@@ -290,19 +293,21 @@ def reset_password_public(payload: PublicPasswordResetRequest, db: DbDep) -> Pub
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     candidates = _active_account_candidates(db, name=alias["name"])
-    user = _select_identity_account(candidates)
-    if user is None:
+    if not candidates:
         raise HTTPException(
             status_code=400,
-            detail="대상 계정이 여러 개입니다. 정상익 차장에게 문의해 주세요.",
+            detail="입력한 정보와 일치하는 계정을 찾을 수 없습니다. 이름, 생년월일, ERP 아이디를 확인해 주세요.",
         )
 
-    user.password_hash = get_password_hash(payload.new_password.strip())
-    user.must_change_password = False
-    user.password_changed_at = utc_now()
-    db.add(user)
+    new_hash = get_password_hash(payload.new_password.strip())
+    changed_at = utc_now()
+    for user in candidates:
+        user.password_hash = new_hash
+        user.must_change_password = False
+        user.password_changed_at = changed_at
+        db.add(user)
     db.commit()
-    return PublicPasswordResetResponse(message="비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.")
+    return PublicPasswordResetResponse(message="연결된 계정의 비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.")
 
 
 @router.post("/change-password")

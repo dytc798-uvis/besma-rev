@@ -284,14 +284,14 @@
       "source_file": "전체사원리스트_20260711.xls"
     },
     {
-      "name": "정재호",
+      "name": "???",
       "birth6": "740502",
-      "employee_code": "333",
-      "department": "01",
-      "position": "9",
+      "employee_code": "",
+      "department": "",
+      "position": "",
       "email": "",
       "erp_login_id": "jjh0502",
-      "source_file": "전체사원리스트_20260711.xls"
+      "source_file": "manual_20260713_sbl_p6"
     },
     {
       "name": "전정환",

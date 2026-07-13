@@ -17,7 +17,7 @@
           </label>
           <label>
             <span>생년월일 6자리</span>
-            <input v-model="lookupBirth6" type="text" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="예: 790808" />
+            <input v-model="lookupBirth6" type="text" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="예: 991231" />
           </label>
           <label>
             <span>ERP 아이디</span>
@@ -55,7 +55,7 @@
           </label>
           <label>
             <span>생년월일 6자리</span>
-            <input v-model="resetBirth6" type="text" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="예: 790808" />
+            <input v-model="resetBirth6" type="text" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="예: 991231" />
           </label>
           <label>
             <span>ERP 아이디</span>
