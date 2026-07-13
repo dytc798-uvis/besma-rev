@@ -111,6 +111,7 @@ class HQCommunicationItemResponse(BaseModel):
     document_id: int
     instance_id: int | None = None
     title: str
+    document_type: str
     site_id: int
     site_name: str
     user_name: str
@@ -1379,22 +1380,17 @@ def get_hq_badge_counts(
 def get_hq_communications(
     db: DbDep,
     current_user: CurrentUserDep,
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(1000, ge=1, le=1000),
 ):
     assert_hq_safe_workspace(current_user)
 
     entries: list[dict] = []
 
-    my_id = int(current_user.id)
     comment_rows = (
         db.query(DocumentComment, Document, Site, User)
         .join(Document, Document.id == DocumentComment.document_id)
         .join(Site, Site.id == Document.site_id)
         .join(User, User.id == DocumentComment.user_id)
-        .filter(
-            DocumentComment.user_id != my_id,
-            User.role == Role.SITE,
-        )
         .order_by(DocumentComment.created_at.desc(), DocumentComment.id.desc())
         .limit(limit)
         .all()
@@ -1407,6 +1403,7 @@ def get_hq_communications(
                 "source_id": int(c.id),
                 "document_id": int(d.id),
                 "title": d.title,
+                "document_type": d.document_type,
                 "site_id": int(s.id),
                 "site_name": s.site_name,
                 "user_name": u.name,
@@ -1425,8 +1422,6 @@ def get_hq_communications(
             ApprovalHistory.action_type.in_([ApprovalAction.APPROVE, ApprovalAction.REJECT]),
             ApprovalHistory.comment.isnot(None),
             ApprovalHistory.comment != "",
-            ApprovalHistory.action_by_user_id != my_id,
-            User.role == Role.SITE,
         )
         .order_by(ApprovalHistory.action_at.desc(), ApprovalHistory.id.desc())
         .limit(limit)
@@ -1441,6 +1436,7 @@ def get_hq_communications(
                 "source_id": int(h.id),
                 "document_id": int(d.id),
                 "title": d.title,
+                "document_type": d.document_type,
                 "site_id": int(s.id),
                 "site_name": s.site_name,
                 "user_name": u.name,
@@ -1457,8 +1453,10 @@ def get_hq_communications(
         user_id=int(current_user.id),
         item_keys=[str(row.get("item_key") or "") for row in sliced],
     )
-    for row in sliced:
-        row["is_read"] = str(row.get("item_key") or "") in read_set
+    for index, row in enumerate(sliced):
+        # The complete timeline is historical context. Only the newest item may
+        # remain unread; every older communication is shown as confirmed.
+        row["is_read"] = index > 0 or str(row.get("item_key") or "") in read_set
     _attach_feedback_loop_fields(db, sliced)
     return {"items": sliced}
 
