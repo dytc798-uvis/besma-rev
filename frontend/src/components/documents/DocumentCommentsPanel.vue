@@ -43,7 +43,10 @@
             {{ deletingId === item.id ? "삭제 중..." : "삭제" }}
           </button>
         </div>
-        <div v-if="editingApprovalHistoryId === approvalHistoryId(item)" class="doc-comment-edit">
+        <div
+          v-if="approvalHistoryId(item) !== null && editingApprovalHistoryId === approvalHistoryId(item)"
+          class="doc-comment-edit"
+        >
           <textarea
             v-model="approvalEditDraft"
             class="doc-comment-textarea"
