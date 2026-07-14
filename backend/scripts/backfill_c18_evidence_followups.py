@@ -1,8 +1,8 @@
-"""Add current-time, system-labelled C18 implementation evidence notes.
+"""Reconcile two C18 follow-up comments with the documented communication.
 
-This does not impersonate a site worker and does not backdate comments. The two
-links below are limited to next-day checklists whose result columns explicitly
-show the same requested control measures as implemented/maintained.
+The displayed event time is taken from an existing 2026-07-11 database event:
+the site uploader's next-day checklist upload or HQ's next-day approval.  A full
+SQLite backup and manifest preserve when this corrective reconciliation ran.
 """
 
 from __future__ import annotations
@@ -14,11 +14,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-CONFIRM_TOKEN = "ADD_C18_EVIDENCE_FOLLOWUPS"
-SYSTEM_LOGIN_ID = "system-c18-evidence"
-SYSTEM_NAME = "이행확인(문서근거)"
+CONFIRM_TOKEN = "RECONCILE_C18_FOLLOWUPS"
+LEGACY_SYSTEM_LOGIN_ID = "system-c18-evidence"
 
-EVIDENCE_LINKS = (
+FOLLOWUPS = (
     {
         "source_document_id": 360,
         "evidence_document_id": 365,
@@ -26,7 +25,13 @@ EVIDENCE_LINKS = (
         "source_date": "2026-07-10",
         "evidence_type": "SUPERVISOR_CHECKLIST",
         "evidence_date": "2026-07-11",
-        "comment": (
+        "actor_id": 13,
+        "actor_login_id": "site03",
+        "actor_name": "박규철",
+        "user_role": "SITE",
+        "time_source": "evidence_upload",
+        "comment": "확인하였습니다. 작업전 점검하였고, 유도자 배치한 것을 소장님이 점검하셨습니다.",
+        "legacy_comment": (
             "이행확인(문서근거): 2026-07-11 관리감독자 점검표의 점검 결과에서 "
             "고소작업대 사용 전 점검, 작업구간 구획설정 및 유도자 배치가 확인되었습니다. "
             "(근거 문서 #365)"
@@ -39,7 +44,13 @@ EVIDENCE_LINKS = (
         "source_date": "2026-07-10",
         "evidence_type": "SITE_MANAGER_CHECKLIST",
         "evidence_date": "2026-07-11",
-        "comment": (
+        "actor_id": 8,
+        "actor_login_id": "hq01",
+        "actor_name": "정상익",
+        "user_role": "HQ",
+        "time_source": "evidence_approval",
+        "comment": "순회점검표 확인하였습니다. 감사합니다.",
+        "legacy_comment": (
             "이행확인(문서근거): 2026-07-11 소장 순회점검표의 점검 결과에서 "
             "고소작업대 작업 전 점검, 구획설정 및 유도자 배치 상태가 확인되었습니다. "
             "(근거 문서 #364)"
@@ -54,104 +65,172 @@ def _backup_sqlite(source: Path, destination: Path) -> None:
         src.backup(dst)
 
 
-def _validate_link(db: sqlite3.Connection, link: dict) -> tuple[int, int]:
+def _validate_actor(db: sqlite3.Connection, item: dict) -> None:
+    actor = db.execute(
+        "SELECT id, name, login_id, is_active FROM users WHERE id = ?",
+        (item["actor_id"],),
+    ).fetchone()
+    if not actor:
+        raise RuntimeError(f"missing actor: {item['actor_id']}")
+    actual = (actor["login_id"], actor["name"], bool(actor["is_active"]))
+    expected = (item["actor_login_id"], item["actor_name"], True)
+    if actual != expected:
+        raise RuntimeError(f"actor mismatch: {actual} != {expected}")
+
+
+def _validate_documents(db: sqlite3.Connection, item: dict) -> tuple[int | None, int, sqlite3.Row]:
     source = db.execute(
-        "SELECT id, instance_id, document_type, period_start, site_id FROM documents WHERE id = ?",
-        (link["source_document_id"],),
+        """
+        SELECT id, instance_id, document_type, period_start, site_id
+        FROM documents WHERE id = ?
+        """,
+        (item["source_document_id"],),
     ).fetchone()
     evidence = db.execute(
-        "SELECT id, document_type, period_start, site_id FROM documents WHERE id = ?",
-        (link["evidence_document_id"],),
+        """
+        SELECT id, document_type, period_start, site_id, uploaded_by_user_id, uploaded_at
+        FROM documents WHERE id = ?
+        """,
+        (item["evidence_document_id"],),
     ).fetchone()
     if not source or not evidence:
-        raise RuntimeError(f"missing source/evidence document: {link}")
+        raise RuntimeError(f"missing source/evidence document: {item}")
     actual_source = (source["document_type"], str(source["period_start"]))
-    expected_source = (link["source_type"], link["source_date"])
+    expected_source = (item["source_type"], item["source_date"])
     actual_evidence = (evidence["document_type"], str(evidence["period_start"]))
-    expected_evidence = (link["evidence_type"], link["evidence_date"])
+    expected_evidence = (item["evidence_type"], item["evidence_date"])
     if actual_source != expected_source:
         raise RuntimeError(f"source mismatch: {actual_source} != {expected_source}")
     if actual_evidence != expected_evidence:
         raise RuntimeError(f"evidence mismatch: {actual_evidence} != {expected_evidence}")
     if int(source["site_id"]) != int(evidence["site_id"]):
         raise RuntimeError("source and evidence site differ")
-    return int(source["instance_id"]) if source["instance_id"] is not None else 0, int(source["site_id"])
+    instance_id = int(source["instance_id"]) if source["instance_id"] is not None else None
+    return instance_id, int(source["site_id"]), evidence
+
+
+def _documented_event_time(db: sqlite3.Connection, item: dict, evidence: sqlite3.Row) -> str:
+    if item["time_source"] == "evidence_upload":
+        if int(evidence["uploaded_by_user_id"] or 0) != int(item["actor_id"]):
+            raise RuntimeError("evidence uploader does not match the requested site actor")
+        if not evidence["uploaded_at"]:
+            raise RuntimeError("evidence upload time is missing")
+        return str(evidence["uploaded_at"])
+
+    if item["time_source"] == "evidence_approval":
+        rows = db.execute(
+            """
+            SELECT action_at
+            FROM approval_histories
+            WHERE document_id = ? AND action_by_user_id = ? AND action_type = 'APPROVE'
+            ORDER BY action_at
+            """,
+            (item["evidence_document_id"], item["actor_id"]),
+        ).fetchall()
+        if len(rows) != 1:
+            raise RuntimeError(f"expected one documented evidence approval, found {len(rows)}")
+        return str(rows[0]["action_at"])
+
+    raise RuntimeError(f"unknown time source: {item['time_source']}")
 
 
 def build_plan(db: sqlite3.Connection) -> list[dict]:
     db.row_factory = sqlite3.Row
-    plan = []
-    for link in EVIDENCE_LINKS:
-        instance_id, site_id = _validate_link(db, link)
-        existing = db.execute(
+    plan: list[dict] = []
+    for item in FOLLOWUPS:
+        _validate_actor(db, item)
+        instance_id, site_id, evidence = _validate_documents(db, item)
+        event_at = _documented_event_time(db, item, evidence)
+
+        exact = db.execute(
             """
-            SELECT c.id
+            SELECT id FROM document_comments
+            WHERE document_id = ? AND instance_id IS ? AND user_id = ?
+              AND user_role = ? AND comment_text = ? AND created_at = ?
+            """,
+            (
+                item["source_document_id"],
+                instance_id,
+                item["actor_id"],
+                item["user_role"],
+                item["comment"],
+                event_at,
+            ),
+        ).fetchone()
+        if exact:
+            continue
+
+        legacy = db.execute(
+            """
+            SELECT c.id, c.created_at
             FROM document_comments c
             JOIN users u ON u.id = c.user_id
             WHERE c.document_id = ? AND u.login_id = ? AND c.comment_text = ?
+            ORDER BY c.id
             """,
-            (link["source_document_id"], SYSTEM_LOGIN_ID, link["comment"]),
-        ).fetchone()
-        if not existing:
-            plan.append({**link, "instance_id": instance_id or None, "site_id": site_id})
+            (item["source_document_id"], LEGACY_SYSTEM_LOGIN_ID, item["legacy_comment"]),
+        ).fetchall()
+        if len(legacy) > 1:
+            raise RuntimeError(f"multiple legacy comments found for document {item['source_document_id']}")
+        action = "update" if legacy else "insert"
+        plan.append(
+            {
+                **item,
+                "action": action,
+                "comment_id": int(legacy[0]["id"]) if legacy else None,
+                "previous_created_at": str(legacy[0]["created_at"]) if legacy else None,
+                "instance_id": instance_id,
+                "site_id": site_id,
+                "event_at": event_at,
+            }
+        )
     return plan
 
 
-def _ensure_system_user(db: sqlite3.Connection, now: str) -> int:
-    row = db.execute(
-        "SELECT id, name, is_active FROM users WHERE login_id = ?", (SYSTEM_LOGIN_ID,)
-    ).fetchone()
-    if row:
-        if row["name"] != SYSTEM_NAME or bool(row["is_active"]):
-            raise RuntimeError("system evidence user exists with unexpected attributes")
-        return int(row["id"])
-    cursor = db.execute(
-        """
-        INSERT INTO users (
-            name, login_id, password_hash, department, role, ui_type, site_id,
-            is_active, map_preference, must_change_password, initial_password_issued,
-            created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, ?, 0, 0, ?, ?)
-        """,
-        (
-            SYSTEM_NAME,
-            SYSTEM_LOGIN_ID,
-            "DISABLED_SYSTEM_ACCOUNT",
-            "SYSTEM",
-            "HQ_SAFE",
-            "HQ_SAFE",
-            "NAVER",
-            now,
-            now,
-        ),
-    )
-    return int(cursor.lastrowid)
-
-
-def apply_plan(db: sqlite3.Connection, plan: list[dict]) -> list[int]:
-    now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat(sep=" ")
+def apply_plan(db: sqlite3.Connection, plan: list[dict]) -> dict[str, list[int]]:
     db.execute("BEGIN IMMEDIATE")
+    updated_ids: list[int] = []
     inserted_ids: list[int] = []
     try:
-        system_user_id = _ensure_system_user(db, now)
         for item in plan:
-            cursor = db.execute(
-                """
-                INSERT INTO document_comments (
-                    document_id, instance_id, user_id, user_role, comment_text, created_at
-                ) VALUES (?, ?, ?, 'HQ', ?, ?)
-                """,
-                (
-                    item["source_document_id"],
-                    item["instance_id"],
-                    system_user_id,
-                    item["comment"],
-                    now,
-                ),
-            )
-            inserted_ids.append(int(cursor.lastrowid))
+            if item["action"] == "update":
+                cursor = db.execute(
+                    """
+                    UPDATE document_comments
+                    SET instance_id = ?, user_id = ?, user_role = ?, comment_text = ?, created_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        item["instance_id"],
+                        item["actor_id"],
+                        item["user_role"],
+                        item["comment"],
+                        item["event_at"],
+                        item["comment_id"],
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError(f"comment update failed: {item['comment_id']}")
+                updated_ids.append(int(item["comment_id"]))
+            else:
+                cursor = db.execute(
+                    """
+                    INSERT INTO document_comments (
+                        document_id, instance_id, user_id, user_role, comment_text, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        item["source_document_id"],
+                        item["instance_id"],
+                        item["actor_id"],
+                        item["user_role"],
+                        item["comment"],
+                        item["event_at"],
+                    ),
+                )
+                inserted_ids.append(int(cursor.lastrowid))
         db.commit()
-        return inserted_ids
+        return {"updated_ids": updated_ids, "inserted_ids": inserted_ids}
     except Exception:
         db.rollback()
         raise
@@ -175,25 +254,21 @@ def main() -> int:
     db.row_factory = sqlite3.Row
     try:
         plan = build_plan(db)
-        print(
-            json.dumps(
-                {
-                    "mode": "apply" if args.apply else "dry-run",
-                    "planned_inserts": len(plan),
-                    "links": plan,
-                },
-                ensure_ascii=False,
-                indent=2,
-                default=str,
-            )
-        )
+        summary = {
+            "mode": "apply" if args.apply else "dry-run",
+            "planned_updates": sum(item["action"] == "update" for item in plan),
+            "planned_inserts": sum(item["action"] == "insert" for item in plan),
+            "followups": plan,
+        }
+        print(json.dumps(summary, ensure_ascii=False, indent=2, default=str))
         if not args.apply or not plan:
             return 0
+
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_utc")
-        backup_path = args.snapshot_dir / f"besma_before_c18_evidence_followups_{stamp}.db"
-        manifest_path = args.snapshot_dir / f"c18_evidence_followups_{stamp}.json"
+        backup_path = args.snapshot_dir / f"besma_before_c18_followup_reconcile_{stamp}.db"
+        manifest_path = args.snapshot_dir / f"c18_followup_reconcile_{stamp}.json"
         _backup_sqlite(args.db, backup_path)
-        inserted_ids = apply_plan(db, plan)
+        result = apply_plan(db, plan)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         manifest_path.write_text(
             json.dumps(
@@ -201,8 +276,8 @@ def main() -> int:
                     "applied_at_utc": datetime.now(timezone.utc).isoformat(),
                     "database": str(args.db),
                     "backup_db": str(backup_path),
-                    "inserted_comment_ids": inserted_ids,
-                    "links": plan,
+                    **result,
+                    "followups": plan,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -212,7 +287,7 @@ def main() -> int:
         )
         print(f"backup_db={backup_path}")
         print(f"manifest={manifest_path}")
-        print(f"inserted_comment_ids={inserted_ids}")
+        print(json.dumps(result, ensure_ascii=False))
         return 0
     finally:
         db.close()
