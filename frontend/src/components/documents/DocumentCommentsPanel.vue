@@ -89,6 +89,26 @@
 
     <div class="doc-comment-form">
       <label class="doc-comment-label" for="doc-comment-textarea">코멘트</label>
+      <div v-if="isSiteUser" class="doc-comment-quick" aria-label="현장 빠른 답변">
+        <div class="doc-comment-quick-head">
+          <strong>빠른 답변</strong>
+          <span>선택한 문구를 확인·수정한 뒤 등록하세요.</span>
+        </div>
+        <div v-for="group in QUICK_REPLY_GROUPS" :key="group.label" class="doc-comment-quick-group">
+          <span class="doc-comment-quick-label">{{ group.label }}</span>
+          <div class="doc-comment-quick-options">
+            <button
+              v-for="text in group.options"
+              :key="text"
+              type="button"
+              class="doc-comment-quick-option"
+              @click="useQuickReply(text)"
+            >
+              {{ text }}
+            </button>
+          </div>
+        </div>
+      </div>
       <textarea
         id="doc-comment-textarea"
         v-model="draft"
@@ -163,6 +183,31 @@ const approvalGesture = ref<{ historyId: number; count: number; lastAt: number }
 const auth = useAuthStore();
 
 const canSubmit = computed(() => Boolean(props.documentId && draft.value.trim()));
+const isSiteUser = computed(() => auth.user?.role === "SITE");
+
+const QUICK_REPLY_GROUPS = [
+  {
+    label: "조치 예정",
+    options: [
+      "이행하겠습니다.",
+      "그렇게 하겠습니다.",
+      "즉시 조치하겠습니다.",
+      "내일 작업이 시작되기 전에 조치 후 작업에 투입하도록 하겠습니다.",
+    ],
+  },
+  {
+    label: "조치 완료",
+    options: [
+      "어제 말씀하신 내용 조치 완료하였습니다.",
+      "대우건설에서 조치하였습니다.",
+      "그 부분은 앞으로 계속 TBM에서 교육하겠습니다.",
+    ],
+  },
+  {
+    label: "단순 확인",
+    options: ["네 알겠습니다.", "확인하였습니다.", "감사합니다."],
+  },
+] as const;
 
 const APPROVAL_EDIT_ROLES = new Set(["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"]);
 const APPROVAL_GESTURE_MAX_GAP_MS = 2500;
@@ -203,6 +248,10 @@ function cancelApprovalEdit() {
   editingApprovalHistoryId.value = null;
   approvalEditDraft.value = "";
   approvalEditError.value = "";
+}
+
+function useQuickReply(text: string) {
+  draft.value = text;
 }
 
 async function saveApprovalComment(item: DocumentCommentItem) {
@@ -460,6 +509,73 @@ watch(
   margin-top: 16px;
 }
 
+.doc-comment-quick {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid #bae6fd;
+  border-radius: 10px;
+  background: #f0f9ff;
+}
+
+.doc-comment-quick-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  color: #0c4a6e;
+  font-size: 12px;
+}
+
+.doc-comment-quick-head strong {
+  font-size: 13px;
+}
+
+.doc-comment-quick-head span {
+  color: #475569;
+}
+
+.doc-comment-quick-group {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.doc-comment-quick-label {
+  padding-top: 6px;
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.doc-comment-quick-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.doc-comment-quick-option {
+  padding: 5px 9px;
+  border: 1px solid #7dd3fc;
+  border-radius: 999px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.doc-comment-quick-option:hover,
+.doc-comment-quick-option:focus-visible {
+  border-color: #0284c7;
+  background: #e0f2fe;
+  outline: none;
+}
+
 .doc-comment-label {
   display: block;
   margin-bottom: 6px;
@@ -488,5 +604,16 @@ watch(
   margin: 10px 0 0;
   color: #b91c1c;
   font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .doc-comment-quick-group {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .doc-comment-quick-label {
+    padding-top: 0;
+  }
 }
 </style>
