@@ -226,6 +226,49 @@ def test_worker_voice_hq_approve_requires_db_request(tmp_path: Path):
     assert client.post(f"/safety-features/worker-voice/items/{item_id}/approve-risk-db-registration").status_code == 409
 
 
+def test_worker_voice_comments_save_and_requested_row_can_be_approved(tmp_path: Path):
+    client, current_user = build_test_client(tmp_path)
+    create_res = client.post(
+        "/safety-features/worker-voice/items",
+        data={
+            "worker_name": "worker",
+            "opinion_kind": "대면청취",
+            "opinion_text": "통로 단차 개선 요청",
+            "action_before": "단차 있음",
+            "action_after": "",
+            "action_status": "",
+            "action_owner": "안전팀",
+        },
+    )
+    assert create_res.status_code == 200
+    item_id = client.get("/safety-features/worker-voice/ledger").json()["items"][0]["id"]
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/site-approve").status_code == 200
+    assert client.post(f"/safety-features/worker-voice/items/{item_id}/request-risk-db-registration").status_code == 200
+
+    current_user["value"] = SimpleNamespace(id=2, role=Role.HQ_SAFE, site_id=1)
+    assert client.post(
+        f"/safety-features/worker-voice/items/{item_id}/hq-review-comment",
+        data={"comment": "DB 등록 적정"},
+    ).status_code == 200
+    assert client.post(
+        f"/safety-features/worker-voice/items/{item_id}/comments",
+        data={"body": "조치 상태 확인"},
+    ).status_code == 200
+    assert client.post(
+        f"/safety-features/worker-voice/items/{item_id}/approve-risk-db-registration"
+    ).status_code == 200
+
+    row = next(
+        item
+        for item in client.get("/safety-features/worker-voice/items").json()["items"]
+        if item["id"] == item_id
+    )
+    assert row["hq_review_comment"] == "DB 등록 적정"
+    assert [comment["body"] for comment in row["comments"]] == ["조치 상태 확인"]
+    assert row["risk_db_hq_status"] == "approved"
+    assert row["ready_for_risk_db"] is True
+
+
 def test_nonconformity_hq_final_requires_site_approval(tmp_path: Path):
     client, current_user = build_test_client(tmp_path)
     client.post(

@@ -242,6 +242,29 @@ def search_risk_library(
         q = _apply_unit_work_risk_type_sql(
             q, unit_work_filter=unit_work_filter, risk_type_filter=risk_type_filter
         )
+        # Browse mode must apply the same exact hazard/countermeasure de-duplication
+        # as keyword search before count and pagination.  Ranking in SQL avoids
+        # loading the whole risk library merely to remove duplicate seed/import rows.
+        ranked = q.with_entities(
+            RiskLibraryItemRevision.id.label("revision_id"),
+            func.row_number()
+            .over(
+                partition_by=(
+                    func.lower(func.trim(RiskLibraryItemRevision.risk_factor)),
+                    func.lower(func.trim(RiskLibraryItemRevision.countermeasure)),
+                ),
+                order_by=(
+                    RiskLibraryItemRevision.risk_r.desc(),
+                    RiskLibraryItemRevision.id.asc(),
+                ),
+            )
+            .label("duplicate_rank"),
+        ).subquery()
+        q = (
+            db.query(RiskLibraryItemRevision)
+            .join(ranked, ranked.c.revision_id == RiskLibraryItemRevision.id)
+            .filter(ranked.c.duplicate_rank == 1)
+        )
         total = int(q.count())
         rows = (
             q.order_by(RiskLibraryItemRevision.risk_r.desc(), RiskLibraryItemRevision.id.asc())

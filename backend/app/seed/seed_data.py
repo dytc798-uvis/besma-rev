@@ -453,25 +453,41 @@ def seed_sample_daily_work_plan(db: Session) -> None:
 
     risk_revisions = []
     for rd in risk_data:
-        item = RiskLibraryItem(source_scope="GLOBAL", is_active=True)
-        db.add(item)
-        db.flush()
-        rev = RiskLibraryItemRevision(
-            item_id=item.id,
-            revision_no=1,
-            is_current=True,
-            effective_from=date(2025, 1, 1),
-            work_category=rd["work_category"],
-            trade_type=rd["trade_type"],
-            risk_factor=rd["risk_factor"],
-            risk_cause=rd["risk_cause"],
-            countermeasure=rd["countermeasure"],
-            risk_f=rd["risk_f"],
-            risk_s=rd["risk_s"],
-            risk_r=rd["risk_r"],
+        rev = (
+            db.query(RiskLibraryItemRevision)
+            .join(RiskLibraryItem, RiskLibraryItem.id == RiskLibraryItemRevision.item_id)
+            .filter(
+                RiskLibraryItem.is_active.is_(True),
+                RiskLibraryItemRevision.is_current.is_(True),
+                RiskLibraryItemRevision.trade_type == rd["trade_type"],
+                RiskLibraryItemRevision.risk_factor == rd["risk_factor"],
+                RiskLibraryItemRevision.countermeasure == rd["countermeasure"],
+            )
+            .order_by(RiskLibraryItemRevision.id.asc())
+            .first()
         )
-        db.add(rev)
-        db.flush()
+        if rev is None:
+            item = RiskLibraryItem(source_scope="GLOBAL", is_active=True)
+            db.add(item)
+            db.flush()
+            rev = RiskLibraryItemRevision(
+                item_id=item.id,
+                revision_no=1,
+                is_current=True,
+                effective_from=date(2025, 1, 1),
+                work_category=rd["work_category"],
+                trade_type=rd["trade_type"],
+                risk_factor=rd["risk_factor"],
+                risk_cause=rd["risk_cause"],
+                countermeasure=rd["countermeasure"],
+                risk_f=rd["risk_f"],
+                risk_s=rd["risk_s"],
+                risk_r=rd["risk_r"],
+            )
+            db.add(rev)
+            db.flush()
+        else:
+            item = db.query(RiskLibraryItem).filter(RiskLibraryItem.id == rev.item_id).one()
         risk_revisions.append((item, rev))
 
     _seed_risk_keywords(db)
