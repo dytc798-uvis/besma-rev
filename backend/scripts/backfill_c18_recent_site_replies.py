@@ -32,42 +32,12 @@ EXPECTED_EXISTING_REPLIES = 1
 EXPECTED_MISSING_REPLIES = 66
 
 
-GENERIC_REPLIES: dict[str, tuple[str, ...]] = {
-    "DAILY_TBM": (
-        "네 확인했습니다. TBM에 반영하겠습니다.",
-        "확인했습니다. 작업 전 교육하겠습니다.",
-        "그렇게 하겠습니다.",
-    ),
-    "DAILY_RISK_ASSESSMENT": (
-        "확인했습니다. 위험성평가에 반영하겠습니다.",
-        "네 확인했습니다. 필요한 부분은 조치하겠습니다.",
-        "조치하겠습니다.",
-    ),
-    "DAILY_SAFETY_MEETING_LOG": (
-        "네 확인했습니다.",
-        "확인했습니다.",
-        "그렇게 하겠습니다.",
-    ),
-    "SUPERVISOR_CHECKLIST": (
-        "확인했습니다. 점검사항은 조치하겠습니다.",
-        "네 확인했습니다. 작업 전에 다시 점검하겠습니다.",
-        "조치하겠습니다.",
-    ),
-    "SITE_MANAGER_CHECKLIST": (
-        "확인했습니다. 순회점검에 반영하겠습니다.",
-        "네 확인했습니다. 현장 조치상태를 다시 보겠습니다.",
-        "이미 조치하였습니다.",
-    ),
-    "SAFETY_MANAGER_DAILY_LOG": (
-        "네 확인했습니다. 조치사항을 관리하겠습니다.",
-        "확인했습니다. 필요한 부분은 처리하겠습니다.",
-        "처리하겠습니다.",
-    ),
-    "REGULAR_EDUCATION": (
-        "네 확인했습니다. 교육자료에 반영하겠습니다.",
-        "확인했습니다. 교육 시 전달하겠습니다.",
-    ),
-}
+THANK_REPLIES = (
+    "감사합니다.",
+    "네, 감사합니다.",
+    "확인해주셔서 감사합니다.",
+    "네 감사합니다.",
+)
 
 
 def _backup_sqlite(source: Path, destination: Path) -> None:
@@ -123,11 +93,7 @@ def _reply_text(document_type: str, feedback_text: str, approval_id: int) -> tup
     if "유지" in compact:
         return "확인했습니다. 해당 조치를 유지하겠습니다.", "specific_feedback"
 
-    pool = GENERIC_REPLIES.get(
-        document_type,
-        ("네 확인했습니다.", "조치하겠습니다.", "처리하겠습니다.", "이미 조치하였습니다."),
-    )
-    return pool[(approval_id * 17) % len(pool)], "document_type_generic"
+    return THANK_REPLIES[(approval_id * 17) % len(THANK_REPLIES)], "acknowledgement_only"
 
 
 def _site_user(db: sqlite3.Connection, site_id: int, login_id: str, expected_name: str) -> sqlite3.Row:
