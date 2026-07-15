@@ -19,7 +19,7 @@
       </ol>
     </aside>
     <div class="page-heading">
-      <p class="deadline">업로드 기한: 2026년 7월 13일까지</p>
+      <p class="deadline">업로드 기한: 제한 없음</p>
       <h2>현장 양식 업로드</h2>
     </div>
 
@@ -70,18 +70,17 @@
 
         <label
           class="drop-zone"
-          :class="{ 'drop-zone-active': isDragging, 'drop-zone-disabled': !uploadOpen || uploading }"
+          :class="{ 'drop-zone-active': isDragging, 'drop-zone-disabled': uploading }"
           @dragenter.prevent="handleDragEnter"
           @dragover.prevent="handleDragEnter"
           @dragleave.prevent="handleDragLeave"
           @drop.prevent="handleDrop"
         >
-          <input type="file" accept=".zip,application/zip" :disabled="!uploadOpen || uploading" @change="handleFileInput" />
+          <input type="file" accept=".zip,application/zip" :disabled="uploading" @change="handleFileInput" />
           <strong>드래그 앤 드롭</strong>
           <span>또는 파일 선택 버튼으로 zip 파일을 업로드하세요.</span>
           <span class="upload-policy">현장별 최대 2개, 파일당 20MB 이하만 업로드 가능합니다.</span>
           <span class="select-file-btn" aria-hidden="true">{{ uploading ? "업로드 중" : "파일 선택" }}</span>
-          <p v-if="!uploadOpen" class="deadline-ended">현장 양식 업로드 기한이 종료되었습니다.</p>
           <p v-if="message" class="upload-message">{{ message }}</p>
           <p v-if="warning" class="upload-warning">{{ warning }}</p>
         </label>
@@ -116,7 +115,6 @@ const uploading = ref(false);
 const isDragging = ref(false);
 const message = ref("");
 const warning = ref("");
-const uploadOpen = ref(true);
 const isHqView = computed(() => auth.user?.ui_type === "HQ_SAFE" || auth.user?.ui_type === "HQ_OTHER");
 const rightRankItems = computed(() => submittedSites.value.slice(0, 31));
 const leftRankItems = computed(() => submittedSites.value.slice(31, 62));
@@ -125,19 +123,8 @@ onMounted(() => {
   void loadSubmittedSites();
   if (isHqView.value) {
     void loadUploads();
-  } else {
-    void loadDeadline();
   }
 });
-
-async function loadDeadline() {
-  try {
-    const res = await api.get("/field-form-uploads/deadline", { skipAuthRedirect: true });
-    uploadOpen.value = res.data?.upload_open !== false;
-  } catch {
-    uploadOpen.value = true;
-  }
-}
 
 async function loadSubmittedSites() {
   try {
@@ -161,7 +148,7 @@ async function loadUploads() {
 }
 
 function handleDragEnter() {
-  if (!uploadOpen.value || uploading.value) return;
+  if (uploading.value) return;
   isDragging.value = true;
 }
 
@@ -452,8 +439,7 @@ async function downloadUpload(item: FieldFormUpload) {
 }
 
 .upload-message,
-.upload-warning,
-.deadline-ended {
+.upload-warning {
   width: 100%;
   margin: 18px 0 0;
   padding: 12px;
@@ -466,8 +452,7 @@ async function downloadUpload(item: FieldFormUpload) {
   color: #047857;
 }
 
-.upload-warning,
-.deadline-ended {
+.upload-warning {
   background: #fef2f2;
   color: #b91c1c;
 }

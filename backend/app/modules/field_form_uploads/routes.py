@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 import zipfile
-from datetime import date
 from pathlib import Path
 from threading import Lock
 from typing import Annotated, Any
@@ -13,13 +12,12 @@ from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
 from app.config.settings import settings
-from app.core.datetime_utils import kst_today, utc_now
+from app.core.datetime_utils import utc_now
 from app.core.enums import Role
 from app.core.permissions import CurrentUserDep, HQ_SAFE_WORKSPACE_ROLES
 
 router = APIRouter(prefix="/field-form-uploads", tags=["field-form-uploads"])
 
-UPLOAD_DEADLINE = date(2026, 7, 13)
 ZIP_ONLY_MESSAGE = "압축하여 업로드 바랍니다. zip 확장자만 업로드 가능합니다."
 MAX_UPLOADS_PER_SITE = 2
 FIELD_FORM_UPLOAD_MAX_BYTES = 20 * 1024 * 1024
@@ -113,8 +111,8 @@ def _site_name(current_user) -> str:
 @router.get("/deadline")
 def get_deadline() -> dict:
     return {
-        "deadline": UPLOAD_DEADLINE.isoformat(),
-        "upload_open": kst_today() <= UPLOAD_DEADLINE,
+        "deadline": None,
+        "upload_open": True,
         "max_uploads_per_site": MAX_UPLOADS_PER_SITE,
         "max_upload_size_bytes": FIELD_FORM_UPLOAD_MAX_BYTES,
     }
@@ -156,8 +154,6 @@ async def upload_field_forms(
     file: Annotated[UploadFile, File(...)],
 ):
     _assert_site_user(current_user)
-    if kst_today() > UPLOAD_DEADLINE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="현장 양식 업로드 기한이 종료되었습니다.")
 
     source_name = Path(file.filename or "").name
     if not source_name.lower().endswith(".zip"):
@@ -217,7 +213,7 @@ def list_uploads(current_user: CurrentUserDep):
     items = sorted(_read_ledger(), key=lambda row: (row.get("uploaded_at") or "", row.get("id") or 0), reverse=True)
     return {
         "items": [{**row, "download_url": f"/field-form-uploads/{row.get('id')}/download"} for row in items],
-        "deadline": UPLOAD_DEADLINE.isoformat(),
+        "deadline": None,
     }
 
 
