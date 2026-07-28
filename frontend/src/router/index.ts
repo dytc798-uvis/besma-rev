@@ -5,6 +5,7 @@ import HQSafeLayout from "@/layouts/HQSafeLayout.vue";
 import SiteLayout from "@/layouts/SiteLayout.vue";
 import HQOtherLayout from "@/layouts/HQOtherLayout.vue";
 import HQSafeDashboard from "@/pages/dashboard/HQSafeDashboard.vue";
+import HQSafeHomePage from "@/pages/dashboard/HQSafeHomePage.vue";
 import SiteDashboard from "@/pages/dashboard/SiteDashboard.vue";
 import HQOtherDashboard from "@/pages/dashboard/HQOtherDashboard.vue";
 import DocumentListPage from "@/pages/documents/DocumentListPage.vue";
@@ -148,7 +149,8 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, uiType: "HQ_SAFE" },
     children: [
       { path: "", redirect: { name: "hq-safe-dashboard" } },
-      { path: "dashboard", name: "hq-safe-dashboard", component: HQSafeDashboard },
+      { path: "dashboard", name: "hq-safe-dashboard", component: HQSafeHomePage },
+      { path: "operations-dashboard", name: "hq-safe-operations-dashboard", component: HQSafeDashboard },
       { path: "field-form-uploads", name: "hq-safe-field-form-uploads", component: FieldFormUploadPage },
       { path: "safety-ledgers", redirect: { name: "hq-safe-card-expenses" } },
       { path: "card-expenses", name: "hq-safe-card-expenses", component: SafetyLedgersPage, meta: { ledgerTab: "card" } },

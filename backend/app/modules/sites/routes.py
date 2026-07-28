@@ -100,25 +100,20 @@ def list_sites(db: DbDep, current_user: CurrentUserDep):
 
 @router.get("/search", response_model=list[SiteSearchResponse])
 def search_sites(db: DbDep, current_user: CurrentUserDep):
-    rows = (
-        db.query(Site)
-        .filter(Site.address.isnot(None), Site.address != "")
-        .order_by(site_list_priority_order(), Site.id.asc())
-        .all()
-    )
+    query = db.query(Site)
     if current_user.role == Role.SITE:
-        visible = rows
-    else:
-        uploaded_site_ids = _uploaded_document_site_ids(db)
-        c18_rows = [s for s in rows if ("C18BL" in (s.site_name or "")) or ("청라C18" in (s.site_name or ""))]
-        chosen_c18 = _preferred_site(c18_rows, uploaded_site_ids)
-        sample_other = next((s for s in rows if chosen_c18 is None or (s.id != chosen_c18.id and "C18BL" not in (s.site_name or "") and "청라C18" not in (s.site_name or ""))), None)
-        visible = [r for r in [chosen_c18, sample_other] if r is not None] or rows[:1]
+        if current_user.site_id:
+            query = query.filter(Site.id == current_user.site_id)
+        else:
+            query = query.filter(False)
+    visible = query.order_by(site_list_priority_order(), Site.id.asc()).all()
     return [
         SiteSearchResponse(
             id=site.id,
             name=site.site_name,
             address=site.address,
+            latitude=site.latitude,
+            longitude=site.longitude,
         )
         for site in visible
     ]

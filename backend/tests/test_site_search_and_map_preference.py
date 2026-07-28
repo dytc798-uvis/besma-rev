@@ -48,7 +48,7 @@ def _build_client(db, user):
     return TestClient(app)
 
 
-def test_sites_search_returns_all_sites_for_site_user():
+def test_sites_search_limits_site_user_to_own_site():
     db = _setup_db()
     site1 = Site(site_code="SITE001", site_name="현장1", address="서울")
     site2 = Site(site_code="SITE002", site_name="현장2", address="부산")
@@ -72,7 +72,7 @@ def test_sites_search_returns_all_sites_for_site_user():
     assert res.status_code == 200
     names = [row["name"] for row in res.json()]
     assert "현장1" in names
-    assert "현장2" in names
+    assert "현장2" not in names
 
 
 def test_patch_users_me_map_preference():
@@ -134,7 +134,9 @@ def test_hq_sites_prefers_uploaded_duplicate_site():
 
     search = client.get("/sites/search")
     assert search.status_code == 200
-    search_ids = [row["id"] for row in search.json()]
+    search_rows = search.json()
+    search_ids = [row["id"] for row in search_rows]
     assert duplicate_uploaded.id in search_ids
-    assert duplicate_primary.id not in search_ids
+    assert duplicate_primary.id in search_ids
+    assert other_site.id in search_ids
 
