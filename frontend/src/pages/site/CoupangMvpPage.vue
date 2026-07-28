@@ -167,8 +167,29 @@
             <label v-else>투명도
               <input v-model.number="selectedObject.opacity" type="range" min="0.1" max="0.65" step="0.05" @input="markDirty" />
             </label>
-            <label v-if="selectedObject.type !== 'photo'">색상<input v-model="selectedObject.color" type="color" @input="markDirty" /></label>
+            <label v-if="selectedObject.type === 'route'">머리 크기
+              <input v-model.number="selectedObject.arrow_head_size" type="range" min="20" max="100" @input="markDirty" />
+            </label>
+            <div v-if="selectedObject.type !== 'photo'" class="color-control">
+              <span>색상 바로가기</span>
+              <div class="color-hotkeys">
+                <button
+                  v-for="preset in colorHotkeys"
+                  :key="preset.value"
+                  type="button"
+                  :title="preset.label"
+                  :aria-label="preset.label"
+                  :class="{ active: selectedObject.color === preset.value }"
+                  :style="{ backgroundColor: preset.value }"
+                  @click="setSelectedColor(preset.value)"
+                />
+                <input v-model="selectedObject.color" type="color" title="기타 색상" aria-label="기타 색상" @input="markDirty" />
+              </div>
+            </div>
             <div class="selection-actions">
+              <button type="button" :class="{ locked: selectedObject.locked }" @click="toggleSelectedLock">
+                {{ selectedObject.locked ? "🔒 고정해제" : "🔓 고정" }}
+              </button>
               <button type="button" @click="moveLayer(-1)">뒤로</button>
               <button type="button" @click="moveLayer(1)">앞으로</button>
               <button type="button" class="danger" @click="removeSelected">삭제</button>
@@ -190,11 +211,6 @@
               @pointercancel="endDrag"
               @pointerleave="endDrag"
             >
-              <defs>
-                <marker id="route-arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
-                  <path d="M 0 0 L 12 6 L 0 12 z" fill="context-stroke" />
-                </marker>
-              </defs>
               <rect width="100%" height="100%" fill="#f8fafc" />
               <image
                 v-if="drawing.background_asset_id && assetUrls[drawing.background_asset_id]"
@@ -213,7 +229,7 @@
                 :key="object.id"
                 :transform="`translate(${object.x} ${object.y})`"
                 class="drawing-object"
-                :class="{ selected: selectedId === object.id }"
+                :class="{ selected: selectedId === object.id, locked: object.locked }"
                 @pointerdown.stop.prevent="startDrag($event, object)"
                 @click.stop="selectedId = object.id"
               >
@@ -228,15 +244,34 @@
                   />
                   <rect :x="object.w / 2 - 75" :y="object.h + 8" width="150" height="38" rx="10" fill="#0f172a" opacity=".88" />
                   <text :x="object.w / 2" :y="object.h + 35" text-anchor="middle" fill="#fff" font-size="24">{{ object.label }}</text>
+                  <template v-if="selectedId === object.id && !object.locked">
+                    <circle class="area-resize-handle" cx="0" cy="0" r="18" @pointerdown.stop.prevent="startAreaResize($event, object, 'nw')" />
+                    <circle class="area-resize-handle" :cx="object.w" cy="0" r="18" @pointerdown.stop.prevent="startAreaResize($event, object, 'ne')" />
+                    <circle class="area-resize-handle" cx="0" :cy="object.h" r="18" @pointerdown.stop.prevent="startAreaResize($event, object, 'sw')" />
+                    <circle class="area-resize-handle" :cx="object.w" :cy="object.h" r="18" @pointerdown.stop.prevent="startAreaResize($event, object, 'se')" />
+                  </template>
                 </template>
                 <template v-else-if="object.type === 'route'">
+                  <defs>
+                    <marker
+                      :id="`route-arrow-${object.id}`"
+                      viewBox="0 0 12 12"
+                      refX="10" refY="6"
+                      :marker-width="object.arrow_head_size || 38"
+                      :marker-height="object.arrow_head_size || 38"
+                      markerUnits="userSpaceOnUse"
+                      orient="auto"
+                    >
+                      <path d="M 0 0 L 12 6 L 0 12 z" :fill="object.color || '#dc2626'" />
+                    </marker>
+                  </defs>
                   <line
                     :x1="object.route_x1" :y1="object.route_y1"
                     :x2="object.route_x2" :y2="object.route_y2"
-                    :stroke="object.color || '#2563eb'"
-                    :stroke-width="object.stroke_width || 18"
+                    :stroke="object.color || '#dc2626'"
+                    :stroke-width="object.stroke_width || 12"
                     stroke-linecap="round"
-                    marker-end="url(#route-arrow)"
+                    :marker-end="`url(#route-arrow-${object.id})`"
                   />
                   <line
                     :x1="object.route_x1" :y1="object.route_y1"
@@ -473,7 +508,9 @@ type DrawingObject = {
   route_x2?: number;
   route_y2?: number;
   stroke_width?: number;
+  arrow_head_size?: number;
   opacity?: number;
+  locked?: boolean;
 };
 type Drawing = { width: number; height: number; background_asset_id: string | null; objects: DrawingObject[] };
 type StoredDocument = Record<string, any> & { id: number; title: string; work_date: string; floor: string; drawing: Drawing };
@@ -506,6 +543,13 @@ const iconTools = [
   { label: "고소작업", glyph: "▲", color: "#ea580c" },
   { label: "감전위험", glyph: "⚡", color: "#7c3aed" },
 ];
+const colorHotkeys = [
+  { label: "노랑", value: "#facc15" },
+  { label: "빨강", value: "#dc2626" },
+  { label: "검정", value: "#111827" },
+  { label: "하양", value: "#ffffff" },
+  { label: "파랑", value: "#2563eb" },
+] as const;
 
 const loading = ref(true);
 const saving = ref(false);
@@ -605,6 +649,7 @@ const previewSvgMarkup = computed(() => {
 });
 let dragState: { id: string; offsetX: number; offsetY: number } | null = null;
 let drawingDraft: { id: string; startX: number; startY: number; type: "route" | "area" } | null = null;
+let areaResizeState: { id: string; oppositeX: number; oppositeY: number } | null = null;
 
 onMounted(async () => {
   try {
@@ -920,9 +965,9 @@ function startCanvasDrawing(event: PointerEvent) {
     w: 20,
     h: 20,
     label: type === "route" ? "이동경로" : "작업범위",
-    color: type === "route" ? "#2563eb" : "#dc2626",
+    color: "#dc2626",
     ...(type === "route"
-      ? { stroke_width: 18, route_x1: 0, route_y1: 0, route_x2: 20, route_y2: 20 }
+      ? { stroke_width: 12, arrow_head_size: 38, route_x1: 0, route_y1: 0, route_x2: 20, route_y2: 20 }
       : { opacity: 0.22 }),
   };
   drawing.objects.push(object);
@@ -936,12 +981,38 @@ function startDrag(event: PointerEvent, object: DrawingObject) {
   routeMode.value = false;
   areaMode.value = false;
   selectedId.value = object.id;
+  if (object.locked) {
+    notify("고정된 레이어입니다. 이동하려면 먼저 고정해제하세요.");
+    return;
+  }
   const point = svgPoint(event);
   dragState = { id: object.id, offsetX: point.x - object.x, offsetY: point.y - object.y };
   svgRef.value?.setPointerCapture(event.pointerId);
 }
 
+function startAreaResize(event: PointerEvent, object: DrawingObject, handle: "nw" | "ne" | "sw" | "se") {
+  if (object.type !== "area" || object.locked) return;
+  selectedId.value = object.id;
+  areaResizeState = {
+    id: object.id,
+    oppositeX: object.x + (handle.includes("w") ? object.w : 0),
+    oppositeY: object.y + (handle.includes("n") ? object.h : 0),
+  };
+  svgRef.value?.setPointerCapture(event.pointerId);
+}
+
 function moveObject(event: PointerEvent) {
+  if (areaResizeState) {
+    const object = drawing.objects.find((item) => item.id === areaResizeState!.id);
+    if (!object) return;
+    const point = svgPoint(event);
+    object.x = Math.round(Math.min(areaResizeState.oppositeX, point.x));
+    object.y = Math.round(Math.min(areaResizeState.oppositeY, point.y));
+    object.w = Math.max(45, Math.round(Math.abs(point.x - areaResizeState.oppositeX)));
+    object.h = Math.max(45, Math.round(Math.abs(point.y - areaResizeState.oppositeY)));
+    markDirty();
+    return;
+  }
   if (drawingDraft) {
     const object = drawing.objects.find((item) => item.id === drawingDraft!.id);
     if (!object) return;
@@ -967,6 +1038,12 @@ function moveObject(event: PointerEvent) {
 }
 
 function endDrag(event: PointerEvent) {
+  if (areaResizeState) {
+    svgRef.value?.releasePointerCapture?.(event.pointerId);
+    areaResizeState = null;
+    notify("작업범위 크기를 변경했습니다.");
+    return;
+  }
   if (drawingDraft) {
     const object = drawing.objects.find((item) => item.id === drawingDraft!.id);
     const tooSmall = object && (
@@ -996,6 +1073,19 @@ function resizeSelected() {
   if (!object || object.type === "route") return;
   object.h = object.type === "photo" ? Math.round(object.w * 0.7) : object.w;
   markDirty();
+}
+
+function setSelectedColor(color: string) {
+  if (!selectedObject.value) return;
+  selectedObject.value.color = color;
+  markDirty();
+}
+
+function toggleSelectedLock() {
+  if (!selectedObject.value) return;
+  selectedObject.value.locked = !selectedObject.value.locked;
+  markDirty();
+  notify(selectedObject.value.locked ? "선택한 레이어를 고정했습니다." : "선택한 레이어의 고정을 해제했습니다.");
 }
 
 function moveLayer(direction: number) {
@@ -1268,8 +1358,8 @@ input,textarea,select { width: 100%; box-sizing: border-box; border: 1px solid #
 button { font: inherit; cursor: pointer; }.text-button { padding: 0; border: 0; color: #2563eb; background: transparent; font-size: 12px; font-weight: 800; }
 .upload-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }.upload-button { display: flex; justify-content: center; align-items: center; min-height: 44px; margin: 0; padding: 0 12px; border: 1px dashed #64748b; border-radius: 12px; color: #1e3a5f; background: #eff6ff; cursor: pointer; }.upload-button.accent { color: #075985; border-color: #0891b2; background: #ecfeff; }.upload-button input { display: none; }
 .tool-strip { display: flex; gap: 7px; padding: 2px 0 12px; overflow-x: auto; }.tool-strip button { flex: 0 0 auto; display: grid; justify-items: center; gap: 2px; min-width: 68px; padding: 7px 8px; border: 1px solid #dbe3ed; border-radius: 11px; color: #334155; background: #fff; font-size: 11px; font-weight: 800; }.tool-strip button span { font-size: 22px; }.tool-strip .route-tool,.tool-strip .area-tool { min-width: 105px; color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; }.tool-strip .area-tool { color: #b91c1c; border-color: #fca5a5; background: #fff1f2; }.tool-strip .route-tool.active,.tool-strip .area-tool.active { color: #fff; border-color: #1d4ed8; background: #1d4ed8; }.tool-strip .area-tool.active { border-color: #b91c1c; background: #b91c1c; }
-.canvas-wrap { width: 100%; overflow: auto; border: 1px solid #94a3b8; border-radius: 14px; background: #e2e8f0; }.drawing-svg { display: block; width: 100%; min-width: 520px; aspect-ratio: 1.6; background: #fff; touch-action: none; user-select: none; }.drawing-svg.route-mode { cursor: crosshair; }.drawing-object { cursor: grab; }.drawing-object:active { cursor: grabbing; }.empty-drawing text { fill: #64748b; font-size: 34px; font-weight: 800; }.empty-drawing .small { font-size: 22px; font-weight: 500; }
-.selection-tools { position: sticky; z-index: 8; top: 4px; display: grid; grid-template-columns: 1.3fr 1fr .55fr auto; gap: 10px; align-items: end; margin-bottom: 10px; padding: 12px; border: 1px solid #60a5fa; border-radius: 12px; background: #eff6ff; box-shadow: 0 7px 18px rgba(37,99,235,.14); }.selection-tools label { margin: 0; }.selection-actions { display: flex; gap: 5px; }.selection-actions button { min-height: 38px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; }.selection-actions .danger { color: #b91c1c; }
+.canvas-wrap { width: 100%; overflow: auto; border: 1px solid #94a3b8; border-radius: 14px; background: #e2e8f0; }.drawing-svg { display: block; width: 100%; min-width: 520px; aspect-ratio: 1.6; background: #fff; touch-action: none; user-select: none; }.drawing-svg.route-mode { cursor: crosshair; }.drawing-object { cursor: grab; }.drawing-object:active { cursor: grabbing; }.drawing-object.locked { cursor: not-allowed; }.area-resize-handle { fill: #fff; stroke: #2563eb; stroke-width: 8; cursor: nwse-resize; }.empty-drawing text { fill: #64748b; font-size: 34px; font-weight: 800; }.empty-drawing .small { font-size: 22px; font-weight: 500; }
+.selection-tools { position: sticky; z-index: 8; top: 4px; display: grid; grid-template-columns: minmax(130px,1.3fr) repeat(3,minmax(100px,1fr)) auto; gap: 10px; align-items: end; margin-bottom: 10px; padding: 12px; border: 1px solid #60a5fa; border-radius: 12px; background: #eff6ff; box-shadow: 0 7px 18px rgba(37,99,235,.14); }.selection-tools label { margin: 0; }.selection-actions { display: flex; gap: 5px; flex-wrap: wrap; }.selection-actions button { min-height: 38px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; }.selection-actions button.locked { color: #fff; border-color: #475569; background: #475569; }.selection-actions .danger { color: #b91c1c; }.color-control { display: grid; gap: 6px; color: #475569; font-size: 12px; font-weight: 800; }.color-hotkeys { display: flex; align-items: center; gap: 6px; }.color-hotkeys button,.color-hotkeys input { width: 28px; height: 28px; min-height: 28px; padding: 0; border: 2px solid #94a3b8; border-radius: 50%; box-sizing: border-box; }.color-hotkeys button.active { border-color: #0f172a; box-shadow: 0 0 0 3px #bfdbfe; }.color-hotkeys input { overflow: hidden; background: #fff; cursor: pointer; }
 .history-panel { max-height: 720px; overflow: auto; }.history-item { display: grid; width: 100%; gap: 5px; margin-bottom: 8px; padding: 12px; text-align: left; border: 1px solid #e2e8f0; border-radius: 11px; background: #f8fafc; }.history-item.active { border-color: #2563eb; background: #eff6ff; }.history-item span,.empty-list { color: #64748b; font-size: 11px; }
 .preview-panel { grid-column: 1 / -1; }.preview-panel .panel-title p { margin: 4px 0 0; color: #64748b; font-size: 12px; }.preview-page-tabs { display: flex; gap: 6px; padding-bottom: 10px; overflow-x: auto; }.preview-page-tabs button { flex: 0 0 auto; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 9px; color: #475569; background: #fff; font-size: 11px; font-weight: 800; }.preview-page-tabs button.active { color: #fff; border-color: #173f70; background: #173f70; }
 .preview-format-notice { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #f59e0b; border-radius: 10px; color: #78350f; background: #fffbeb; font-size: 12px; font-weight: 800; }
