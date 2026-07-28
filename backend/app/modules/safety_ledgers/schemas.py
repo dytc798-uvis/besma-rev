@@ -39,15 +39,27 @@ class CardExpenseReview(BaseModel):
         return digits
 
 
+class CardAccountUpdate(BaseModel):
+    card_number: str = Field(min_length=4, max_length=30)
+
+    @field_validator("card_number")
+    @classmethod
+    def normalize_card_number(cls, value: str) -> str:
+        digits = "".join(ch for ch in value if ch.isdigit())
+        if len(digits) not in {4, 16}:
+            raise ValueError("카드번호 16자리 또는 마지막 4자리를 입력해 주세요.")
+        return digits
+
+
 class VehicleDriversUpdate(BaseModel):
-    driver_names: list[str] = Field(min_length=2, max_length=4)
+    driver_names: list[str] = Field(min_length=1, max_length=4)
 
     @field_validator("driver_names")
     @classmethod
     def normalize_driver_names(cls, values: list[str]) -> list[str]:
         names = [value.strip() for value in values if value.strip()]
-        if len(names) < 2 or len(names) > 4:
-            raise ValueError("운전자는 2명 이상 4명 이하로 입력해 주세요.")
+        if len(names) < 1 or len(names) > 4:
+            raise ValueError("운전자는 1명 이상 4명 이하로 입력해 주세요.")
         if len(names) != len(set(names)):
             raise ValueError("같은 운전자를 중복 등록할 수 없습니다.")
         return names

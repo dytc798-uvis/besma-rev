@@ -19,12 +19,18 @@ from app.core.datetime_utils import utc_now
 from app.core.permissions import CurrentUserDep, assert_hq_safe_workspace
 from app.modules.safety_ledgers.image_extraction import extract_image
 from app.modules.safety_ledgers.models import (
+    SafetyCardAccount,
     SafetyCardExpense,
     SafetyVehicle,
     SafetyVehicleDriver,
     SafetyVehicleLog,
 )
-from app.modules.safety_ledgers.schemas import CardExpenseReview, VehicleDriversUpdate, VehicleLogReview
+from app.modules.safety_ledgers.schemas import (
+    CardAccountUpdate,
+    CardExpenseReview,
+    VehicleDriversUpdate,
+    VehicleLogReview,
+)
 from app.modules.safety_ledgers.workbook_export import (
     CARD_FILENAME,
     VEHICLE_FILENAME,
@@ -48,6 +54,10 @@ _PILOT_USER_NAMES = frozenset({"정상익", "엄재복", "박영선", "조동문
 _SHARED_CARD_USER_NAMES = frozenset({"정상익", "엄재복", "박영선"})
 _SHARED_CARD_SCOPE = "SAFETY_SHARED"
 _JO_CARD_SCOPE = "JO_DONGMUN"
+_DEFAULT_CARD_NUMBERS = {
+    _SHARED_CARD_SCOPE: "5585-03**-****-6925",
+    _JO_CARD_SCOPE: "5585-03**-****-3946",
+}
 
 
 def _assert_access(user) -> None:
@@ -66,6 +76,33 @@ def _card_scope(user) -> tuple[str, str]:
     if name == "조동문":
         return _JO_CARD_SCOPE, "조동문 법인카드"
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록된 법인카드가 없습니다.")
+
+
+def _ensure_card_account(db, user) -> SafetyCardAccount:
+    card_scope, card_label = _card_scope(user)
+    account = db.query(SafetyCardAccount).filter(SafetyCardAccount.card_scope == card_scope).first()
+    if account is None:
+        masked = _DEFAULT_CARD_NUMBERS[card_scope]
+        account = SafetyCardAccount(
+            card_scope=card_scope,
+            label=card_label,
+            card_number_masked=masked,
+            card_last4=_card_last4(masked) or "",
+            updated_by_user_id=getattr(user, "id", None),
+        )
+        db.add(account)
+        db.commit()
+        db.refresh(account)
+    return account
+
+
+def _masked_card_number(value: str) -> tuple[str, str]:
+    digits = re.sub(r"\D", "", value)
+    if len(digits) == 4:
+        return f"****-****-****-{digits}", digits
+    if len(digits) == 16:
+        return f"{digits[:4]}-{digits[4:6]}**-****-{digits[-4:]}", digits[-4:]
+    raise HTTPException(status_code=400, detail="카드번호 16자리 또는 마지막 4자리를 입력해 주세요.")
 
 
 def _storage_dir(kind: str) -> Path:
@@ -135,6 +172,24 @@ def _parse_iso_datetime(date_value: Any, time_value: Any) -> datetime | None:
 def _card_last4(value: Any) -> str | None:
     digits = re.sub(r"\D", "", str(value or ""))
     return digits[-4:] if len(digits) >= 4 else None
+
+
+def _normalized_description(description: str | None, merchant: str | None) -> str | None:
+    clean = (description or "").strip()
+    text = f"{clean} {(merchant or '').strip()}".lower()
+    category_keywords = (
+        ("주유비", ("주유", "휘발유", "경유", "gasoline", "diesel")),
+        ("중식비", ("중식", "점심", "lunch")),
+        ("석식비", ("석식", "저녁", "dinner")),
+        ("회식비", ("회식",)),
+        ("주차비", ("주차", "parking")),
+        ("통행료", ("통행", "하이패스", "톨게이트")),
+        ("숙박비", ("숙박", "호텔", "모텔")),
+    )
+    for category, keywords in category_keywords:
+        if any(keyword in text for keyword in keywords):
+            return category
+    return clean or None
 
 
 def _serialize_vehicle_log(row: SafetyVehicleLog) -> dict[str, Any]:
@@ -214,7 +269,8 @@ def _export_paths(db, user) -> tuple[Path, Path]:
 @router.get("/bootstrap")
 def bootstrap(db: DbDep, current_user: CurrentUserDep):
     _assert_access(current_user)
-    card_scope, card_label = _card_scope(current_user)
+    card_scope, _card_label = _card_scope(current_user)
+    card_account = _ensure_card_account(db, current_user)
     vehicle = _ensure_vehicle_for_user(db, current_user)
     logs = (
         db.query(SafetyVehicleLog)
@@ -240,10 +296,38 @@ def bootstrap(db: DbDep, current_user: CurrentUserDep):
         },
         "vehicle_logs": [_serialize_vehicle_log(row) for row in logs],
         "card_expenses": [_serialize_card(row) for row in expenses],
-        "card_account": {"scope": card_scope, "label": card_label},
+        "card_account": {
+            "scope": card_scope,
+            "label": card_account.label,
+            "card_number_masked": card_account.card_number_masked,
+            "card_last4": card_account.card_last4,
+        },
         "vision_enabled": bool((settings.openai_api_key or "").strip()),
         "vision_model": settings.safety_ledger_vision_model,
         "review_threshold": _CONFIRM_THRESHOLD,
+    }
+
+
+@router.put("/card-account")
+def update_card_account(
+    payload: CardAccountUpdate,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    _assert_access(current_user)
+    account = _ensure_card_account(db, current_user)
+    masked, last4 = _masked_card_number(payload.card_number)
+    account.card_number_masked = masked
+    account.card_last4 = last4
+    account.updated_by_user_id = current_user.id
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return {
+        "scope": account.card_scope,
+        "label": account.label,
+        "card_number_masked": account.card_number_masked,
+        "card_last4": account.card_last4,
     }
 
 
@@ -377,6 +461,7 @@ async def create_card_expense(
     current_user: CurrentUserDep,
     receipt: Annotated[UploadFile, File(...)],
     used_at: Annotated[datetime | None, Form()] = None,
+    used_at_is_default: Annotated[bool, Form()] = False,
     site_name: Annotated[str | None, Form()] = None,
     merchant: Annotated[str | None, Form()] = None,
     amount: Annotated[int | None, Form()] = None,
@@ -386,6 +471,7 @@ async def create_card_expense(
 ):
     _assert_access(current_user)
     card_scope, _card_label = _card_scope(current_user)
+    card_account = _ensure_card_account(db, current_user)
     path, original_name, media_type = await _save_image(receipt, "receipts")
     extracted: dict[str, Any] | None = None
     extraction_error: str | None = None
@@ -402,14 +488,18 @@ async def create_card_expense(
     status_value = "AUTO_EXTRACTED" if extracted else ("EXTRACTION_FAILED" if extraction_error else "NEEDS_REVIEW")
     row = SafetyCardExpense(
         card_scope=card_scope,
-        used_at=used_at or extracted_used_at,
+        used_at=(extracted_used_at if used_at_is_default and extracted_used_at else used_at)
+        or extracted_used_at
+        or utc_now(),
         site_name=(site_name or "").strip() or None,
         merchant=(merchant or "").strip() or (str(extracted.get("merchant") or "").strip() if extracted else None) or None,
         amount=amount if amount is not None else (extracted.get("amount") if extracted else None),
-        description=(description or "").strip()
-        or (str(extracted.get("description") or "").strip() if extracted else None)
-        or None,
-        card_last4=_card_last4(card_last4) or (_card_last4(extracted.get("card_last4")) if extracted else None),
+        description=_normalized_description(
+            (description or "").strip()
+            or (str(extracted.get("description") or "").strip() if extracted else None),
+            (merchant or "").strip() or (str(extracted.get("merchant") or "").strip() if extracted else None),
+        ),
+        card_last4=card_account.card_last4,
         note=(note or "").strip() or None,
         receipt_image_path=_relative_path(path),
         receipt_original_name=original_name,
@@ -434,6 +524,7 @@ def review_card_expense(
 ):
     _assert_access(current_user)
     card_scope, _card_label = _card_scope(current_user)
+    card_account = _ensure_card_account(db, current_user)
     row = (
         db.query(SafetyCardExpense)
         .filter(SafetyCardExpense.id == expense_id, SafetyCardExpense.card_scope == card_scope)
@@ -441,8 +532,10 @@ def review_card_expense(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="법인카드 내역을 찾을 수 없습니다.")
-    for field in ("used_at", "site_name", "merchant", "amount", "description", "card_last4", "note"):
+    for field in ("used_at", "site_name", "merchant", "amount", "description", "note"):
         setattr(row, field, getattr(payload, field))
+    row.description = _normalized_description(row.description, row.merchant)
+    row.card_last4 = card_account.card_last4
     if payload.confirm:
         if row.used_at is None or row.merchant is None or row.amount is None:
             raise HTTPException(status_code=400, detail="확정하려면 사용일시, 사용처, 금액을 입력해 주세요.")

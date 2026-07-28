@@ -63,6 +63,7 @@ def test_pilot_account_vehicle_and_card_scopes(tmp_path: Path, monkeypatch):
     assert shared.status_code == 200
     assert shared.json()["vehicle"]["plate_number"] == "181하8339"
     assert shared.json()["card_account"]["scope"] == "SAFETY_SHARED"
+    assert shared.json()["card_account"]["card_number_masked"] == "5585-03**-****-6925"
 
     jo_client = _client(tmp_path / "jo", monkeypatch, user_name="조동문")
     jo = jo_client.get("/safety-ledgers/bootstrap")
@@ -71,6 +72,7 @@ def test_pilot_account_vehicle_and_card_scopes(tmp_path: Path, monkeypatch):
     assert jo.json()["vehicle"]["plate_number"] == "160하3180"
     assert jo.json()["vehicle"]["drivers"] == ["조동문"]
     assert jo.json()["card_account"]["scope"] == "JO_DONGMUN"
+    assert jo.json()["card_account"]["card_last4"] == "3946"
 
     blocked_client = _client(tmp_path / "blocked", monkeypatch, user_name="김복수")
     assert blocked_client.get("/safety-ledgers/bootstrap").status_code == 403
@@ -128,6 +130,7 @@ def test_upload_review_and_export_flow(tmp_path: Path, monkeypatch):
     assert expense.status_code == 200, expense.text
     expense_row = expense.json()
     assert expense_row["merchant"] == "안전식당"
+    assert expense_row["card_last4"] == "6925"
 
     confirmed_expense = client.patch(
         f"/safety-ledgers/card-expenses/{expense_row['id']}",
@@ -144,6 +147,11 @@ def test_upload_review_and_export_flow(tmp_path: Path, monkeypatch):
     )
     assert confirmed_expense.status_code == 200
     assert confirmed_expense.json()["extraction_status"] == "CONFIRMED"
+    assert confirmed_expense.json()["card_last4"] == "6925"
+
+    updated_card = client.put("/safety-ledgers/card-account", json={"card_number": "1234"})
+    assert updated_card.status_code == 200
+    assert updated_card.json()["card_number_masked"] == "****-****-****-1234"
 
     for kind in ("vehicle", "card"):
         response = client.get(f"/safety-ledgers/exports/{kind}")

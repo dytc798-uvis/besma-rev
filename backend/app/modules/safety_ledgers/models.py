@@ -93,6 +93,19 @@ class SafetyCardExpense(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
 
+class SafetyCardAccount(Base):
+    __tablename__ = "safety_card_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    card_scope: Mapped[str] = mapped_column(String(40), nullable=False, unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    card_number_masked: Mapped[str] = mapped_column(String(30), nullable=False)
+    card_last4: Mapped[str] = mapped_column(String(4), nullable=False)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
 def ensure_safety_ledger_schema() -> None:
     """기존 운영 SQLite에도 카드 구분 컬럼을 멱등적으로 추가한다."""
     with engine.begin() as connection:

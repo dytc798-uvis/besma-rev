@@ -37,7 +37,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api } from "@/services/api";
-import { useAuthStore } from "@/stores/auth";
 import { openDirections } from "@/utils/map";
 
 interface SiteSearchItem {
@@ -48,7 +47,6 @@ interface SiteSearchItem {
   longitude: number | null;
 }
 
-const auth = useAuthStore();
 const query = ref("");
 const sites = ref<SiteSearchItem[]>([]);
 const loading = ref(true);
@@ -69,8 +67,7 @@ function canOpenDirections(site: SiteSearchItem) {
 
 function openSiteDirections(site: SiteSearchItem) {
   if (!canOpenDirections(site)) return;
-  const pref = auth.user?.map_preference === "TMAP" ? "TMAP" : "NAVER";
-  openDirections(site, pref);
+  openDirections(site, "NAVER");
 }
 
 async function loadSites() {

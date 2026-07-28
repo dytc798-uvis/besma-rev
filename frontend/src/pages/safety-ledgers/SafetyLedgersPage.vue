@@ -92,15 +92,6 @@
     </template>
 
     <template v-else>
-      <div class="summary-card card-summary">
-        <div>
-          <span>사용 카드</span>
-          <strong>{{ cardAccount.label }}</strong>
-          <small>사진 보존 → 자동/수동 추출 → 사용자 확정</small>
-        </div>
-        <button class="download" @click="downloadExcel('card')">법인카드 정산서 다운로드</button>
-      </div>
-
       <form class="capture-card" @submit.prevent="submitCard">
         <h3>영수증 촬영 및 사용내역 등록</h3>
         <label class="photo-picker">
@@ -113,19 +104,56 @@
             @change="receiptPhoto = fileFromEvent($event)"
           />
           <b>{{ receiptPhoto ? receiptPhoto.name : "영수증 사진 촬영 / 선택" }}</b>
-          <span>승인일시, 가맹점, 금액, 카드번호 일부가 보이도록 촬영하세요.</span>
+          <span><strong>영수증의 위·아래와 네 모서리를 포함한 전체가 한 화면에 보이도록 촬영하세요.</strong></span>
+          <span>승인일시, 가맹점, 금액, 카드번호 일부가 선명해야 합니다.</span>
         </label>
         <div class="form-grid">
-          <label>사용일시 (선택)<input v-model="cardForm.used_at" type="datetime-local" /></label>
+          <label>사용일시<input v-model="cardForm.used_at" type="datetime-local" @change="cardUsedAtEdited = true" /></label>
           <label>사용처 (선택)<input v-model="cardForm.merchant" /></label>
           <label>금액 (선택)<input v-model.number="cardForm.amount" type="number" min="0" inputmode="numeric" /></label>
-          <label>카드 끝 4자리 (선택)<input v-model="cardForm.card_last4" inputmode="numeric" maxlength="4" /></label>
-          <label>현장명 (선택)<input v-model="cardForm.site_name" /></label>
-          <label>내용 (선택)<input v-model="cardForm.description" placeholder="예: 주유비, 중식비" /></label>
+          <label>
+            현장명 (선택)
+            <input v-model="cardForm.site_name" placeholder="스케줄 자동 연결 전에는 현장명을 직접 입력" />
+          </label>
+          <fieldset class="content-picker wide">
+            <legend>내용</legend>
+            <div class="category-buttons">
+              <button
+                v-for="category in expenseCategories"
+                :key="category"
+                type="button"
+                :class="{ selected: contentChoice === category }"
+                @click="contentChoice = category"
+              >
+                {{ category }}
+              </button>
+            </div>
+            <input
+              v-if="contentChoice === '직접입력'"
+              v-model="cardForm.description"
+              placeholder="사용 내용을 직접 입력하세요"
+            />
+          </fieldset>
+          <label class="wide">비고 (선택)<input v-model="cardForm.note" placeholder="예: 박영선, 정상익, 엄재복" /></label>
         </div>
         <button class="primary" :disabled="submitting || !receiptPhoto">{{ submitting ? "저장 중…" : "사진과 사용내역 저장" }}</button>
         <p class="hint">{{ visionHint }}</p>
       </form>
+
+      <div class="summary-card card-summary">
+        <div>
+          <span>사용 카드</span>
+          <strong>{{ cardAccount.label }} · {{ cardAccount.card_number_masked }}</strong>
+          <small>카드번호는 이 카드의 모든 신규 영수증에 자동 적용됩니다.</small>
+        </div>
+        <details class="card-number-editor">
+          <summary>카드번호 수정</summary>
+          <div>
+            <input v-model="cardNumberDraft" inputmode="numeric" placeholder="카드번호 16자리 또는 마지막 4자리" />
+            <button type="button" class="confirm" @click="saveCardAccount">저장</button>
+          </div>
+        </details>
+      </div>
 
       <div class="records">
         <div class="records-heading"><h3>법인카드 사용내역</h3><button @click="loadData">새로고침</button></div>
@@ -139,12 +167,15 @@
             <label>사용일시<input v-model="row.used_at" type="datetime-local" /></label>
             <label>사용처<input v-model="row.merchant" /></label>
             <label>금액<input v-model.number="row.amount" type="number" min="0" /></label>
-            <label>카드 끝 4자리<input v-model="row.card_last4" maxlength="4" /></label>
             <label>현장명<input v-model="row.site_name" /></label>
             <label>내용<input v-model="row.description" /></label>
+            <label class="wide">비고<input v-model="row.note" /></label>
           </div>
           <button class="confirm" @click="saveCardReview(row)">수정값 확인·확정</button>
         </article>
+      </div>
+      <div class="download-footer">
+        <button class="download" @click="downloadExcel('card')">법인카드 정산서 다운로드</button>
       </div>
     </template>
   </section>
@@ -189,9 +220,16 @@ interface CardExpense {
 interface CardAccount {
   scope: string;
   label: string;
+  card_number_masked: string;
+  card_last4: string;
 }
 
-const today = new Date().toISOString().slice(0, 10);
+function localDateTimeInput() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+const today = localDateTimeInput().slice(0, 10);
 const route = useRoute();
 const router = useRouter();
 const routeTab = (): Tab => route.meta.ledgerTab === "vehicle" ? "vehicle" : "card";
@@ -211,7 +249,12 @@ const vehicle = reactive<VehicleInfo>({
 });
 const vehicleLogs = ref<VehicleLog[]>([]);
 const cardExpenses = ref<CardExpense[]>([]);
-const cardAccount = reactive<CardAccount>({ scope: "", label: "안전실 공용카드" });
+const cardAccount = reactive<CardAccount>({
+  scope: "",
+  label: "안전실 공용카드",
+  card_number_masked: "5585-03**-****-6925",
+  card_last4: "6925",
+});
 const driverDraft = ref<string[]>(["정상익", "박영선", "", ""]);
 const visionEnabled = ref(false);
 const submitting = ref(false);
@@ -219,10 +262,21 @@ const notice = ref("");
 const error = ref("");
 const vehiclePhoto = ref<File | null>(null);
 const receiptPhoto = ref<File | null>(null);
+const cardNumberDraft = ref("");
+const cardUsedAtEdited = ref(false);
 const vehiclePhotoInput = ref<HTMLInputElement | null>(null);
 const receiptInput = ref<HTMLInputElement | null>(null);
 const vehicleForm = reactive({ driven_on: today, driver_name: "", odometer_km: null as number | null, trip_km: null as number | null, purpose: "" });
-const cardForm = reactive({ used_at: "", site_name: "", merchant: "", amount: null as number | null, description: "", card_last4: "" });
+const expenseCategories = ["직접입력", "주유비", "중식비", "석식비", "회식비", "주차비", "통행료", "숙박비", "기타"];
+const contentChoice = ref("직접입력");
+const cardForm = reactive({
+  used_at: localDateTimeInput(),
+  site_name: "",
+  merchant: "",
+  amount: null as number | null,
+  description: "",
+  note: "",
+});
 const visionHint = computed(() =>
   visionEnabled.value
     ? "사진 인식값은 자동으로 채워지지만 반드시 목록에서 확인·확정해 주세요."
@@ -280,10 +334,25 @@ async function submitCard() {
   if (!receiptPhoto.value) return;
   const form = new FormData();
   form.append("receipt", receiptPhoto.value);
-  for (const [key, value] of Object.entries(cardForm)) appendIf(form, key, value);
+  form.append("used_at_is_default", String(!cardUsedAtEdited.value));
+  for (const [key, value] of Object.entries(cardForm)) {
+    if (key !== "description") appendIf(form, key, value);
+  }
+  const description = contentChoice.value === "직접입력" ? cardForm.description : contentChoice.value;
+  appendIf(form, "description", description);
   await submitForm("/safety-ledgers/card-expenses", form, "영수증과 사용내역을 저장했습니다.");
   receiptPhoto.value = null;
   if (receiptInput.value) receiptInput.value.value = "";
+  Object.assign(cardForm, {
+    used_at: localDateTimeInput(),
+    site_name: "",
+    merchant: "",
+    amount: null,
+    description: "",
+    note: "",
+  });
+  contentChoice.value = "직접입력";
+  cardUsedAtEdited.value = false;
 }
 
 async function submitForm(url: string, form: FormData, success: string) {
@@ -320,6 +389,20 @@ async function saveDrivers() {
 
 async function saveCardReview(row: CardExpense) {
   await saveReview(`/safety-ledgers/card-expenses/${row.id}`, { ...row, used_at: row.used_at || null, confirm: true }, "법인카드 내역을 확정했습니다.");
+}
+
+async function saveCardAccount() {
+  if (!cardNumberDraft.value.trim()) return;
+  notice.value = "";
+  error.value = "";
+  try {
+    const { data } = await api.put("/safety-ledgers/card-account", { card_number: cardNumberDraft.value });
+    Object.assign(cardAccount, data);
+    cardNumberDraft.value = "";
+    notice.value = "기본 카드번호를 저장했습니다.";
+  } catch (err: any) {
+    error.value = err?.response?.data?.detail || "카드번호를 저장하지 못했습니다.";
+  }
 }
 
 async function saveReview(url: string, payload: object, success: string) {
@@ -381,15 +464,27 @@ async function downloadExcel(kind: "vehicle" | "card") {
 .summary-card div { display: grid; gap: 3px; }
 .summary-card span, .hint { color: #657383; font-size: 13px; }
 .download { margin-left: auto; padding: 10px 14px; border: 0; border-radius: 10px; color: white; background: #0f6b6d; font-weight: 800; cursor: pointer; }
+.download-footer { display: flex; justify-content: flex-end; padding: 4px 0 24px; }
+.download-footer .download { min-height: 52px; }
 .capture-card h3, .records h3 { margin: 0 0 16px; }
 .photo-picker { display: grid; place-items: center; gap: 6px; min-height: 135px; margin-bottom: 18px; padding: 20px; border: 2px dashed #4f8790; border-radius: 15px; text-align: center; background: #f3fbfa; cursor: pointer; }
 .photo-picker input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .photo-picker b { color: #0f5c5e; font-size: 18px; }
 .photo-picker span { color: #64748b; font-size: 14px; }
+.photo-picker span strong { color: #a43d2d; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .form-grid label { display: grid; gap: 6px; color: #334155; font-size: 13px; font-weight: 700; }
 .form-grid .wide { grid-column: 1 / -1; }
 input, select { box-sizing: border-box; width: 100%; min-height: 44px; padding: 10px 11px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #172033; font: inherit; }
+.content-picker { margin: 0; padding: 12px; border: 1px solid #cbd5e1; border-radius: 12px; }
+.content-picker legend { padding: 0 6px; color: #334155; font-size: 13px; font-weight: 800; }
+.category-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.category-buttons button { min-height: 42px; padding: 8px 13px; border: 1px solid #b9c8d2; border-radius: 999px; background: white; color: #334155; font-weight: 800; cursor: pointer; }
+.category-buttons button.selected { border-color: #0f6b6d; background: #e8f7f4; color: #0f5c5e; }
+.card-number-editor { margin-left: auto; }
+.card-number-editor summary { color: #0f5c5e; font-weight: 800; cursor: pointer; }
+.card-number-editor div { display: flex; gap: 8px; margin-top: 8px; }
+.card-number-editor .confirm { min-width: 72px; margin-top: 0; }
 .primary, .confirm { margin-top: 16px; padding: 12px 18px; border: 0; border-radius: 11px; background: #e36b2c; color: white; font-weight: 800; cursor: pointer; }
 .primary:disabled { opacity: .55; cursor: wait; }
 .notice, .error { margin-bottom: 14px; padding: 12px 15px; border-radius: 10px; font-weight: 700; }
@@ -414,6 +509,9 @@ input, select { box-sizing: border-box; width: 100%; min-height: 44px; padding: 
   .tabs button { min-height: 52px; }
   .summary-card { align-items: stretch; flex-direction: column; gap: 12px; }
   .download { min-height: 48px; margin-left: 0; }
+  .download-footer .download { width: 100%; }
+  .card-number-editor { margin-left: 0; }
+  .card-number-editor div { align-items: stretch; flex-direction: column; }
   .form-grid, .compact { grid-template-columns: 1fr; }
   .driver-slots { grid-template-columns: 1fr 1fr; }
   .form-grid .wide { grid-column: auto; }
