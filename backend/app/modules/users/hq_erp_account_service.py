@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import load_only
 
 from app.config.security import get_password_hash
 from app.core.auth import _ERP_LOGIN_ALIAS_FILE
@@ -46,6 +47,28 @@ PRIVILEGED_HQ_ROLES = frozenset(
 SITE_ROLES = frozenset({Role.SITE, Role.SITE_FUNCTIONAL_EVAL, Role.WORKER})
 
 
+def _account_columns():
+    # 운영 DB의 과거 비정상 birth_date 값이 계정 동기화를 막지 않도록
+    # 필요한 사용자 열만 로드한다.
+    return load_only(
+        User.id,
+        User.name,
+        User.login_id,
+        User.password_hash,
+        User.department,
+        User.role,
+        User.ui_type,
+        User.site_id,
+        User.person_id,
+        User.is_active,
+        User.password_changed_at,
+        User.must_change_password,
+        User.initial_password_issued,
+        User.account_issued_by,
+        User.account_issued_at,
+    )
+
+
 @dataclass
 class AccountPlan:
     row: dict[str, Any]
@@ -76,6 +99,7 @@ def _active_hq_named_users(db: Session, name: str) -> list[User]:
     return [
         user
         for user in db.query(User)
+        .options(_account_columns())
         .filter(User.name == name, User.is_active.is_(True))
         .order_by(User.id.asc())
         .all()
@@ -93,6 +117,7 @@ def _choose_existing_user(
 ) -> tuple[User | None, str | None]:
     exact = (
         db.query(User)
+        .options(_account_columns())
         .filter(User.login_id.ilike(erp_login_id))
         .order_by(User.id.asc())
         .first()
@@ -319,7 +344,8 @@ def apply_account_plan(
             created += 1
         else:
             user.name = str(row["name"]).strip()
-            user.birth_date = row.get("birth_date") or user.birth_date
+            if row.get("birth_date") is not None:
+                user.birth_date = row["birth_date"]
             user.department = plan.department
             if user.role not in PRIVILEGED_HQ_ROLES:
                 user.role = plan.role
