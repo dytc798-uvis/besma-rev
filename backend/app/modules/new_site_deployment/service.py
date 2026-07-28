@@ -148,8 +148,9 @@ def _sync_administrators(
         )
 
     _sync_legacy_mirror_fields(row, admins)
-    site.site_manager = row.site_manager_name
-    site.project_manager = row.gongmu_name
+    # sites 정본 필드: project_manager=소장, site_manager=공무.
+    site.project_manager = row.site_manager_name
+    site.site_manager = row.gongmu_name
     db.add(site)
     db.add(row)
 
@@ -172,6 +173,8 @@ def _default_safety_checks() -> dict[str, bool]:
 def _can_edit_budget(user: User) -> bool:
     if _role_value(user) in BUDGET_EDIT_ROLES:
         return True
+    if (user.department or "").strip().startswith("공사관리"):
+        return True
     return (user.login_id or "").strip() in CONSTRUCTION_MANAGEMENT_NEW_SITE_EDIT_LOGINS
 
 
@@ -182,6 +185,8 @@ def _can_edit_procurement(user: User) -> bool:
 def _can_edit_safety_checks(user: User) -> bool:
     rv = _role_value(user)
     if rv in {"HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN"}:
+        return True
+    if (user.department or "").strip().startswith("공사관리"):
         return True
     login = (user.login_id or "").strip()
     return login in PROCUREMENT_SAFETY_CHECK_LOGINS
@@ -235,8 +240,8 @@ def _ensure_site_for_deployment(db: Session, row: NewSiteDeployment, user: User)
             site_name=row.site_name[:200],
             contractor_name=row.contractor,
             project_amount=row.construction_amount,
-            site_manager=row.site_manager_name,
-            project_manager=row.gongmu_name,
+            project_manager=row.site_manager_name,
+            site_manager=row.gongmu_name,
             created_by_user_id=user.id,
         )
         db.add(site)
@@ -245,8 +250,8 @@ def _ensure_site_for_deployment(db: Session, row: NewSiteDeployment, user: User)
         site.site_name = row.site_name[:200]
         site.contractor_name = row.contractor
         site.project_amount = row.construction_amount
-        site.site_manager = row.site_manager_name
-        site.project_manager = row.gongmu_name
+        site.project_manager = row.site_manager_name
+        site.site_manager = row.gongmu_name
         db.add(site)
 
     row.site_id = site.id

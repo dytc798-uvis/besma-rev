@@ -27,6 +27,7 @@ class UserMe(BaseModel):
     ui_type: str
     site_id: int | None
     person_id: int | None
+    department: str | None = None
     map_preference: str | None = "NAVER"
     must_change_password: bool
     needs_fe_consent: bool = False

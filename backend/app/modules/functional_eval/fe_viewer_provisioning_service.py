@@ -154,14 +154,16 @@ def _sawon_values_to_viewer_row(
     if not base:
         return None
     vals = list(values)
-    while len(vals) < 21:
+    while len(vals) < 23:
         vals.append(None)
     dept_code = _cell_label(vals[3])
     pos_code = _cell_label(vals[5])
     department = _resolve_code_label(dept_code, dept_legend or {}) or dept_code
     position = _resolve_code_label(pos_code, pos_legend or {}) or pos_code
-    email_raw = _cell_label(vals[12]) or _cell_label(vals[11]) or None
+    # ERP 사원리스트 정본: 8=이메일, 9=아이디.
+    email_raw = _cell_label(vals[8]) or None
     email = email_raw if email_raw and email_raw.upper() != "N" and "@" in email_raw else None
+    erp_login_id = _cell_label(vals[9]).lower()
     birth6 = _birth6_from_rrn(vals[6], vals[7])
     if not birth6:
         return None
@@ -176,6 +178,8 @@ def _sawon_values_to_viewer_row(
         "position": position,
         "position_code": pos_code,
         "email": email,
+        "erp_login_id": erp_login_id,
+        "termination_date": _cell_label(vals[21]) or None,
         "birth6": birth6,
         "birth_date": _birth_date_from_birth6(birth6),
     }

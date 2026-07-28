@@ -13,6 +13,7 @@ export interface AuthUser {
   ui_type: "HQ_SAFE" | "SITE" | "HQ_OTHER";
   site_id: number | null;
   person_id: number | null;
+  department?: string | null;
   map_preference?: "NAVER" | "TMAP" | null;
   can_system_backup?: boolean;
 }

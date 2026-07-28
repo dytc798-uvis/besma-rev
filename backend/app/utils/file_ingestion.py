@@ -10,6 +10,7 @@ from typing import Any
 
 import openpyxl
 import xlrd
+import olefile
 
 from app.config.settings import settings
 
@@ -24,7 +25,26 @@ def open_xlrd_workbook(path: Path | str, **kwargs: Any) -> Any:
     try:
         return xlrd.open_workbook(p, ignore_workbook_corruption=True, **kwargs)
     except TypeError:
-        return xlrd.open_workbook(p, **kwargs)
+        try:
+            return xlrd.open_workbook(p, **kwargs)
+        except xlrd.compdoc.CompDocError:
+            compound = olefile.OleFileIO(p)
+            try:
+                workbook_bytes = compound.openstream("Workbook").read()
+            finally:
+                compound.close()
+            stream_kwargs = dict(kwargs)
+            stream_kwargs.pop("on_demand", None)
+            return xlrd.open_workbook(file_contents=workbook_bytes, **stream_kwargs)
+    except xlrd.compdoc.CompDocError:
+        compound = olefile.OleFileIO(p)
+        try:
+            workbook_bytes = compound.openstream("Workbook").read()
+        finally:
+            compound.close()
+        stream_kwargs = dict(kwargs)
+        stream_kwargs.pop("on_demand", None)
+        return xlrd.open_workbook(file_contents=workbook_bytes, **stream_kwargs)
 ZIP_SIGNATURE = b"PK\x03\x04"
 
 

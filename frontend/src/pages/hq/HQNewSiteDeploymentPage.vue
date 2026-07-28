@@ -183,6 +183,7 @@ const DEFAULT_ADMIN_ROLES: AdminRoleOption[] = [
   { key: "GONGMU", label: "공무" },
   { key: "SAFETY", label: "안전(관리자)" },
   { key: "CONSTRUCTION_SUPERVISOR", label: "공사(관리감독자)" },
+  { key: "OTHER", label: "기타" },
 ];
 
 const CONSTRUCTION_MANAGEMENT_LOGINS = [
@@ -221,9 +222,13 @@ const procurement = reactive({
 });
 
 const role = computed(() => auth.user?.role || "");
+const isConstructionManagement = computed(() =>
+  (auth.user?.department || "").trim().startsWith("공사관리"),
+);
 const canEditBudget = computed(
   () =>
     ["HQ_BUDGET_ESTIMATE", "HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN"].includes(role.value) ||
+    isConstructionManagement.value ||
     CONSTRUCTION_MANAGEMENT_LOGINS.includes(auth.user?.login_id || ""),
 );
 const canEditProcurement = computed(() =>
@@ -233,6 +238,7 @@ const canEditSafetyChecks = computed(() => {
   const login = auth.user?.login_id || "";
   return (
     ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN"].includes(role.value) ||
+    isConstructionManagement.value ||
     login === "외주구매-신영석" ||
     login === "외주구매-주창오" ||
     CONSTRUCTION_MANAGEMENT_LOGINS.includes(login)

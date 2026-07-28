@@ -63,6 +63,7 @@ ADMIN_ROLES: tuple[tuple[str, str], ...] = (
     ("GONGMU", "공무"),
     ("SAFETY", "안전(관리자)"),
     ("CONSTRUCTION_SUPERVISOR", "공사(관리감독자)"),
+    ("OTHER", "기타"),
 )
 
 ADMIN_ROLE_KEYS = frozenset(k for k, _ in ADMIN_ROLES)
