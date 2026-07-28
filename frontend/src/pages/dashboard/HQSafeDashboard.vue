@@ -13,6 +13,38 @@
         </div>
       </header>
 
+      <section class="work-entry-section" aria-labelledby="work-entry-title">
+        <div class="work-entry-heading">
+          <div>
+            <p class="work-entry-kicker">본사 주요 업무</p>
+            <h2 id="work-entry-title">업무를 선택하세요</h2>
+          </div>
+          <p>모바일에서는 사진 촬영이 필요한 업무를 먼저 표시합니다.</p>
+        </div>
+        <div class="work-entry-grid">
+          <RouterLink class="work-entry-card entry-documents" :to="{ name: 'hq-safe-documents' }">
+            <span class="work-entry-icon" aria-hidden="true">📚</span>
+            <span><strong>문서취합</strong><small>현장 문서 제출·검토 현황</small></span>
+            <b aria-hidden="true">→</b>
+          </RouterLink>
+          <RouterLink class="work-entry-card entry-functional" :to="{ name: 'hq-safe-functional-eval' }">
+            <span class="work-entry-icon" aria-hidden="true">🦺</span>
+            <span><strong>기능인인정제</strong><small>기능인 평가·승인 업무</small></span>
+            <b aria-hidden="true">→</b>
+          </RouterLink>
+          <RouterLink class="work-entry-card entry-card" :to="{ name: 'hq-safe-card-expenses' }">
+            <span class="work-entry-icon" aria-hidden="true">🧾</span>
+            <span><strong>법인카드</strong><small>영수증 촬영·정산서 작성</small></span>
+            <b aria-hidden="true">→</b>
+          </RouterLink>
+          <RouterLink class="work-entry-card entry-vehicle" :to="{ name: 'hq-safe-vehicle-logs' }">
+            <span class="work-entry-icon" aria-hidden="true">🚙</span>
+            <span><strong>운행기록부</strong><small>계기판 촬영·주행 기록</small></span>
+            <b aria-hidden="true">→</b>
+          </RouterLink>
+        </div>
+      </section>
+
       <section v-if="riskDbOverview" class="dash-alerts" aria-labelledby="dash-alerts-title">
         <h2 id="dash-alerts-title" class="dash-alerts-title">처리 필요 알림</h2>
         <p class="dash-alerts-sub">관리대장 전용 — 위험성평가 DB 등록 요청·본사 판단 (문서취합 알림과 별도)</p>
@@ -722,6 +754,76 @@ onMounted(load);
   color: #64748b;
 }
 
+.work-entry-section {
+  margin-bottom: 24px;
+  padding: 22px;
+  border: 1px solid #dce6ec;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #f8fbfc, #eef7f5);
+}
+
+.work-entry-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.work-entry-heading h2,
+.work-entry-heading p { margin: 0; }
+.work-entry-heading h2 { color: #142033; font-size: 21px; }
+.work-entry-heading > p { color: #64748b; font-size: 13px; }
+.work-entry-kicker {
+  margin-bottom: 4px !important;
+  color: #0f6b6d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.work-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.work-entry-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 92px;
+  padding: 16px;
+  border: 1px solid #d5e0e6;
+  border-radius: 16px;
+  color: #142033;
+  text-decoration: none;
+  background: #fff;
+  box-shadow: 0 7px 20px rgba(31, 53, 71, .06);
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+.work-entry-card:hover,
+.work-entry-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: #4f8790;
+  box-shadow: 0 11px 24px rgba(31, 53, 71, .11);
+}
+
+.work-entry-card > span:not(.work-entry-icon) { display: grid; gap: 4px; }
+.work-entry-card strong { font-size: 17px; }
+.work-entry-card small { color: #64748b; font-size: 12px; line-height: 1.4; }
+.work-entry-card > b { color: #0f6b6d; font-size: 20px; }
+.work-entry-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 13px;
+  background: #e8f7f4;
+  font-size: 22px;
+}
+
 .summary-groups {
   display: grid;
   gap: 16px;
@@ -1165,6 +1267,10 @@ button.panel-link {
 }
 
 @media (max-width: 1024px) {
+  .work-entry-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .main-grid {
     grid-template-columns: 1fr;
   }
@@ -1174,5 +1280,15 @@ button.panel-link {
   .dash-top {
     flex-direction: column;
   }
+
+  .work-entry-section { padding: 16px; }
+  .work-entry-heading { display: block; }
+  .work-entry-heading > p { margin-top: 6px; }
+  .work-entry-grid { grid-template-columns: 1fr; }
+  .work-entry-card { min-height: 84px; }
+  .entry-functional { order: 1; }
+  .entry-card { order: 2; }
+  .entry-vehicle { order: 3; }
+  .entry-documents { order: 4; }
 }
 </style>

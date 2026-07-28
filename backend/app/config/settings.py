@@ -22,9 +22,30 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str = Field("change-me-in-.env", env="BESMA_JWT_SECRET_KEY")
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60 * 8
+    # 모바일 촬영 업무는 매번 재로그인하지 않도록 기본 세션을 7일 유지한다.
+    access_token_expire_minutes: int = Field(
+        default=60 * 24 * 7,
+        validation_alias="BESMA_ACCESS_TOKEN_EXPIRE_MINUTES",
+    )
 
     storage_root: Path = BASE_DIR / "storage"
+    safety_ledger_nas_root: Path | None = Field(
+        default=None,
+        validation_alias="BESMA_SAFETY_LEDGER_NAS_ROOT",
+    )
+    safety_ledger_card_template_path: Path | None = Field(
+        default=None,
+        validation_alias="BESMA_SAFETY_LEDGER_CARD_TEMPLATE_PATH",
+    )
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+    safety_ledger_vision_model: str = Field(
+        default="gpt-5.6-luna",
+        validation_alias="BESMA_SAFETY_LEDGER_VISION_MODEL",
+    )
+    safety_ledger_vision_timeout_seconds: float = Field(
+        default=45.0,
+        validation_alias="BESMA_SAFETY_LEDGER_VISION_TIMEOUT_SECONDS",
+    )
     accident_nas_root: Path | None = Field(default=None, validation_alias="BESMA_ACCIDENT_NAS_ROOT")
     documents_dir_name: str = "documents"
     images_dir_name: str = "images"

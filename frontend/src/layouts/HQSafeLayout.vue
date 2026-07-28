@@ -27,6 +27,18 @@
           <p class="hq-menu-section-label">주요업무</p>
           <RouterLink
             class="hq-field-form-menu-highlight"
+            to="/hq-safe/card-expenses"
+          >
+            법인카드
+          </RouterLink>
+          <RouterLink
+            class="hq-field-form-menu-highlight"
+            to="/hq-safe/vehicle-logs"
+          >
+            운행기록부
+          </RouterLink>
+          <RouterLink
+            class="hq-field-form-menu-highlight"
             :style="menuOrderPrimaryStyle('field-form-uploads')"
             to="/hq-safe/field-form-uploads"
           >
