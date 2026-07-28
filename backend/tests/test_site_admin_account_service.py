@@ -170,3 +170,83 @@ def test_plan_resolves_hq_and_site_homonyms_to_site_employee(db, monkeypatch):
     assert excluded == []
     manager = next(plan for plan in plans if plan.name == "김소장")
     assert manager.employee_row["birth6"] == "800101"
+
+
+def test_plan_uses_site_code_when_alias_login_is_reserved(db, monkeypatch):
+    _sources(monkeypatch)
+    monkeypatch.setattr(
+        service,
+        "load_site_rows",
+        lambda _path: [
+            {
+                "현장코드": code,
+                "현장명": f"테스트 현장 {code}",
+                "도급사명": "부현전기",
+                "공사기간": "2026-01-01 ~ 2027-12-31",
+                "소장": "김소장",
+            }
+            for code in ("26001", "26002")
+        ],
+    )
+    db.add_all(
+        [
+            site_models.Site(site_code=code, site_name=f"테스트 현장 {code}")
+            for code in ("26001", "26002")
+        ]
+    )
+    db.commit()
+
+    plans, excluded = service.build_site_admin_plan(
+        db,
+        site_source=Path("sites.xls"),
+        employee_source=Path("employees.xls"),
+        as_of=date(2026, 7, 28),
+    )
+
+    assert excluded == []
+    assert [plan.login_id for plan in plans] == [
+        "테스트-김소장",
+        "26002-김소장",
+    ]
+
+
+def test_plan_excludes_non_person_placeholder(db, monkeypatch):
+    _sources(monkeypatch)
+    monkeypatch.setattr(
+        service,
+        "load_site_rows",
+        lambda _path: [
+            {
+                "현장코드": "26001",
+                "현장명": "테스트 현장",
+                "공사기간": "2026-01-01 ~ 2027-12-31",
+                "기타": "관-노무관리용",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        service,
+        "load_viewer_rows_from_path",
+        lambda _path: (
+            [_employee("관-노무관리용", "15", "800101")],
+            "employees.xls",
+        ),
+    )
+    db.add(site_models.Site(site_code="26001", site_name="테스트 현장"))
+    db.commit()
+
+    plans, excluded = service.build_site_admin_plan(
+        db,
+        site_source=Path("sites.xls"),
+        employee_source=Path("employees.xls"),
+        as_of=date(2026, 7, 28),
+    )
+
+    assert plans == []
+    assert excluded == [
+        {
+            "site_code": "26001",
+            "name": "관-노무관리용",
+            "reason": "NON_PERSON_PLACEHOLDER",
+        }
+    ]

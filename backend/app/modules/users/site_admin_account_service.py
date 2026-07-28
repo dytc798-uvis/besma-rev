@@ -35,6 +35,7 @@ SOURCE_ROLE_COLUMNS = (
 )
 SITE_ACCOUNT_ROLES = frozenset({Role.SITE, Role.SITE_FUNCTIONAL_EVAL})
 SITE_DEPARTMENT_CODES = frozenset({"1", "01", "7", "07", "15"})
+NON_PERSON_ADMIN_NAMES = frozenset({"관-노무관리용"})
 
 
 @dataclass
@@ -123,6 +124,29 @@ def _user_columns():
     )
 
 
+def _find_site_account_target(
+    db: Session,
+    *,
+    login_id: str,
+    name: str,
+    site_id: int,
+) -> tuple[User | None, bool]:
+    target = (
+        db.query(User)
+        .options(_user_columns())
+        .filter(User.login_id == login_id)
+        .first()
+    )
+    if target is None:
+        return None, True
+    usable = (
+        target.name.strip() == name
+        and target.role in SITE_ACCOUNT_ROLES
+        and target.site_id in {None, site_id}
+    )
+    return target, usable
+
+
 def build_site_admin_plan(
     db: Session,
     *,
@@ -145,6 +169,7 @@ def build_site_admin_plan(
     plans: list[SiteAdminPlan] = []
     excluded: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
+    reserved_login_ids: set[str] = set()
 
     for row in site_rows:
         current, _reason = is_current_site(row, as_of)
@@ -160,6 +185,15 @@ def build_site_admin_plan(
             if not name or (code, name) in seen:
                 continue
             seen.add((code, name))
+            if name in NON_PERSON_ADMIN_NAMES:
+                excluded.append(
+                    {
+                        "site_code": code,
+                        "name": name,
+                        "reason": "NON_PERSON_PLACEHOLDER",
+                    }
+                )
+                continue
             identities = employee_by_name.get(name, [])
             employee = _select_employee_identity(identities)
             if employee is None:
@@ -177,21 +211,21 @@ def build_site_admin_plan(
                 continue
             admin_role = _resolved_admin_role(source_role, employee)
             login_id = build_eval_login_id(alias, name)
-            target = (
-                db.query(User)
-                .options(_user_columns())
-                .filter(User.login_id == login_id)
-                .first()
+            target, usable = _find_site_account_target(
+                db,
+                login_id=login_id,
+                name=name,
+                site_id=site.id,
             )
-            if target is not None and target.name.strip() != name:
+            if not usable or login_id in reserved_login_ids:
                 login_id = build_eval_login_id(code, name)
-                target = (
-                    db.query(User)
-                    .options(_user_columns())
-                    .filter(User.login_id == login_id)
-                    .first()
+                target, usable = _find_site_account_target(
+                    db,
+                    login_id=login_id,
+                    name=name,
+                    site_id=site.id,
                 )
-            if target is not None and target.name.strip() != name:
+            if not usable or login_id in reserved_login_ids:
                 excluded.append(
                     {
                         "site_code": code,
@@ -200,6 +234,7 @@ def build_site_admin_plan(
                     }
                 )
                 continue
+            reserved_login_ids.add(login_id)
             plans.append(
                 SiteAdminPlan(
                     site=site,
