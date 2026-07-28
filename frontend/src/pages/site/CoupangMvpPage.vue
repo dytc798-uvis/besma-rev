@@ -252,27 +252,14 @@
                   </template>
                 </template>
                 <template v-else-if="object.type === 'route'">
-                  <defs>
-                    <marker
-                      :id="`route-arrow-${object.id}`"
-                      viewBox="0 0 12 12"
-                      refX="10" refY="6"
-                      :marker-width="object.arrow_head_size || 38"
-                      :marker-height="object.arrow_head_size || 38"
-                      markerUnits="userSpaceOnUse"
-                      orient="auto"
-                    >
-                      <path d="M 0 0 L 12 6 L 0 12 z" :fill="object.color || '#dc2626'" />
-                    </marker>
-                  </defs>
                   <line
                     :x1="object.route_x1" :y1="object.route_y1"
                     :x2="object.route_x2" :y2="object.route_y2"
                     :stroke="object.color || '#dc2626'"
                     :stroke-width="object.stroke_width || 12"
                     stroke-linecap="round"
-                    :marker-end="`url(#route-arrow-${object.id})`"
                   />
+                  <polygon :points="arrowHeadPoints(object)" :fill="object.color || '#dc2626'" />
                   <line
                     :x1="object.route_x1" :y1="object.route_y1"
                     :x2="object.route_x2" :y2="object.route_y2"
@@ -951,6 +938,23 @@ function updateRouteGeometry(object: DrawingObject, startX: number, startY: numb
   object.route_y1 = Math.round(startY - minY);
   object.route_x2 = Math.round(endX - minX);
   object.route_y2 = Math.round(endY - minY);
+}
+
+function arrowHeadPoints(object: DrawingObject) {
+  const x1 = object.route_x1 || 0;
+  const y1 = object.route_y1 || 0;
+  const x2 = object.route_x2 || 0;
+  const y2 = object.route_y2 || 0;
+  const size = object.arrow_head_size || 38;
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const baseX = x2 - Math.cos(angle) * size;
+  const baseY = y2 - Math.sin(angle) * size;
+  const halfWidth = size * 0.58;
+  const leftX = baseX + Math.cos(angle + Math.PI / 2) * halfWidth;
+  const leftY = baseY + Math.sin(angle + Math.PI / 2) * halfWidth;
+  const rightX = baseX + Math.cos(angle - Math.PI / 2) * halfWidth;
+  const rightY = baseY + Math.sin(angle - Math.PI / 2) * halfWidth;
+  return `${x2},${y2} ${leftX},${leftY} ${rightX},${rightY}`;
 }
 
 function startCanvasDrawing(event: PointerEvent) {
