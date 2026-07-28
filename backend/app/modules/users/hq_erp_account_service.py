@@ -133,6 +133,17 @@ def _choose_existing_user(
     if len(candidates) == 1:
         return candidates[0], None
 
+    if role == Role.HQ_SAFE:
+        dedicated = [
+            user for user in candidates if (user.login_id or "").startswith("안전보건-")
+        ]
+        if len(dedicated) == 1:
+            return dedicated[0], None
+
+    privileged = [user for user in candidates if user.role in PRIVILEGED_HQ_ROLES]
+    if len(privileged) == 1:
+        return privileged[0], None
+
     exact_department = [
         user
         for user in candidates
@@ -140,16 +151,6 @@ def _choose_existing_user(
     ]
     if len(exact_department) == 1:
         return exact_department[0], None
-
-    if role == Role.HQ_SAFE:
-        dedicated = [
-            user for user in candidates if (user.login_id or "").startswith("안전보건-")
-        ]
-        if len(dedicated) == 1:
-            return dedicated[0], None
-        privileged = [user for user in candidates if user.role in PRIVILEGED_HQ_ROLES]
-        if len(privileged) == 1:
-            return privileged[0], None
 
     matching_role = [user for user in candidates if user.role == role]
     if len(matching_role) == 1:
