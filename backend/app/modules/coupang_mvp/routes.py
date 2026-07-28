@@ -36,7 +36,14 @@ _ALLOWED_IMAGES = {
 _ASSET_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _PILOT_LOGIN_ID = "안전보건-정상익"
 _PILOT_SITE_ID = 101
-_PILOT_SITE_NAME = "[3.쿠팡] YAN 5FC(양지) 전기공사"
+_PILOT_SITES = {
+    101: {"name": "[3.쿠팡] YAN 5FC(양지) 전기공사", "label": "쿠팡 양지 5", "template_ready": True},
+    48: {"name": "[3.쿠팡] INC 46FC(인천) 전기공사", "label": "쿠팡 INC 46FC(인천)", "template_ready": False},
+    46: {"name": "[3.쿠팡] DAE3,7,8 FC(대구) Ph2 전기공사", "label": "쿠팡 대구", "template_ready": False},
+    47: {"name": "[3.쿠팡] GYS 2FC(경산) ARC 전기공사", "label": "쿠팡 경산", "template_ready": False},
+    86: {"name": "[3.쿠팡] CHA6 FC(천안) Ph2 전기공사", "label": "쿠팡 천안", "template_ready": False},
+    89: {"name": "[3.쿠팡] GWJ4 FC ACR 전기공사", "label": "쿠팡 광주", "template_ready": False},
+}
 
 
 def _assert_coupang_access(user) -> None:
@@ -49,6 +56,13 @@ def _assert_coupang_access(user) -> None:
 
 def _pilot_site_id() -> int:
     return _PILOT_SITE_ID
+
+
+def _target_site(site_id: int) -> dict[str, Any]:
+    site = _PILOT_SITES.get(int(site_id))
+    if site is None:
+        raise HTTPException(status_code=400, detail="선택할 수 없는 쿠팡 현장입니다.")
+    return site
 
 
 def _root() -> Path:
@@ -127,7 +141,11 @@ def access_info(current_user: CurrentUserDep):
         "available": True,
         "pilot_only": True,
         "site_id": _pilot_site_id(),
-        "site_name": _PILOT_SITE_NAME,
+        "site_name": _PILOT_SITES[_PILOT_SITE_ID]["name"],
+        "sites": [
+            {"id": site_id, **site}
+            for site_id, site in _PILOT_SITES.items()
+        ],
         "defaults": {
             "contractor_name": "부현전기",
             "hazard": "안전고리 미체결로 인한 추락 위험",
@@ -163,6 +181,12 @@ def get_document(document_id: int, current_user: CurrentUserDep):
     )
     if row is None:
         raise HTTPException(status_code=404, detail="저장된 문서를 찾을 수 없습니다.")
+    target_site = _target_site(int(row.get("target_site_id") or _PILOT_SITE_ID))
+    if not target_site["template_ready"]:
+        raise HTTPException(
+            status_code=400,
+            detail="선택한 현장은 원본 양식 셀 매핑 전입니다. 현재는 작업계획 텍스트 복사만 사용할 수 있습니다.",
+        )
     return _public_row(row)
 
 
@@ -170,13 +194,14 @@ def get_document(document_id: int, current_user: CurrentUserDep):
 def create_document(payload: CoupangDocumentUpsert, current_user: CurrentUserDep):
     _assert_coupang_access(current_user)
     _validate_drawing(payload.drawing)
+    target_site = _target_site(payload.target_site_id)
     now = utc_now().isoformat()
     with _LEDGER_LOCK:
         rows = _read_rows()
         row = {
             "id": _next_id(rows),
             "site_id": _pilot_site_id(),
-            "site_name": _PILOT_SITE_NAME,
+            "site_name": target_site["name"],
             "created_by_user_id": current_user.id,
             "created_by_name": current_user.name,
             "created_at": now,
@@ -192,6 +217,7 @@ def create_document(payload: CoupangDocumentUpsert, current_user: CurrentUserDep
 def update_document(document_id: int, payload: CoupangDocumentUpsert, current_user: CurrentUserDep):
     _assert_coupang_access(current_user)
     _validate_drawing(payload.drawing)
+    target_site = _target_site(payload.target_site_id)
     with _LEDGER_LOCK:
         rows = _read_rows()
         row = next(
@@ -206,6 +232,7 @@ def update_document(document_id: int, payload: CoupangDocumentUpsert, current_us
         if row is None:
             raise HTTPException(status_code=404, detail="저장된 문서를 찾을 수 없습니다.")
         row.update(payload.model_dump(mode="json"))
+        row["site_name"] = target_site["name"]
         row["updated_at"] = utc_now().isoformat()
         row["updated_by_user_id"] = current_user.id
         row["updated_by_name"] = current_user.name

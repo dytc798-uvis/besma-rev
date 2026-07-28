@@ -82,6 +82,13 @@ def test_non_coupang_site_is_rejected(isolated_storage):
     assert exc_info.value.status_code == 403
 
 
+def test_private_lab_returns_selectable_sites(isolated_storage):
+    result = routes.access_info(_user())
+    assert result["pilot_only"] is True
+    assert {site["id"] for site in result["sites"]} == {46, 47, 48, 86, 89, 101}
+    assert next(site for site in result["sites"] if site["id"] == 101)["template_ready"] is True
+
+
 def test_image_asset_upload_and_read(isolated_storage):
     content = BytesIO()
     Image.new("RGB", (80, 60), "#ef4444").save(content, format="JPEG")
@@ -137,6 +144,10 @@ def test_submission_workbook_preserves_package_and_replaces_drawing(tmp_path, mo
             "control": "안전고리 체결 및 관리감독자 확인",
             "manager_name": "정상익",
             "worker_count": 5,
+            "today_jobs": [
+                {"floor": "4F", "workplace": "4층 2~3챔버", "description": "조명 행거 설치", "people": 3},
+                {"floor": "6F", "workplace": "6층 1~4챔버", "description": "케이블 포설", "people": 2},
+            ],
         },
         drawing_png,
     )
@@ -149,3 +160,5 @@ def test_submission_workbook_preserves_package_and_replaces_drawing(tmp_path, mo
         daily_xml = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
         assert "지하1층 2번코어" in daily_xml
         assert "안전고리 미체결로 인한 추락 위험" in daily_xml
+        assert "4층 2~3챔버 조명 행거 설치" in daily_xml
+        assert "6층 1~4챔버 케이블 포설" in daily_xml

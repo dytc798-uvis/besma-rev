@@ -87,36 +87,41 @@ def _decode_png(data_url: str | None) -> bytes | None:
 def _workbook_values(document: dict) -> tuple[dict[str, object], dict[str, object]]:
     work_date = document.get("work_date") or date.today().isoformat()
     worker_count = int(document.get("worker_count") or 0)
+    total_count = int(document.get("total_count") or worker_count)
+    manager_count = int(document.get("manager_count") or 0)
+    signal_count = int(document.get("signal_count") or 0)
     manager_name = document.get("manager_name") or ""
+    site_name = document.get("site_name") or "쿠팡 양지 5"
+    site_display = re.sub(r"^\[3\.쿠팡\]\s*", "", site_name).replace(" 전기공사", "")
     fixed = {
         "D5": "(주)부현전기",
-        "D6": "YAN 5FC(양지) 전기공사",
-        "D7": "쿠팡 양지 5",
+        "D6": site_name,
+        "D7": site_display,
         "D8": manager_name,
-        "D9": "07:00",
-        "D10": "17:00",
-        "D11": "유",
-        "D12": "유",
-        "D15": manager_name,
+        "D9": document.get("start_time") or "07:00",
+        "D10": document.get("end_time") or "17:00",
+        "D11": "유" if int(document.get("forklift_owned") or 0) > 0 else "무",
+        "D12": "유" if int(document.get("lift_owned") or 0) > 0 else "무",
+        "D15": document.get("contacts") or manager_name,
     }
     daily = {
         "D5": ("date", _excel_serial(work_date)),
-        "D6": 0,
-        "D7": "07:00",
-        "D8": "17:00",
-        "D10": 1 if manager_name else 0,
+        "D6": float(document.get("progress_rate") or 0) / 100,
+        "D7": document.get("start_time") or "07:00",
+        "D8": document.get("end_time") or "17:00",
+        "D10": manager_count,
         "D11": worker_count,
-        "D12": 0,
-        "D13": 0,
-        "D15": "",
-        "D16": 0,
-        "D17": "",
+        "D12": signal_count,
+        "D13": int(document.get("fire_watch_count") or 0),
+        "D15": document.get("extra_time") or "",
+        "D16": int(document.get("extra_people") or 0),
+        "D17": document.get("extra_work") or "",
         "D18": document.get("workplace") or "",
-        "D20": 0,
-        "D21": 0,
-        "D23": "무",
-        "D24": "무",
-        "D25": 0,
+        "D20": int(document.get("forklift_used") or 0),
+        "D21": int(document.get("lift_used") or 0),
+        "D23": document.get("overtime") or "무",
+        "D24": document.get("fire_work") or "무",
+        "D25": int(document.get("foreign_worker_count") or 0),
         "D26": 0,
         "D27": "무",
         "D29": "유" if "추락" in (document.get("hazard") or "") else "무",
@@ -126,7 +131,7 @@ def _workbook_values(document: dict) -> tuple[dict[str, object], dict[str, objec
         "D33": "무",
         "B37": document.get("floor") or "",
         "C37": document.get("work_description") or "",
-        "F37": worker_count,
+        "F37": total_count,
         "G37": document.get("hazard") or "",
         "H37": "",
         "I37": "O",
@@ -135,6 +140,25 @@ def _workbook_values(document: dict) -> tuple[dict[str, object], dict[str, objec
         "H53": document.get("control") or "",
         "D59": document.get("workplace") or "",
     }
+    jobs = document.get("today_jobs") or [
+        {
+            "floor": document.get("floor") or "",
+            "workplace": document.get("workplace") or "",
+            "description": document.get("work_description") or "",
+            "people": total_count,
+        }
+    ]
+    for index in range(5):
+        row = 37 + index
+        job = jobs[index] if index < len(jobs) else {}
+        daily[f"B{row}"] = job.get("floor") or ""
+        daily[f"C{row}"] = " ".join(
+            value for value in (job.get("workplace"), job.get("description")) if value
+        )
+        daily[f"F{row}"] = int(job.get("people") or 0)
+        daily[f"G{row}"] = document.get("hazard") or "" if job else ""
+        daily[f"H{row}"] = ""
+        daily[f"I{row}"] = "O" if job else ""
     return fixed, daily
 
 
