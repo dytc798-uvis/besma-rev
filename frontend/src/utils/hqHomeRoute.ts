@@ -1,4 +1,4 @@
-/** 본사(HQ_SAFE) · 대표 계정 로그인 후 기본 화면 — 기능인 인정제 */
-export function hqSafeHomeRouteName(): "hq-safe-field-form-uploads" {
-  return "hq-safe-field-form-uploads";
+/** 본사(HQ_SAFE) 로그인 후 4개 주요 업무 카드가 있는 홈 화면 */
+export function hqSafeHomeRouteName(): "hq-safe-dashboard" {
+  return "hq-safe-dashboard";
 }
