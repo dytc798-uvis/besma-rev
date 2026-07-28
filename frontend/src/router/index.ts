@@ -54,6 +54,7 @@ import SiteMobileCommunicationsPage from "@/pages/site/SiteMobileCommunicationsP
 import SiteMobileSiteSearchPage from "@/pages/site/SiteMobileSiteSearchPage.vue";
 import SiteInfoPage from "@/pages/site/SiteInfoPage.vue";
 import WorkPlanForkliftPage from "@/pages/site/WorkPlanForkliftPage.vue";
+import CoupangMvpPage from "@/pages/site/CoupangMvpPage.vue";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
 import FeOnboardingPage from "@/pages/auth/FeOnboardingPage.vue";
 import UserGuidePage from "@/pages/common/UserGuidePage.vue";
@@ -306,6 +307,7 @@ const routes: RouteRecordRaw[] = [
       { path: "risk-library", name: "site-risk-library", component: RiskLibraryPage },
       { path: "info", name: "site-info", component: SiteInfoPage },
       { path: "work-plan-forklift", name: "site-work-plan-forklift", component: WorkPlanForkliftPage },
+      { path: "coupang-mvp", name: "site-coupang-mvp", component: CoupangMvpPage },
       { path: "opinions", name: "site-opinions", component: OpinionListPage },
       { path: "opinions/:id", name: "site-opinion-detail", component: OpinionDetailPage },
       { path: "user-guide", name: "site-user-guide", component: UserGuidePage },

@@ -40,6 +40,15 @@
           신규현장 배포 현황
         </RouterLink>
         <p v-if="!isMobileViewport" class="site-menu-section-label">주요업무</p>
+        <RouterLink
+          v-if="isCoupangSite"
+          :class="menuLinkClass('coupang-mvp', '/site/coupang-mvp')"
+          :style="menuOrderStyle('coupang-mvp')"
+          to="/site/coupang-mvp"
+        >
+          <span class="menu-icon">🗺️</span>
+          쿠팡 도면 작업계획
+        </RouterLink>
         <RouterLink :class="menuLinkClass('risk-library', '/site/risk-library')" :style="menuOrderStyle('risk-library')" to="/site/risk-library">
           <span class="menu-icon" v-if="menuIcon('risk-library')">{{ menuIcon("risk-library") }}</span>
           위험성평가 DB 조회
@@ -84,6 +93,14 @@
         <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" :style="menuOrderStyle('user-guide')" to="/site/user-guide">기능인인정제 설명</RouterLink>
       </nav>
       <nav v-else class="layout-menu layout-menu-mobile-site">
+        <RouterLink
+          v-if="isCoupangSite"
+          :class="menuLinkClass('coupang-mvp', '/site/coupang-mvp')"
+          to="/site/coupang-mvp"
+          @click="closeMobileDrawer"
+        >
+          🗺️ 쿠팡 도면 작업계획
+        </RouterLink>
         <RouterLink :class="menuLinkClass('field-form-uploads', '/site/field-form-uploads')" to="/site/field-form-uploads" @click="closeMobileDrawer">
           현장 양식 업로드
         </RouterLink>
@@ -225,6 +242,7 @@ const SITE_FIXED_MENU_KEYS = [
   "safety-policy-goals",
   "risk-library",
   "document-explorer",
+  "coupang-mvp",
   "safety-education",
   "mobile",
   "mobile-site-search",
@@ -242,6 +260,7 @@ const showDeploymentMenu = ref(false);
 const deploymentNeedsHighlight = ref(false);
 let unreadTimer: number | null = null;
 const headerSiteLabel = computed(() => (siteName.value ? `현장: ${siteName.value}` : "현장: -"));
+const isCoupangSite = computed(() => /쿠팡|coupang|inc\s*46fc/i.test(siteName.value));
 const deploymentMenuClass = computed(() =>
   deploymentNeedsHighlight.value ? "site-deploy-menu-highlight" : menuLinkClass("new-site-deployment", "/site/new-site-deployment"),
 );
@@ -251,6 +270,7 @@ const PRIMARY_MENUS = [
   "safety-policy-goals",
   "risk-library",
   "document-explorer",
+  "coupang-mvp",
   "documents",
   "worker-voice",
 ] as const;
