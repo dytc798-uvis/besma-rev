@@ -8,6 +8,7 @@ import zipfile
 from datetime import date, datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
+from xml.sax.saxutils import escape
 
 
 _MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -17,6 +18,16 @@ _MAX_PNG_BYTES = 12 * 1024 * 1024
 _APPROVED_TEMPLATE_SHA256 = "A5A43555CA1E771177EC565F9E4021D9ED93751921BC6C27D5BB1D5D5D4EBBD5"
 
 ET.register_namespace("", _MAIN_NS)
+
+
+def _column_number(address: str) -> int:
+    letters = re.match(r"[A-Z]+", address.upper())
+    if letters is None:
+        raise ValueError(f"셀 주소가 올바르지 않습니다: {address}")
+    number = 0
+    for char in letters.group():
+        number = number * 26 + ord(char) - ord("A") + 1
+    return number
 
 
 def _cell(sheet: ET.Element, address: str) -> ET.Element:
@@ -29,11 +40,32 @@ def _cell(sheet: ET.Element, address: str) -> ET.Element:
         None,
     )
     if row is None:
-        row = ET.SubElement(sheet_data, f"{{{_MAIN_NS}}}row", {"r": str(row_number)})
+        row = ET.Element(f"{{{_MAIN_NS}}}row", {"r": str(row_number)})
+        insert_at = next(
+            (
+                index
+                for index, item in enumerate(sheet_data)
+                if int(item.attrib.get("r", "0")) > row_number
+            ),
+            len(sheet_data),
+        )
+        sheet_data.insert(insert_at, row)
     found = next((item for item in row if item.attrib.get("r") == address), None)
     if found is not None:
         return found
-    return ET.SubElement(row, f"{{{_MAIN_NS}}}c", {"r": address})
+    cell = ET.Element(f"{{{_MAIN_NS}}}c", {"r": address})
+    target_column = _column_number(address)
+    insert_at = next(
+        (
+            index
+            for index, item in enumerate(row)
+            if item.tag == f"{{{_MAIN_NS}}}c"
+            and _column_number(item.attrib.get("r", "A1")) > target_column
+        ),
+        len(row),
+    )
+    row.insert(insert_at, cell)
+    return cell
 
 
 def _clear_value(cell: ET.Element) -> None:
@@ -163,24 +195,54 @@ def _workbook_values(document: dict) -> tuple[dict[str, object], dict[str, objec
 
 
 def _patch_sheet(xml_bytes: bytes, values: dict[str, object]) -> bytes:
-    root = ET.fromstring(xml_bytes)
+    rendered = xml_bytes.decode("utf-8")
     for address, value in values.items():
+        number_value: int | float | None = None
         if isinstance(value, tuple) and value[0] == "date":
-            _write_number(root, address, value[1])
+            number_value = value[1]
         elif isinstance(value, (int, float)):
-            _write_number(root, address, value)
+            number_value = value
+
+        opening_pattern = re.compile(
+            rf'<c\b(?=[^>]*\br="{re.escape(address)}")[^>]*>',
+        )
+        matched = opening_pattern.search(rendered)
+        if matched is None:
+            raise ValueError(f"승인된 원본 템플릿에 입력 셀 {address}이(가) 없습니다.")
+        opening = matched.group(0)
+        cell_end = matched.end()
+        if not opening.endswith("/>"):
+            closing_at = rendered.find("</c>", matched.end())
+            if closing_at < 0:
+                raise ValueError(f"승인된 원본 템플릿의 입력 셀 {address} 구조가 올바르지 않습니다.")
+            cell_end = closing_at + len("</c>")
+        if opening.endswith("/>"):
+            opening = opening[:-2] + ">"
+        opening = re.sub(r'\s+t="[^"]*"', "", opening[:-1]) + ">"
+        if number_value is not None:
+            replacement = f'{opening[:-1]} t="n"><v>{number_value}</v></c>'
         else:
-            _write_text(root, address, value)
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+            text = "" if value is None else str(value)
+            preserve = ' xml:space="preserve"' if text != text.strip() else ""
+            replacement = (
+                f'{opening[:-1]} t="inlineStr"><is><t{preserve}>'
+                f"{escape(text)}</t></is></c>"
+            )
+        rendered = rendered[: matched.start()] + replacement + rendered[cell_end:]
+    return rendered.encode("utf-8")
 
 
 def _force_recalculation(xml_bytes: bytes) -> bytes:
-    root = ET.fromstring(xml_bytes)
-    calc = root.find(f"{{{_MAIN_NS}}}calcPr")
-    if calc is None:
-        calc = ET.SubElement(root, f"{{{_MAIN_NS}}}calcPr")
-    calc.attrib.update({"calcMode": "auto", "fullCalcOnLoad": "1", "forceFullCalc": "1"})
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    rendered = xml_bytes.decode("utf-8")
+    pattern = re.compile(r"<calcPr\b[^>]*/>")
+    matched = pattern.search(rendered)
+    if matched is None:
+        raise ValueError("승인된 원본 템플릿에 계산 설정이 없습니다.")
+    tag = matched.group(0)
+    for attribute in ("calcMode", "fullCalcOnLoad", "forceFullCalc"):
+        tag = re.sub(rf'\s+{attribute}="[^"]*"', "", tag)
+    tag = tag[:-2] + ' calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1"/>'
+    return (rendered[: matched.start()] + tag + rendered[matched.end() :]).encode("utf-8")
 
 
 def generate_submission_workbook(

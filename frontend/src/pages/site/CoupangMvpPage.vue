@@ -128,7 +128,7 @@
           <div class="panel-title drawing-heading">
             <div>
               <h3>도면 표시</h3>
-              <p>아이콘 또는 사진을 추가한 뒤 손가락으로 위치를 옮기세요.</p>
+              <p>이동경로·작업범위는 도면에서 드래그하고, 아이콘·사진은 추가 후 위치를 옮기세요.</p>
             </div>
             <button type="button" class="text-button" @click="fitDrawing">전체 보기</button>
           </div>
@@ -145,6 +145,12 @@
           </div>
 
           <div class="tool-strip" aria-label="도면 아이콘">
+            <button type="button" class="route-tool" :class="{ active: routeMode }" @click="toggleRouteMode">
+              <span>↗</span>{{ routeMode ? "도면에서 드래그" : "이동경로 그리기" }}
+            </button>
+            <button type="button" class="area-tool" :class="{ active: areaMode }" @click="toggleAreaMode">
+              <span>▧</span>{{ areaMode ? "범위를 드래그" : "작업범위 설정" }}
+            </button>
             <button v-for="tool in iconTools" :key="tool.label" type="button" @click="addIcon(tool)">
               <span>{{ tool.glyph }}</span>{{ tool.label }}
             </button>
@@ -152,10 +158,16 @@
 
           <div v-if="selectedObject" class="selection-tools">
             <label>표시 이름<input v-model="selectedObject.label" maxlength="30" @input="markDirty" /></label>
-            <label>크기
+            <label v-if="selectedObject.type === 'icon' || selectedObject.type === 'photo'">크기
               <input v-model.number="selectedObject.w" type="range" min="70" max="480" @input="resizeSelected" />
             </label>
-            <label v-if="selectedObject.type === 'icon'">색상<input v-model="selectedObject.color" type="color" @input="markDirty" /></label>
+            <label v-else-if="selectedObject.type === 'route'">선 굵기
+              <input v-model.number="selectedObject.stroke_width" type="range" min="8" max="40" @input="markDirty" />
+            </label>
+            <label v-else>투명도
+              <input v-model.number="selectedObject.opacity" type="range" min="0.1" max="0.65" step="0.05" @input="markDirty" />
+            </label>
+            <label v-if="selectedObject.type !== 'photo'">색상<input v-model="selectedObject.color" type="color" @input="markDirty" /></label>
             <div class="selection-actions">
               <button type="button" @click="moveLayer(-1)">뒤로</button>
               <button type="button" @click="moveLayer(1)">앞으로</button>
@@ -168,14 +180,21 @@
             <svg
               ref="svgRef"
               class="drawing-svg"
+              :class="{ 'route-mode': routeMode || areaMode }"
               :viewBox="`0 0 ${drawing.width} ${drawing.height}`"
               role="img"
               aria-label="쿠팡 현장 작업 도면 편집기"
+              @pointerdown="startCanvasDrawing"
               @pointermove="moveObject"
               @pointerup="endDrag"
               @pointercancel="endDrag"
               @pointerleave="endDrag"
             >
+              <defs>
+                <marker id="route-arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+                  <path d="M 0 0 L 12 6 L 0 12 z" fill="context-stroke" />
+                </marker>
+              </defs>
               <rect width="100%" height="100%" fill="#f8fafc" />
               <image
                 v-if="drawing.background_asset_id && assetUrls[drawing.background_asset_id]"
@@ -198,7 +217,38 @@
                 @pointerdown.stop.prevent="startDrag($event, object)"
                 @click.stop="selectedId = object.id"
               >
-                <template v-if="object.type === 'photo'">
+                <template v-if="object.type === 'area'">
+                  <rect
+                    :width="object.w" :height="object.h" rx="18"
+                    :fill="object.color || '#dc2626'"
+                    :fill-opacity="object.opacity ?? 0.22"
+                    :stroke="object.color || '#dc2626'"
+                    stroke-width="8"
+                    stroke-dasharray="18 12"
+                  />
+                  <rect :x="object.w / 2 - 75" :y="object.h + 8" width="150" height="38" rx="10" fill="#0f172a" opacity=".88" />
+                  <text :x="object.w / 2" :y="object.h + 35" text-anchor="middle" fill="#fff" font-size="24">{{ object.label }}</text>
+                </template>
+                <template v-else-if="object.type === 'route'">
+                  <line
+                    :x1="object.route_x1" :y1="object.route_y1"
+                    :x2="object.route_x2" :y2="object.route_y2"
+                    :stroke="object.color || '#2563eb'"
+                    :stroke-width="object.stroke_width || 18"
+                    stroke-linecap="round"
+                    marker-end="url(#route-arrow)"
+                  />
+                  <line
+                    :x1="object.route_x1" :y1="object.route_y1"
+                    :x2="object.route_x2" :y2="object.route_y2"
+                    stroke="transparent"
+                    stroke-width="55"
+                    stroke-linecap="round"
+                  />
+                  <rect :x="object.w / 2 - 75" :y="object.h + 8" width="150" height="38" rx="10" fill="#0f172a" opacity=".88" />
+                  <text :x="object.w / 2" :y="object.h + 35" text-anchor="middle" fill="#fff" font-size="24">{{ object.label }}</text>
+                </template>
+                <template v-else-if="object.type === 'photo'">
                   <rect :width="object.w" :height="object.h" rx="12" fill="#fff" stroke="#fff" stroke-width="8" />
                   <image
                     v-if="object.asset_id && assetUrls[object.asset_id]"
@@ -225,9 +275,10 @@
 
         <section class="preview-panel" :class="{ 'mobile-hidden': activeTab !== 'preview' }">
           <div class="panel-title">
-            <div><h3>제출본 페이지별 미리보기</h3><p>{{ previewPages.length }}개 제출 시트를 한 장씩 확인합니다.</p></div>
+            <div><h3>입력값 페이지별 사전검토</h3><p>{{ previewPages.length }}개 제출 시트에 들어갈 내용을 한 장씩 확인합니다.</p></div>
             <button type="button" class="text-button" @click="exportWorkbook">Excel 생성</button>
           </div>
+          <p class="preview-format-notice">웹 화면은 입력 누락 확인을 위한 간략보기입니다. 공식 제출본은 원본 Excel의 시트·서식·수식·인쇄영역을 유지해 생성됩니다.</p>
           <div class="preview-page-tabs">
             <button v-for="(page, index) in previewPages" :key="page.key" type="button" :class="{ active: previewIndex === index }" @click="previewIndex = index">
               {{ index + 1 }}. {{ page.label }}
@@ -247,7 +298,7 @@
                 <tbody><tr><td>{{ form.contractor_name }}</td><td>{{ form.work_date }}</td><td>{{ form.progress_rate }}%</td><td>{{ form.total_count }}명</td><td>지게차 {{ form.forklift_used }}/{{ form.forklift_owned }} · 고소작업대 {{ form.lift_used }}/{{ form.lift_owned }}</td></tr></tbody>
               </table>
               <h4>금일 작업계획</h4>
-              <ol class="preview-job-list"><li v-for="(job, index) in todayJobs" :key="index"><b>{{ job.floor }} {{ job.workplace }}</b><span>{{ job.description }}</span><em>{{ job.people || 0 }}명</em></li></ol>
+              <ol class="preview-job-list"><li v-for="(job, index) in todayJobs" :key="index"><b>{{ jobPlace(job) }}</b><span>{{ job.description }}</span><em>{{ job.people || 0 }}명</em></li></ol>
               <div class="report-summary">관리자 {{ form.manager_count }} · 근로자 {{ form.worker_count }} · 신호수/유도원 {{ form.signal_count }} · 화기감시자 {{ form.fire_watch_count }} · 외국인 {{ form.foreign_worker_count }}</div>
             </section>
 
@@ -297,7 +348,7 @@
               <div class="meeting-meta"><b>일일 공정회의록 · {{ currentPreview.key === "meeting-4f" ? "4층" : "6층" }}</b><span>{{ form.work_date }} · 공정률 {{ form.progress_rate }}%</span></div>
               <div class="preview-drawing" v-html="previewSvgMarkup" />
               <div class="preview-jobs">
-                <p v-for="(job, index) in previewFloorJobs" :key="index"><strong>{{ job.floor }} {{ job.workplace }}</strong> — {{ job.description }} <em>{{ job.people || 0 }}명</em></p>
+                <p v-for="(job, index) in previewFloorJobs" :key="index"><strong>{{ jobPlace(job) }}</strong> — {{ job.description }} <em>{{ job.people || 0 }}명</em></p>
                 <p v-if="previewFloorJobs.length === 0" class="preview-empty">이 층에 입력된 작업이 없습니다.</p>
               </div>
               <table class="preview-table compact"><tbody><tr><th>자재 반입 차량</th><td>현장 입력 확인</td><th>외국인 근로자</th><td>{{ form.foreign_worker_count }}명</td></tr></tbody></table>
@@ -402,7 +453,7 @@ type PilotSite = { id: number; name: string; label: string; template_ready: bool
 type WorkItem = { floor: string; workplace: string; description: string; people: number };
 type DrawingObject = {
   id: string;
-  type: "icon" | "photo";
+  type: "icon" | "photo" | "route" | "area";
   x: number;
   y: number;
   w: number;
@@ -411,6 +462,12 @@ type DrawingObject = {
   color?: string;
   glyph?: string;
   asset_id?: string;
+  route_x1?: number;
+  route_y1?: number;
+  route_x2?: number;
+  route_y2?: number;
+  stroke_width?: number;
+  opacity?: number;
 };
 type Drawing = { width: number; height: number; background_asset_id: string | null; objects: DrawingObject[] };
 type StoredDocument = Record<string, any> & { id: number; title: string; work_date: string; floor: string; drawing: Drawing };
@@ -434,11 +491,12 @@ const previewPages = [
   { key: "weekly-check", label: "체크리스트 주간", kind: "summary" },
 ] as const;
 const iconTools = [
-  { label: "작업구역", glyph: "⚒", color: "#dc2626" },
-  { label: "이동경로", glyph: "➜", color: "#2563eb" },
   { label: "소화기", glyph: "🧯", color: "#ef4444" },
   { label: "비상구", glyph: "↗", color: "#16a34a" },
   { label: "작업자", glyph: "👷", color: "#f59e0b" },
+  { label: "신호수", glyph: "⛑", color: "#dc2626" },
+  { label: "차량", glyph: "🚚", color: "#2563eb" },
+  { label: "크레인", glyph: "🏗", color: "#475569" },
   { label: "고소작업", glyph: "▲", color: "#ea580c" },
   { label: "감전위험", glyph: "⚡", color: "#7c3aed" },
 ];
@@ -461,6 +519,8 @@ const activeTab = ref<TabKey>("form");
 const currentId = ref<number | null>(null);
 const documents = ref<StoredDocument[]>([]);
 const selectedId = ref<string | null>(null);
+const routeMode = ref(false);
+const areaMode = ref(false);
 const svgRef = ref<SVGSVGElement | null>(null);
 const canvasWrap = ref<HTMLElement | null>(null);
 const assetUrls = reactive<Record<string, string>>({});
@@ -501,11 +561,19 @@ const drawing = reactive<Drawing>({ width: 1600, height: 1000, background_asset_
 const selectedObject = computed(() => drawing.objects.find((item) => item.id === selectedId.value) || null);
 const selectedSite = computed(() => pilotSites.value.find((site) => site.id === Number(form.target_site_id)) || null);
 const currentPreview = computed(() => previewPages[previewIndex.value] || previewPages[0]);
+function jobPlace(job: WorkItem) {
+  const floor = (job.floor || "").trim();
+  const workplace = (job.workplace || "").trim();
+  const floorNumber = floor.match(/\d+/)?.[0];
+  if (workplace && floorNumber && new RegExp(`^${floorNumber}(?:층|F)`, "i").test(workplace)) return workplace;
+  return [floor, workplace].filter(Boolean).join(" ");
+}
+
 const workplaceSummary = computed(() =>
-  todayJobs.value.map((job) => [job.floor, job.workplace].filter(Boolean).join(" ")).filter(Boolean).join(", ") || form.workplace,
+  todayJobs.value.map(jobPlace).filter(Boolean).join(", ") || form.workplace,
 );
 const workDescriptionSummary = computed(() =>
-  todayJobs.value.map((job) => `${[job.floor, job.workplace].filter(Boolean).join(" ")}: ${job.description}`).join("\n") || form.work_description,
+  todayJobs.value.map((job) => `${jobPlace(job)}: ${job.description}`).join("\n") || form.work_description,
 );
 const equipmentSummary = computed(() => {
   const equipment = [];
@@ -515,7 +583,11 @@ const equipmentSummary = computed(() => {
 });
 const previewFloorJobs = computed(() => {
   const floorToken = currentPreview.value.key === "meeting-4f" ? "4" : "6";
-  return todayJobs.value.filter((job) => `${job.floor} ${job.workplace}`.includes(floorToken));
+  return todayJobs.value.filter((job) => {
+    const explicitFloor = (job.floor || "").match(/\d+/)?.[0];
+    if (explicitFloor) return explicitFloor === floorToken;
+    return (job.workplace || "").match(/^\s*(\d+)(?:층|F)/i)?.[1] === floorToken;
+  });
 });
 const previewSvgMarkup = computed(() => {
   JSON.stringify(drawing);
@@ -526,6 +598,7 @@ const previewSvgMarkup = computed(() => {
   return clone.outerHTML;
 });
 let dragState: { id: string; offsetX: number; offsetY: number } | null = null;
+let drawingDraft: { id: string; startX: number; startY: number; type: "route" | "area" } | null = null;
 
 onMounted(async () => {
   try {
@@ -775,6 +848,8 @@ function makeId(prefix: string) {
 }
 
 function addIcon(tool: { label: string; glyph: string; color: string }) {
+  routeMode.value = false;
+  areaMode.value = false;
   const index = drawing.objects.length % 6;
   const object: DrawingObject = {
     id: makeId("icon"),
@@ -792,6 +867,20 @@ function addIcon(tool: { label: string; glyph: string; color: string }) {
   markDirty();
 }
 
+function toggleRouteMode() {
+  routeMode.value = !routeMode.value;
+  areaMode.value = false;
+  selectedId.value = null;
+  notify(routeMode.value ? "도면에서 이동 시작점을 누르고 끝점까지 드래그하세요." : "이동경로 그리기를 취소했습니다.");
+}
+
+function toggleAreaMode() {
+  areaMode.value = !areaMode.value;
+  routeMode.value = false;
+  selectedId.value = null;
+  notify(areaMode.value ? "도면에서 작업범위의 한쪽 모서리를 누르고 반대쪽까지 드래그하세요." : "작업범위 설정을 취소했습니다.");
+}
+
 function svgPoint(event: PointerEvent) {
   const rect = svgRef.value!.getBoundingClientRect();
   return {
@@ -800,7 +889,46 @@ function svgPoint(event: PointerEvent) {
   };
 }
 
+function updateRouteGeometry(object: DrawingObject, startX: number, startY: number, endX: number, endY: number) {
+  const minX = Math.min(startX, endX);
+  const minY = Math.min(startY, endY);
+  object.x = Math.round(minX);
+  object.y = Math.round(minY);
+  object.w = Math.max(20, Math.round(Math.abs(endX - startX)));
+  object.h = Math.max(20, Math.round(Math.abs(endY - startY)));
+  object.route_x1 = Math.round(startX - minX);
+  object.route_y1 = Math.round(startY - minY);
+  object.route_x2 = Math.round(endX - minX);
+  object.route_y2 = Math.round(endY - minY);
+}
+
+function startCanvasDrawing(event: PointerEvent) {
+  if ((!routeMode.value && !areaMode.value) || !svgRef.value || event.button !== 0) return;
+  const point = svgPoint(event);
+  const type = routeMode.value ? "route" : "area";
+  const object: DrawingObject = {
+    id: makeId(type),
+    type,
+    x: point.x,
+    y: point.y,
+    w: 20,
+    h: 20,
+    label: type === "route" ? "이동경로" : "작업범위",
+    color: type === "route" ? "#2563eb" : "#dc2626",
+    ...(type === "route"
+      ? { stroke_width: 18, route_x1: 0, route_y1: 0, route_x2: 20, route_y2: 20 }
+      : { opacity: 0.22 }),
+  };
+  drawing.objects.push(object);
+  drawingDraft = { id: object.id, startX: point.x, startY: point.y, type };
+  selectedId.value = object.id;
+  svgRef.value.setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+
 function startDrag(event: PointerEvent, object: DrawingObject) {
+  routeMode.value = false;
+  areaMode.value = false;
   selectedId.value = object.id;
   const point = svgPoint(event);
   dragState = { id: object.id, offsetX: point.x - object.x, offsetY: point.y - object.y };
@@ -808,6 +936,21 @@ function startDrag(event: PointerEvent, object: DrawingObject) {
 }
 
 function moveObject(event: PointerEvent) {
+  if (drawingDraft) {
+    const object = drawing.objects.find((item) => item.id === drawingDraft!.id);
+    if (!object) return;
+    const point = svgPoint(event);
+    if (drawingDraft.type === "route") {
+      updateRouteGeometry(object, drawingDraft.startX, drawingDraft.startY, point.x, point.y);
+    } else {
+      object.x = Math.round(Math.min(drawingDraft.startX, point.x));
+      object.y = Math.round(Math.min(drawingDraft.startY, point.y));
+      object.w = Math.max(20, Math.round(Math.abs(point.x - drawingDraft.startX)));
+      object.h = Math.max(20, Math.round(Math.abs(point.y - drawingDraft.startY)));
+    }
+    markDirty();
+    return;
+  }
   if (!dragState) return;
   const object = drawing.objects.find((item) => item.id === dragState!.id);
   if (!object) return;
@@ -818,13 +961,33 @@ function moveObject(event: PointerEvent) {
 }
 
 function endDrag(event: PointerEvent) {
+  if (drawingDraft) {
+    const object = drawing.objects.find((item) => item.id === drawingDraft!.id);
+    const tooSmall = object && (
+      drawingDraft.type === "route"
+        ? Math.hypot((object.route_x2 || 0) - (object.route_x1 || 0), (object.route_y2 || 0) - (object.route_y1 || 0)) < 35
+        : object.w < 45 || object.h < 45
+    );
+    if (object && tooSmall) {
+      drawing.objects.splice(drawing.objects.indexOf(object), 1);
+      selectedId.value = null;
+      notify(drawingDraft.type === "route" ? "이동경로를 조금 더 길게 드래그해 주세요." : "작업범위를 조금 더 크게 드래그해 주세요.", true);
+    } else {
+      notify(drawingDraft.type === "route" ? "이동경로를 추가했습니다. 이름·색상·굵기를 바꿀 수 있습니다." : "반투명 작업범위를 추가했습니다. 이름·색상·투명도를 바꿀 수 있습니다.");
+    }
+    svgRef.value?.releasePointerCapture?.(event.pointerId);
+    drawingDraft = null;
+    routeMode.value = false;
+    areaMode.value = false;
+    return;
+  }
   if (dragState) svgRef.value?.releasePointerCapture?.(event.pointerId);
   dragState = null;
 }
 
 function resizeSelected() {
   const object = selectedObject.value;
-  if (!object) return;
+  if (!object || object.type === "route") return;
   object.h = object.type === "photo" ? Math.round(object.w * 0.7) : object.w;
   markDirty();
 }
@@ -1098,11 +1261,12 @@ input,textarea,select { width: 100%; box-sizing: border-box; border: 1px solid #
 .count-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; }.work-item-editor { margin: 5px 0 14px; padding: 11px; border: 1px solid #bae6fd; border-radius: 12px; background: #f0f9ff; }.work-item-editor h4 { margin: 0; }.work-item { position: relative; margin-top: 9px; padding: 10px; border-radius: 10px; background: #fff; }.remove-job { width: 100%; min-height: 32px; border: 1px solid #fecaca; border-radius: 8px; color: #b91c1c; background: #fff; font-size: 11px; }
 button { font: inherit; cursor: pointer; }.text-button { padding: 0; border: 0; color: #2563eb; background: transparent; font-size: 12px; font-weight: 800; }
 .upload-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }.upload-button { display: flex; justify-content: center; align-items: center; min-height: 44px; margin: 0; padding: 0 12px; border: 1px dashed #64748b; border-radius: 12px; color: #1e3a5f; background: #eff6ff; cursor: pointer; }.upload-button.accent { color: #075985; border-color: #0891b2; background: #ecfeff; }.upload-button input { display: none; }
-.tool-strip { display: flex; gap: 7px; padding: 2px 0 12px; overflow-x: auto; }.tool-strip button { flex: 0 0 auto; display: grid; justify-items: center; gap: 2px; min-width: 68px; padding: 7px 8px; border: 1px solid #dbe3ed; border-radius: 11px; color: #334155; background: #fff; font-size: 11px; font-weight: 800; }.tool-strip button span { font-size: 22px; }
-.canvas-wrap { width: 100%; overflow: auto; border: 1px solid #94a3b8; border-radius: 14px; background: #e2e8f0; }.drawing-svg { display: block; width: 100%; min-width: 520px; aspect-ratio: 1.6; background: #fff; touch-action: none; user-select: none; }.drawing-object { cursor: grab; }.drawing-object:active { cursor: grabbing; }.empty-drawing text { fill: #64748b; font-size: 34px; font-weight: 800; }.empty-drawing .small { font-size: 22px; font-weight: 500; }
+.tool-strip { display: flex; gap: 7px; padding: 2px 0 12px; overflow-x: auto; }.tool-strip button { flex: 0 0 auto; display: grid; justify-items: center; gap: 2px; min-width: 68px; padding: 7px 8px; border: 1px solid #dbe3ed; border-radius: 11px; color: #334155; background: #fff; font-size: 11px; font-weight: 800; }.tool-strip button span { font-size: 22px; }.tool-strip .route-tool,.tool-strip .area-tool { min-width: 105px; color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; }.tool-strip .area-tool { color: #b91c1c; border-color: #fca5a5; background: #fff1f2; }.tool-strip .route-tool.active,.tool-strip .area-tool.active { color: #fff; border-color: #1d4ed8; background: #1d4ed8; }.tool-strip .area-tool.active { border-color: #b91c1c; background: #b91c1c; }
+.canvas-wrap { width: 100%; overflow: auto; border: 1px solid #94a3b8; border-radius: 14px; background: #e2e8f0; }.drawing-svg { display: block; width: 100%; min-width: 520px; aspect-ratio: 1.6; background: #fff; touch-action: none; user-select: none; }.drawing-svg.route-mode { cursor: crosshair; }.drawing-object { cursor: grab; }.drawing-object:active { cursor: grabbing; }.empty-drawing text { fill: #64748b; font-size: 34px; font-weight: 800; }.empty-drawing .small { font-size: 22px; font-weight: 500; }
 .selection-tools { position: sticky; z-index: 8; top: 4px; display: grid; grid-template-columns: 1.3fr 1fr .55fr auto; gap: 10px; align-items: end; margin-bottom: 10px; padding: 12px; border: 1px solid #60a5fa; border-radius: 12px; background: #eff6ff; box-shadow: 0 7px 18px rgba(37,99,235,.14); }.selection-tools label { margin: 0; }.selection-actions { display: flex; gap: 5px; }.selection-actions button { min-height: 38px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; }.selection-actions .danger { color: #b91c1c; }
 .history-panel { max-height: 720px; overflow: auto; }.history-item { display: grid; width: 100%; gap: 5px; margin-bottom: 8px; padding: 12px; text-align: left; border: 1px solid #e2e8f0; border-radius: 11px; background: #f8fafc; }.history-item.active { border-color: #2563eb; background: #eff6ff; }.history-item span,.empty-list { color: #64748b; font-size: 11px; }
 .preview-panel { grid-column: 1 / -1; }.preview-panel .panel-title p { margin: 4px 0 0; color: #64748b; font-size: 12px; }.preview-page-tabs { display: flex; gap: 6px; padding-bottom: 10px; overflow-x: auto; }.preview-page-tabs button { flex: 0 0 auto; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 9px; color: #475569; background: #fff; font-size: 11px; font-weight: 800; }.preview-page-tabs button.active { color: #fff; border-color: #173f70; background: #173f70; }
+.preview-format-notice { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #f59e0b; border-radius: 10px; color: #78350f; background: #fffbeb; font-size: 12px; font-weight: 800; }
 .paper-preview { width: min(900px,100%); min-height: 560px; box-sizing: border-box; margin: 0 auto; padding: 34px 38px; border: 1px solid #94a3b8; background: #fff; box-shadow: 0 8px 24px rgba(15,23,42,.12); }.paper-preview > header { display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 3px solid #173f70; }.paper-preview > h3 { margin: 24px 0; text-align: center; font-size: 24px; }.paper-preview > footer { margin-top: 25px; padding-top: 10px; border-top: 1px solid #cbd5e1; color: #64748b; text-align: center; font-size: 11px; }.preview-drawing { overflow: hidden; border: 1px solid #cbd5e1; }.preview-drawing :deep(svg) { display: block; width: 100%; height: auto; }.preview-jobs p { margin: 8px 0; }.preview-fields { display: grid; gap: 0; border: 1px solid #94a3b8; }.preview-fields div { display: grid; grid-template-columns: 150px 1fr; border-bottom: 1px solid #cbd5e1; }.preview-fields div:last-child { border-bottom: 0; }.preview-fields dt,.preview-fields dd { margin: 0; padding: 13px; }.preview-fields dt { background: #eff6ff; font-weight: 900; }.preview-fields dd { white-space: pre-line; }.preview-nav { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }.preview-nav button { min-height: 40px; padding: 0 20px; border: 1px solid #94a3b8; border-radius: 9px; background: #fff; font-weight: 800; }.preview-nav button:disabled { opacity: .4; }
 .preview-sheet { color: #172033; }.preview-sheet h4 { margin: 18px 0 8px; }.preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }.preview-table th,.preview-table td { padding: 9px; border: 1px solid #94a3b8; text-align: left; vertical-align: top; white-space: pre-line; }.preview-table th { color: #172033; background: #e8eef6; font-weight: 900; }.preview-table.compact th,.preview-table.compact td { padding: 7px; }.photo-placeholders { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 12px; }.photo-placeholders div { display: grid; place-items: center; min-height: 72px; border: 1px dashed #94a3b8; color: #64748b; background: #f8fafc; font-size: 11px; }.preview-job-list { margin: 0; padding: 0; list-style: none; border-top: 2px solid #173f70; }.preview-job-list li { display: grid; grid-template-columns: 150px 1fr 55px; gap: 8px; padding: 9px; border-bottom: 1px solid #cbd5e1; }.preview-job-list span { white-space: pre-line; }.preview-job-list em,.preview-jobs em { color: #475569; font-style: normal; }.report-summary { margin-top: 12px; padding: 10px; color: #fff; background: #173f70; font-size: 12px; font-weight: 800; }
 .permit-no { display: flex; justify-content: space-between; margin-bottom: 10px; padding: 10px; border: 2px solid #111827; font-size: 15px; font-weight: 900; }.permit-types { display: grid; grid-template-columns: repeat(2,1fr); border: 1px solid #64748b; }.permit-types span { padding: 8px; border: 1px solid #cbd5e1; }.permit-types span.checked { color: #991b1b; font-weight: 900; }.permit-types small { float: right; color: #64748b; }.gas-box { display: grid; grid-template-columns: 1.5fr repeat(4,1fr); margin-top: 12px; border: 1px solid #64748b; }.gas-box > * { padding: 9px; border-right: 1px solid #cbd5e1; font-size: 11px; }.signature-line { margin-top: 13px; padding: 14px; border: 1px solid #64748b; text-align: center; font-size: 12px; }.sheet-note { padding: 10px; border-left: 5px solid #d97706; background: #fffbeb; }.checklist-table td:nth-child(1),.checklist-table td:nth-child(3) { text-align: center; font-weight: 900; }.preview-prevention .checklist-table td:nth-child(1) { color: #fff; background: #475569; }

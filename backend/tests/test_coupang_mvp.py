@@ -129,6 +129,21 @@ def test_submission_workbook_preserves_package_and_replaces_drawing(tmp_path, mo
         "_APPROVED_TEMPLATE_SHA256",
         hashlib.sha256(template.read_bytes()).hexdigest().upper(),
     )
+    monkeypatch.setattr(
+        xlsx_export,
+        "_workbook_values",
+        lambda document: (
+            {"D5": "(주)부현전기"},
+            {
+                "D5": ("date", 46231),
+                "D18": document["workplace"],
+                "B37": "4F / 6F",
+                "C37": "4층 2~3챔버 조명 행거 설치 / 6층 1~4챔버 케이블 포설",
+                "F53": document["hazard"],
+                "H53": document["control"],
+            },
+        ),
+    )
     png_bytes = b"\x89PNG\r\n\x1a\n" + b"drawing"
     drawing_png = "data:image/png;base64," + base64.b64encode(png_bytes).decode()
 
@@ -162,3 +177,29 @@ def test_submission_workbook_preserves_package_and_replaces_drawing(tmp_path, mo
         assert "안전고리 미체결로 인한 추락 위험" in daily_xml
         assert "4층 2~3챔버 조명 행거 설치" in daily_xml
         assert "6층 1~4챔버 케이블 포설" in daily_xml
+
+
+def test_sheet_patch_preserves_original_namespace_declarations_and_cell_order():
+    sheet_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+ xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"
+ mc:Ignorable="x14ac">
+  <sheetData>
+    <row r="4"><c r="AX4" t="inlineStr"><is><t>right</t></is></c></row>
+    <row r="6"><c r="D6" t="inlineStr"><is><t>old</t></is></c><c r="AX6" t="inlineStr"><is><t>right</t></is></c></row>
+  </sheetData>
+</worksheet>"""
+
+    patched = xlsx_export._patch_sheet(sheet_xml, {"D6": "left"})
+    rendered = patched.decode("utf-8")
+    root = xlsx_export.ET.fromstring(patched)
+    ns = {"x": xlsx_export._MAIN_NS}
+    rows = root.findall("x:sheetData/x:row", ns)
+
+    assert 'xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"' in rendered
+    assert 'mc:Ignorable="x14ac"' in rendered
+    assert [int(row.attrib["r"]) for row in rows] == [4, 6]
+    row6_cells = rows[1].findall("x:c", ns)
+    assert [cell.attrib["r"] for cell in row6_cells] == ["D6", "AX6"]
+    assert row6_cells[0].find("x:is/x:t", ns).text == "left"
