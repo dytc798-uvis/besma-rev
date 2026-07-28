@@ -5,7 +5,7 @@
       <header class="dash-top">
         <div>
           <h1 class="dash-title">안전 운영 현황</h1>
-          <p class="dash-sub">문서·의견·현장 요약 (기상은 1일 2회 스냅샷: 05:00·12:00 KST)</p>
+          <p class="dash-sub">문서·의견·현장 요약</p>
         </div>
         <div class="dash-top-actions">
           <button type="button" class="btn-ghost btn-ghost-warn" @click="goApprovals">미결재 알림</button>
@@ -234,41 +234,6 @@
           </div>
         </BaseCard>
 
-        <BaseCard class="summary-group-card">
-          <div class="summary-group-head">
-            <div>
-              <h2 class="summary-group-title">기상 현황</h2>
-              <p class="summary-group-sub">본사·현장 기상은 Open-Meteo 스냅샷(05:00·12:00 KST 앵커)으로 갱신되며, 동일 앵커 구간에서는 디스크에 저장된 마지막 조회 결과를 보여줍니다.</p>
-            </div>
-          </div>
-          <div class="weather-overview">
-            <div class="weather-office-card">
-              <span class="weather-overview-label">본사</span>
-              <strong>{{ officeTitle }}</strong>
-              <p class="weather-overview-sub">{{ officeSummary }}</p>
-              <p class="weather-overview-updated">
-                패널 기준 최종 갱신: {{ formatDateTimeKst(weatherOverview?.snapshot_fetched_at || weatherOverview?.updated_at, "업데이트 정보 없음") }}
-              </p>
-              <p class="weather-overview-snapshot">
-                스냅샷 기준(KST): {{ formatDateTimeKst(weatherOverview?.office?.snapshot_anchor_kst || weatherOverview?.snapshot_anchor_kst, "—") }}
-                <span class="weather-overview-sep">·</span>
-                본사 조회 갱신: {{ formatDateTimeKst(weatherOverview?.office?.snapshot_fetched_at || weatherOverview?.office?.updated_at, "—") }}
-              </p>
-            </div>
-            <ul class="weather-site-list">
-              <li v-for="site in weatherOverview?.sites || []" :key="site.site_id || site.location_name">
-                <div class="weather-site-head">
-                  <strong>{{ site.location_name }}</strong>
-                  <span class="weather-chip" :class="chipTone(site)">{{ headlineStatus(site) }}</span>
-                </div>
-                <p>{{ site.summary_text }}</p>
-              </li>
-              <li v-if="(weatherOverview?.sites || []).length === 0" class="weather-empty-item">
-                표시할 현장 기상 요약이 없습니다.
-              </li>
-            </ul>
-          </div>
-        </BaseCard>
       </section>
 
       <FilterBar class="filter-bar">
@@ -341,7 +306,7 @@ import {
   SiteCard,
   SummaryPanel,
 } from "@/components/product";
-import { formatDateTimeKst, todayKst } from "@/utils/datetime";
+import { todayKst } from "@/utils/datetime";
 
 interface DashboardSummary {
   total_documents: number;
@@ -352,37 +317,6 @@ interface DashboardSummary {
   worker_voice_items: number;
   nonconformity_items: number;
   documents_by_site: { site_id: number | null; count: number }[];
-}
-
-interface WeatherOverviewSite {
-  available: boolean;
-  location_name: string;
-  site_id?: number | null;
-  summary_text: string;
-  pm10_status: string;
-  pm25_status: string;
-  advisory_flags: string[];
-  warning_score: number;
-  snapshot_anchor_kst?: string | null;
-  snapshot_fetched_at?: string | null;
-  updated_at?: string | null;
-}
-
-interface WeatherOverview {
-  office: {
-    available: boolean;
-    location_name: string;
-    weather_label?: string;
-    temperature?: number | null;
-    status_text?: string;
-    updated_at?: string | null;
-    snapshot_anchor_kst?: string | null;
-    snapshot_fetched_at?: string | null;
-  };
-  sites: WeatherOverviewSite[];
-  updated_at: string | null;
-  snapshot_anchor_kst?: string | null;
-  snapshot_fetched_at?: string | null;
 }
 
 interface SiteRow {
@@ -416,7 +350,6 @@ const data = ref<DashboardSummary | null>(null);
 const sites = ref<SiteRow[]>([]);
 const siteSummaryMap = ref<Record<number, DashboardSiteSummary>>({});
 const recentOpinions = ref<OpinionRow[]>([]);
-const weatherOverview = ref<WeatherOverview | null>(null);
 const riskDbOverview = ref<RiskDbOverviewPayload | null>(null);
 
 const filterSiteId = ref("");
@@ -594,38 +527,6 @@ function goHqLedgerFilter(filter: LedgerDashboardFilter, board: "voice" | "nonco
   router.push({ name, query: { filter } });
 }
 
-const officeTitle = computed(() => {
-  const office = weatherOverview.value?.office;
-  if (!office) return "정보 없음";
-  if (!office.available) return office.location_name || "본사";
-  const temp = office.temperature == null ? "—" : `${Math.round(office.temperature)}℃`;
-  return `${office.location_name} ${temp}`;
-});
-
-const officeSummary = computed(() => {
-  const office = weatherOverview.value?.office;
-  if (!office) return "기상 정보 없음";
-  if (!office.available) return office.status_text || "본사 위치 미설정";
-  return office.weather_label || "기상 정보";
-});
-
-function headlineStatus(site: WeatherOverviewSite) {
-  if (!site.available) return "정보 없음";
-  const flags = site.advisory_flags || [];
-  if (site.pm25_status === "매우나쁨" || site.pm10_status === "매우나쁨") return "매우나쁨";
-  if (site.pm25_status === "나쁨" || site.pm10_status === "나쁨") return "미세먼지 주의";
-  if (flags.includes("WIND")) return "강풍 주의";
-  if (flags.includes("RAIN")) return "우천 주의";
-  return "정상";
-}
-
-function chipTone(site: WeatherOverviewSite) {
-  const status = headlineStatus(site);
-  if (status === "매우나쁨") return "chip-bad";
-  if (status === "미세먼지 주의" || status === "강풍 주의" || status === "우천 주의") return "chip-warn";
-  return "chip-good";
-}
-
 async function load() {
   loading.value = true;
   try {
@@ -637,10 +538,9 @@ async function load() {
       api.get<SiteRow[]>("/sites"),
       api.get("/documents/hq-dashboard", { params: dashParams }),
       api.get<OpinionRow[]>("/opinions"),
-      api.get<WeatherOverview>("/dashboard/weather/hq-overview"),
     ]);
 
-    const [sumRes, sitesRes, dashRes, opRes, weatherRes] = settled;
+    const [sumRes, sitesRes, dashRes, opRes] = settled;
 
     if (sumRes.status === "fulfilled") {
       data.value = sumRes.value.data;
@@ -672,24 +572,6 @@ async function load() {
     }
 
     riskDbOverview.value = await riskDeferred;
-
-    if (weatherRes.status === "fulfilled") {
-      weatherOverview.value = weatherRes.value.data;
-    } else {
-      weatherOverview.value = {
-        office: {
-          available: false,
-          location_name: "본사",
-          status_text: "일시적 조회 실패",
-          snapshot_anchor_kst: null,
-          snapshot_fetched_at: null,
-        },
-        sites: [],
-        updated_at: null,
-        snapshot_anchor_kst: null,
-        snapshot_fetched_at: null,
-      };
-    }
   } finally {
     loading.value = false;
   }
@@ -1012,107 +894,6 @@ onMounted(load);
   margin-top: 2px;
 }
 
-.weather-overview {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.1fr);
-  gap: 12px;
-}
-
-.weather-office-card {
-  border: 1px solid #dbeafe;
-  background: #f8fbff;
-  border-radius: 14px;
-  padding: 14px;
-  display: grid;
-  gap: 6px;
-}
-
-.weather-overview-label,
-.weather-overview-updated {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.weather-office-card strong {
-  font-size: 24px;
-  color: #0f172a;
-}
-
-.weather-overview-sub {
-  margin: 0;
-  color: #334155;
-  font-size: 13px;
-}
-
-.weather-overview-snapshot {
-  margin: 0;
-  font-size: 12px;
-  color: #475569;
-  line-height: 1.45;
-}
-
-.weather-overview-sep {
-  margin: 0 6px;
-  color: #94a3b8;
-}
-
-.weather-site-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 10px;
-}
-
-.weather-site-list li {
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 12px;
-  background: #fff;
-}
-
-.weather-site-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.weather-site-list p {
-  margin: 0;
-  font-size: 13px;
-  color: #475569;
-}
-
-.weather-chip {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 4px 8px;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.chip-good {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.chip-warn {
-  background: #ffedd5;
-  color: #c2410c;
-}
-
-.chip-bad {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-.weather-empty-item {
-  color: #64748b;
-}
-
 .dash-top-actions {
   display: flex;
   gap: 10px;
@@ -1257,10 +1038,6 @@ button.panel-link {
 }
 
 @media (max-width: 1200px) {
-  .weather-overview {
-    grid-template-columns: 1fr;
-  }
-
   .main-grid {
     grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
   }

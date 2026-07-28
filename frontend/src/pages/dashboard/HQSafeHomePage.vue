@@ -17,12 +17,12 @@
         <span class="copy"><strong>기능인인정제</strong><small>기능인 평가·승인 업무</small></span>
         <b aria-hidden="true">→</b>
       </RouterLink>
-      <RouterLink class="work-card entry-card" :to="{ name: 'hq-safe-card-expenses' }">
+      <RouterLink v-if="canAccessSafetyLedgers" class="work-card entry-card" :to="{ name: 'hq-safe-card-expenses' }">
         <span class="icon" aria-hidden="true">🧾</span>
         <span class="copy"><strong>법인카드</strong><small>영수증 촬영·정산서 작성</small></span>
         <b aria-hidden="true">→</b>
       </RouterLink>
-      <RouterLink class="work-card entry-vehicle" :to="{ name: 'hq-safe-vehicle-logs' }">
+      <RouterLink v-if="canAccessSafetyLedgers" class="work-card entry-vehicle" :to="{ name: 'hq-safe-vehicle-logs' }">
         <span class="icon" aria-hidden="true">🚙</span>
         <span class="copy"><strong>운행기록부</strong><small>계기판 촬영·주행 기록</small></span>
         <b aria-hidden="true">→</b>
@@ -37,7 +37,13 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { RouterLink } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
+
+const auth = useAuthStore();
+const pilotNames = new Set(["정상익", "엄재복", "박영선", "조동문"]);
+const canAccessSafetyLedgers = computed(() => pilotNames.has((auth.user?.name || "").trim()));
 </script>
 
 <style scoped>

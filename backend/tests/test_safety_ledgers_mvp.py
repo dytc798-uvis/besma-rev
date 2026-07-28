@@ -24,7 +24,7 @@ from app.modules.safety_ledgers.models import (
 from app.modules.safety_ledgers.workbook_export import build_card_workbook, build_vehicle_workbook
 
 
-def _client(tmp_path: Path, monkeypatch) -> TestClient:
+def _client(tmp_path: Path, monkeypatch, *, user_name: str = "정상익") -> TestClient:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -43,6 +43,7 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
         id=777,
+        name=user_name,
         role=Role.HQ_SAFE,
         must_change_password=False,
     )
@@ -54,6 +55,25 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
 
 def test_mobile_session_default_is_seven_days():
     assert settings.access_token_expire_minutes == 60 * 24 * 7
+
+
+def test_pilot_account_vehicle_and_card_scopes(tmp_path: Path, monkeypatch):
+    shared_client = _client(tmp_path / "shared", monkeypatch, user_name="정상익")
+    shared = shared_client.get("/safety-ledgers/bootstrap")
+    assert shared.status_code == 200
+    assert shared.json()["vehicle"]["plate_number"] == "181하8339"
+    assert shared.json()["card_account"]["scope"] == "SAFETY_SHARED"
+
+    jo_client = _client(tmp_path / "jo", monkeypatch, user_name="조동문")
+    jo = jo_client.get("/safety-ledgers/bootstrap")
+    assert jo.status_code == 200
+    assert jo.json()["vehicle"]["vehicle_name"] == "그랜저"
+    assert jo.json()["vehicle"]["plate_number"] == "160하3180"
+    assert jo.json()["vehicle"]["drivers"] == ["조동문"]
+    assert jo.json()["card_account"]["scope"] == "JO_DONGMUN"
+
+    blocked_client = _client(tmp_path / "blocked", monkeypatch, user_name="김복수")
+    assert blocked_client.get("/safety-ledgers/bootstrap").status_code == 403
 
 
 def test_upload_review_and_export_flow(tmp_path: Path, monkeypatch):

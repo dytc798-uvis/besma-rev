@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, inspect, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
+from app.core.database import Base, engine
 from app.core.datetime_utils import utc_now
 
 
@@ -68,6 +68,13 @@ class SafetyCardExpense(Base):
     __tablename__ = "safety_card_expenses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    card_scope: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="SAFETY_SHARED",
+        server_default="SAFETY_SHARED",
+        index=True,
+    )
     used_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)
     site_name: Mapped[str | None] = mapped_column(String(200))
     merchant: Mapped[str | None] = mapped_column(String(200))
@@ -84,3 +91,25 @@ class SafetyCardExpense(Base):
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+
+def ensure_safety_ledger_schema() -> None:
+    """기존 운영 SQLite에도 카드 구분 컬럼을 멱등적으로 추가한다."""
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        if "safety_card_expenses" not in inspector.get_table_names():
+            return
+        columns = {column["name"] for column in inspector.get_columns("safety_card_expenses")}
+        if "card_scope" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE safety_card_expenses "
+                    "ADD COLUMN card_scope VARCHAR(40) NOT NULL DEFAULT 'SAFETY_SHARED'"
+                )
+            )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_safety_card_expenses_card_scope "
+                "ON safety_card_expenses (card_scope)"
+            )
+        )

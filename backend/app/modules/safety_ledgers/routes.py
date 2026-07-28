@@ -44,10 +44,28 @@ _ALLOWED_IMAGE_TYPES = {
 }
 _MAX_IMAGE_BYTES = 15 * 1024 * 1024
 _CONFIRM_THRESHOLD = 90
+_PILOT_USER_NAMES = frozenset({"정상익", "엄재복", "박영선", "조동문"})
+_SHARED_CARD_USER_NAMES = frozenset({"정상익", "엄재복", "박영선"})
+_SHARED_CARD_SCOPE = "SAFETY_SHARED"
+_JO_CARD_SCOPE = "JO_DONGMUN"
 
 
 def _assert_access(user) -> None:
     assert_hq_safe_workspace(user)
+    if (getattr(user, "name", "") or "").strip() not in _PILOT_USER_NAMES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="법인카드·운행기록부 시범 운영 대상 계정이 아닙니다.",
+        )
+
+
+def _card_scope(user) -> tuple[str, str]:
+    name = (getattr(user, "name", "") or "").strip()
+    if name in _SHARED_CARD_USER_NAMES:
+        return _SHARED_CARD_SCOPE, "안전실 공용카드"
+    if name == "조동문":
+        return _JO_CARD_SCOPE, "조동문 법인카드"
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록된 법인카드가 없습니다.")
 
 
 def _storage_dir(kind: str) -> Path:
@@ -78,14 +96,20 @@ async def _save_image(file: UploadFile, kind: str) -> tuple[Path, str, str]:
     return path, Path(file.filename or f"capture{suffix}").name[:255], media_type
 
 
-def _ensure_pilot_vehicle(db) -> SafetyVehicle:
-    vehicle = db.query(SafetyVehicle).filter(SafetyVehicle.plate_number == "181하8339").first()
+def _ensure_vehicle_for_user(db, user) -> SafetyVehicle:
+    user_name = (getattr(user, "name", "") or "").strip()
+    if user_name == "조동문":
+        vehicle_name, plate_number, drivers = "그랜저", "160하3180", ("조동문",)
+    else:
+        vehicle_name, plate_number, drivers = "투싼", "181하8339", ("정상익", "박영선")
+
+    vehicle = db.query(SafetyVehicle).filter(SafetyVehicle.plate_number == plate_number).first()
     if vehicle is None:
-        vehicle = SafetyVehicle(vehicle_name="투싼", plate_number="181하8339", department="안전보건실")
+        vehicle = SafetyVehicle(vehicle_name=vehicle_name, plate_number=plate_number, department="안전보건실")
         db.add(vehicle)
         db.flush()
     existing = {row.driver_name for row in vehicle.drivers}
-    for order, driver_name in enumerate(("정상익", "박영선"), 1):
+    for order, driver_name in enumerate(drivers, 1):
         if driver_name not in existing:
             db.add(SafetyVehicleDriver(vehicle_id=vehicle.id, driver_name=driver_name, sort_order=order))
     db.commit()
@@ -135,6 +159,7 @@ def _serialize_vehicle_log(row: SafetyVehicleLog) -> dict[str, Any]:
 def _serialize_card(row: SafetyCardExpense) -> dict[str, Any]:
     return {
         "id": row.id,
+        "card_scope": row.card_scope,
         "used_at": row.used_at.isoformat() if row.used_at else None,
         "site_name": row.site_name,
         "merchant": row.merchant,
@@ -149,8 +174,9 @@ def _serialize_card(row: SafetyCardExpense) -> dict[str, Any]:
     }
 
 
-def _export_paths(db) -> tuple[Path, Path]:
-    vehicle = _ensure_pilot_vehicle(db)
+def _export_paths(db, user) -> tuple[Path, Path]:
+    card_scope, _card_label = _card_scope(user)
+    vehicle = _ensure_vehicle_for_user(db, user)
     export_dir = _storage_dir("exports")
     vehicle_logs = (
         db.query(SafetyVehicleLog)
@@ -158,13 +184,29 @@ def _export_paths(db) -> tuple[Path, Path]:
         .order_by(SafetyVehicleLog.driven_on.asc(), SafetyVehicleLog.id.asc())
         .all()
     )
-    expenses = db.query(SafetyCardExpense).order_by(SafetyCardExpense.used_at.asc(), SafetyCardExpense.id.asc()).all()
+    expenses = (
+        db.query(SafetyCardExpense)
+        .filter(SafetyCardExpense.card_scope == card_scope)
+        .order_by(SafetyCardExpense.used_at.asc(), SafetyCardExpense.id.asc())
+        .all()
+    )
+    card_filename = CARD_FILENAME if card_scope == _SHARED_CARD_SCOPE else "조동문_법인카드 정산서.xlsx"
+    vehicle_filename = (
+        VEHICLE_FILENAME
+        if vehicle.plate_number == "181하8339"
+        else "조동문_업무용승용차 운행기록부.xlsx"
+    )
+    card_template = (
+        settings.safety_ledger_card_template_path
+        if card_scope == _SHARED_CARD_SCOPE
+        else settings.safety_ledger_jo_card_template_path
+    )
     card_path = build_card_workbook(
         expenses,
-        export_dir / CARD_FILENAME,
-        template_path=settings.safety_ledger_card_template_path,
+        export_dir / card_filename,
+        template_path=card_template,
     )
-    vehicle_path = build_vehicle_workbook(vehicle, vehicle_logs, export_dir / VEHICLE_FILENAME)
+    vehicle_path = build_vehicle_workbook(vehicle, vehicle_logs, export_dir / vehicle_filename)
     copy_exports_to_nas((card_path, vehicle_path), settings.safety_ledger_nas_root)
     return card_path, vehicle_path
 
@@ -172,7 +214,8 @@ def _export_paths(db) -> tuple[Path, Path]:
 @router.get("/bootstrap")
 def bootstrap(db: DbDep, current_user: CurrentUserDep):
     _assert_access(current_user)
-    vehicle = _ensure_pilot_vehicle(db)
+    card_scope, card_label = _card_scope(current_user)
+    vehicle = _ensure_vehicle_for_user(db, current_user)
     logs = (
         db.query(SafetyVehicleLog)
         .options(joinedload(SafetyVehicleLog.vehicle))
@@ -180,7 +223,12 @@ def bootstrap(db: DbDep, current_user: CurrentUserDep):
         .order_by(SafetyVehicleLog.driven_on.desc(), SafetyVehicleLog.id.desc())
         .all()
     )
-    expenses = db.query(SafetyCardExpense).order_by(SafetyCardExpense.created_at.desc()).all()
+    expenses = (
+        db.query(SafetyCardExpense)
+        .filter(SafetyCardExpense.card_scope == card_scope)
+        .order_by(SafetyCardExpense.created_at.desc())
+        .all()
+    )
     return {
         "vehicle": {
             "id": vehicle.id,
@@ -192,6 +240,7 @@ def bootstrap(db: DbDep, current_user: CurrentUserDep):
         },
         "vehicle_logs": [_serialize_vehicle_log(row) for row in logs],
         "card_expenses": [_serialize_card(row) for row in expenses],
+        "card_account": {"scope": card_scope, "label": card_label},
         "vision_enabled": bool((settings.openai_api_key or "").strip()),
         "vision_model": settings.safety_ledger_vision_model,
         "review_threshold": _CONFIRM_THRESHOLD,
@@ -210,7 +259,7 @@ async def create_vehicle_log(
     trip_km: Annotated[float | None, Form()] = None,
 ):
     _assert_access(current_user)
-    vehicle = _ensure_pilot_vehicle(db)
+    vehicle = _ensure_vehicle_for_user(db, current_user)
     allowed_drivers = {row.driver_name for row in vehicle.drivers if row.is_active}
     clean_driver = driver_name.strip()
     if clean_driver not in allowed_drivers:
@@ -259,7 +308,7 @@ async def create_vehicle_log(
     db.commit()
     db.refresh(row)
     row.vehicle = vehicle
-    _export_paths(db)
+    _export_paths(db, current_user)
     return _serialize_vehicle_log(row)
 
 
@@ -271,7 +320,7 @@ def update_vehicle_drivers(
     current_user: CurrentUserDep,
 ):
     _assert_access(current_user)
-    vehicle = _ensure_pilot_vehicle(db)
+    vehicle = _ensure_vehicle_for_user(db, current_user)
     if vehicle.id != vehicle_id:
         raise HTTPException(status_code=404, detail="차량을 찾을 수 없습니다.")
     existing = {row.driver_name: row for row in vehicle.drivers}
@@ -287,7 +336,7 @@ def update_vehicle_drivers(
         row.is_active = True
         db.add(row)
     db.commit()
-    refreshed = _ensure_pilot_vehicle(db)
+    refreshed = _ensure_vehicle_for_user(db, current_user)
     return {"drivers": [row.driver_name for row in refreshed.drivers if row.is_active], "max_drivers": 4}
 
 
@@ -302,7 +351,10 @@ def review_vehicle_log(
     row = db.query(SafetyVehicleLog).options(joinedload(SafetyVehicleLog.vehicle)).filter_by(id=log_id).first()
     if row is None:
         raise HTTPException(status_code=404, detail="운행기록을 찾을 수 없습니다.")
-    allowed = {driver.driver_name for driver in _ensure_pilot_vehicle(db).drivers if driver.is_active}
+    vehicle = _ensure_vehicle_for_user(db, current_user)
+    if row.vehicle_id != vehicle.id:
+        raise HTTPException(status_code=404, detail="운행기록을 찾을 수 없습니다.")
+    allowed = {driver.driver_name for driver in vehicle.drivers if driver.is_active}
     if payload.driver_name not in allowed:
         raise HTTPException(status_code=400, detail="등록된 운전자만 선택할 수 있습니다.")
     for field in ("driven_on", "driver_name", "odometer_km", "trip_km", "use_type", "purpose"):
@@ -315,7 +367,7 @@ def review_vehicle_log(
     db.add(row)
     db.commit()
     db.refresh(row)
-    _export_paths(db)
+    _export_paths(db, current_user)
     return _serialize_vehicle_log(row)
 
 
@@ -333,6 +385,7 @@ async def create_card_expense(
     note: Annotated[str | None, Form()] = None,
 ):
     _assert_access(current_user)
+    card_scope, _card_label = _card_scope(current_user)
     path, original_name, media_type = await _save_image(receipt, "receipts")
     extracted: dict[str, Any] | None = None
     extraction_error: str | None = None
@@ -348,6 +401,7 @@ async def create_card_expense(
     confidence = int(extracted.get("confidence", 0)) if extracted else None
     status_value = "AUTO_EXTRACTED" if extracted else ("EXTRACTION_FAILED" if extraction_error else "NEEDS_REVIEW")
     row = SafetyCardExpense(
+        card_scope=card_scope,
         used_at=used_at or extracted_used_at,
         site_name=(site_name or "").strip() or None,
         merchant=(merchant or "").strip() or (str(extracted.get("merchant") or "").strip() if extracted else None) or None,
@@ -367,7 +421,7 @@ async def create_card_expense(
     db.add(row)
     db.commit()
     db.refresh(row)
-    _export_paths(db)
+    _export_paths(db, current_user)
     return _serialize_card(row)
 
 
@@ -379,7 +433,12 @@ def review_card_expense(
     current_user: CurrentUserDep,
 ):
     _assert_access(current_user)
-    row = db.query(SafetyCardExpense).filter_by(id=expense_id).first()
+    card_scope, _card_label = _card_scope(current_user)
+    row = (
+        db.query(SafetyCardExpense)
+        .filter(SafetyCardExpense.id == expense_id, SafetyCardExpense.card_scope == card_scope)
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="법인카드 내역을 찾을 수 없습니다.")
     for field in ("used_at", "site_name", "merchant", "amount", "description", "card_last4", "note"):
@@ -392,7 +451,7 @@ def review_card_expense(
     db.add(row)
     db.commit()
     db.refresh(row)
-    _export_paths(db)
+    _export_paths(db, current_user)
     return _serialize_card(row)
 
 
@@ -410,7 +469,8 @@ def _image_response(path_value: str, original_name: str) -> FileResponse:
 def vehicle_image(log_id: int, db: DbDep, current_user: CurrentUserDep):
     _assert_access(current_user)
     row = db.query(SafetyVehicleLog).filter_by(id=log_id).first()
-    if row is None:
+    vehicle = _ensure_vehicle_for_user(db, current_user)
+    if row is None or row.vehicle_id != vehicle.id:
         raise HTTPException(status_code=404, detail="운행기록을 찾을 수 없습니다.")
     return _image_response(row.dashboard_image_path, row.dashboard_original_name)
 
@@ -418,7 +478,12 @@ def vehicle_image(log_id: int, db: DbDep, current_user: CurrentUserDep):
 @router.get("/card-expenses/{expense_id}/image")
 def receipt_image(expense_id: int, db: DbDep, current_user: CurrentUserDep):
     _assert_access(current_user)
-    row = db.query(SafetyCardExpense).filter_by(id=expense_id).first()
+    card_scope, _card_label = _card_scope(current_user)
+    row = (
+        db.query(SafetyCardExpense)
+        .filter(SafetyCardExpense.id == expense_id, SafetyCardExpense.card_scope == card_scope)
+        .first()
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="법인카드 내역을 찾을 수 없습니다.")
     return _image_response(row.receipt_image_path, row.receipt_original_name)
@@ -427,11 +492,18 @@ def receipt_image(expense_id: int, db: DbDep, current_user: CurrentUserDep):
 @router.get("/exports/{kind}")
 def download_export(kind: str, db: DbDep, current_user: CurrentUserDep):
     _assert_access(current_user)
-    card_path, vehicle_path = _export_paths(db)
+    card_scope, _card_label = _card_scope(current_user)
+    card_path, vehicle_path = _export_paths(db, current_user)
     if kind == "card":
-        path, filename = card_path, CARD_FILENAME
+        filename = CARD_FILENAME if card_scope == _SHARED_CARD_SCOPE else "조동문_법인카드 정산서.xlsx"
+        path = card_path
     elif kind == "vehicle":
-        path, filename = vehicle_path, VEHICLE_FILENAME
+        filename = (
+            VEHICLE_FILENAME
+            if (getattr(current_user, "name", "") or "").strip() != "조동문"
+            else "조동문_업무용승용차 운행기록부.xlsx"
+        )
+        path = vehicle_path
     else:
         raise HTTPException(status_code=404, detail="지원하지 않는 결과 파일입니다.")
     response = FileResponse(

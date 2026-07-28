@@ -90,9 +90,9 @@
 
       <BaseCard title="본사-현장 소통" class="site-comm-card">
         <template #actions>
-          <span class="weather-updated">미확인 {{ unreadCommunicationCount }}건</span>
+          <span class="communication-updated">미확인 {{ unreadCommunicationCount }}건</span>
         </template>
-        <p class="weather-snapshot-meta">본사에서 남긴 코멘트/승인·반려 의견만 표시됩니다.</p>
+        <p class="communication-meta">본사에서 남긴 코멘트/승인·반려 의견만 표시됩니다.</p>
         <div class="comm-table-wrap">
           <table class="comm-table">
             <thead>
@@ -375,19 +375,19 @@ onMounted(load);
   min-height: 100%;
 }
 
-.weather-snapshot-meta {
+.communication-meta {
   margin: 0 0 10px;
   font-size: 12px;
   color: #475569;
   line-height: 1.5;
 }
 
-.weather-snapshot-sep {
+.communication-sep {
   margin: 0 6px;
   color: #94a3b8;
 }
 
-.weather-updated {
+.communication-updated {
   color: #64748b;
   font-size: 12px;
 }

@@ -26,12 +26,14 @@
         <div class="hq-menu-group">
           <p class="hq-menu-section-label">주요업무</p>
           <RouterLink
+            v-if="canAccessSafetyLedgers"
             class="hq-field-form-menu-highlight"
             to="/hq-safe/card-expenses"
           >
             법인카드
           </RouterLink>
           <RouterLink
+            v-if="canAccessSafetyLedgers"
             class="hq-field-form-menu-highlight"
             to="/hq-safe/vehicle-logs"
           >
@@ -236,6 +238,9 @@ const canAccessAccidents = computed(() =>
 );
 const canAccessPdfSigning = computed(() =>
   ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
+);
+const canAccessSafetyLedgers = computed(() =>
+  ["정상익", "엄재복", "박영선", "조동문"].includes((auth.user?.name || "").trim()),
 );
 const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
 const canSystemBackup = computed(() => userCanSystemBackup(auth.user));

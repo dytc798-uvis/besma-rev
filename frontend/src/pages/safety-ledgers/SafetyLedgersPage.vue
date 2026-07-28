@@ -94,8 +94,9 @@
     <template v-else>
       <div class="summary-card card-summary">
         <div>
-          <span>처리 방식</span>
-          <strong>사진 보존 → 자동/수동 추출 → 사용자 확정</strong>
+          <span>사용 카드</span>
+          <strong>{{ cardAccount.label }}</strong>
+          <small>사진 보존 → 자동/수동 추출 → 사용자 확정</small>
         </div>
         <button class="download" @click="downloadExcel('card')">법인카드 정산서 다운로드</button>
       </div>
@@ -185,6 +186,11 @@ interface CardExpense {
   extraction_status: string;
 }
 
+interface CardAccount {
+  scope: string;
+  label: string;
+}
+
 const today = new Date().toISOString().slice(0, 10);
 const route = useRoute();
 const router = useRouter();
@@ -205,6 +211,7 @@ const vehicle = reactive<VehicleInfo>({
 });
 const vehicleLogs = ref<VehicleLog[]>([]);
 const cardExpenses = ref<CardExpense[]>([]);
+const cardAccount = reactive<CardAccount>({ scope: "", label: "안전실 공용카드" });
 const driverDraft = ref<string[]>(["정상익", "박영선", "", ""]);
 const visionEnabled = ref(false);
 const submitting = ref(false);
@@ -239,6 +246,7 @@ async function loadData() {
     driverDraft.value = [...vehicle.drivers, "", "", "", ""].slice(0, 4);
     vehicleLogs.value = Array.isArray(data.vehicle_logs) ? data.vehicle_logs : [];
     cardExpenses.value = (Array.isArray(data.card_expenses) ? data.card_expenses : []).map(toEditableCard);
+    Object.assign(cardAccount, data.card_account || {});
     visionEnabled.value = data.vision_enabled === true;
     if (!vehicleForm.driver_name && vehicle.drivers.length) vehicleForm.driver_name = vehicle.drivers[0];
   } catch (err: any) {
