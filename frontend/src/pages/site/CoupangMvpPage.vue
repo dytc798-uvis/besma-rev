@@ -2,9 +2,10 @@
   <section class="coupang-page">
     <header class="hero">
       <div>
-        <p class="eyebrow">COUPANG SITE MVP</p>
-        <h2>쿠팡 도면 작업계획</h2>
+        <p class="eyebrow">PRIVATE PILOT · NOT RELEASED</p>
+        <h2>쿠팡 MVP 실험실</h2>
         <p>도면 위에 작업 아이콘과 현장사진을 배치하고 서버에 저장합니다.</p>
+        <p v-if="pilotSiteName" class="pilot-site">실험 대상: {{ pilotSiteName }}</p>
       </div>
       <span class="save-state" :class="{ saved: !dirty && currentId }">
         {{ saving ? "저장 중" : dirty ? "저장 필요" : currentId ? "저장됨" : "새 문서" }}
@@ -19,6 +20,31 @@
           {{ item.label }}
         </button>
       </nav>
+      <p class="pilot-notice">현재 정상익 본인 계정에서만 보이는 비공개 실험 기능입니다. 쿠팡 현장 계정에는 공개되지 않습니다.</p>
+      <section class="automation-card">
+        <div>
+          <p class="eyebrow dark">FORM AUTOMATION CHECK</p>
+          <h3>쿠팡 제출양식 자동화 시험</h3>
+          <p>
+            저장한 작업정보와 현재 도면을 노트북의 양지 5FC 승인 원본에 넣어
+            제출용 Excel을 생성합니다.
+          </p>
+          <div class="automation-status">
+            <span class="ready">자동 생성 가능</span>
+            <strong>양지 5FC 통합 일일서류 · 제출 시트 10종</strong>
+          </div>
+          <details>
+            <summary>취합된 INC 46FC 양식 검토 현황</summary>
+            <p>
+              중복 2세트를 제외하면 9종입니다. XLSX 6종은 셀 매핑 후보,
+              PPTX 2종과 PDF 1종은 별도 출력 엔진 대상으로 분류했습니다.
+            </p>
+          </details>
+        </div>
+        <button type="button" class="excel-action" :disabled="exporting || uploading" @click="exportWorkbook">
+          {{ exporting ? "제출본 생성 중" : "제출용 Excel 자동 생성" }}
+        </button>
+      </section>
 
       <div class="workspace">
         <aside class="form-panel" :class="{ 'mobile-hidden': activeTab !== 'form' }">
@@ -207,9 +233,11 @@ const iconTools = [
 
 const loading = ref(true);
 const saving = ref(false);
+const exporting = ref(false);
 const uploading = ref(false);
 const dirty = ref(false);
 const accessError = ref("");
+const pilotSiteName = ref("");
 const message = ref("");
 const messageIsError = ref(false);
 const activeTab = ref<TabKey>("drawing");
@@ -239,6 +267,7 @@ let dragState: { id: string; offsetX: number; offsetY: number } | null = null;
 onMounted(async () => {
   try {
     const { data } = await api.get("/coupang-mvp/access");
+    pilotSiteName.value = data.site_name || "";
     Object.assign(form, data.defaults || {});
     await loadDocuments();
   } catch (error: any) {
@@ -476,7 +505,7 @@ async function saveDocument() {
   if (!form.title.trim() || !form.work_date) {
     activeTab.value = "form";
     notify("작업일과 문서 제목을 입력해주세요.", true);
-    return;
+    return false;
   }
   saving.value = true;
   try {
@@ -487,23 +516,25 @@ async function saveDocument() {
     dirty.value = false;
     await loadDocuments();
     notify("도면과 작업정보를 서버에 저장했습니다.");
+    return true;
   } catch (error: any) {
     notify(error?.response?.data?.detail || "저장에 실패했습니다.", true);
+    return false;
   } finally {
     saving.value = false;
   }
 }
 
-async function downloadPng() {
+async function renderDrawingPng() {
   if (!svgRef.value) return;
+  const clone = svgRef.value.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  clone.setAttribute("width", String(drawing.width));
+  clone.setAttribute("height", String(drawing.height));
+  const source = new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
   try {
-    const clone = svgRef.value.cloneNode(true) as SVGSVGElement;
-    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-    clone.setAttribute("width", String(drawing.width));
-    clone.setAttribute("height", String(drawing.height));
-    const source = new XMLSerializer().serializeToString(clone);
-    const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
     const image = new Image();
     await new Promise<void>((resolve, reject) => {
       image.onload = () => resolve();
@@ -514,14 +545,60 @@ async function downloadPng() {
     canvas.width = drawing.width;
     canvas.height = drawing.height;
     canvas.getContext("2d")!.drawImage(image, 0, 0);
+    return canvas.toDataURL("image/png");
+  } finally {
     URL.revokeObjectURL(url);
+  }
+}
+
+async function downloadPng() {
+  try {
+    const png = await renderDrawingPng();
+    if (!png) return;
     const link = document.createElement("a");
     link.download = `${form.work_date}_${form.floor}_쿠팡작업도면.png`;
-    link.href = canvas.toDataURL("image/png");
+    link.href = png;
     link.click();
     notify("현재 도면을 PNG로 저장했습니다.");
   } catch {
     notify("도면 이미지 생성에 실패했습니다.", true);
+  }
+}
+
+async function exportWorkbook() {
+  exporting.value = true;
+  try {
+    if (!currentId.value || dirty.value) {
+      const saved = await saveDocument();
+      if (!saved || !currentId.value) return;
+    }
+    const drawingPng = await renderDrawingPng();
+    const { data } = await api.post(
+      `/coupang-mvp/documents/${currentId.value}/export-xlsx`,
+      { drawing_png: drawingPng || null },
+      { responseType: "blob", timeout: 60_000 },
+    );
+    const url = URL.createObjectURL(data);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${form.work_date}_${form.floor}_쿠팡_제출서류.xlsx`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notify("쿠팡 제출용 Excel을 자동 생성했습니다.");
+  } catch (error: any) {
+    const fallback = "제출용 Excel 생성에 실패했습니다.";
+    if (error?.response?.data instanceof Blob) {
+      try {
+        const payload = JSON.parse(await error.response.data.text());
+        notify(payload.detail || fallback, true);
+      } catch {
+        notify(fallback, true);
+      }
+    } else {
+      notify(error?.response?.data?.detail || fallback, true);
+    }
+  } finally {
+    exporting.value = false;
   }
 }
 
@@ -534,6 +611,13 @@ function fitDrawing() {
 .coupang-page { padding: 0 0 92px; color: #172033; }
 .hero { display: flex; justify-content: space-between; gap: 24px; align-items: center; padding: 24px 28px; margin-bottom: 18px; color: #fff; border-radius: 22px; background: linear-gradient(125deg, #0b1736, #173f70 65%, #167e87); box-shadow: 0 16px 36px rgba(15, 23, 42, .18); }
 .hero h2 { margin: 2px 0 6px; font-size: 28px; }.hero p { margin: 0; color: #dbeafe; }.eyebrow { font-size: 11px; letter-spacing: .18em; font-weight: 800; color: #67e8f9 !important; }
+.hero .pilot-site { margin-top: 8px; color: #a5f3fc; font-size: 12px; font-weight: 800; }
+.pilot-notice { margin: 0 0 12px; padding: 10px 13px; border: 1px solid #fbbf24; border-radius: 11px; color: #78350f; background: #fffbeb; font-size: 12px; font-weight: 800; }
+.automation-card { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin: 0 0 16px; padding: 18px 20px; border: 1px solid #99f6e4; border-radius: 16px; background: linear-gradient(120deg, #f0fdfa, #ecfeff); box-shadow: 0 8px 22px rgba(15,118,110,.08); }
+.automation-card h3 { margin: 2px 0 5px; }.automation-card p { margin: 0; color: #475569; font-size: 13px; }.eyebrow.dark { color: #0f766e !important; }
+.automation-status { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; }.automation-status .ready { padding: 4px 7px; border-radius: 999px; color: #fff; background: #0f766e; font-weight: 900; }
+.automation-card details { margin-top: 10px; color: #334155; font-size: 12px; }.automation-card details p { margin-top: 7px; }.automation-card summary { cursor: pointer; font-weight: 800; }
+.excel-action { flex: none; min-height: 48px; padding: 0 18px; border: 0; border-radius: 11px; color: #fff; background: #166534; font-weight: 900; box-shadow: 0 7px 16px rgba(22,101,52,.2); }.excel-action:disabled { opacity: .55; }
 .save-state { flex: none; padding: 8px 12px; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; font-size: 12px; font-weight: 800; background: rgba(15,23,42,.35); }.save-state.saved { background: #0f766e; }
 .workspace { display: grid; grid-template-columns: minmax(260px, .72fr) minmax(520px, 1.8fr) minmax(230px, .62fr); gap: 16px; align-items: start; }
 .form-panel,.drawing-panel,.history-panel,.state-card { background: #fff; border: 1px solid #dfe7f0; border-radius: 18px; padding: 18px; box-shadow: 0 8px 24px rgba(15,23,42,.06); }
@@ -551,6 +635,7 @@ button { font: inherit; cursor: pointer; }.text-button { padding: 0; border: 0; 
 @media (max-width: 1180px) { .workspace { grid-template-columns: 280px 1fr; }.history-panel { grid-column: 1 / -1; max-height: none; }.history-item { display: inline-grid; width: min(280px, 100%); margin-right: 8px; } }
 @media (max-width: 760px) {
   .coupang-page { padding-bottom: 86px; }.hero { align-items: start; padding: 18px; border-radius: 16px; }.hero h2 { font-size: 21px; }.hero p:not(.eyebrow) { font-size: 12px; }.save-state { padding: 6px 8px; }
+  .automation-card { display: grid; gap: 14px; padding: 15px; }.excel-action { width: 100%; }
   .mobile-tabs { position: sticky; z-index: 12; top: 0; display: grid; grid-template-columns: repeat(3,1fr); gap: 4px; margin: 0 0 10px; padding: 4px; border: 1px solid #dbe3ed; border-radius: 12px; background: #fff; }.mobile-tabs button { min-height: 40px; border: 0; border-radius: 9px; color: #64748b; background: transparent; font-size: 12px; font-weight: 900; }.mobile-tabs button.active { color: #fff; background: #173f70; }
   .workspace { display: block; }.form-panel,.drawing-panel,.history-panel { border-radius: 14px; padding: 13px; }.mobile-hidden { display: none; }.field-grid { grid-template-columns: 1fr 1fr; }.upload-row { grid-template-columns: 1fr; }.drawing-svg { min-width: 460px; }.selection-tools { grid-template-columns: 1fr 1fr; }.selection-actions { grid-column: 1/-1; }.selection-actions button { flex: 1; }.history-item { display: grid; width: 100%; margin-right: 0; }
   .action-bar { right: 10px; bottom: 10px; left: 10px; }.action-bar button { flex: 1; padding: 0 9px; font-size: 13px; }.toast { width: calc(100% - 40px); box-sizing: border-box; text-align: center; }

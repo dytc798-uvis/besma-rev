@@ -40,6 +40,13 @@
             운행기록부
           </RouterLink>
           <RouterLink
+            v-if="canAccessCoupangLab"
+            class="hq-coupang-lab-highlight"
+            to="/hq-safe/coupang-mvp-lab"
+          >
+            쿠팡 MVP 실험실
+          </RouterLink>
+          <RouterLink
             class="hq-field-form-menu-highlight"
             :style="menuOrderPrimaryStyle('field-form-uploads')"
             to="/hq-safe/field-form-uploads"
@@ -241,6 +248,9 @@ const canAccessPdfSigning = computed(() =>
 );
 const canAccessSafetyLedgers = computed(() =>
   ["정상익", "엄재복", "박영선", "조동문"].includes((auth.user?.name || "").trim()),
+);
+const canAccessCoupangLab = computed(
+  () => (auth.user?.login_id || "").trim() === "안전보건-정상익",
 );
 const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
 const canSystemBackup = computed(() => userCanSystemBackup(auth.user));

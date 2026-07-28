@@ -14,9 +14,12 @@ from PIL import Image, UnidentifiedImageError
 
 from app.config.settings import settings
 from app.core.datetime_utils import utc_now
-from app.core.enums import Role
 from app.core.permissions import CurrentUserDep
-from app.modules.coupang_mvp.schemas import CoupangDocumentUpsert
+from app.modules.coupang_mvp.schemas import (
+    CoupangDocumentUpsert,
+    CoupangWorkbookExportRequest,
+)
+from app.modules.coupang_mvp.xlsx_export import generate_submission_workbook
 
 
 router = APIRouter(prefix="/coupang-mvp", tags=["coupang-mvp"])
@@ -31,32 +34,21 @@ _ALLOWED_IMAGES = {
     "image/webp": ".webp",
 }
 _ASSET_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
-
-
-def _role_value(user) -> str:
-    role = getattr(user, "role", "")
-    return str(getattr(role, "value", role))
-
-
-def _site_label(user) -> str:
-    site = getattr(user, "site", None)
-    values = [
-        getattr(site, "site_name", ""),
-        getattr(site, "client_name", ""),
-        getattr(site, "contractor_name", ""),
-        getattr(site, "description", ""),
-    ]
-    return " ".join(str(value or "") for value in values).strip()
+_PILOT_LOGIN_ID = "안전보건-정상익"
+_PILOT_SITE_ID = 101
+_PILOT_SITE_NAME = "[3.쿠팡] YAN 5FC(양지) 전기공사"
 
 
 def _assert_coupang_access(user) -> None:
-    if _role_value(user) not in {Role.SITE.value, Role.SITE_FUNCTIONAL_EVAL.value}:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="쿠팡 현장 계정만 사용할 수 있습니다.")
-    if not getattr(user, "site_id", None):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="현장 정보가 없는 계정입니다.")
-    normalized = _site_label(user).lower()
-    if "쿠팡" not in normalized and "coupang" not in normalized and "inc 46fc" not in normalized:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="쿠팡 현장 전용 시범 기능입니다.")
+    if (getattr(user, "login_id", "") or "").strip() != _PILOT_LOGIN_ID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="정식 공개 전 내부 실험 기능입니다.",
+        )
+
+
+def _pilot_site_id() -> int:
+    return _PILOT_SITE_ID
 
 
 def _root() -> Path:
@@ -73,6 +65,10 @@ def _assets_dir(site_id: int) -> Path:
 
 def _ledger_path() -> Path:
     return _root() / "documents.json"
+
+
+def _template_path() -> Path:
+    return _root() / "templates" / "coupang-yangji5-v1.xlsx"
 
 
 def _read_rows() -> list[dict[str, Any]]:
@@ -129,8 +125,9 @@ def access_info(current_user: CurrentUserDep):
     _assert_coupang_access(current_user)
     return {
         "available": True,
-        "site_id": current_user.site_id,
-        "site_name": getattr(getattr(current_user, "site", None), "site_name", "") or "",
+        "pilot_only": True,
+        "site_id": _pilot_site_id(),
+        "site_name": _PILOT_SITE_NAME,
         "defaults": {
             "contractor_name": "부현전기",
             "hazard": "안전고리 미체결로 인한 추락 위험",
@@ -146,7 +143,7 @@ def list_documents(current_user: CurrentUserDep):
     items = [
         _public_row(row)
         for row in _read_rows()
-        if int(row.get("site_id") or 0) == int(current_user.site_id)
+        if int(row.get("site_id") or 0) == _pilot_site_id()
     ]
     items.sort(key=lambda row: (row.get("work_date") or "", row.get("updated_at") or ""), reverse=True)
     return {"items": items}
@@ -160,7 +157,7 @@ def get_document(document_id: int, current_user: CurrentUserDep):
             item
             for item in _read_rows()
             if int(item.get("id") or 0) == document_id
-            and int(item.get("site_id") or 0) == int(current_user.site_id)
+            and int(item.get("site_id") or 0) == _pilot_site_id()
         ),
         None,
     )
@@ -178,8 +175,8 @@ def create_document(payload: CoupangDocumentUpsert, current_user: CurrentUserDep
         rows = _read_rows()
         row = {
             "id": _next_id(rows),
-            "site_id": current_user.site_id,
-            "site_name": getattr(getattr(current_user, "site", None), "site_name", "") or "",
+            "site_id": _pilot_site_id(),
+            "site_name": _PILOT_SITE_NAME,
             "created_by_user_id": current_user.id,
             "created_by_name": current_user.name,
             "created_at": now,
@@ -202,7 +199,7 @@ def update_document(document_id: int, payload: CoupangDocumentUpsert, current_us
                 item
                 for item in rows
                 if int(item.get("id") or 0) == document_id
-                and int(item.get("site_id") or 0) == int(current_user.site_id)
+                and int(item.get("site_id") or 0) == _pilot_site_id()
             ),
             None,
         )
@@ -214,6 +211,46 @@ def update_document(document_id: int, payload: CoupangDocumentUpsert, current_us
         row["updated_by_name"] = current_user.name
         _write_rows(rows)
     return _public_row(row)
+
+
+@router.post("/documents/{document_id}/export-xlsx")
+def export_document_workbook(
+    document_id: int,
+    payload: CoupangWorkbookExportRequest,
+    current_user: CurrentUserDep,
+):
+    _assert_coupang_access(current_user)
+    row = next(
+        (
+            item
+            for item in _read_rows()
+            if int(item.get("id") or 0) == document_id
+            and int(item.get("site_id") or 0) == _pilot_site_id()
+        ),
+        None,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="저장된 문서를 찾을 수 없습니다.")
+    filename = f"{row.get('work_date')}_{row.get('floor')}_쿠팡_제출서류.xlsx"
+    safe_name = re.sub(r"[^0-9A-Za-z가-힣_.-]+", "_", filename)
+    output = _root() / "exports" / str(_pilot_site_id()) / f"{uuid.uuid4().hex}_{safe_name}"
+    try:
+        generate_submission_workbook(
+            _template_path(),
+            output,
+            row,
+            payload.drawing_png,
+        )
+    except (FileNotFoundError, ValueError, OSError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    response = FileResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=safe_name,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @router.post("/assets")
@@ -228,7 +265,7 @@ async def upload_asset(current_user: CurrentUserDep, file: UploadFile = File(...
         raise HTTPException(status_code=400, detail="빈 이미지는 업로드할 수 없습니다.")
     if len(content) > _MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="이미지는 15MB 이하만 업로드할 수 있습니다.")
-    site_assets = _assets_dir(current_user.site_id)
+    site_assets = _assets_dir(_pilot_site_id())
     temp = site_assets / f".verify-{uuid.uuid4().hex}{suffix}"
     temp.write_bytes(content)
     try:
@@ -262,7 +299,7 @@ def get_asset(asset_id: str, current_user: CurrentUserDep):
         raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
     candidates = [
         path
-        for path in _assets_dir(current_user.site_id).glob(f"{asset_id}.*")
+        for path in _assets_dir(_pilot_site_id()).glob(f"{asset_id}.*")
         if path.is_file()
     ]
     if len(candidates) != 1:

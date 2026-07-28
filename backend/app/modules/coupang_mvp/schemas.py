@@ -35,3 +35,6 @@ class CoupangDocumentUpsert(BaseModel):
     def strip_text(cls, value: str) -> str:
         return value.strip()
 
+
+class CoupangWorkbookExportRequest(BaseModel):
+    drawing_png: str | None = Field(default=None, max_length=16_500_000)

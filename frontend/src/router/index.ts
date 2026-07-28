@@ -254,6 +254,7 @@ const routes: RouteRecordRaw[] = [
       { path: "new-site-deployment", name: "hq-safe-new-site-deployment", component: HQNewSiteDeploymentPage },
       { path: "tbm-beta", name: "hq-safe-tbm-beta", component: TbmBetaPage },
       { path: "system-backup", name: "hq-safe-system-backup", component: HQSystemBackupPage },
+      { path: "coupang-mvp-lab", name: "hq-safe-coupang-mvp-lab", component: CoupangMvpPage },
     ],
   },
   {
@@ -307,7 +308,6 @@ const routes: RouteRecordRaw[] = [
       { path: "risk-library", name: "site-risk-library", component: RiskLibraryPage },
       { path: "info", name: "site-info", component: SiteInfoPage },
       { path: "work-plan-forklift", name: "site-work-plan-forklift", component: WorkPlanForkliftPage },
-      { path: "coupang-mvp", name: "site-coupang-mvp", component: CoupangMvpPage },
       { path: "opinions", name: "site-opinions", component: OpinionListPage },
       { path: "opinions/:id", name: "site-opinion-detail", component: OpinionDetailPage },
       { path: "user-guide", name: "site-user-guide", component: UserGuidePage },

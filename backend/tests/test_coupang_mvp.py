@@ -4,6 +4,9 @@ from datetime import date
 from io import BytesIO
 from types import SimpleNamespace
 import asyncio
+import base64
+import hashlib
+import zipfile
 
 import pytest
 from fastapi import HTTPException, UploadFile
@@ -11,22 +14,17 @@ from PIL import Image
 
 from app.core.enums import Role
 from app.modules.coupang_mvp import routes
+from app.modules.coupang_mvp import xlsx_export
 from app.modules.coupang_mvp.schemas import CoupangDocumentUpsert
 
 
-def _user(site_name: str = "[3.쿠팡] INC 46FC(인천) 전기공사", client_name: str = "쿠팡"):
+def _user(login_id: str = "안전보건-정상익"):
     return SimpleNamespace(
         id=48,
         name="쿠팡 현장관리자",
-        login_id="coupang_manager",
-        role=Role.SITE,
-        site_id=48,
-        site=SimpleNamespace(
-            site_name=site_name,
-            client_name=client_name,
-            contractor_name="",
-            description="",
-        ),
+        login_id=login_id,
+        role=Role.HQ_SAFE,
+        site_id=None,
     )
 
 
@@ -64,6 +62,8 @@ def test_document_round_trip_is_scoped_to_coupang_site(isolated_storage):
 
     created = routes.create_document(payload, _user())
     assert created["id"] == 1
+    assert created["site_id"] == 101
+    assert "YAN 5FC" in created["site_name"]
     assert created["contractor_name"] == "부현전기"
     assert created["drawing"]["objects"][0]["label"] == "작업구역"
 
@@ -78,7 +78,7 @@ def test_document_round_trip_is_scoped_to_coupang_site(isolated_storage):
 
 def test_non_coupang_site_is_rejected(isolated_storage):
     with pytest.raises(HTTPException) as exc_info:
-        routes.access_info(_user("일반 공동주택 현장", "일반 발주처"))
+        routes.access_info(_user("쿠팡양지-김민수"))
     assert exc_info.value.status_code == 403
 
 
@@ -94,3 +94,58 @@ def test_image_asset_upload_and_read(isolated_storage):
     assert result["asset_id"]
     response = routes.get_asset(result["asset_id"], _user())
     assert str(response.path).endswith(".jpg")
+
+
+def test_submission_workbook_preserves_package_and_replaces_drawing(tmp_path, monkeypatch):
+    template = tmp_path / "template.xlsx"
+    output = tmp_path / "output.xlsx"
+    sheet_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="5"><c r="D5" t="inlineStr"><is><t>old</t></is></c></row>
+    <row r="18"><c r="D18" t="inlineStr"><is><t>old</t></is></c></row>
+    <row r="37"><c r="B37" t="inlineStr"><is><t>old</t></is></c><c r="C37" t="inlineStr"><is><t>old</t></is></c></row>
+    <row r="53"><c r="F53" t="inlineStr"><is><t>old</t></is></c><c r="H53" t="inlineStr"><is><t>old</t></is></c></row>
+  </sheetData>
+</worksheet>"""
+    workbook_xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><calcPr/></workbook>"""
+    with zipfile.ZipFile(template, "w") as archive:
+        archive.writestr("xl/workbook.xml", workbook_xml)
+        archive.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+        archive.writestr("xl/worksheets/sheet2.xml", sheet_xml)
+        archive.writestr("xl/media/image10.png", b"old-4f")
+        archive.writestr("xl/media/image11.png", b"old-6f")
+        archive.writestr("keep/original.bin", b"preserve-me")
+    monkeypatch.setattr(
+        xlsx_export,
+        "_APPROVED_TEMPLATE_SHA256",
+        hashlib.sha256(template.read_bytes()).hexdigest().upper(),
+    )
+    png_bytes = b"\x89PNG\r\n\x1a\n" + b"drawing"
+    drawing_png = "data:image/png;base64," + base64.b64encode(png_bytes).decode()
+
+    xlsx_export.generate_submission_workbook(
+        template,
+        output,
+        {
+            "work_date": "2026-07-28",
+            "floor": "4F",
+            "workplace": "지하1층 2번코어",
+            "work_description": "케이블 포설작업",
+            "hazard": "안전고리 미체결로 인한 추락 위험",
+            "control": "안전고리 체결 및 관리감독자 확인",
+            "manager_name": "정상익",
+            "worker_count": 5,
+        },
+        drawing_png,
+    )
+
+    with zipfile.ZipFile(output) as archive:
+        assert archive.testzip() is None
+        assert archive.read("keep/original.bin") == b"preserve-me"
+        assert archive.read("xl/media/image10.png") == png_bytes
+        assert archive.read("xl/media/image11.png") == b"old-6f"
+        daily_xml = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        assert "지하1층 2번코어" in daily_xml
+        assert "안전고리 미체결로 인한 추락 위험" in daily_xml
