@@ -37,7 +37,9 @@ def db():
 def _employee(name: str, position_code: str, birth6: str) -> dict:
     return {
         "name": name,
+        "department_code": "01",
         "position_code": position_code,
+        "position": "",
         "birth6": birth6,
         "birth_date": date(1980, 1, 1),
         "rrn_hash": f"hash-{name}",
@@ -135,3 +137,36 @@ def test_apply_preserves_changed_password_and_assigns_site_roles(db, monkeypatch
     assert users["이안전"].role == Role.SITE
     assert users["박공무"].password_hash == "changed-password"
     assert users["박공무"].must_change_password is False
+
+
+def test_plan_resolves_hq_and_site_homonyms_to_site_employee(db, monkeypatch):
+    _sources(monkeypatch)
+    monkeypatch.setattr(
+        service,
+        "load_viewer_rows_from_path",
+        lambda _path: (
+            [
+                {
+                    **_employee("김소장", "2", "700101"),
+                    "department_code": "02",
+                },
+                _employee("김소장", "9", "800101"),
+                _employee("박공무", "19", "810202"),
+                _employee("이안전", "22", "820303"),
+            ],
+            "employees.xls",
+        ),
+    )
+    db.add(site_models.Site(site_code="26001", site_name="테스트 현장"))
+    db.commit()
+
+    plans, excluded = service.build_site_admin_plan(
+        db,
+        site_source=Path("sites.xls"),
+        employee_source=Path("employees.xls"),
+        as_of=date(2026, 7, 28),
+    )
+
+    assert excluded == []
+    manager = next(plan for plan in plans if plan.name == "김소장")
+    assert manager.employee_row["birth6"] == "800101"

@@ -34,6 +34,7 @@ SOURCE_ROLE_COLUMNS = (
     ("OTHER", "기타"),
 )
 SITE_ACCOUNT_ROLES = frozenset({Role.SITE, Role.SITE_FUNCTIONAL_EVAL})
+SITE_DEPARTMENT_CODES = frozenset({"1", "01", "7", "07", "15"})
 
 
 @dataclass
@@ -74,11 +75,33 @@ def _resolved_admin_role(source_role: str, employee_row: dict[str, Any]) -> str:
     if source_role != "OTHER":
         return source_role
     position_code = clean(employee_row.get("position_code"))
+    position = clean(employee_row.get("position"))
+    if "안전" in position:
+        return "SAFETY"
+    if "공무" in position:
+        return "GONGMU"
+    if any(keyword in position for keyword in ("공사", "기술", "관급")):
+        return "CONSTRUCTION_SUPERVISOR"
     if position_code == "22":
         return "SAFETY"
     if position_code in {"18", "19", "21", "23", "28"}:
         return "CONSTRUCTION_SUPERVISOR"
     return "OTHER"
+
+
+def _select_employee_identity(
+    identities: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if len(identities) == 1:
+        return identities[0]
+    site_identities = [
+        row
+        for row in identities
+        if clean(row.get("department_code")) in SITE_DEPARTMENT_CODES
+    ]
+    if len(site_identities) == 1:
+        return site_identities[0]
+    return None
 
 
 def _user_columns():
@@ -138,7 +161,8 @@ def build_site_admin_plan(
                 continue
             seen.add((code, name))
             identities = employee_by_name.get(name, [])
-            if len(identities) != 1:
+            employee = _select_employee_identity(identities)
+            if employee is None:
                 excluded.append(
                     {
                         "site_code": code,
@@ -151,7 +175,6 @@ def build_site_admin_plan(
                     }
                 )
                 continue
-            employee = identities[0]
             admin_role = _resolved_admin_role(source_role, employee)
             login_id = build_eval_login_id(alias, name)
             target = (
