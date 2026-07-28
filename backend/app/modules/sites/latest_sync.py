@@ -24,6 +24,22 @@ def is_current_missing_site(
     return code.startswith(as_of.strftime("%y")), None
 
 
+def is_current_site(row: dict[str, str], as_of: date) -> tuple[bool, str | None]:
+    code = row.get("현장코드", "")
+    if not code or not row.get("현장명"):
+        return False, None
+    start, end = parse_construction_period(row.get("공사기간"))
+    if start and end and end < start:
+        return False, "INVALID_PERIOD"
+    if start and start > as_of:
+        return False, "NOT_STARTED"
+    if end and end < as_of:
+        return False, "COMPLETED"
+    if start or end:
+        return True, None
+    return code.startswith(as_of.strftime("%y")), None
+
+
 def site_attrs(row: dict[str, str]) -> dict[str, Any]:
     start, end = parse_construction_period(row.get("공사기간"))
     return {

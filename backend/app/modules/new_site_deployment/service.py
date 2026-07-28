@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.config.security import get_password_hash
+from app.core.auth import _load_erp_login_aliases
 from app.config.settings import settings
 from app.core.datetime_utils import utc_now
 from app.core.enums import Role, UIType
@@ -37,6 +38,18 @@ from app.modules.sites.models import Site
 from app.modules.users.models import User
 
 INITIAL_SITE_PASSWORD = "1111"
+
+
+def _initial_site_password(name: str) -> str:
+    matches = [
+        row
+        for row in _load_erp_login_aliases().values()
+        if (row.get("name") or "").strip() == name.strip()
+        and len((row.get("birth6") or "").strip()) == 6
+    ]
+    if len(matches) == 1:
+        return matches[0]["birth6"].strip()
+    return INITIAL_SITE_PASSWORD
 
 
 def _role_value(user: User) -> str:
@@ -200,12 +213,13 @@ def _provision_site_user(
     site: Site,
     must_change_password: bool = True,
 ) -> User:
+    initial_password = _initial_site_password(name)
     user = db.query(User).filter(User.login_id == login_id).first()
     if user is None:
         user = User(
             name=name,
             login_id=login_id,
-            password_hash=get_password_hash(INITIAL_SITE_PASSWORD),
+            password_hash=get_password_hash(initial_password),
             role=Role.SITE,
             ui_type=UIType.SITE,
             site_id=site.id,
@@ -219,8 +233,8 @@ def _provision_site_user(
         user.ui_type = UIType.SITE
         user.site_id = site.id
         user.is_active = True
-        if must_change_password:
-            user.password_hash = get_password_hash(INITIAL_SITE_PASSWORD)
+        if must_change_password and user.password_changed_at is None:
+            user.password_hash = get_password_hash(initial_password)
             user.must_change_password = True
         db.add(user)
     return user
