@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import sys
 from pathlib import Path
@@ -21,12 +22,24 @@ def main() -> None:
         ((item.relative_path, path) for item, path in entries),
         force=args.force,
     )
+    status_counts = Counter(
+        str(item.get("status") or "unknown")
+        for item in result["items"].values()
+    )
+    extension_counts = Counter(
+        Path(relative_path).suffix.lower() or "(none)"
+        for relative_path in result["items"]
+    )
     print(
         json.dumps(
             {
-                key: value
-                for key, value in result.items()
-                if key != "items"
+                **{
+                    key: value
+                    for key, value in result.items()
+                    if key != "items"
+                },
+                "status_counts": dict(sorted(status_counts.items())),
+                "extension_counts": dict(sorted(extension_counts.items())),
             },
             ensure_ascii=False,
             indent=2,

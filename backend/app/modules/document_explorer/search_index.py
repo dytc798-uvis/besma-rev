@@ -207,7 +207,11 @@ def extract_search_text(path: Path) -> tuple[str, str]:
         # 손상된 외부 문서 하나가 전체 검색을 막지 않게 메타데이터 검색으로 강등한다.
         return "", "parse_failed"
     cleaned = _clean_text(text)
-    return cleaned, "indexed" if cleaned else "empty"
+    if cleaned:
+        return cleaned, "indexed"
+    if extension == ".pdf":
+        return "", "image_only"
+    return "", "empty"
 
 
 def _load_index() -> dict[str, Any]:
