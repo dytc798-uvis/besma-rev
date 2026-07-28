@@ -233,25 +233,133 @@
               {{ index + 1 }}. {{ page.label }}
             </button>
           </div>
-          <article class="paper-preview">
+          <article class="paper-preview" :data-preview-sheet="currentPreview.key">
             <header><strong>{{ selectedSite?.label || "쿠팡 현장" }}</strong><span>{{ previewIndex + 1 }} / {{ previewPages.length }}</span></header>
             <h3>{{ currentPreview.label }}</h3>
-            <template v-if="currentPreview.kind === 'drawing'">
+
+            <section v-if="currentPreview.key === 'daily-report'" class="preview-sheet preview-daily-report">
+              <div class="photo-placeholders">
+                <div>아침체조·몸풀기 사진</div><div>안전보호구 점검 사진</div>
+                <div>위험요인 전파 사진</div><div>팀별 TBM 사진</div>
+              </div>
+              <table class="preview-table">
+                <thead><tr><th>업체명</th><th>작업일자</th><th>공정률</th><th>총원</th><th>장비</th></tr></thead>
+                <tbody><tr><td>{{ form.contractor_name }}</td><td>{{ form.work_date }}</td><td>{{ form.progress_rate }}%</td><td>{{ form.total_count }}명</td><td>지게차 {{ form.forklift_used }}/{{ form.forklift_owned }} · 고소작업대 {{ form.lift_used }}/{{ form.lift_owned }}</td></tr></tbody>
+              </table>
+              <h4>금일 작업계획</h4>
+              <ol class="preview-job-list"><li v-for="(job, index) in todayJobs" :key="index"><b>{{ job.floor }} {{ job.workplace }}</b><span>{{ job.description }}</span><em>{{ job.people || 0 }}명</em></li></ol>
+              <div class="report-summary">관리자 {{ form.manager_count }} · 근로자 {{ form.worker_count }} · 신호수/유도원 {{ form.signal_count }} · 화기감시자 {{ form.fire_watch_count }} · 외국인 {{ form.foreign_worker_count }}</div>
+            </section>
+
+            <section v-else-if="currentPreview.key === 'ptw'" class="preview-sheet preview-ptw">
+              <div class="permit-no">FC현장 작업허가서 [PTW] <b>PTW No : 부현 -</b></div>
+              <table class="preview-table compact"><tbody>
+                <tr><th>작업명</th><td>{{ form.title }}</td><th>업체명</th><td>{{ form.contractor_name }}</td></tr>
+                <tr><th>작업일시</th><td>{{ form.work_date }} {{ form.start_time }}~{{ form.end_time }}</td><th>작업장소</th><td>{{ workplaceSummary }}</td></tr>
+                <tr><th>작업개요</th><td colspan="3">{{ workDescriptionSummary }}</td></tr>
+              </tbody></table>
+              <h4>작업 특성별 위험예방 사전조치요구 항목</h4>
+              <div class="permit-types">
+                <span class="checked">■ 일반사항 <small>1~4번</small></span>
+                <span :class="{ checked: form.fire_work === '유' }">{{ form.fire_work === "유" ? "■" : "□" }} 화기작업 <small>5~13번</small></span>
+                <span>□ 고소작업 <small>14~23번</small></span><span>□ 중량물 취급 <small>30~38번</small></span>
+                <span>□ 전기취급 <small>39~43번</small></span><span>□ 가설구조물 <small>44~49번</small></span><span>□ 밀폐공간 <small>50~55번</small></span>
+              </div>
+              <div class="gas-box"><b>밀폐공간 가스시험 결과</b><span>산소(O₂)</span><span>일산화탄소(CO)</span><span>탄산가스(CO₂)</span><span>황화수소(H₂S)</span></div>
+              <div class="signature-line">사전 예방조치 확인 및 작업 허가　 협력업체 현장소장(안전관리자): {{ form.manager_name || "　　　　　　　　" }} (인)</div>
+            </section>
+
+            <section v-else-if="currentPreview.key === 'prevention'" class="preview-sheet preview-prevention">
+              <p class="sheet-note">PTW 작업특성 번호에 따라 현장조건과 실제 해당 여부를 재검토하는 예방조치 기준표입니다.</p>
+              <table class="preview-table checklist-table">
+                <thead><tr><th>구분</th><th>대표 예방조치 기준</th><th>확인</th></tr></thead>
+                <tbody>
+                  <tr><td>일반사항</td><td>작업구역 통제·TBM·보호구·관리감독자 배치</td><td>■</td></tr>
+                  <tr><td>화기작업</td><td>불티비산 방지, 소화기 배치, 화기감시자 지정</td><td>{{ form.fire_work === "유" ? "■" : "□" }}</td></tr>
+                  <tr><td>고소작업</td><td>작업발판·안전난간·생명줄 및 안전고리 체결 확인</td><td>□</td></tr>
+                  <tr><td>중량물 취급</td><td>인양계획, 줄걸이 상태, 신호수 및 출입통제 확인</td><td>□</td></tr>
+                  <tr><td>전기취급</td><td>전원 차단, 검전·접지, 누전차단기 상태 확인</td><td>□</td></tr>
+                  <tr><td>가설구조물</td><td>계단·비계·사다리 고정 및 이동통로 상태 확인</td><td>□</td></tr>
+                  <tr><td>밀폐공간</td><td>가스측정, 환기, 감시인 배치 및 구조장비 확보</td><td>□</td></tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section v-else-if="currentPreview.key === 'daily-safety'" class="preview-sheet preview-daily-safety">
+              <div class="safety-heading"><span>사업장명 : {{ form.title }}</span><span>날짜 : {{ form.work_date }}</span></div>
+              <div class="today-tomorrow">
+                <div><h4>금일 작업 사항</h4><table class="preview-table compact"><thead><tr><th>공사업체</th><th>위험성</th><th>작업내용</th><th>인원</th><th>장비</th><th>PTW</th></tr></thead><tbody><tr v-for="(job, index) in todayJobs" :key="index"><td>{{ form.contractor_name }}</td><td>{{ form.hazard }}</td><td>{{ job.description }}</td><td>{{ job.people || 0 }}</td><td>{{ equipmentSummary }}</td><td>발행</td></tr></tbody></table></div>
+                <div><h4>명일 작업 사항</h4><div class="blank-work-box">명일 계획 입력 영역</div></div>
+              </div>
+            </section>
+
+            <section v-else-if="currentPreview.kind === 'drawing'" class="preview-sheet preview-meeting">
+              <div class="meeting-meta"><b>일일 공정회의록 · {{ currentPreview.key === "meeting-4f" ? "4층" : "6층" }}</b><span>{{ form.work_date }} · 공정률 {{ form.progress_rate }}%</span></div>
               <div class="preview-drawing" v-html="previewSvgMarkup" />
               <div class="preview-jobs">
-                <p v-for="(job, index) in todayJobs" :key="index"><strong>{{ job.workplace || job.floor }}</strong> — {{ job.description }}</p>
+                <p v-for="(job, index) in previewFloorJobs" :key="index"><strong>{{ job.floor }} {{ job.workplace }}</strong> — {{ job.description }} <em>{{ job.people || 0 }}명</em></p>
+                <p v-if="previewFloorJobs.length === 0" class="preview-empty">이 층에 입력된 작업이 없습니다.</p>
               </div>
-            </template>
-            <template v-else>
-              <dl class="preview-fields">
-                <div><dt>작업일자</dt><dd>{{ form.work_date }} {{ form.start_time }}~{{ form.end_time }}</dd></div>
-                <div><dt>업체·공정률</dt><dd>{{ form.contractor_name }} · {{ form.progress_rate }}%</dd></div>
-                <div><dt>인원현황</dt><dd>총 {{ form.total_count }} / 관리자 {{ form.manager_count }} / 근로자 {{ form.worker_count }} / 신호수 {{ form.signal_count }}</dd></div>
-                <div><dt>작업장소</dt><dd>{{ todayJobs.map((job) => job.workplace || job.floor).filter(Boolean).join(", ") || form.workplace }}</dd></div>
-                <div><dt>위험요인</dt><dd>{{ form.hazard }}</dd></div>
-                <div><dt>안전대책</dt><dd>{{ form.control }}</dd></div>
-              </dl>
-            </template>
+              <table class="preview-table compact"><tbody><tr><th>자재 반입 차량</th><td>현장 입력 확인</td><th>외국인 근로자</th><td>{{ form.foreign_worker_count }}명</td></tr></tbody></table>
+            </section>
+
+            <section v-else-if="currentPreview.key === 'grade-c'" class="preview-sheet preview-grade">
+              <div class="audit-meta"><span>감사종류　■ 정기 / □ 특별</span><span>주관팀　환경안전팀</span><span>점검일자　{{ form.work_date }}</span></div>
+              <table class="preview-table grade-table">
+                <thead><tr><th>평가항목</th><th>등급</th><th>작업내용 / 판단기준</th><th>해당</th></tr></thead>
+                <tbody>
+                  <tr><td>고소작업</td><td>C</td><td>2m 이상, 작업발판·통로 미확보 또는 안전벨트 부착설비가 필요한 작업</td><td>□</td></tr>
+                  <tr><td>화기작업</td><td>C</td><td>불티 비산 또는 하부 발화성 자재와 중복되는 작업</td><td>{{ form.fire_work === "유" ? "■" : "□" }}</td></tr>
+                  <tr><td>중량물 취급</td><td>C</td><td>외줄걸이·동시작업·차량계 건설기계 2대 이상 작업</td><td>□</td></tr>
+                  <tr><td>전기취급</td><td>C</td><td>고소·중량물·화기 작업과 중복되거나 활선으로 진행하는 작업</td><td>□</td></tr>
+                  <tr><td>가설구조물</td><td>C</td><td>장소 이동, 개구부 인접 또는 타 공정과 중복되는 작업</td><td>□</td></tr>
+                  <tr><td>밀폐공간</td><td>C</td><td>모든 밀폐공간 작업</td><td>□</td></tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section v-else-if="currentPreview.key === 'waiting'" class="preview-sheet preview-waiting">
+              <div class="warning-banner">중대한 위험에 의한 사고발생이 예상되어 작업대기를 요청할 수 있는 공종</div>
+              <table class="preview-table waiting-table">
+                <thead><tr><th>해당공정</th><th>등급</th><th>작업대기 판단기준</th><th>비고</th></tr></thead>
+                <tbody>
+                  <tr><td>고소작업</td><td>C</td><td>발판·통로 미확보, 건설기계 상부 이동, 케이지 밖 작업</td><td>□</td></tr>
+                  <tr><td>화기작업</td><td>C</td><td>불티 비산·지하/밀폐구간·타 공정과 중복 작업</td><td>□</td></tr>
+                  <tr><td>중량물 취급</td><td>C</td><td>외줄걸이, 인력 동시작업, 장비 2대 이상 동시 작업</td><td>□</td></tr>
+                  <tr><td>전기취급</td><td>C</td><td>무단 활선작업 또는 단전·접지 미확보</td><td>□</td></tr>
+                  <tr><td>가설구조물</td><td>C</td><td>추락위험·개구부 인접·작업구획 불명확</td><td>□</td></tr>
+                  <tr><td>기타</td><td>C</td><td>무자격 장비운전, 안전장치 임의 해체, 작업계획서 미작성</td><td>□</td></tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section v-else-if="currentPreview.key === 'daily-check'" class="preview-sheet preview-checklist">
+              <table class="preview-table checklist-table">
+                <thead><tr><th>번호</th><th>일일 업무 내용</th><th>O/X</th><th>비고</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>4·6층 현황판 및 GS25 6층 제출서류 확인</td><td>□</td><td>PTW·안전감시단·TBM일지</td></tr>
+                  <tr><td>2</td><td>일일작업일보와 오전/오후 TBM·작업진행 사진 공유</td><td>□</td><td>체감온도 기록 포함</td></tr>
+                  <tr><td>3</td><td>일일보고 엑셀과 일일공정회의록 작성·이메일 송부</td><td>□</td><td>수신/참조 확인</td></tr>
+                  <tr><td>4</td><td>09시 일일안전협의체 회의 준비물 출력</td><td>□</td><td>공사일보·전일 PTW·회의록</td></tr>
+                  <tr><td>5</td><td>자재반입 차량 계획 작성 및 공유</td><td>□</td><td>차량 사진·멘트</td></tr>
+                  <tr><td>6</td><td>신호수 업무사진 오전·오후 각 1장 확보</td><td>□</td><td>안전관리비 증빙</td></tr>
+                  <tr><td>7</td><td>장기출입 신청 인적사항 작성·이메일 송부</td><td>□</td><td>공유폴더 확인</td></tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section v-else class="preview-sheet preview-checklist weekly">
+              <table class="preview-table checklist-table">
+                <thead><tr><th>번호</th><th>주간 업무 내용</th><th>O/X</th><th>기한·비고</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>차주 위험작업 신청서 제출</td><td>□</td><td>매주 월요일 · 화~차주 월</td></tr>
+                  <tr><td>2</td><td>도급사 주간안전활동 실적표 작성</td><td>□</td><td>차주 월요일 PDF 제출</td></tr>
+                  <tr><td>3</td><td>수시위험성평가 업데이트</td><td>□</td><td>2주마다</td></tr>
+                  <tr><td>4</td><td>아차사고 사례 작성·제출</td><td>□</td><td>월 1건 · 별도 PPT</td></tr>
+                  <tr><td>5</td><td>비상대피훈련 실시 및 기록</td><td>□</td><td>월 1회 · 시나리오 첨부</td></tr>
+                </tbody>
+              </table>
+            </section>
             <footer>미리보기 · 실제 Excel은 원본 시트 서식과 수식을 유지하여 생성됩니다.</footer>
           </article>
           <div class="preview-nav">
@@ -393,6 +501,22 @@ const drawing = reactive<Drawing>({ width: 1600, height: 1000, background_asset_
 const selectedObject = computed(() => drawing.objects.find((item) => item.id === selectedId.value) || null);
 const selectedSite = computed(() => pilotSites.value.find((site) => site.id === Number(form.target_site_id)) || null);
 const currentPreview = computed(() => previewPages[previewIndex.value] || previewPages[0]);
+const workplaceSummary = computed(() =>
+  todayJobs.value.map((job) => [job.floor, job.workplace].filter(Boolean).join(" ")).filter(Boolean).join(", ") || form.workplace,
+);
+const workDescriptionSummary = computed(() =>
+  todayJobs.value.map((job) => `${[job.floor, job.workplace].filter(Boolean).join(" ")}: ${job.description}`).join("\n") || form.work_description,
+);
+const equipmentSummary = computed(() => {
+  const equipment = [];
+  if (Number(form.forklift_used)) equipment.push(`지게차 ${form.forklift_used}`);
+  if (Number(form.lift_used)) equipment.push(`고소작업대 ${form.lift_used}`);
+  return equipment.join(", ") || "해당없음";
+});
+const previewFloorJobs = computed(() => {
+  const floorToken = currentPreview.value.key === "meeting-4f" ? "4" : "6";
+  return todayJobs.value.filter((job) => `${job.floor} ${job.workplace}`.includes(floorToken));
+});
 const previewSvgMarkup = computed(() => {
   JSON.stringify(drawing);
   if (!svgRef.value) return '<p class="preview-empty">도면을 먼저 올려주세요.</p>';
@@ -980,6 +1104,9 @@ button { font: inherit; cursor: pointer; }.text-button { padding: 0; border: 0; 
 .history-panel { max-height: 720px; overflow: auto; }.history-item { display: grid; width: 100%; gap: 5px; margin-bottom: 8px; padding: 12px; text-align: left; border: 1px solid #e2e8f0; border-radius: 11px; background: #f8fafc; }.history-item.active { border-color: #2563eb; background: #eff6ff; }.history-item span,.empty-list { color: #64748b; font-size: 11px; }
 .preview-panel { grid-column: 1 / -1; }.preview-panel .panel-title p { margin: 4px 0 0; color: #64748b; font-size: 12px; }.preview-page-tabs { display: flex; gap: 6px; padding-bottom: 10px; overflow-x: auto; }.preview-page-tabs button { flex: 0 0 auto; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 9px; color: #475569; background: #fff; font-size: 11px; font-weight: 800; }.preview-page-tabs button.active { color: #fff; border-color: #173f70; background: #173f70; }
 .paper-preview { width: min(900px,100%); min-height: 560px; box-sizing: border-box; margin: 0 auto; padding: 34px 38px; border: 1px solid #94a3b8; background: #fff; box-shadow: 0 8px 24px rgba(15,23,42,.12); }.paper-preview > header { display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 3px solid #173f70; }.paper-preview > h3 { margin: 24px 0; text-align: center; font-size: 24px; }.paper-preview > footer { margin-top: 25px; padding-top: 10px; border-top: 1px solid #cbd5e1; color: #64748b; text-align: center; font-size: 11px; }.preview-drawing { overflow: hidden; border: 1px solid #cbd5e1; }.preview-drawing :deep(svg) { display: block; width: 100%; height: auto; }.preview-jobs p { margin: 8px 0; }.preview-fields { display: grid; gap: 0; border: 1px solid #94a3b8; }.preview-fields div { display: grid; grid-template-columns: 150px 1fr; border-bottom: 1px solid #cbd5e1; }.preview-fields div:last-child { border-bottom: 0; }.preview-fields dt,.preview-fields dd { margin: 0; padding: 13px; }.preview-fields dt { background: #eff6ff; font-weight: 900; }.preview-fields dd { white-space: pre-line; }.preview-nav { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }.preview-nav button { min-height: 40px; padding: 0 20px; border: 1px solid #94a3b8; border-radius: 9px; background: #fff; font-weight: 800; }.preview-nav button:disabled { opacity: .4; }
+.preview-sheet { color: #172033; }.preview-sheet h4 { margin: 18px 0 8px; }.preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }.preview-table th,.preview-table td { padding: 9px; border: 1px solid #94a3b8; text-align: left; vertical-align: top; white-space: pre-line; }.preview-table th { color: #172033; background: #e8eef6; font-weight: 900; }.preview-table.compact th,.preview-table.compact td { padding: 7px; }.photo-placeholders { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 12px; }.photo-placeholders div { display: grid; place-items: center; min-height: 72px; border: 1px dashed #94a3b8; color: #64748b; background: #f8fafc; font-size: 11px; }.preview-job-list { margin: 0; padding: 0; list-style: none; border-top: 2px solid #173f70; }.preview-job-list li { display: grid; grid-template-columns: 150px 1fr 55px; gap: 8px; padding: 9px; border-bottom: 1px solid #cbd5e1; }.preview-job-list span { white-space: pre-line; }.preview-job-list em,.preview-jobs em { color: #475569; font-style: normal; }.report-summary { margin-top: 12px; padding: 10px; color: #fff; background: #173f70; font-size: 12px; font-weight: 800; }
+.permit-no { display: flex; justify-content: space-between; margin-bottom: 10px; padding: 10px; border: 2px solid #111827; font-size: 15px; font-weight: 900; }.permit-types { display: grid; grid-template-columns: repeat(2,1fr); border: 1px solid #64748b; }.permit-types span { padding: 8px; border: 1px solid #cbd5e1; }.permit-types span.checked { color: #991b1b; font-weight: 900; }.permit-types small { float: right; color: #64748b; }.gas-box { display: grid; grid-template-columns: 1.5fr repeat(4,1fr); margin-top: 12px; border: 1px solid #64748b; }.gas-box > * { padding: 9px; border-right: 1px solid #cbd5e1; font-size: 11px; }.signature-line { margin-top: 13px; padding: 14px; border: 1px solid #64748b; text-align: center; font-size: 12px; }.sheet-note { padding: 10px; border-left: 5px solid #d97706; background: #fffbeb; }.checklist-table td:nth-child(1),.checklist-table td:nth-child(3) { text-align: center; font-weight: 900; }.preview-prevention .checklist-table td:nth-child(1) { color: #fff; background: #475569; }
+.safety-heading,.meeting-meta,.audit-meta { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; padding: 9px; border: 1px solid #94a3b8; font-size: 12px; font-weight: 800; }.today-tomorrow { display: grid; grid-template-columns: 1.6fr .7fr; gap: 10px; }.today-tomorrow h4 { margin-top: 0; padding: 8px; color: #fff; text-align: center; background: #173f70; }.blank-work-box { min-height: 170px; padding: 12px; border: 1px solid #94a3b8; color: #94a3b8; }.preview-daily-safety .preview-table { font-size: 10px; }.preview-meeting .preview-drawing { max-height: 350px; }.preview-meeting .preview-drawing :deep(svg) { max-height: 350px; object-fit: contain; }.preview-jobs { margin: 10px 0; padding: 8px; border: 1px solid #94a3b8; }.audit-meta { background: #f1f5f9; }.grade-table td:nth-child(2),.grade-table td:nth-child(4),.waiting-table td:nth-child(2),.waiting-table td:nth-child(4) { text-align: center; font-weight: 900; }.preview-grade .grade-table td:nth-child(2) { color: #b91c1c; font-size: 16px; }.warning-banner { margin-bottom: 12px; padding: 13px; color: #fff; text-align: center; background: #991b1b; font-weight: 900; }.preview-waiting .waiting-table tbody tr { background: #fff7ed; }.preview-checklist .checklist-table tbody tr:nth-child(even) { background: #f8fafc; }.preview-checklist.weekly .checklist-table th { color: #fff; background: #166534; }
 .action-bar { position: fixed; z-index: 20; right: 24px; bottom: 18px; display: flex; gap: 8px; padding: 8px; border: 1px solid #dbe3ed; border-radius: 16px; background: rgba(255,255,255,.94); box-shadow: 0 12px 35px rgba(15,23,42,.22); backdrop-filter: blur(10px); }.action-bar button { min-height: 46px; padding: 0 20px; border-radius: 11px; font-weight: 900; }.primary-action { color: #fff; border: 0; background: #0f766e; }.primary-action:disabled { opacity: .55; }.secondary-action { color: #1e3a5f; border: 1px solid #94a3b8; background: #fff; }
 .mobile-tabs { display: none; }.toast { position: fixed; z-index: 30; left: 50%; bottom: 88px; transform: translateX(-50%); padding: 11px 16px; border-radius: 11px; color: #fff; background: #0f766e; box-shadow: 0 8px 30px rgba(0,0,0,.25); }.toast.error,.state-card.error { color: #b91c1c; background: #fff1f2; }
 @media (max-width: 1180px) { .workspace { grid-template-columns: 280px 1fr; }.history-panel { grid-column: 1 / -1; max-height: none; }.history-item { display: inline-grid; width: min(280px, 100%); margin-right: 8px; } }
