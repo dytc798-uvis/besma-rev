@@ -190,6 +190,80 @@ def test_document_explorer_list_allows_site_role(tmp_path: Path):
         settings.storage_root = original_storage_root
 
 
+def test_document_explorer_list_allows_site_manager_role(tmp_path: Path):
+    docs_dir = tmp_path / "docs" / "base"
+    storage_root = tmp_path / "storage"
+    general_root = docs_dir / "일반 양식"
+    general_root.mkdir(parents=True, exist_ok=True)
+    (general_root / "manager-visible.txt").write_text("ok", encoding="utf-8")
+
+    original_base_dir = settings.document_explorer_base_dir
+    original_storage_root = settings.storage_root
+    settings.document_explorer_base_dir = docs_dir
+    settings.storage_root = storage_root
+    app = FastAPI()
+    app.include_router(document_explorer_router)
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=10,
+        role=Role.SITE_FUNCTIONAL_EVAL,
+        login_id="site-manager",
+        site_id=1,
+        ui_type="SITE",
+    )
+
+    try:
+        response = TestClient(app).get("/document-explorer/list")
+        assert response.status_code == 200
+        assert response.json()["items"][0]["name"] == "manager-visible.txt"
+    finally:
+        settings.document_explorer_base_dir = original_base_dir
+        settings.storage_root = original_storage_root
+
+
+def test_document_explorer_searches_indexed_file_content(tmp_path: Path):
+    docs_dir = tmp_path / "docs" / "base"
+    storage_root = tmp_path / "storage"
+    general_root = docs_dir / "일반 양식"
+    general_root.mkdir(parents=True, exist_ok=True)
+    (general_root / "작업계획서.txt").write_text(
+        "밀폐공간 작업 전 산소농도와 유해가스 농도를 측정한다.",
+        encoding="utf-8",
+    )
+
+    original_base_dir = settings.document_explorer_base_dir
+    original_storage_root = settings.storage_root
+    settings.document_explorer_base_dir = docs_dir
+    settings.storage_root = storage_root
+
+    app = FastAPI()
+    app.include_router(document_explorer_router)
+    app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
+        id=9,
+        role=Role.SITE,
+        login_id="site02",
+        site_id=1,
+        ui_type="SITE",
+    )
+    client = TestClient(app)
+
+    try:
+        response = client.get(
+            "/document-explorer/search",
+            params={"q": "산소농도 유해가스"},
+        )
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "작업계획서.txt"
+        assert items[0]["match_source"] == "content"
+        assert "산소농도" in items[0]["snippet"]
+        assert items[0]["index_status"] == "indexed"
+        assert items[0]["relevance"] > 0
+    finally:
+        settings.document_explorer_base_dir = original_base_dir
+        settings.storage_root = original_storage_root
+
+
 def test_document_explorer_file_open_and_not_found(tmp_path: Path):
     docs_dir = tmp_path / "docs" / "base"
     docs_dir.mkdir(parents=True, exist_ok=True)

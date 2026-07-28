@@ -299,7 +299,7 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
     { key: "safety-education", label: "안전교육 및 안전점검" },
     { key: "mobile", label: "일일안전회의(일일위험성평가)" },
     { key: "mobile-site-search", label: "현장 검색" },
-    { key: "document-explorer", label: "문서 탐색" },
+    { key: "document-explorer", label: "양식·법령 탐색" },
     { key: "risk-library", label: "위험성평가 DB 조회" },
     { key: "documents", label: "내 현장 문서" },
     { key: "communications", label: "소통자료" },
@@ -310,7 +310,7 @@ const FIXED_MENU_LABELS: Record<"SITE" | "HQ_SAFE", Array<{ key: string; label: 
   HQ_SAFE: [
     { key: "risk-library", label: "위험성평가 DB 조회" },
     { key: "site-search", label: "현장 검색" },
-    { key: "document-explorer", label: "문서 탐색" },
+    { key: "document-explorer", label: "양식·법령 탐색" },
     { key: "documents", label: "문서 취합 현황" },
     { key: "approvals-history", label: "본사-현장 소통" },
     { key: "opinions", label: "운영 아이디어 제안" },

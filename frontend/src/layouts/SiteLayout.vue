@@ -46,7 +46,7 @@
         </RouterLink>
         <RouterLink :class="menuLinkClass('document-explorer', '/site/document-explorer')" :style="menuOrderStyle('document-explorer')" to="/site/document-explorer">
           <span class="menu-icon" v-if="menuIcon('document-explorer')">{{ menuIcon("document-explorer") }}</span>
-          문서 탐색
+          양식·법령 탐색
         </RouterLink>
         <RouterLink
           v-for="m in dynamicMenus"
@@ -129,7 +129,7 @@
           @click="closeMobileDrawer"
         >
           <span class="menu-icon" v-if="menuIcon('document-explorer')">{{ menuIcon("document-explorer") }}</span>
-          문서 탐색
+          양식·법령 탐색
         </RouterLink>
         <RouterLink :class="menuLinkClass('risk-library', '/site/risk-library')" to="/site/risk-library" @click="closeMobileDrawer">
           위험성평가 DB

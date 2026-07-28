@@ -329,10 +329,13 @@ def _score_article_query(master: LawMaster, article: LawArticleItem, query: str)
         (article.article_display, 4.0),
         (article.summary_title, 4.0),
         (article.action_required, 3.0),
+        (article.countermeasure, 3.0),
+        (article.penalty, 3.0),
         (article.keywords, 3.0),
         (article.search_text, 2.0),
     ]
     score = 0.0
+    matched_tokens: set[str] = set()
     for text_value, weight in targets:
         value = normalize_text(text_value).lower()
         if not value:
@@ -342,6 +345,9 @@ def _score_article_query(master: LawMaster, article: LawArticleItem, query: str)
         for token in tokens:
             if token in value:
                 score += weight
+                matched_tokens.add(token)
+    if tokens and len(matched_tokens) == len(tokens):
+        score += 10.0
     return round(score, 2)
 
 

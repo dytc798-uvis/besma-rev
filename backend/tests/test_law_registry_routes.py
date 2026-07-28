@@ -30,12 +30,12 @@ def _setup_db():
     return SessionLocal()
 
 
-def _build_client(db):
+def _build_client(db, role=Role.HQ_SAFE):
     app = FastAPI()
     app.include_router(law_registry_router)
     app.dependency_overrides[get_current_user_with_bypass] = lambda: SimpleNamespace(
         id=1,
-        role=Role.HQ_SAFE,
+        role=role,
         ui_type="HQ_SAFE",
     )
 
@@ -131,3 +131,14 @@ def test_law_registry_search_empty_result():
     body = response.json()
     assert body["total"] == 0
     assert body["items"] == []
+
+
+def test_law_registry_search_allows_site_manager_role():
+    db = _setup_db()
+    _seed_records(db)
+    client = _build_client(db, Role.SITE_FUNCTIONAL_EVAL)
+
+    response = client.get("/law-registry/search", params={"q": "점검"})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1

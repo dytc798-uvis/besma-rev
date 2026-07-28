@@ -13,6 +13,7 @@ LAW_REGISTRY_ALLOWED_ROLES = {
     Role.HQ_SAFE_ADMIN.value,
     Role.HQ_SAFE.value,
     Role.SITE.value,
+    Role.SITE_FUNCTIONAL_EVAL.value,
     Role.HQ_OTHER.value,
 }
 

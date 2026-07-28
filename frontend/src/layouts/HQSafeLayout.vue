@@ -96,7 +96,7 @@
             :style="menuOrderPrimaryStyle('document-explorer')"
             to="/hq-safe/document-explorer"
           >
-            문서 검색
+            양식·법령 탐색
           </RouterLink>
           <RouterLink
             :class="hqMenuEmphasisClass('documents')"

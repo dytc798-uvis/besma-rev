@@ -19,6 +19,10 @@ from app.modules.documents.storage_paths import (
     is_field_derivative_filename,
     resolve_existing_storage_path,
 )
+from app.modules.document_explorer.search_index import (
+    refresh_document_index,
+    score_document,
+)
 from app.schemas.document_explorer import DocumentExplorerFileItem, DocumentExplorerListResponse
 
 router = APIRouter(prefix="/document-explorer", tags=["document-explorer"])
@@ -29,6 +33,7 @@ DOCUMENT_EXPLORER_ALLOWED_ROLES = {
     Role.HQ_SAFE.value,
     Role.ACCIDENT_ADMIN.value,
     Role.SITE.value,
+    Role.SITE_FUNCTIONAL_EVAL.value,
     Role.HQ_OTHER.value,
 }
 
@@ -173,8 +178,8 @@ def _infer_category(relative_path: str, source: str) -> str | None:
     return None
 
 
-def _scan_document_files() -> list[DocumentExplorerFileItem]:
-    items: list[DocumentExplorerFileItem] = []
+def _scan_document_file_entries() -> list[tuple[DocumentExplorerFileItem, Path]]:
+    entries: list[tuple[DocumentExplorerFileItem, Path]] = []
     scan_sources: dict[str, Path] = {
         "base": _document_explorer_base_dir(),
         "field": _document_explorer_field_docs_dir(),
@@ -200,8 +205,9 @@ def _scan_document_files() -> list[DocumentExplorerFileItem]:
                 continue
             rel = f"{source}/{root_rel}" if root_rel else source
             stat = path.stat()
-            items.append(
-                DocumentExplorerFileItem(
+            entries.append(
+                (
+                    DocumentExplorerFileItem(
                     id=md5(rel.encode("utf-8")).hexdigest(),
                     name=_explorer_item_name(path, category),
                     relative_path=rel,
@@ -209,11 +215,20 @@ def _scan_document_files() -> list[DocumentExplorerFileItem]:
                     size_bytes=stat.st_size,
                     extension=ext,
                     category=category,
+                    ),
+                    path,
                 )
             )
 
-    items.sort(key=lambda item: (item.modified_at, item.relative_path), reverse=True)
-    return items
+    entries.sort(
+        key=lambda entry: (entry[0].modified_at, entry[0].relative_path),
+        reverse=True,
+    )
+    return entries
+
+
+def _scan_document_files() -> list[DocumentExplorerFileItem]:
+    return [item for item, _path in _scan_document_file_entries()]
 
 
 def _matches_query(item: DocumentExplorerFileItem, q: str) -> bool:
@@ -237,7 +252,39 @@ def search_document_explorer_files(
     q: str = Query(default=""),
 ):
     _assert_document_explorer_access(current_user)
-    items = [item for item in _scan_document_files() if _matches_query(item, q)]
+    query = (q or "").strip()
+    entries = _scan_document_file_entries()
+    if not query:
+        return DocumentExplorerListResponse(items=[item for item, _path in entries])
+    index = refresh_document_index(
+        (item.relative_path, path) for item, path in entries
+    )
+    indexed_items = index["items"]
+    items: list[DocumentExplorerFileItem] = []
+    for item, _path in entries:
+        indexed = indexed_items.get(item.relative_path, {})
+        relevance, snippet, match_source = score_document(
+            query=query,
+            name=item.name,
+            relative_path=item.relative_path,
+            indexed_text=indexed.get("text") or "",
+        )
+        if relevance <= 0:
+            continue
+        items.append(
+            item.model_copy(
+                update={
+                    "relevance": relevance,
+                    "snippet": snippet,
+                    "match_source": match_source,
+                    "index_status": indexed.get("status"),
+                }
+            )
+        )
+    items.sort(
+        key=lambda item: (item.relevance, item.modified_at, item.relative_path),
+        reverse=True,
+    )
     return DocumentExplorerListResponse(items=items)
 
 
