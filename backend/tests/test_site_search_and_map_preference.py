@@ -136,6 +136,7 @@ def test_hq_sites_prefers_uploaded_duplicate_site():
     assert search.status_code == 200
     search_rows = search.json()
     search_ids = [row["id"] for row in search_rows]
+    assert {row["site_code"] for row in search_rows} >= {"SITE001", "SITE002", "24025"}
     assert duplicate_uploaded.id in search_ids
     assert duplicate_primary.id in search_ids
     assert other_site.id in search_ids

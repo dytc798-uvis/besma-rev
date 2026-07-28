@@ -84,6 +84,7 @@ class SiteWorkerResponse(BaseModel):
 
 class SiteSearchResponse(BaseModel):
     id: int
+    site_code: str
     name: str
     address: str | None = None
     latitude: float | None = None

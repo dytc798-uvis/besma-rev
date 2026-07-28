@@ -110,6 +110,7 @@ def search_sites(db: DbDep, current_user: CurrentUserDep):
     return [
         SiteSearchResponse(
             id=site.id,
+            site_code=site.site_code,
             name=site.site_name,
             address=site.address,
             latitude=site.latitude,
