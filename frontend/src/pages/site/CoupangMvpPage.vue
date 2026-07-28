@@ -152,7 +152,7 @@
               <span>▧</span>{{ areaMode ? "범위를 드래그" : "작업범위 설정" }}
             </button>
             <button v-for="tool in iconTools" :key="tool.label" type="button" @click="addIcon(tool)">
-              <span>{{ tool.glyph }}</span>{{ tool.label }}
+              <span>{{ tool.button_glyph || tool.glyph }}</span>{{ tool.label }}
             </button>
           </div>
 
@@ -262,7 +262,13 @@
                 </template>
                 <template v-else>
                   <circle :cx="object.w / 2" :cy="object.h / 2" :r="object.w / 2 - 5" :fill="object.color" stroke="#fff" stroke-width="8" />
-                  <text :x="object.w / 2" :y="object.h / 2 + 16" text-anchor="middle" font-size="48">{{ object.glyph }}</text>
+                  <svg v-if="object.glyph === 'signal-helmet'" :width="object.w" :height="object.h" viewBox="0 0 120 120">
+                    <circle cx="60" cy="67" r="25" fill="#f4c7a1" />
+                    <path d="M31 61a29 29 0 0 1 58 0H31z" fill="#dc2626" stroke="#991b1b" stroke-width="4" />
+                    <rect x="24" y="58" width="72" height="13" rx="6" fill="#ef4444" stroke="#991b1b" stroke-width="4" />
+                    <path d="M45 91c8 7 22 7 30 0" fill="none" stroke="#7c2d12" stroke-width="4" stroke-linecap="round" />
+                  </svg>
+                  <text v-else :x="object.w / 2" :y="object.h / 2 + 16" text-anchor="middle" font-size="48">{{ object.glyph }}</text>
                   <rect :x="-20" :y="object.h + 8" :width="object.w + 40" height="38" rx="10" fill="#0f172a" opacity=".88" />
                   <text :x="object.w / 2" :y="object.h + 35" text-anchor="middle" fill="#fff" font-size="24">{{ object.label }}</text>
                 </template>
@@ -494,7 +500,7 @@ const iconTools = [
   { label: "소화기", glyph: "🧯", color: "#ef4444" },
   { label: "비상구", glyph: "↗", color: "#16a34a" },
   { label: "작업자", glyph: "👷", color: "#f59e0b" },
-  { label: "신호수", glyph: "⛑", color: "#dc2626" },
+  { label: "신호수", glyph: "signal-helmet", button_glyph: "⛑", color: "#dc2626" },
   { label: "차량", glyph: "🚚", color: "#2563eb" },
   { label: "크레인", glyph: "🏗", color: "#475569" },
   { label: "고소작업", glyph: "▲", color: "#ea580c" },
@@ -847,15 +853,15 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function addIcon(tool: { label: string; glyph: string; color: string }) {
+function addIcon(tool: { label: string; glyph: string; button_glyph?: string; color: string }) {
   routeMode.value = false;
   areaMode.value = false;
-  const index = drawing.objects.length % 6;
+  const index = drawing.objects.filter((item) => item.type === "icon").length;
   const object: DrawingObject = {
     id: makeId("icon"),
     type: "icon",
-    x: 650 + index * 28,
-    y: 380 + index * 24,
+    x: 120 + (index % 5) * 280,
+    y: 120 + Math.floor(index / 5) * 230,
     w: 120,
     h: 120,
     label: tool.label,
