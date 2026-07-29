@@ -16,6 +16,8 @@
     <aside class="layout-sidebar">
       <h1>BESMA CSMS 안전보건플랫폼 · 현장</h1>
       <nav v-if="!isMobileViewport" class="layout-menu">
+        <RouterLink to="/site/home">현장 홈</RouterLink>
+        <RouterLink class="site-heat-menu-highlight" to="/site/heat-stress">체감온도 기록</RouterLink>
         <RouterLink
           :class="menuLinkClass('field-form-uploads', '/site/field-form-uploads')"
           :style="menuOrderStyle('field-form-uploads')"
@@ -84,6 +86,8 @@
         <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" :style="menuOrderStyle('user-guide')" to="/site/user-guide">기능인인정제 설명</RouterLink>
       </nav>
       <nav v-else class="layout-menu layout-menu-mobile-site">
+        <RouterLink to="/site/home" @click="closeMobileDrawer">현장 홈</RouterLink>
+        <RouterLink class="site-heat-menu-highlight" to="/site/heat-stress" @click="closeMobileDrawer">체감온도 기록</RouterLink>
         <RouterLink :class="menuLinkClass('field-form-uploads', '/site/field-form-uploads')" to="/site/field-form-uploads" @click="closeMobileDrawer">
           현장 양식 업로드
         </RouterLink>

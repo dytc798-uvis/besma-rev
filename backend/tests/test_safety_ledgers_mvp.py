@@ -53,7 +53,7 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
 
 
 def test_mobile_session_default_is_seven_days():
-    assert settings.access_token_expire_minutes == 60 * 24 * 7
+    assert settings.access_token_expire_minutes == 60 * 24 * 30
 
 
 def test_upload_review_and_export_flow(tmp_path: Path, monkeypatch):

@@ -1,0 +1,1 @@
+"""Heat-stress daily records."""
