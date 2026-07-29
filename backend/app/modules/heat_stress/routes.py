@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from app.core.auth import DbDep
 from app.core.datetime_utils import utc_now
@@ -262,7 +262,11 @@ def hq_summary(db: DbDep, current_user: CurrentUserDep, target_date: date | None
     start = datetime.combine(day, time.min)
     end = start + timedelta(days=1)
     base = db.query(HeatStressRecord).filter(HeatStressRecord.measured_at >= start, HeatStressRecord.measured_at < end)
-    active_sites = db.query(Site.id).filter(func.upper(func.coalesce(Site.status, "")) != "CLOSED").all()
+    active_sites = db.query(Site.id).filter(
+        func.upper(func.coalesce(Site.status, "")) != "CLOSED",
+        or_(Site.start_date.is_(None), Site.start_date <= day),
+        or_(Site.end_date.is_(None), Site.end_date >= day),
+    ).all()
     recorded_site_ids = {row[0] for row in base.with_entities(HeatStressRecord.site_id).distinct().all()}
     return {
         "target_date": day,
