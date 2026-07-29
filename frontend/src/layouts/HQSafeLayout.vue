@@ -22,6 +22,7 @@
         </template>
         <template v-else>
         <RouterLink class="hq-menu-dashboard" to="/hq-safe/dashboard">대시보드</RouterLink>
+        <RouterLink class="hq-fe-menu-highlight" to="/hq-safe/heat-stress">전 현장 체감온도 현황</RouterLink>
 
         <div class="hq-menu-group">
           <p class="hq-menu-section-label">주요업무</p>

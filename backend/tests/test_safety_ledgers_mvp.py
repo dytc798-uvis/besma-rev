@@ -62,7 +62,7 @@ def _client(tmp_path: Path, monkeypatch, *, user_name: str = "정상익") -> Tes
 
 
 def test_mobile_session_default_is_seven_days():
-    assert settings.access_token_expire_minutes == 60 * 24 * 7
+    assert settings.access_token_expire_minutes == 60 * 24 * 30
 
 
 def test_pilot_account_vehicle_and_card_scopes(tmp_path: Path, monkeypatch):

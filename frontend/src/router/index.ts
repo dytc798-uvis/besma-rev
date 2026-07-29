@@ -57,11 +57,14 @@ import WorkPlanForkliftPage from "@/pages/site/WorkPlanForkliftPage.vue";
 import CoupangMvpPage from "@/pages/site/CoupangMvpPage.vue";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
 import FeOnboardingPage from "@/pages/auth/FeOnboardingPage.vue";
+import HQHeatStressPage from "@/pages/hq/HQHeatStressPage.vue";
 import UserGuidePage from "@/pages/common/UserGuidePage.vue";
 import FunctionalEvalLayout from "@/layouts/FunctionalEvalLayout.vue";
 import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPage.vue";
 import TbmBetaPage from "@/pages/functional-eval/TbmBetaPage.vue";
 import SiteNewSiteDeploymentPage from "@/pages/site/SiteNewSiteDeploymentPage.vue";
+import SiteHomePage from "@/pages/site/SiteHomePage.vue";
+import HeatStressPage from "@/pages/site/HeatStressPage.vue";
 import HQFunctionalEvalPage from "@/pages/hq/HQFunctionalEvalPage.vue";
 import HQFunctionalEvalMonitoringPage from "@/pages/hq/HQFunctionalEvalMonitoringPage.vue";
 import HQFunctionalEvalRewardsSanctionsPage from "@/pages/hq/HQFunctionalEvalRewardsSanctionsPage.vue";
@@ -153,6 +156,7 @@ const routes: RouteRecordRaw[] = [
       { path: "", redirect: { name: "hq-safe-dashboard" } },
       { path: "dashboard", name: "hq-safe-dashboard", component: HQSafeHomePage },
       { path: "operations-dashboard", name: "hq-safe-operations-dashboard", component: HQSafeDashboard },
+      { path: "heat-stress", name: "hq-safe-heat-stress", component: HQHeatStressPage },
       { path: "field-form-uploads", name: "hq-safe-field-form-uploads", component: FieldFormUploadPage },
       { path: "safety-ledgers", redirect: { name: "hq-safe-card-expenses" } },
       { path: "card-expenses", name: "hq-safe-card-expenses", component: SafetyLedgersPage, meta: { ledgerTab: "card" } },
@@ -277,7 +281,9 @@ const routes: RouteRecordRaw[] = [
     component: SiteLayout,
     meta: { requiresAuth: true, uiType: "SITE" },
     children: [
-      { path: "", redirect: { name: "site-field-form-uploads" } },
+      { path: "", redirect: { name: "site-home" } },
+      { path: "home", name: "site-home", component: SiteHomePage },
+      { path: "heat-stress", name: "site-heat-stress", component: HeatStressPage },
       { path: "field-form-uploads", name: "site-field-form-uploads", component: FieldFormUploadPage },
       { path: "dashboard", name: "site-dashboard", component: SiteDashboard },
       { path: "notices", name: "site-notices", component: SiteNoticeBoardPage },

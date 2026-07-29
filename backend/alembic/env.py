@@ -34,6 +34,7 @@ def _load_model_metadata() -> None:
     from app.modules.communications import models as _communications_models  # noqa: F401
     from app.modules.accidents import models as _accidents_models  # noqa: F401
     from app.modules.inspection_journals import models as _inspection_journal_models  # noqa: F401
+    from app.modules.heat_stress import models as _heat_stress_models  # noqa: F401
 
 
 _load_model_metadata()

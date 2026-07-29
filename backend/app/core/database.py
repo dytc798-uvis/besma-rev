@@ -41,6 +41,7 @@ def init_db() -> None:
     from app.modules.safety_ledgers.models import ensure_safety_ledger_schema
     from app.modules.auth import account_issuance_models  # noqa: F401
     from app.modules.pdf_signing import models as pdf_signing_models  # noqa: F401
+    from app.modules.heat_stress import models as heat_stress_models  # noqa: F401
     from app.modules.pdf_signing.service import ensure_schema as ensure_pdf_signing_schema
 
     Base.metadata.create_all(bind=engine)

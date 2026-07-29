@@ -36,6 +36,7 @@ const props = withDefaults(
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const isDrawing = ref(false);
+const inked = ref(false);
 
 function getContext() {
   const canvas = canvasRef.value;
@@ -85,6 +86,7 @@ function onPointerMove(e: PointerEvent) {
   const { x, y } = getOffset(e);
   payload.ctx.lineTo(x, y);
   payload.ctx.stroke();
+  inked.value = true;
 }
 
 function onPointerUp(e: PointerEvent) {
@@ -99,6 +101,7 @@ function onPointerUp(e: PointerEvent) {
 
 function clear() {
   setupCanvas();
+  inked.value = false;
 }
 
 function toDataUrl() {
@@ -107,11 +110,16 @@ function toDataUrl() {
   return canvas.toDataURL("image/png");
 }
 
+function hasInk() {
+  return inked.value;
+}
+
 onMounted(setupCanvas);
 
 defineExpose({
   clear,
   toDataUrl,
+  hasInk,
 });
 </script>
 

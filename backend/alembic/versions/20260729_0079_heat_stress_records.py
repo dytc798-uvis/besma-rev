@@ -1,4 +1,8 @@
-"""heat stress records and audit logs"""
+"""heat stress records and audit logs
+
+Revision ID: 20260729_0079
+Revises: 20260729_0078
+"""
 
 from __future__ import annotations
 
