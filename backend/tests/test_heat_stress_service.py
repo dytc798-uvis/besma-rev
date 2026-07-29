@@ -22,6 +22,7 @@ def test_kma_formula_and_legal_thresholds():
 def test_actual_action_is_never_automatically_completed():
     assert action_compliance(33.0, []) == "ACTION_REQUIRED"
     assert action_compliance(33.0, ["WATER"]) == "ACTION_REQUIRED"
+    assert action_compliance(33.0, ["COOLING_GEAR"]) == "ACTION_REQUIRED"
     assert action_compliance(33.0, ["REST"]) == "RECORDED"
     assert action_compliance(30.0, []) == "RECORDED"
     assert action_compliance(30.0, ["NOT_IMPLEMENTED"]) == "ACTION_REQUIRED"
