@@ -7,7 +7,7 @@ const results = [];
 
 async function mockApi(page) {
   await page.addInitScript(() => localStorage.setItem("besma_token", "ui-smoke-token"));
-  await page.route("http://127.0.0.1:8001/**", async (route) => {
+  const handler = async (route) => {
     const path = new URL(route.request().url()).pathname;
     let body = {};
     if (path === "/auth/me") body = { id: 10, name: "현장 점검자", login_id: "site10", role: "SITE", ui_type: "SITE", site_id: 1, person_id: null, department: "안전", must_change_password: false };
@@ -20,7 +20,9 @@ async function mockApi(page) {
     else if (path === "/dynamic-menus/sidebar") body = { items: [] };
     else if (path === "/dynamic-menus/menu-order/SITE") body = { primary: [], secondary: [] };
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
-  });
+  };
+  await page.route("http://127.0.0.1:8001/**", handler);
+  await page.route("https://api.besma.co.kr/**", handler);
 }
 
 for (const profile of [
