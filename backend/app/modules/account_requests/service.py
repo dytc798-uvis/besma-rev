@@ -7,6 +7,7 @@ import secrets
 from datetime import timedelta
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config.security import get_password_hash
@@ -55,6 +56,76 @@ ROLE_UI_TYPE = {
     Role.HQ_OTHER: UIType.HQ_OTHER,
 }
 OPEN_STATUSES = {"REQUESTED", "IN_REVIEW", "NEEDS_INFO"}
+DEPARTMENT_OPTIONS: dict[str, list[str]] = {
+    "HQ": [
+        "안전보건실",
+        "공사관리팀",
+        "공사관리2팀",
+        "공사관리3팀",
+        "공사관리4팀",
+        "공사관리6팀",
+        "업무팀",
+        "예산견적팀",
+        "외주구매팀",
+        "재무회계팀",
+        "원가관리팀",
+        "경영지원실",
+        "PM",
+        "기타",
+    ],
+    "SITE": ["현장소장", "공사", "공무", "안전", "관리", "기타"],
+}
+HQ_DEPARTMENT_CATEGORY = {
+    "안전보건실": "SAFETY",
+    "공사관리팀": "CONSTRUCTION",
+    "공사관리2팀": "CONSTRUCTION",
+    "공사관리3팀": "CONSTRUCTION",
+    "공사관리4팀": "CONSTRUCTION",
+    "공사관리6팀": "CONSTRUCTION",
+    "업무팀": "PUBLIC_WORKS",
+    "예산견적팀": "BUDGET_ESTIMATE",
+    "외주구매팀": "OUTSOURCING_PURCHASE",
+}
+
+
+def request_options(db: Session) -> dict:
+    active_counts = {
+        int(site_id): int(count)
+        for site_id, count in (
+            db.query(User.site_id, func.count(User.id))
+            .filter(User.is_active.is_(True), User.site_id.isnot(None))
+            .group_by(User.site_id)
+            .all()
+        )
+        if site_id is not None
+    }
+    preferred_by_name: dict[str, tuple[tuple[int, int, int, int], Site]] = {}
+    for site in db.query(Site).all():
+        name = (site.site_name or "").strip()
+        if not name:
+            continue
+        score = (
+            active_counts.get(int(site.id), 0),
+            1 if (site.status or "").strip().upper() == "ACTIVE" else 0,
+            0 if (site.site_code or "").strip().upper().startswith("SITE") else 1,
+            int(site.id),
+        )
+        previous = preferred_by_name.get(name)
+        if previous is None or score > previous[0]:
+            preferred_by_name[name] = (score, site)
+    sites = [
+        {"id": int(site.id), "name": name}
+        for name, (_, site) in sorted(preferred_by_name.items(), key=lambda item: item[0])
+    ]
+    return {"departments": DEPARTMENT_OPTIONS, "sites": sites}
+
+
+def _category_for_department(scope: str, department: str) -> str:
+    if department not in DEPARTMENT_OPTIONS[scope]:
+        raise HTTPException(status_code=400, detail="INVALID_DEPARTMENT")
+    if scope == "SITE":
+        return "SITE"
+    return HQ_DEPARTMENT_CATEGORY.get(department, "OTHER")
 
 
 def normalize_phone(value: str) -> str:
@@ -171,15 +242,16 @@ def create_request(
 ) -> AccountAccessRequest:
     request_type = request_type.strip().upper()
     scope = payload.scope.strip().upper()
-    category = payload.work_category.strip().upper()
     if request_type not in REQUEST_TYPES:
         raise HTTPException(status_code=400, detail="INVALID_REQUEST_TYPE")
-    if scope not in {"HQ", "SITE"} or category not in WORK_CATEGORIES:
-        raise HTTPException(status_code=400, detail="INVALID_REQUEST_SCOPE_OR_CATEGORY")
+    if scope not in {"HQ", "SITE"}:
+        raise HTTPException(status_code=400, detail="INVALID_REQUEST_SCOPE")
+    department = (payload.department or "").strip()
+    if not department:
+        raise HTTPException(status_code=400, detail="DEPARTMENT_REQUIRED")
+    category = _category_for_department(scope, department)
     if not payload.privacy_consent:
         raise HTTPException(status_code=400, detail="PRIVACY_CONSENT_REQUIRED")
-    if scope == "SITE" and not (payload.site_code or payload.site_name):
-        raise HTTPException(status_code=400, detail="SITE_REQUIRED")
     phone = normalize_phone(payload.phone_mobile)
     candidates = _candidate_users(db, name=payload.name.strip(), phone=phone)
     if applicant is not None:
@@ -204,8 +276,12 @@ def create_request(
         raise HTTPException(status_code=409, detail="OPEN_REQUEST_ALREADY_EXISTS")
 
     site = None
-    if payload.site_code:
+    if scope == "SITE" and payload.site_id is not None:
+        site = db.query(Site).filter(Site.id == payload.site_id).first()
+    elif scope == "SITE" and payload.site_code:
         site = db.query(Site).filter(Site.site_code == payload.site_code.strip()).first()
+    if scope == "SITE" and site is None:
+        raise HTTPException(status_code=400, detail="SITE_REQUIRED")
     recommended = ROLE_MAPPING[category]
     req = AccountAccessRequest(
         request_no=_request_no(),
@@ -217,11 +293,11 @@ def create_request(
         phone_mobile=phone,
         company_name=payload.company_name.strip(),
         scope=scope,
-        department=(payload.department or "").strip() or None,
+        department=department,
         work_category=category,
         site_id=site.id if site else None,
-        site_code=(payload.site_code or "").strip() or None,
-        site_name=(payload.site_name or "").strip() or (site.site_name if site else None),
+        site_code=site.site_code if site else None,
+        site_name=site.site_name if site else None,
         request_reason=payload.request_reason.strip(),
         employment_evidence_note=(payload.employment_evidence_note or "").strip() or None,
         privacy_consent_at=utc_now(),

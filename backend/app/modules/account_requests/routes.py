@@ -19,10 +19,16 @@ from app.modules.account_requests.service import (
     create_request,
     decide_request,
     item_from_model,
+    request_options,
 )
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/account-requests", tags=["account-requests"])
+
+
+@router.get("/public/options")
+def get_public_request_options(db: DbDep):
+    return request_options(db)
 
 
 @router.post("/public", response_model=AccountRequestCreateResponse, status_code=201)

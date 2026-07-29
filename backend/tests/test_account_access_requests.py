@@ -30,7 +30,6 @@ def _payload(**overrides):
         "company_name": "부현전기",
         "scope": "HQ",
         "department": "예산견적팀",
-        "work_category": "BUDGET_ESTIMATE",
         "request_reason": "예산견적 업무 수행을 위한 계정 신청",
         "employment_evidence_note": "재직 확인 필요",
         "privacy_consent": True,
@@ -96,7 +95,8 @@ def test_account_request_workflow_and_existing_find(tmp_path: Path):
         is_active=True,
         must_change_password=False,
     )
-    db.add_all([admin, existing_person, existing, viewer])
+    site = Site(id=10, site_code="S-ACCOUNT-01", site_name="등록된 신청 현장", status="ACTIVE")
+    db.add_all([admin, existing_person, existing, viewer, site])
     db.commit()
     db.close()
 
@@ -125,6 +125,13 @@ def test_account_request_workflow_and_existing_find(tmp_path: Path):
     app.dependency_overrides[get_current_user] = lambda: current["user"]
     client = TestClient(app)
 
+    options = client.get("/account-requests/public/options")
+    assert options.status_code == 200
+    assert "예산견적팀" in options.json()["departments"]["HQ"]
+    assert "안전" in options.json()["departments"]["SITE"]
+    assert options.json()["sites"] == [{"id": 10, "name": "등록된 신청 현장"}]
+    assert "site_code" not in options.json()["sites"][0]
+
     found = client.post(
         "/auth/issue-accounts",
         json={
@@ -145,6 +152,18 @@ def test_account_request_workflow_and_existing_find(tmp_path: Path):
     request_no = submitted.json()["request_no"]
     assert submitted.json()["status"] == "REQUESTED"
     assert client.post("/account-requests/public", json=_payload()).status_code == 409
+    site_submitted = client.post(
+        "/account-requests/public",
+        json=_payload(
+            name="현장신청자",
+            phone_mobile="010-4444-5555",
+            scope="SITE",
+            department="안전",
+            site_id=10,
+            request_reason="등록 현장 안전관리 계정 신청",
+        ),
+    )
+    assert site_submitted.status_code == 201
 
     current["user"] = SimpleNamespace(
         id=3,
@@ -186,6 +205,15 @@ def test_account_request_workflow_and_existing_find(tmp_path: Path):
         assert created.temporary_password_expires_at is not None
         assert verify_password(result["temporary_password"], created.password_hash)
         assert check.query(AccountAccessRequestEvent).count() >= 2
+        site_request = (
+            check.query(AccountAccessRequest)
+            .filter(AccountAccessRequest.request_no == site_submitted.json()["request_no"])
+            .one()
+        )
+        assert site_request.work_category == "SITE"
+        assert site_request.site_id == 10
+        assert site_request.site_code == "S-ACCOUNT-01"
+        assert site_request.site_name == "등록된 신청 현장"
 
         created.temporary_password_expires_at = utc_now() - timedelta(minutes=1)
         check.commit()
@@ -261,7 +289,6 @@ def test_unmapped_category_waits_for_role_confirmation(tmp_path: Path):
     submitted = client.post(
         "/account-requests/public",
         json=_payload(
-            work_category="PUBLIC_WORKS",
             department="업무팀",
             phone_mobile="01022223333",
         ),

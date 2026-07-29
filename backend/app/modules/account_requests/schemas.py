@@ -11,7 +11,8 @@ class PublicAccountRequestCreate(BaseModel):
     company_name: str = Field(min_length=2, max_length=150)
     scope: str
     department: str | None = Field(default=None, max_length=100)
-    work_category: str
+    work_category: str | None = None
+    site_id: int | None = None
     site_code: str | None = Field(default=None, max_length=50)
     site_name: str | None = Field(default=None, max_length=200)
     request_reason: str = Field(min_length=5, max_length=2000)
