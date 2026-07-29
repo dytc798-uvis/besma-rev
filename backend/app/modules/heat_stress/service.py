@@ -76,7 +76,9 @@ def action_compliance(apparent_temperature_c: float, actions: list[str]) -> str:
     selected = set(actions)
     if "NOT_IMPLEMENTED" in selected:
         return "ACTION_REQUIRED"
-    if apparent_temperature_c >= 33 and not ({"REST", "COOLING_GEAR", "WORK_STOP"} & selected):
+    # 냉방장구만으로 휴식을 대체하는 법정 예외는 작업 특성·사유 확인이 필요하므로
+    # 자동으로 충족 처리하지 않고 본사 확인 대상으로 남긴다.
+    if apparent_temperature_c >= 33 and not ({"REST", "WORK_STOP"} & selected):
         return "ACTION_REQUIRED"
     if apparent_temperature_c >= 31 and not selected:
         return "ACTION_REQUIRED"
