@@ -55,6 +55,8 @@ import SiteInfoPage from "@/pages/site/SiteInfoPage.vue";
 import WorkPlanForkliftPage from "@/pages/site/WorkPlanForkliftPage.vue";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
 import FeOnboardingPage from "@/pages/auth/FeOnboardingPage.vue";
+import AccessRequestPage from "@/pages/auth/AccessRequestPage.vue";
+import HQAccountRequestsPage from "@/pages/hq/HQAccountRequestsPage.vue";
 import UserGuidePage from "@/pages/common/UserGuidePage.vue";
 import FunctionalEvalLayout from "@/layouts/FunctionalEvalLayout.vue";
 import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPage.vue";
@@ -127,6 +129,12 @@ const routes: RouteRecordRaw[] = [
     path: "/change-password",
     name: "change-password",
     component: ChangePasswordPage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: "/access-requests",
+    name: "access-requests",
+    component: AccessRequestPage,
     meta: { requiresAuth: true },
   },
   {
@@ -225,6 +233,7 @@ const routes: RouteRecordRaw[] = [
       { path: "opinions/:id", name: "hq-safe-opinion-detail", component: OpinionDetailPage },
       { path: "sites", name: "hq-safe-sites", component: HQSitesPage },
       { path: "users", name: "hq-safe-users", component: HQUsersPage },
+      { path: "account-requests", name: "hq-safe-account-requests", component: HQAccountRequestsPage },
       { path: "settings", name: "hq-safe-settings", component: HQDocumentSettingsPage },
       {
         path: "contractor-document-settings",
@@ -573,6 +582,5 @@ router.beforeEach(async (to, _from, next) => {
 
   next();
 });
-
 
 

@@ -32,6 +32,7 @@
             페르소나 전환
           </button>
           <RouterLink class="secondary" style="margin-right: 8px; text-decoration: none; display: inline-block" to="/change-password">비밀번호 변경</RouterLink>
+          <RouterLink class="secondary" style="margin-right: 8px; text-decoration: none; display: inline-block" to="/access-requests">권한 신청</RouterLink>
           <button class="secondary" @click="handleLogout">로그아웃</button>
         </div>
       </header>
@@ -119,4 +120,3 @@ function toggleSidebar() {
   font-weight: 800;
 }
 </style>
-

@@ -1,4 +1,5 @@
 import secrets
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from app.core.enums import Role
 from app.core.permissions import require_roles
 from app.modules.users.models import User
 from app.core.system_backup_access import can_system_backup
+from app.core.datetime_utils import utc_now
 from app.schemas.auth import AdminPasswordResetResponse, UserMe
 
 
@@ -30,7 +32,7 @@ def read_me(current_user: User = Depends(get_current_user)):
 @router.get("", response_model=list[UserMe])
 def list_users(
     db: DbDep,
-    _: User = Depends(require_roles(Role.HQ_SAFE, Role.HQ_OTHER)),
+    _: User = Depends(require_roles(Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN)),
 ):
     return [UserMe.model_validate(u) for u in db.query(User).all()]
 
@@ -61,7 +63,7 @@ def update_my_map_preference(
 def admin_reset_user_password(
     user_id: int,
     db: DbDep,
-    _: User = Depends(require_roles(Role.HQ_SAFE, Role.HQ_OTHER)),
+    _: User = Depends(require_roles(Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN)),
 ):
     """
     관리자 전용: 대상 사용자 비밀번호를 임시 값으로 덮어쓴다.
@@ -77,6 +79,7 @@ def admin_reset_user_password(
     target.password_hash = get_password_hash(temporary_password)
     target.must_change_password = True
     target.password_changed_at = None
+    target.temporary_password_expires_at = utc_now() + timedelta(hours=24)
     db.add(target)
     db.commit()
     db.refresh(target)

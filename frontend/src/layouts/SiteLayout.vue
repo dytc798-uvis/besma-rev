@@ -142,6 +142,7 @@
           현장 검색
         </RouterLink>
         <RouterLink class="menu-link menu-link-secondary" to="/change-password" @click="closeMobileDrawer">비밀번호 변경</RouterLink>
+        <RouterLink class="menu-link menu-link-secondary" to="/access-requests" @click="closeMobileDrawer">권한 신청</RouterLink>
         <RouterLink :class="menuLinkClass('info', '/site/info')" to="/site/info" @click="closeMobileDrawer">설정</RouterLink>
         <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" to="/site/user-guide" @click="closeMobileDrawer">
           기능인인정제 설명
@@ -166,6 +167,7 @@
             <template v-if="auth.isTestPersonaMode && auth.effectivePersona"> / Persona: {{ auth.effectivePersona }}</template>
           </span>
           <RouterLink v-if="!isMobileViewport" class="secondary header-link" to="/change-password">비밀번호 변경</RouterLink>
+          <RouterLink v-if="!isMobileViewport" class="secondary header-link" to="/access-requests">권한 신청</RouterLink>
           <button type="button" class="secondary" @click="handleLogout">로그아웃</button>
         </div>
       </header>

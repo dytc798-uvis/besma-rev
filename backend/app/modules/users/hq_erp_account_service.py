@@ -3,7 +3,9 @@ from __future__ import annotations
 import csv
 import json
 import re
+import secrets
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -313,10 +315,10 @@ def apply_account_plan(
     created = 0
     updated = 0
     aliases = _alias_rows(source_rows, source_label)
+    temporary_credentials: list[dict[str, str]] = []
 
     for plan in plans:
         row = plan.row
-        birth6 = str(row["birth6"])
         erp_login_id = str(row["erp_login_id"]).strip().lower()
         rrn_hash = row.get("rrn_hash")
         person = (
@@ -326,10 +328,12 @@ def apply_account_plan(
         )
         user = plan.target
         if user is None:
+            temporary_password = secrets.token_urlsafe(12)
+            expires_at = now + timedelta(hours=24)
             user = User(
                 name=str(row["name"]).strip(),
                 login_id=erp_login_id,
-                password_hash=get_password_hash(birth6),
+                password_hash=get_password_hash(temporary_password),
                 birth_date=row.get("birth_date"),
                 department=plan.department,
                 role=plan.role,
@@ -340,8 +344,16 @@ def apply_account_plan(
                 initial_password_issued=True,
                 account_issued_by="hq_erp_bulk",
                 account_issued_at=now,
+                temporary_password_expires_at=expires_at,
             )
             db.add(user)
+            temporary_credentials.append(
+                {
+                    "login_id": erp_login_id,
+                    "temporary_password": temporary_password,
+                    "expires_at": expires_at.isoformat(),
+                }
+            )
             created += 1
         else:
             user.name = str(row["name"]).strip()
@@ -355,11 +367,21 @@ def apply_account_plan(
             user.site_id = None
             user.is_active = True
             if user.password_changed_at is None:
-                user.password_hash = get_password_hash(birth6)
+                temporary_password = secrets.token_urlsafe(12)
+                expires_at = now + timedelta(hours=24)
+                user.password_hash = get_password_hash(temporary_password)
                 user.must_change_password = True
                 user.initial_password_issued = True
                 user.account_issued_by = "hq_erp_bulk"
                 user.account_issued_at = now
+                user.temporary_password_expires_at = expires_at
+                temporary_credentials.append(
+                    {
+                        "login_id": user.login_id,
+                        "temporary_password": temporary_password,
+                        "expires_at": expires_at.isoformat(),
+                    }
+                )
             db.add(user)
             updated += 1
 
@@ -384,4 +406,4 @@ def apply_account_plan(
     )
     _write_alias_file(aliases)
     db.commit()
-    return log_payload
+    return {**log_payload, "temporary_credentials": temporary_credentials}

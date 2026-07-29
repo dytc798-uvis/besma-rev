@@ -50,7 +50,7 @@ class IssuedAccountItem(BaseModel):
     role_label: str
     name: str
     login_id: str
-    initial_password: str
+    initial_password: str | None = None
     site_code: str | None = None
     site_label: str | None = None
 

@@ -31,9 +31,10 @@ from app.modules.users.hq_safe_accounts import HQ_SAFE_ACCOUNT_SPECS
 from app.modules.users.models import User
 
 GENERIC_FAILURE = (
-    "?낅젰???뺣낫? ?쇱튂?섎뒗 怨꾩젙??李얠쓣 ???놁뒿?덈떎. ?뺣낫瑜??뺤씤 ???ㅼ떆 ?쒕룄??二쇱꽭??"
+    "입력한 정보와 일치하는 기존 계정을 확인할 수 없습니다. "
+    "정보를 확인하거나 신규 계정·업무 권한 신청을 이용해 주세요."
 )
-RATE_LIMIT_MESSAGE = "?붿껌???덈Т 留롮뒿?덈떎. ?좎떆 ???ㅼ떆 ?쒕룄??二쇱꽭??"
+RATE_LIMIT_MESSAGE = "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."
 
 # 蹂몄궗 ?먭? 諛쒓툒 ??? ?덉쟾蹂닿굔?ㅒ룹“?뚯쟾??遺?꾨낯??*) ??
 _ISSUABLE_HQ_ROLES = HQ_SAFE_WORKSPACE_ROLES | FUNCTIONAL_EVAL_VIEWER_ROLES

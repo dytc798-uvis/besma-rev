@@ -132,7 +132,8 @@
           <RouterLink :style="menuOrderSecondaryStyle('opinions')" to="/hq-safe/opinions">운영 아이디어 제안</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('settings')" to="/hq-safe/settings">문서 설정</RouterLink>
           <RouterLink :style="menuOrderSecondaryStyle('sites')" to="/hq-safe/sites">현장 관리</RouterLink>
-          <RouterLink :style="menuOrderSecondaryStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
+          <RouterLink v-if="canApproveAccountRequests" :style="menuOrderSecondaryStyle('users')" to="/hq-safe/users">사용자 관리</RouterLink>
+          <RouterLink v-if="canApproveAccountRequests" to="/hq-safe/account-requests">계정·권한 신청 관리</RouterLink>
           <RouterLink
             v-if="canAccessPdfSigning"
             :style="menuOrderSecondaryStyle('pdf-signing')"
@@ -187,6 +188,14 @@
           >
             비밀번호 변경
           </RouterLink>
+          <RouterLink
+            v-if="!isMobileViewport"
+            class="secondary"
+            style="margin-right: 8px; text-decoration: none; display: inline-block"
+            to="/access-requests"
+          >
+            권한 신청
+          </RouterLink>
           <button class="secondary header-logout-btn" type="button" @click="handleLogout">로그아웃</button>
         </div>
       </header>
@@ -227,6 +236,9 @@ const canAccessPdfSigning = computed(() =>
 );
 const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
 const canSystemBackup = computed(() => userCanSystemBackup(auth.user));
+const canApproveAccountRequests = computed(() =>
+  ["HQ_SAFE_ADMIN", "SUPER_ADMIN"].includes(auth.user?.role ?? ""),
+);
 const deployIncompleteCount = ref(0);
 const feReviewPendingCount = ref(0);
 
@@ -665,5 +677,3 @@ function handleLogout() {
 }
 
 </style>
-
-

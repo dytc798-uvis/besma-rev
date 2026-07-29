@@ -1,295 +1,130 @@
 <template>
-  <div class="issue-backdrop" @click.self="emit('close')">
-    <div class="issue-modal" role="dialog" aria-modal="true" aria-labelledby="issue-title">
-      <header class="issue-head">
-        <h2 id="issue-title">{{ mode === "lookup" ? "나의 아이디 확인" : "비밀번호 찾기" }}</h2>
-        <button type="button" class="issue-close" aria-label="닫기" @click="emit('close')">×</button>
+  <div class="request-backdrop" @click.self="emit('close')">
+    <section class="request-modal" role="dialog" aria-modal="true" aria-labelledby="account-help-title">
+      <header class="request-head">
+        <div>
+          <p class="eyebrow">BESMA 계정 안내</p>
+          <h2 id="account-help-title">직원 계정 찾기 · 계정 신청</h2>
+        </div>
+        <button class="close-btn" type="button" aria-label="닫기" @click="emit('close')">×</button>
       </header>
 
-      <template v-if="mode === 'lookup'">
-        <p class="issue-guide">
-          이름, 생년월일, ERP 아이디를 입력하면 사용 가능한 BESMA 아이디를 확인할 수 있습니다.
-        </p>
-        <form class="issue-form" @submit.prevent="submitLookup">
-          <label>
-            <span>이름</span>
-            <input v-model="lookupName" type="text" autocomplete="name" />
-          </label>
-          <label>
-            <span>생년월일 6자리</span>
-            <input v-model="lookupBirth6" type="text" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="예: 991231" />
-          </label>
-          <label>
-            <span>ERP 아이디</span>
-            <input v-model="lookupErpId" type="text" autocomplete="username" placeholder="예: sijung" />
-          </label>
-          <button class="primary issue-submit" type="submit" :disabled="loading">
-            {{ loading ? "확인 중..." : "나의 아이디 확인" }}
-          </button>
-          <p v-if="errorMessage" class="issue-error" role="alert">{{ errorMessage }}</p>
-        </form>
+      <div class="mode-tabs">
+        <button type="button" :class="{ active: mode === 'find' }" @click="reset('find')">기존 직원 아이디 찾기</button>
+        <button type="button" :class="{ active: mode === 'request' }" @click="reset('request')">신규 계정·업무 권한 신청</button>
+      </div>
 
-        <div v-if="lookupResult" class="issue-result">
-          <p class="issue-result-lead">{{ lookupResult.message }}</p>
-          <div v-for="account in lookupResult.accounts" :key="account.login_id" class="issue-account-block">
-            <p><strong>{{ account.role_label }}</strong> {{ account.name }}</p>
-            <p>아이디: {{ account.login_id }}</p>
-            <p class="issue-result-meta">ERP 아이디로도 로그인할 수 있습니다.</p>
-          </div>
+      <div v-if="resultMessage" class="result-card" role="status">
+        <strong>{{ resultMessage }}</strong>
+        <p v-if="requestNo">신청번호: {{ requestNo }}</p>
+        <p v-for="account in foundAccounts" :key="account.login_id">아이디: {{ account.login_id }}</p>
+        <button type="button" class="primary" @click="emit('close')">확인</button>
+      </div>
+
+      <form v-else-if="mode === 'find'" class="request-form" @submit.prevent="findAccount">
+        <p class="help">이미 인사·ERP·출역 명부에 등록된 직원의 기존 계정만 찾습니다. 새 계정은 생성하지 않습니다.</p>
+        <div class="scope-tabs">
+          <button type="button" :class="{ active: find.scope === 'site' }" @click="find.scope = 'site'">현장</button>
+          <button type="button" :class="{ active: find.scope === 'hq' }" @click="find.scope = 'hq'">본사</button>
         </div>
+        <label v-if="find.scope === 'site'">현장코드<input v-model.trim="find.site_code" required /></label>
+        <label v-else>부서<input v-model.trim="find.department" required placeholder="예: 안전보건실" /></label>
+        <label>이름<input v-model.trim="find.name" required autocomplete="name" /></label>
+        <label>생년월일 6자리<input v-model.trim="find.birth6" required maxlength="6" inputmode="numeric" autocomplete="off" /></label>
+        <button class="primary" type="submit" :disabled="loading">{{ loading ? "확인 중…" : "기존 계정 확인" }}</button>
+      </form>
 
-        <div class="issue-actions">
-          <button type="button" class="secondary" @click="openReset">비밀번호 찾기</button>
-          <button type="button" class="primary" @click="emit('close')">닫기</button>
+      <form v-else class="request-form" @submit.prevent="submitRequest">
+        <p class="help">ERP 아이디가 없거나 명부에 없는 경우 신청만 접수됩니다. 관리자 승인 전에는 계정이나 권한이 부여되지 않습니다.</p>
+        <div class="form-grid">
+          <label>이름<input v-model.trim="request.name" required autocomplete="name" /></label>
+          <label>휴대전화<input v-model.trim="request.phone_mobile" required inputmode="tel" autocomplete="tel" /></label>
+          <label>소속 회사<input v-model.trim="request.company_name" required /></label>
+          <label>본사·현장
+            <select v-model="request.scope"><option value="HQ">본사</option><option value="SITE">현장</option></select>
+          </label>
+          <label>부서<input v-model.trim="request.department" /></label>
+          <label>업무 구분
+            <select v-model="request.work_category">
+              <option value="SAFETY">안전</option><option value="CONSTRUCTION">공사</option>
+              <option value="PUBLIC_WORKS">공무</option><option value="BUDGET_ESTIMATE">예산·견적</option>
+              <option value="OUTSOURCING_PURCHASE">외주·구매</option><option value="SITE">현장</option>
+              <option value="FUNCTIONAL_EVAL_VIEW">기능인 평가 조회</option><option value="OTHER">기타</option>
+            </select>
+          </label>
+          <label v-if="request.scope === 'SITE'">현장코드<input v-model.trim="request.site_code" required /></label>
+          <label v-if="request.scope === 'SITE'">현장명<input v-model.trim="request.site_name" /></label>
         </div>
-      </template>
-
-      <template v-else>
-        <p class="issue-guide">
-          이름, 생년월일, ERP 아이디가 일치하면 새 비밀번호를 설정할 수 있습니다.
-        </p>
-        <form class="issue-form" @submit.prevent="submitReset">
-          <label>
-            <span>이름</span>
-            <input v-model="resetName" type="text" autocomplete="name" />
-          </label>
-          <label>
-            <span>생년월일 6자리</span>
-            <input v-model="resetBirth6" type="text" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="예: 991231" />
-          </label>
-          <label>
-            <span>ERP 아이디</span>
-            <input v-model="resetErpId" type="text" autocomplete="username" placeholder="예: sijung" />
-          </label>
-          <label>
-            <span>새 비밀번호</span>
-            <input v-model="newPassword" type="password" autocomplete="new-password" />
-          </label>
-          <label>
-            <span>새 비밀번호 확인</span>
-            <input v-model="newPasswordConfirm" type="password" autocomplete="new-password" />
-          </label>
-          <button class="primary issue-submit" type="submit" :disabled="loading">
-            {{ loading ? "변경 중..." : "새 비밀번호 설정" }}
-          </button>
-          <p v-if="errorMessage" class="issue-error" role="alert">{{ errorMessage }}</p>
-          <p v-if="resetMessage" class="issue-copy-msg" role="status">{{ resetMessage }}</p>
-        </form>
-
-        <div class="issue-actions">
-          <button type="button" class="secondary" @click="mode = 'lookup'">아이디 확인으로 돌아가기</button>
-          <button type="button" class="primary" @click="emit('close')">닫기</button>
-        </div>
-      </template>
-    </div>
+        <label>요청 사유<textarea v-model.trim="request.request_reason" required rows="3" /></label>
+        <label>재직·업무관계 확인 메모<textarea v-model.trim="request.employment_evidence_note" rows="2" /></label>
+        <label class="consent"><input v-model="request.privacy_consent" type="checkbox" /> 계정 신청 처리를 위한 개인정보 수집·이용에 동의합니다.</label>
+        <button class="primary" type="submit" :disabled="loading || !request.privacy_consent">{{ loading ? "접수 중…" : "신청 접수" }}</button>
+      </form>
+      <p v-if="errorMessage" class="error" role="alert">{{ errorMessage }}</p>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { reactive, ref } from "vue";
 import axios from "axios";
 import { api } from "@/services/api";
 
-interface LoginIdLookupItem {
-  login_id: string;
-  name: string;
-  role_label: string;
-}
-
-interface LookupResult {
-  message: string;
-  accounts: LoginIdLookupItem[];
-}
-
 const emit = defineEmits<{ close: [] }>();
-
-const mode = ref<"lookup" | "reset">("lookup");
+const mode = ref<"find" | "request">("find");
 const loading = ref(false);
 const errorMessage = ref("");
-const resetMessage = ref("");
-const lookupResult = ref<LookupResult | null>(null);
+const resultMessage = ref("");
+const requestNo = ref("");
+const foundAccounts = ref<Array<{ login_id: string }>>([]);
+const find = reactive({ scope: "site", site_code: "", department: "", name: "", birth6: "" });
+const request = reactive({
+  name: "", phone_mobile: "", company_name: "", scope: "HQ", department: "",
+  work_category: "SAFETY", site_code: "", site_name: "", request_reason: "",
+  employment_evidence_note: "", privacy_consent: false,
+});
 
-const lookupName = ref("");
-const lookupBirth6 = ref("");
-const lookupErpId = ref("");
-const resetName = ref("");
-const resetBirth6 = ref("");
-const resetErpId = ref("");
-const newPassword = ref("");
-const newPasswordConfirm = ref("");
-
-function formatError(err: unknown): string {
-  if (axios.isAxiosError(err)) {
-    const d = err.response?.data?.detail;
-    if (typeof d === "string" && d.trim()) return d;
+function errorText(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const detail = error.response?.data?.detail;
+    if (detail === "OPEN_REQUEST_ALREADY_EXISTS") return "같은 업무의 처리 중 신청이 이미 있습니다.";
+    if (typeof detail === "string" && detail) return detail;
   }
-  return "요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.";
+  return "요청을 처리할 수 없습니다. 관리자에게 문의해 주세요.";
 }
 
-function openReset() {
-  resetName.value = lookupName.value;
-  resetBirth6.value = lookupBirth6.value;
-  resetErpId.value = lookupErpId.value;
-  errorMessage.value = "";
-  resetMessage.value = "";
-  mode.value = "reset";
+function reset(next: "find" | "request") {
+  mode.value = next; errorMessage.value = ""; resultMessage.value = ""; requestNo.value = ""; foundAccounts.value = [];
 }
 
-async function submitLookup() {
-  loading.value = true;
-  errorMessage.value = "";
-  resetMessage.value = "";
-  lookupResult.value = null;
+async function findAccount() {
+  loading.value = true; errorMessage.value = "";
   try {
-    const res = await api.post("/auth/find-login-ids", {
-      name: lookupName.value.trim(),
-      birth6: lookupBirth6.value.trim(),
-      erp_login_id: lookupErpId.value.trim(),
-    });
-    lookupResult.value = res.data as LookupResult;
-  } catch (err) {
-    errorMessage.value = formatError(err);
-  } finally {
-    loading.value = false;
-  }
+    const { data } = await api.post("/auth/issue-accounts", find);
+    resultMessage.value = data.message;
+    foundAccounts.value = data.accounts || [];
+  } catch (error) { errorMessage.value = errorText(error); }
+  finally { loading.value = false; }
 }
 
-async function submitReset() {
-  loading.value = true;
-  errorMessage.value = "";
-  resetMessage.value = "";
+async function submitRequest() {
+  loading.value = true; errorMessage.value = "";
   try {
-    const res = await api.post("/auth/reset-password-public", {
-      name: resetName.value.trim(),
-      birth6: resetBirth6.value.trim(),
-      erp_login_id: resetErpId.value.trim(),
-      new_password: newPassword.value,
-      new_password_confirm: newPasswordConfirm.value,
-    });
-    resetMessage.value = res.data?.message || "비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.";
-    newPassword.value = "";
-    newPasswordConfirm.value = "";
-  } catch (err) {
-    errorMessage.value = formatError(err);
-  } finally {
-    loading.value = false;
-  }
+    const { data } = await api.post("/account-requests/public", request);
+    resultMessage.value = data.message; requestNo.value = data.request_no;
+  } catch (error) { errorMessage.value = errorText(error); }
+  finally { loading.value = false; }
 }
 </script>
 
 <style scoped>
-.issue-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: rgba(15, 23, 42, 0.5);
-}
-.issue-modal {
-  width: min(480px, 100%);
-  max-height: min(90vh, 720px);
-  overflow-y: auto;
-  background: #fff;
-  border-radius: 14px;
-  padding: 18px 18px 16px;
-  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.2);
-}
-.issue-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-.issue-head h2 {
-  margin: 0;
-  font-size: 18px;
-}
-.issue-close {
-  border: none;
-  background: transparent;
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-  color: #64748b;
-}
-.issue-guide {
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  border: 1px solid rgba(37, 99, 235, 0.16);
-  border-radius: 10px;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.issue-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.issue-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: #475569;
-}
-.issue-form input {
-  font-size: 16px;
-  padding: 10px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-}
-.issue-submit {
-  margin-top: 4px;
-  min-height: 44px;
-}
-.issue-error {
-  margin: 0;
-  color: #b91c1c;
-  font-size: 13px;
-  line-height: 1.45;
-}
-.issue-result {
-  margin-top: 14px;
-}
-.issue-result-lead {
-  margin: 0 0 8px;
-  font-weight: 700;
-  color: #0f172a;
-}
-.issue-result-meta {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: #64748b;
-}
-.issue-account-block {
-  margin-top: 10px;
-  padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #f8fafc;
-}
-.issue-account-block p {
-  margin: 0 0 4px;
-  font-size: 15px;
-}
-.issue-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-.issue-actions button {
-  flex: 1;
-  min-height: 42px;
-}
-.issue-copy-msg {
-  margin: 0;
-  font-size: 13px;
-  color: #15803d;
-  line-height: 1.45;
-}
+.request-backdrop{position:fixed;inset:0;z-index:500;display:grid;place-items:center;padding:16px;background:rgba(15,23,42,.55)}
+.request-modal{width:min(680px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(15,23,42,.3)}
+.request-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.request-head h2{margin:3px 0 0;font-size:22px}.eyebrow{margin:0;color:#2563eb;font-weight:700;font-size:12px}
+.close-btn{border:0;background:none;font-size:28px;cursor:pointer}.mode-tabs,.scope-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}
+.mode-tabs button,.scope-tabs button{padding:11px;border:1px solid #cbd5e1;background:#f8fafc;border-radius:10px}.mode-tabs .active,.scope-tabs .active{background:#e0ecff;border-color:#2563eb;color:#174ea6;font-weight:700}
+.request-form{display:grid;gap:13px}.help{margin:0;padding:12px;background:#f1f5f9;border-radius:10px;color:#475569;line-height:1.55}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:grid;gap:6px;font-weight:650;color:#334155}input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:10px;font:inherit}.consent{display:flex;grid-template-columns:auto 1fr;align-items:start;font-weight:500}.consent input{width:auto;margin-top:3px}
+.primary{border:0;border-radius:10px;padding:11px 16px;background:#1d4ed8;color:white;font-weight:700;cursor:pointer}.primary:disabled{opacity:.55}.error{color:#b91c1c;background:#fef2f2;padding:10px;border-radius:8px}.result-card{display:grid;gap:10px;margin-top:18px;padding:18px;border-radius:12px;background:#eff6ff}.result-card p{margin:0}
+@media(max-width:640px){.request-modal{padding:16px}.form-grid{grid-template-columns:1fr}.request-head h2{font-size:19px}.mode-tabs button{font-size:13px;padding:9px 6px}}
 </style>

@@ -31,6 +31,7 @@ class User(Base):
     )
     account_issued_by: Mapped[str | None] = mapped_column(String(40), nullable=True)
     account_issued_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    temporary_password_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, nullable=False
     )

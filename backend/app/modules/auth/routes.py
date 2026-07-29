@@ -15,10 +15,9 @@ from app.core.permissions import Role
 from app.modules.auth.account_issuance_service import (
     AccountIssuanceError,
     fe_consent_required,
-    issue_hq_account,
-    issue_site_accounts,
     user_participates_in_fe_consent,
 )
+from app.modules.account_requests.service import find_existing_account
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.core.system_backup_access import can_system_backup
@@ -187,6 +186,16 @@ def login(
             detail="Incorrect login_id or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if (
+        user.must_change_password
+        and user.temporary_password_expires_at is not None
+        and user.temporary_password_expires_at < utc_now()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="TEMPORARY_PASSWORD_EXPIRED",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     _resolve_default_pilot_site(db, user)
     access_token = create_user_access_token(user.id)
     return Token(access_token=access_token, must_change_password=bool(user.must_change_password))
@@ -209,30 +218,17 @@ def me(db: DbDep, current_user=Depends(get_current_user)) -> UserMe:
 
 @router.post("/issue-accounts", response_model=IssueAccountResponse)
 def issue_accounts(payload: IssueAccountRequest, request: Request, db: DbDep) -> IssueAccountResponse:
-    scope = (payload.scope or "").strip().lower()
     client_ip = request.client.host if request.client else None
     try:
-        if scope == "site":
-            result = issue_site_accounts(
-                db,
-                site_code=payload.site_code or "",
-                name=payload.name,
-                birth6_raw=payload.birth6,
-                request_ip=client_ip,
-            )
-        elif scope == "hq":
-            result = issue_hq_account(
-                db,
-                name=payload.name,
-                birth6_raw=payload.birth6,
-                department=payload.department,
-                request_ip=client_ip,
-            )
-        else:
-            raise AccountIssuanceError(
-                "?낅젰???뺣낫? ?쇱튂?섎뒗 怨꾩젙??李얠쓣 ???놁뒿?덈떎. ?뺣낫瑜??뺤씤 ???ㅼ떆 ?쒕룄??二쇱꽭??",
-                internal_reason="bad_scope",
-            )
+        result = find_existing_account(
+            db,
+            scope=payload.scope,
+            site_code=payload.site_code,
+            department=payload.department,
+            name=payload.name,
+            birth6_raw=payload.birth6,
+            request_ip=client_ip,
+        )
     except AccountIssuanceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -277,37 +273,13 @@ def find_login_ids(payload: FindLoginIdsRequest, db: DbDep) -> FindLoginIdsRespo
 
 @router.post("/reset-password-public", response_model=PublicPasswordResetResponse)
 def reset_password_public(payload: PublicPasswordResetRequest, db: DbDep) -> PublicPasswordResetResponse:
-    alias = _erp_alias_for_identity(payload.name, payload.birth6, payload.erp_login_id)
-    if not alias:
-        raise HTTPException(
-            status_code=400,
-            detail="입력한 정보와 일치하는 계정을 찾을 수 없습니다. 이름, 생년월일, ERP 아이디를 확인해 주세요.",
-        )
-
-    if payload.new_password != payload.new_password_confirm:
-        raise HTTPException(status_code=400, detail="새 비밀번호 확인이 일치하지 않습니다.")
-
-    try:
-        validate_password_policy(payload.new_password)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    candidates = _active_account_candidates(db, name=alias["name"])
-    if not candidates:
-        raise HTTPException(
-            status_code=400,
-            detail="입력한 정보와 일치하는 계정을 찾을 수 없습니다. 이름, 생년월일, ERP 아이디를 확인해 주세요.",
-        )
-
-    new_hash = get_password_hash(payload.new_password.strip())
-    changed_at = utc_now()
-    for user in candidates:
-        user.password_hash = new_hash
-        user.must_change_password = False
-        user.password_changed_at = changed_at
-        db.add(user)
-    db.commit()
-    return PublicPasswordResetResponse(message="연결된 계정의 비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.")
+    # 생년월일·이름만으로 여러 운영 계정의 비밀번호를 덮어쓰던 공개 경로를
+    # 폐쇄한다. 휴대전화 OTP가 도입되기 전에는 관리자 승인 후 24시간 임시
+    # 비밀번호를 발급하는 별도 절차만 허용한다.
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="PASSWORD_RESET_REQUIRES_ADMIN_APPROVAL",
+    )
 
 
 @router.post("/change-password")
@@ -330,6 +302,7 @@ def change_password(
     current_user.password_hash = get_password_hash(payload.new_password.strip())
     current_user.must_change_password = False
     current_user.password_changed_at = utc_now()
+    current_user.temporary_password_expires_at = None
     db.add(current_user)
     db.commit()
     db.refresh(current_user)

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -294,10 +295,10 @@ def apply_site_admin_plan(
     now = utc_now()
     created = 0
     updated = 0
+    temporary_credentials: list[dict[str, str]] = []
 
     for plan in plans:
         employee = plan.employee_row
-        birth6 = clean(employee.get("birth6"))
         person = (
             db.query(Person).filter(Person.rrn_hash == employee.get("rrn_hash")).first()
             if employee.get("rrn_hash")
@@ -305,10 +306,12 @@ def apply_site_admin_plan(
         )
         user = plan.target
         if user is None:
+            temporary_password = secrets.token_urlsafe(12)
+            expires_at = now + timedelta(hours=24)
             user = User(
                 name=plan.name,
                 login_id=plan.login_id,
-                password_hash=get_password_hash(birth6),
+                password_hash=get_password_hash(temporary_password),
                 birth_date=employee.get("birth_date"),
                 role=(
                     Role.SITE_FUNCTIONAL_EVAL
@@ -323,9 +326,17 @@ def apply_site_admin_plan(
                 initial_password_issued=True,
                 account_issued_by="site_admin_erp_bulk",
                 account_issued_at=now,
+                temporary_password_expires_at=expires_at,
             )
             db.add(user)
             db.flush()
+            temporary_credentials.append(
+                {
+                    "login_id": plan.login_id,
+                    "temporary_password": temporary_password,
+                    "expires_at": expires_at.isoformat(),
+                }
+            )
             created += 1
         else:
             user.name = plan.name
@@ -336,11 +347,21 @@ def apply_site_admin_plan(
             if user.role not in SITE_ACCOUNT_ROLES:
                 user.role = Role.SITE
             if user.password_changed_at is None:
-                user.password_hash = get_password_hash(birth6)
+                temporary_password = secrets.token_urlsafe(12)
+                expires_at = now + timedelta(hours=24)
+                user.password_hash = get_password_hash(temporary_password)
                 user.must_change_password = True
                 user.initial_password_issued = True
                 user.account_issued_by = "site_admin_erp_bulk"
                 user.account_issued_at = now
+                user.temporary_password_expires_at = expires_at
+                temporary_credentials.append(
+                    {
+                        "login_id": user.login_id,
+                        "temporary_password": temporary_password,
+                        "expires_at": expires_at.isoformat(),
+                    }
+                )
             db.add(user)
             updated += 1
 
@@ -370,4 +391,5 @@ def apply_site_admin_plan(
         "mode": "apply",
         "created_count": created,
         "updated_count": updated,
+        "temporary_credentials": temporary_credentials,
     }

@@ -38,6 +38,7 @@ export const HQ_SIDEBAR_SECONDARY_KEYS = [
   "settings",
   "sites",
   "users",
+  "account-requests",
   "pdf-signing",
   "system-backup",
 ] as const;
