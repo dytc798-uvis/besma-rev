@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.config.settings import settings
-from app.core.auth import get_current_user_with_bypass
+from app.core.auth import get_current_user_with_bypass, get_db
 from app.core.enums import Role
 from app.modules.document_explorer.routes import router as document_explorer_router
 
@@ -175,15 +175,25 @@ def test_document_explorer_list_allows_site_role(tmp_path: Path):
         site_id=1,
         ui_type="SITE",
     )
+    class EmptyQuery:
+        def filter(self, *args):
+            return self
+
+        def first(self):
+            return None
+
+    app.dependency_overrides[get_db] = lambda: SimpleNamespace(
+        query=lambda *args: EmptyQuery()
+    )
     client = TestClient(app)
 
     try:
         res = client.get("/document-explorer/list")
         assert res.status_code == 200
         items = res.json()["items"]
-        assert len(items) == 4
+        assert len(items) == 2
         names = {item["name"] for item in items}
-        assert names == {"site_visible.txt", "older_form.hwp", "yesterday.txt", "today_tbm.hwp"}
+        assert names == {"site_visible.txt", "older_form.hwp"}
         assert "legacy_dup.hwp" not in names
     finally:
         settings.document_explorer_base_dir = original_base_dir

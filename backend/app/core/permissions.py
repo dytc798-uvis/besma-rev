@@ -29,6 +29,16 @@ def assert_hq_safe_workspace(user: User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
 
 
+def assert_document_file_access(user: User, *, site_id: int | None) -> None:
+    """Apply the common authorization boundary for document file contents."""
+    if user.role in HQ_SAFE_WORKSPACE_ROLES:
+        return
+    if user.role in {Role.SITE, Role.SITE_FUNCTIONAL_EVAL}:
+        if user.site_id is not None and site_id == user.site_id:
+            return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+
 def assert_fe_hq_read(user: User) -> None:
     if user.role not in FE_HQ_READ_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")

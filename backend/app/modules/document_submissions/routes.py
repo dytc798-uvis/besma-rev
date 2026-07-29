@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from app.config.settings import settings
 from app.core.auth import DbDep
 from app.core.datetime_utils import kst_today, utc_now
-from app.core.permissions import CurrentUserDep, Role
+from app.core.permissions import CurrentUserDep, Role, assert_document_file_access
 from app.core.upload_processing import is_image_upload, process_uploaded_image
 from app.modules.document_generation.models import (
     DocumentInstance,
@@ -869,8 +869,7 @@ def collect_instances(
     특정 기간/현장 기준 취합 조회.
     - period_start 기준으로 범위 필터(단순 MVP)
     """
-    if current_user.role == Role.SITE and site_id != current_user.site_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    assert_document_file_access(current_user, site_id=site_id)
 
     q = (
         db.query(DocumentInstance)
@@ -969,6 +968,13 @@ def download_export(
     zip_name: str,
     current_user: CurrentUserDep,
 ):
+    match = re.fullmatch(
+        r"export_site(?P<site_id>\d+)_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}_\d+\.zip",
+        zip_name,
+    )
+    if match is None or Path(zip_name).name != zip_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid export name")
+    assert_document_file_access(current_user, site_id=int(match.group("site_id")))
     exports_dir = _ensure_exports_dir()
     zip_path = exports_dir / zip_name
     if not zip_path.exists():

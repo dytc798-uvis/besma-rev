@@ -15,7 +15,12 @@ from sqlalchemy.orm import Session
 from app.config.settings import settings
 from app.core.datetime_utils import utc_now
 from app.core.auth import DbDep, get_current_user
-from app.core.permissions import CurrentUserDep, Role, assert_hq_safe_workspace
+from app.core.permissions import (
+    CurrentUserDep,
+    Role,
+    assert_document_file_access,
+    assert_hq_safe_workspace,
+)
 from app.modules.approvals.models import ApprovalAction, ApprovalHistory
 from app.modules.document_generation.models import DocumentInstance
 from app.modules.document_submissions.models import DocumentReviewHistory, ReviewAction
@@ -493,6 +498,20 @@ def _get_document_or_404(db: Session, *, document_id: int) -> Document:
 def _assert_document_access(doc: Document, current_user) -> None:
     if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+
+
+def _assert_document_file_access(doc: Document, current_user) -> None:
+    try:
+        assert_document_file_access(current_user, site_id=doc.site_id)
+    except HTTPException:
+        logger.warning(
+            "document_file_access_denied document_id=%s user_id=%s role=%s site_id=%s",
+            doc.id,
+            getattr(current_user, "id", None),
+            getattr(current_user, "role", None),
+            getattr(current_user, "site_id", None),
+        )
+        raise
 
 
 def _public_user_role(current_user) -> str:
@@ -1026,8 +1045,7 @@ def download_document_history_file(
     upload_history, doc = history
     if not upload_history.file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="History file not found")
-    if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    _assert_document_file_access(doc, current_user)
     assert_not_ledger_managed_document(doc)
 
     file_path = resolve_existing_storage_path(
@@ -1167,6 +1185,8 @@ def get_hq_checklists(
     date_value: date = Query(..., alias="date"),
 ):
     if not _hq_checklist_allowed_for_read(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    if current_user.role == Role.HQ_OTHER:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
 
     items: list[dict] = []
@@ -1826,8 +1846,7 @@ def download_document_file(
     if not doc or not doc.file_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
 
-    if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    _assert_document_file_access(doc, current_user)
 
     file_path = resolve_existing_storage_path(
         settings.storage_root,
@@ -1871,8 +1890,7 @@ def _download_document_derivative(
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc or not relative_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
-    if current_user.role == Role.SITE and doc.site_id != current_user.site_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    _assert_document_file_access(doc, current_user)
 
     file_path = resolve_existing_storage_path(
         settings.storage_root,

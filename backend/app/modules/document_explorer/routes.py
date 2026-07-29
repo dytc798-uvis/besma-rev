@@ -11,8 +11,15 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, sta
 from fastapi.responses import FileResponse
 
 from app.config.settings import settings
+from app.core.auth import DbDep
 from app.core.enums import Role
-from app.core.permissions import CurrentUserDep
+from app.core.permissions import (
+    HQ_SAFE_WORKSPACE_ROLES,
+    CurrentUserDep,
+    assert_document_file_access,
+)
+from app.modules.document_generation.models import DocumentInstance
+from app.modules.sites.models import Site  # noqa: F401 - registers ORM relationship target
 from app.modules.documents.storage_paths import (
     field_file_display_name,
     instance_id_from_storage_relative_path,
@@ -231,6 +238,27 @@ def _scan_document_files() -> list[DocumentExplorerFileItem]:
     return [item for item, _path in _scan_document_file_entries()]
 
 
+def _entries_for_user(entries, db, current_user):
+    if current_user.role in HQ_SAFE_WORKSPACE_ROLES:
+        return entries
+    allowed = []
+    for item, path in entries:
+        if item.relative_path.startswith("base/"):
+            allowed.append((item, path))
+            continue
+        instance_id = instance_id_from_storage_relative_path(item.relative_path)
+        if instance_id is None:
+            continue
+        instance = db.query(DocumentInstance).filter(DocumentInstance.id == instance_id).first()
+        if (
+            instance is not None
+            and current_user.role in {Role.SITE, Role.SITE_FUNCTIONAL_EVAL}
+            and current_user.site_id == instance.site_id
+        ):
+            allowed.append((item, path))
+    return allowed
+
+
 def _matches_query(item: DocumentExplorerFileItem, q: str) -> bool:
     if not q:
         return True
@@ -241,19 +269,21 @@ def _matches_query(item: DocumentExplorerFileItem, q: str) -> bool:
 
 
 @router.get("/list", response_model=DocumentExplorerListResponse)
-def list_document_explorer_files(current_user: CurrentUserDep):
+def list_document_explorer_files(db: DbDep, current_user: CurrentUserDep):
     _assert_document_explorer_access(current_user)
-    return DocumentExplorerListResponse(items=_scan_document_files())
+    entries = _entries_for_user(_scan_document_file_entries(), db, current_user)
+    return DocumentExplorerListResponse(items=[item for item, _path in entries])
 
 
 @router.get("/search", response_model=DocumentExplorerListResponse)
 def search_document_explorer_files(
+    db: DbDep,
     current_user: CurrentUserDep,
     q: str = Query(default=""),
 ):
     _assert_document_explorer_access(current_user)
     query = (q or "").strip()
-    entries = _scan_document_file_entries()
+    entries = _entries_for_user(_scan_document_file_entries(), db, current_user)
     if not query:
         return DocumentExplorerListResponse(items=[item for item, _path in entries])
     index = refresh_document_index(
@@ -343,6 +373,7 @@ async def upload_document_explorer_base_file(
 
 @router.get("/file")
 def open_or_download_document_explorer_file(
+    db: DbDep,
     current_user: CurrentUserDep,
     relative_path: str = Query(...),
     disposition: str = Query("attachment"),
@@ -369,14 +400,30 @@ def open_or_download_document_explorer_file(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid path")
     if source == "field":
         storage_rel = f"{settings.documents_dir_name}/{remainder.replace('\\', '/')}"
+        instance_id = instance_id_from_storage_relative_path(storage_rel)
+        if current_user.role not in HQ_SAFE_WORKSPACE_ROLES:
+            instance = (
+                db.query(DocumentInstance).filter(DocumentInstance.id == instance_id).first()
+                if instance_id is not None
+                else None
+            )
+            if instance is None:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+            assert_document_file_access(current_user, site_id=instance.site_id)
         resolved = resolve_existing_storage_path(
             settings.storage_root,
             storage_rel,
-            instance_id=instance_id_from_storage_relative_path(storage_rel),
+            instance_id=instance_id,
             file_name=candidate.name,
         )
         if resolved is not None:
             candidate = resolved.resolve()
+    else:
+        if current_user.role not in HQ_SAFE_WORKSPACE_ROLES and current_user.role not in {
+            Role.SITE,
+            Role.SITE_FUNCTIONAL_EVAL,
+        }:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     if not candidate.exists() or not candidate.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
     if not _explorer_file_allowed(candidate):
