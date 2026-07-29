@@ -60,6 +60,7 @@ DEPARTMENT_OPTIONS: dict[str, list[str]] = {
     "HQ": [
         "안전보건실",
         "공사관리팀",
+        "공사관리1팀",
         "공사관리2팀",
         "공사관리3팀",
         "공사관리4팀",
@@ -78,6 +79,7 @@ DEPARTMENT_OPTIONS: dict[str, list[str]] = {
 HQ_DEPARTMENT_CATEGORY = {
     "안전보건실": "SAFETY",
     "공사관리팀": "CONSTRUCTION",
+    "공사관리1팀": "CONSTRUCTION",
     "공사관리2팀": "CONSTRUCTION",
     "공사관리3팀": "CONSTRUCTION",
     "공사관리4팀": "CONSTRUCTION",

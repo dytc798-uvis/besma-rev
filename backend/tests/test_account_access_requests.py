@@ -127,6 +127,7 @@ def test_account_request_workflow_and_existing_find(tmp_path: Path):
 
     options = client.get("/account-requests/public/options")
     assert options.status_code == 200
+    assert "\uacf5\uc0ac\uad00\ub9ac1\ud300" in options.json()["departments"]["HQ"]
     assert "예산견적팀" in options.json()["departments"]["HQ"]
     assert "안전" in options.json()["departments"]["SITE"]
     assert options.json()["sites"] == [{"id": 10, "name": "등록된 신청 현장"}]
