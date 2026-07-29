@@ -23,7 +23,10 @@ class Settings(BaseSettings):
     jwt_secret_key: str = Field("change-me-in-.env", env="BESMA_JWT_SECRET_KEY")
     jwt_algorithm: str = "HS256"
     # 현장 모바일 사용성을 위해 브라우저 로그인 세션은 최대 30일 유지한다.
-    access_token_expire_minutes: int = 60 * 24 * 30
+    access_token_expire_minutes: int = Field(
+        default=60 * 24 * 30,
+        validation_alias="BESMA_ACCESS_TOKEN_EXPIRE_MINUTES",
+    )
 
     storage_root: Path = BASE_DIR / "storage"
     accident_nas_root: Path | None = Field(default=None, validation_alias="BESMA_ACCIDENT_NAS_ROOT")
