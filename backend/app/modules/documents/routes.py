@@ -18,6 +18,7 @@ from app.core.auth import DbDep, get_current_user
 from app.core.permissions import CurrentUserDep, Role, assert_hq_safe_workspace
 from app.modules.approvals.models import ApprovalAction, ApprovalHistory
 from app.modules.document_generation.models import DocumentInstance
+from app.modules.document_submissions.models import DocumentReviewHistory, ReviewAction
 from app.modules.document_submissions.service import (
     add_review_history,
     map_action_to_history_type,
@@ -82,6 +83,10 @@ class DocumentCommentCreateBody(BaseModel):
     comment_text: str
 
 
+class ApprovalCommentUpdateBody(BaseModel):
+    comment_text: str
+
+
 class DocumentCommentResponse(BaseModel):
     id: int
     document_id: int
@@ -93,6 +98,8 @@ class DocumentCommentResponse(BaseModel):
     created_at: datetime
     source: str = "comment"
     review_action: str | None = None
+    approval_history_id: int | None = None
+    review_comment: str | None = None
     file_context_label: str | None = None
     deletable: bool = True
 
@@ -104,6 +111,7 @@ class HQCommunicationItemResponse(BaseModel):
     document_id: int
     instance_id: int | None = None
     title: str
+    document_type: str
     site_id: int
     site_name: str
     user_name: str
@@ -489,6 +497,47 @@ def _assert_document_access(doc: Document, current_user) -> None:
 
 def _public_user_role(current_user) -> str:
     return "SITE" if current_user.role == Role.SITE else "HQ"
+
+
+def _find_matching_approve_review_history(
+    db: Session,
+    *,
+    document: Document,
+    approval_history: ApprovalHistory,
+) -> DocumentReviewHistory | None:
+    """Find the paired audit row without treating it as the source of truth.
+
+    The legacy tables have no direct foreign key between their history rows. Normal
+    review writes create both rows within the same transaction, so the shared event
+    dimensions and a close timestamp are the safest available pairing key.
+    """
+    if document.instance_id is None:
+        return None
+
+    candidates = (
+        db.query(DocumentReviewHistory)
+        .filter(
+            DocumentReviewHistory.document_id == document.id,
+            DocumentReviewHistory.instance_id == document.instance_id,
+            DocumentReviewHistory.action_type == ReviewAction.APPROVE,
+            DocumentReviewHistory.action_by_user_id == approval_history.action_by_user_id,
+        )
+        .all()
+    )
+    if not candidates:
+        return None
+
+    old_comment = approval_history.comment
+
+    def match_key(row: DocumentReviewHistory) -> tuple[float, int, int]:
+        distance = abs((row.action_at - approval_history.action_at).total_seconds())
+        comment_mismatch = 0 if row.comment == old_comment else 1
+        return (distance, comment_mismatch, -int(row.id))
+
+    matched = min(candidates, key=match_key)
+    if abs((matched.action_at - approval_history.action_at).total_seconds()) > 60:
+        return None
+    return matched
 
 
 @router.get("")
@@ -1331,22 +1380,17 @@ def get_hq_badge_counts(
 def get_hq_communications(
     db: DbDep,
     current_user: CurrentUserDep,
-    limit: int = Query(100, ge=1, le=500),
+    limit: int = Query(1000, ge=1, le=1000),
 ):
     assert_hq_safe_workspace(current_user)
 
     entries: list[dict] = []
 
-    my_id = int(current_user.id)
     comment_rows = (
         db.query(DocumentComment, Document, Site, User)
         .join(Document, Document.id == DocumentComment.document_id)
         .join(Site, Site.id == Document.site_id)
         .join(User, User.id == DocumentComment.user_id)
-        .filter(
-            DocumentComment.user_id != my_id,
-            User.role == Role.SITE,
-        )
         .order_by(DocumentComment.created_at.desc(), DocumentComment.id.desc())
         .limit(limit)
         .all()
@@ -1359,6 +1403,7 @@ def get_hq_communications(
                 "source_id": int(c.id),
                 "document_id": int(d.id),
                 "title": d.title,
+                "document_type": d.document_type,
                 "site_id": int(s.id),
                 "site_name": s.site_name,
                 "user_name": u.name,
@@ -1377,8 +1422,6 @@ def get_hq_communications(
             ApprovalHistory.action_type.in_([ApprovalAction.APPROVE, ApprovalAction.REJECT]),
             ApprovalHistory.comment.isnot(None),
             ApprovalHistory.comment != "",
-            ApprovalHistory.action_by_user_id != my_id,
-            User.role == Role.SITE,
         )
         .order_by(ApprovalHistory.action_at.desc(), ApprovalHistory.id.desc())
         .limit(limit)
@@ -1393,6 +1436,7 @@ def get_hq_communications(
                 "source_id": int(h.id),
                 "document_id": int(d.id),
                 "title": d.title,
+                "document_type": d.document_type,
                 "site_id": int(s.id),
                 "site_name": s.site_name,
                 "user_name": u.name,
@@ -1409,8 +1453,10 @@ def get_hq_communications(
         user_id=int(current_user.id),
         item_keys=[str(row.get("item_key") or "") for row in sliced],
     )
-    for row in sliced:
-        row["is_read"] = str(row.get("item_key") or "") in read_set
+    for index, row in enumerate(sliced):
+        # The complete timeline is historical context. Only the newest item may
+        # remain unread; every older communication is shown as confirmed.
+        row["is_read"] = index > 0 or str(row.get("item_key") or "") in read_set
     _attach_feedback_loop_fields(db, sliced)
     return {"items": sliced}
 
@@ -1613,6 +1659,64 @@ def get_document_comments(document_id: int, db: DbDep, current_user: CurrentUser
     assert_not_ledger_managed_document(doc)
     rows = list_document_comments_with_review(db, document_id=document_id)
     return [DocumentCommentResponse(**row) for row in rows]
+
+
+@router.patch(
+    "/{document_id}/approval-comments/{approval_history_id}",
+    response_model=DocumentCommentResponse,
+)
+def update_document_approval_comment(
+    document_id: int,
+    approval_history_id: int,
+    body: ApprovalCommentUpdateBody,
+    db: DbDep,
+    current_user: CurrentUserDep,
+):
+    assert_hq_safe_workspace(current_user)
+    doc = _get_document_or_404(db, document_id=document_id)
+    assert_not_ledger_managed_document(doc)
+
+    text = (body.comment_text or "").strip()
+    if not text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="comment_text is required")
+
+    approval_history = (
+        db.query(ApprovalHistory)
+        .filter(
+            ApprovalHistory.id == approval_history_id,
+            ApprovalHistory.document_id == document_id,
+        )
+        .first()
+    )
+    if approval_history is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval history not found")
+    if approval_history.action_type != ApprovalAction.APPROVE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only APPROVE comments can be edited",
+        )
+
+    review_history = _find_matching_approve_review_history(
+        db,
+        document=doc,
+        approval_history=approval_history,
+    )
+    approval_history.comment = text
+    if review_history is not None:
+        review_history.comment = text
+    db.commit()
+
+    updated_row = next(
+        (
+            row
+            for row in list_document_comments_with_review(db, document_id=document_id)
+            if row.get("approval_history_id") == approval_history_id
+        ),
+        None,
+    )
+    if updated_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Approval history not found")
+    return DocumentCommentResponse(**updated_row)
 
 
 @router.post("/{document_id}/comments", response_model=DocumentCommentResponse, status_code=status.HTTP_201_CREATED)
