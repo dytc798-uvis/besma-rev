@@ -74,7 +74,7 @@ import HQSystemBackupPage from "@/pages/hq/HQSystemBackupPage.vue";
 import FieldFormUploadPage from "@/pages/field-form-uploads/FieldFormUploadPage.vue";
 import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
 import PdfSigningPublicPage from "@/pages/pdf-signing/PdfSigningPublicPage.vue";
-import { isMobileOpsSiteLogin, siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
+import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
 import { isPublicSignPath, normalizePublicSignPath } from "@/utils/publicSignRoute";
 
@@ -455,11 +455,6 @@ router.beforeEach(async (to, _from, next) => {
 
   const isFunctionalEvalUser = role === "SITE_FUNCTIONAL_EVAL";
   const goingFunctionalEval = to.path.startsWith("/site/functional-eval");
-  const goingFunctionalEvalFieldForm = to.name === "site-functional-eval-field-form-uploads";
-  if (goingFunctionalEval && !goingFunctionalEvalFieldForm && isMobileOpsSiteLogin(auth.user?.login_id)) {
-    next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    return;
-  }
   if (
     auth.isAuthenticated &&
     isFunctionalEvalUser &&

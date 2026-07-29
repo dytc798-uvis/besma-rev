@@ -5,12 +5,12 @@ const out = "D:/JSI/outbox";
 const browser = await chromium.launch({ headless: true });
 const results = [];
 
-async function mockApi(page) {
+async function mockApi(page, loginId) {
   await page.addInitScript(() => localStorage.setItem("besma_token", "ui-smoke-token"));
   const handler = async (route) => {
     const path = new URL(route.request().url()).pathname;
     let body = {};
-    if (path === "/auth/me") body = { id: 10, name: "현장 점검자", login_id: "site10", role: "SITE", ui_type: "SITE", site_id: 1, person_id: null, department: "안전", must_change_password: false };
+    if (path === "/auth/me") body = { id: 10, name: "현장 점검자", login_id: loginId, role: "SITE", ui_type: "SITE", site_id: 1, person_id: null, department: "안전", must_change_password: false };
     else if (path === "/heat-stress/records") body = { items: [], count: 0 };
     else if (path === "/documents/badges/site") body = { incomplete_count: 0 };
     else if (path === "/communications/unread-count") body = { unread_count: 0 };
@@ -26,15 +26,15 @@ async function mockApi(page) {
 }
 
 for (const profile of [
-  { name: "desktop", viewport: { width: 1440, height: 1000 }, expectedCards: 5 },
-  { name: "mobile", viewport: { width: 390, height: 844 }, expectedCards: 3 },
+  { name: "desktop", viewport: { width: 1440, height: 1000 }, expectedCards: 5, loginId: "site10" },
+  { name: "mobile", viewport: { width: 390, height: 844 }, expectedCards: 3, loginId: "site01" },
 ]) {
   const page = await browser.newPage({ viewport: profile.viewport });
   const consoleErrors = [];
   const pageErrors = [];
   page.on("console", (m) => m.type() === "error" && consoleErrors.push(m.text()));
   page.on("pageerror", (e) => pageErrors.push(String(e)));
-  await mockApi(page);
+  await mockApi(page, profile.loginId);
   await page.goto(`${base}/site/home`, { waitUntil: "networkidle" });
   const cards = await page.locator(".home-card").count();
   await page.screenshot({ path: `${out}/026_체감온도_홈_${profile.name}.png`, fullPage: true });
