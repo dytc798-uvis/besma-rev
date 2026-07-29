@@ -2069,6 +2069,18 @@ def review_document(
         # approve_document와 동일 로직
         doc.current_status = DocumentStatus.APPROVED
         doc.reviewed_at = utc_now()
+        latest_upload_history = (
+            db.query(DocumentUploadHistory)
+            .filter(
+                DocumentUploadHistory.document_id == doc.id,
+                DocumentUploadHistory.version_no == doc.version_no,
+            )
+            .order_by(DocumentUploadHistory.id.desc())
+            .first()
+        )
+        if latest_upload_history is not None:
+            latest_upload_history.document_status = DocumentStatus.APPROVED
+            latest_upload_history.review_note = body.comment
         _add_history(db, doc, current_user, ApprovalAction.APPROVE, body.comment)
         before = inst.workflow_status
         transition_instance_workflow_status(inst, action="approve")

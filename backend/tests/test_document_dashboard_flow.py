@@ -278,6 +278,8 @@ def test_site_hq_document_dashboard_e2e(tmp_path: Path):
     assert history_items[0]["period_start"] == today
     assert history_items[0]["period_label"] == today
     assert history_items[0]["history_file_available"] is True
+    assert history_items[0]["status"] == "APPROVED"
+    assert history_items[0]["review_note"] == "승인 완료"
     assert history_items[0]["file_download_url"].startswith("/documents/history/")
 
     history_file = client.get(history_items[0]["file_download_url"])
