@@ -7,9 +7,9 @@ export function isMobileOpsSiteLogin(loginId?: string | null): boolean {
 /** SITE account default route. */
 export function siteMobileOrDesktopHomeName(
   loginId?: string | null,
-): "site-mobile-ops" | "site-functional-eval" {
+): "site-mobile-ops" | "site-field-form-uploads" {
   if (isMobileOpsSiteLogin(loginId)) {
     return "site-mobile-ops";
   }
-  return "site-functional-eval";
+  return "site-field-form-uploads";
 }

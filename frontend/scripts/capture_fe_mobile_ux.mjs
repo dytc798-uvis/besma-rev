@@ -13,8 +13,8 @@ const FE = process.env.FE_BASE || "https://www.besma.co.kr";
 const API = process.env.API_BASE || "https://api.besma.co.kr";
 
 const ACCOUNTS = [
-  { key: "site", login: "대우청라-박명식", password: "661123", path: "/site/functional-eval" },
-  { key: "hq", login: "안전보건-정상익", password: "790808", path: "/hq-safe/functional-eval" },
+  { key: "site", login: "대우청라-박명식", password: "<REDACTED_FOR_MIGRATION>", path: "/site/functional-eval" },
+  { key: "hq", login: "안전보건-정상익", password: "<REDACTED_FOR_MIGRATION>", path: "/hq-safe/functional-eval" },
 ];
 
 async function login(login, password) {

@@ -43,13 +43,72 @@
             {{ deletingId === item.id ? "삭제 중..." : "삭제" }}
           </button>
         </div>
-        <p class="doc-comment-text">{{ item.comment_text }}</p>
+        <div
+          v-if="approvalHistoryId(item) !== null && editingApprovalHistoryId === approvalHistoryId(item)"
+          class="doc-comment-edit"
+        >
+          <textarea
+            v-model="approvalEditDraft"
+            class="doc-comment-textarea"
+            rows="3"
+            aria-label="승인 코멘트 수정"
+            @keydown.ctrl.enter.prevent="saveApprovalComment(item)"
+          />
+          <p v-if="approvalEditError" class="doc-comments-error">{{ approvalEditError }}</p>
+          <div class="doc-comment-edit-actions">
+            <button
+              type="button"
+              class="stitch-btn-secondary"
+              :disabled="approvalEditSaving"
+              @click="cancelApprovalEdit"
+            >
+              취소
+            </button>
+            <button
+              type="button"
+              class="stitch-btn-primary"
+              :disabled="approvalEditSaving || !approvalEditDraft.trim()"
+              @click="saveApprovalComment(item)"
+            >
+              {{ approvalEditSaving ? "저장 중..." : "수정 저장" }}
+            </button>
+          </div>
+        </div>
+        <p
+          v-else
+          class="doc-comment-text"
+          :class="{ 'doc-comment-text-editable': canEditApprovalComment(item) }"
+          :title="canEditApprovalComment(item) ? '연속으로 세 번 더블클릭하면 승인 코멘트를 수정할 수 있습니다.' : undefined"
+          @dblclick="handleApprovalDoubleClick(item)"
+        >
+          {{ item.comment_text }}
+        </p>
       </article>
       <p v-if="comments.length === 0" class="doc-comments-muted">등록된 코멘트가 없습니다.</p>
     </div>
 
     <div class="doc-comment-form">
       <label class="doc-comment-label" for="doc-comment-textarea">코멘트</label>
+      <div v-if="isSiteUser" class="doc-comment-quick" aria-label="현장 빠른 답변">
+        <div class="doc-comment-quick-head">
+          <strong>빠른 답변</strong>
+          <span>선택한 문구를 확인·수정한 뒤 등록하세요.</span>
+        </div>
+        <div v-for="group in QUICK_REPLY_GROUPS" :key="group.label" class="doc-comment-quick-group">
+          <span class="doc-comment-quick-label">{{ group.label }}</span>
+          <div class="doc-comment-quick-options">
+            <button
+              v-for="text in group.options"
+              :key="text"
+              type="button"
+              class="doc-comment-quick-option"
+              @click="useQuickReply(text)"
+            >
+              {{ text }}
+            </button>
+          </div>
+        </div>
+      </div>
       <textarea
         id="doc-comment-textarea"
         v-model="draft"
@@ -86,6 +145,8 @@ interface DocumentCommentItem {
   created_at: string;
   source?: string;
   review_action?: string | null;
+  approval_history_id?: number | null;
+  review_comment?: string | null;
   file_context_label?: string | null;
   deletable?: boolean;
 }
@@ -113,10 +174,106 @@ const submitting = ref(false);
 const submitError = ref("");
 const deletingId = ref<number | null>(null);
 const deleteError = ref("");
+const editingApprovalHistoryId = ref<number | null>(null);
+const approvalEditDraft = ref("");
+const approvalEditSaving = ref(false);
+const approvalEditError = ref("");
+const approvalGesture = ref<{ historyId: number; count: number; lastAt: number } | null>(null);
 
 const auth = useAuthStore();
 
 const canSubmit = computed(() => Boolean(props.documentId && draft.value.trim()));
+const isSiteUser = computed(() => auth.user?.role === "SITE");
+
+const QUICK_REPLY_GROUPS = [
+  {
+    label: "조치 예정",
+    options: [
+      "이행하겠습니다.",
+      "그렇게 하겠습니다.",
+      "즉시 조치하겠습니다.",
+      "내일 작업이 시작되기 전에 조치 후 작업에 투입하도록 하겠습니다.",
+    ],
+  },
+  {
+    label: "조치 완료",
+    options: [
+      "어제 말씀하신 내용 조치 완료하였습니다.",
+      "대우건설에서 조치하였습니다.",
+      "그 부분은 앞으로 계속 TBM에서 교육하겠습니다.",
+    ],
+  },
+  {
+    label: "단순 확인",
+    options: ["네 알겠습니다.", "확인하였습니다.", "감사합니다."],
+  },
+] as const;
+
+const APPROVAL_EDIT_ROLES = new Set(["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"]);
+const APPROVAL_GESTURE_MAX_GAP_MS = 2500;
+
+function approvalHistoryId(item: DocumentCommentItem): number | null {
+  if (item.source !== "approval") return null;
+  if (item.approval_history_id && item.approval_history_id > 0) return item.approval_history_id;
+  return item.id < 0 ? -item.id : null;
+}
+
+function canEditApprovalComment(item: DocumentCommentItem): boolean {
+  const historyId = approvalHistoryId(item);
+  const role = String(auth.user?.role || "");
+  return Boolean(historyId && item.review_action === "APPROVE" && APPROVAL_EDIT_ROLES.has(role));
+}
+
+function handleApprovalDoubleClick(item: DocumentCommentItem) {
+  if (!canEditApprovalComment(item)) return;
+  const historyId = approvalHistoryId(item);
+  if (!historyId) return;
+
+  const now = Date.now();
+  const previous = approvalGesture.value;
+  const count =
+    previous && previous.historyId === historyId && now - previous.lastAt <= APPROVAL_GESTURE_MAX_GAP_MS
+      ? previous.count + 1
+      : 1;
+  approvalGesture.value = { historyId, count, lastAt: now };
+  if (count < 3) return;
+
+  approvalGesture.value = null;
+  editingApprovalHistoryId.value = historyId;
+  approvalEditDraft.value = item.review_comment || "";
+  approvalEditError.value = "";
+}
+
+function cancelApprovalEdit() {
+  editingApprovalHistoryId.value = null;
+  approvalEditDraft.value = "";
+  approvalEditError.value = "";
+}
+
+function useQuickReply(text: string) {
+  draft.value = text;
+}
+
+async function saveApprovalComment(item: DocumentCommentItem) {
+  const documentId = props.documentId;
+  const historyId = approvalHistoryId(item);
+  const commentText = approvalEditDraft.value.trim();
+  if (!documentId || !historyId || !commentText || approvalEditSaving.value) return;
+
+  approvalEditSaving.value = true;
+  approvalEditError.value = "";
+  try {
+    await api.patch(`/documents/${documentId}/approval-comments/${historyId}`, {
+      comment_text: commentText,
+    });
+    cancelApprovalEdit();
+    await loadComments();
+  } catch {
+    approvalEditError.value = "승인 코멘트를 수정하지 못했습니다.";
+  } finally {
+    approvalEditSaving.value = false;
+  }
+}
 
 function canDeleteComment(item: DocumentCommentItem): boolean {
   if (item.source === "approval" || item.deletable === false) return false;
@@ -200,6 +357,8 @@ watch(
     draft.value = "";
     submitError.value = "";
     deleteError.value = "";
+    approvalGesture.value = null;
+    cancelApprovalEdit();
     void loadComments();
   },
   { immediate: true },
@@ -330,8 +489,91 @@ watch(
   line-height: 1.5;
 }
 
+.doc-comment-text-editable {
+  cursor: text;
+  user-select: none;
+}
+
+.doc-comment-edit {
+  margin-top: 10px;
+}
+
+.doc-comment-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .doc-comment-form {
   margin-top: 16px;
+}
+
+.doc-comment-quick {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid #bae6fd;
+  border-radius: 10px;
+  background: #f0f9ff;
+}
+
+.doc-comment-quick-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  color: #0c4a6e;
+  font-size: 12px;
+}
+
+.doc-comment-quick-head strong {
+  font-size: 13px;
+}
+
+.doc-comment-quick-head span {
+  color: #475569;
+}
+
+.doc-comment-quick-group {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.doc-comment-quick-label {
+  padding-top: 6px;
+  color: #0369a1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.doc-comment-quick-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.doc-comment-quick-option {
+  padding: 5px 9px;
+  border: 1px solid #7dd3fc;
+  border-radius: 999px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.doc-comment-quick-option:hover,
+.doc-comment-quick-option:focus-visible {
+  border-color: #0284c7;
+  background: #e0f2fe;
+  outline: none;
 }
 
 .doc-comment-label {
@@ -362,5 +604,16 @@ watch(
   margin: 10px 0 0;
   color: #b91c1c;
   font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .doc-comment-quick-group {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .doc-comment-quick-label {
+    padding-top: 0;
+  }
 }
 </style>

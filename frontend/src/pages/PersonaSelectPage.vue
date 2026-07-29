@@ -59,6 +59,6 @@ function goDefault() {
     router.push({ name: siteMobileOrDesktopHomeName() });
     return;
   }
-  router.push({ name: "hq-other-dashboard" });
+  router.push({ name: "hq-other-field-form-uploads" });
 }
 </script>

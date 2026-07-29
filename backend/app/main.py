@@ -29,10 +29,13 @@ from app.modules.safety_policy_goals.routes import router as safety_policy_goals
 from app.modules.safety_features.routes import router as safety_features_router
 from app.modules.accidents.routes import router as accidents_router
 from app.modules.functional_eval.routes import router as functional_eval_router
+from app.modules.field_form_uploads.routes import router as field_form_uploads_router
+from app.modules.safety_ledgers.routes import router as safety_ledgers_router
 from app.modules.work_plan_excel.routes import router as work_plan_excel_router
 from app.modules.new_site_deployment.routes import router as new_site_deployment_router
 from app.modules.pdf_signing.routes import router as pdf_signing_router
 from app.modules.system_backup.routes import router as system_backup_router
+from app.modules.coupang_mvp.routes import router as coupang_mvp_router
 
 
 _original_request_form = Request.form
@@ -99,10 +102,13 @@ def create_app() -> FastAPI:
     app.include_router(safety_features_router)
     app.include_router(accidents_router)
     app.include_router(functional_eval_router)
+    app.include_router(field_form_uploads_router)
+    app.include_router(safety_ledgers_router)
     app.include_router(work_plan_excel_router)
     app.include_router(new_site_deployment_router)
     app.include_router(pdf_signing_router)
     app.include_router(system_backup_router)
+    app.include_router(coupang_mvp_router)
 
     @app.on_event("startup")
     async def on_startup() -> None:

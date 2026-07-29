@@ -35,8 +35,8 @@ export function buildSampleScoresForCriteria(criteria: FeGuideGradeCriterion[]):
 }
 
 export const FE_GUIDE_SAMPLE_LOGIN = {
-  team: { loginId: "대우청라-김팀장", password: "●●●●●●" },
-  manager: { loginId: "대우청라-박명식", password: "●●●●●●" },
-  hq: { loginId: "안전보건-조동문", password: "●●●●●●" },
-  ceo: { loginId: "부현대표-김홍수", password: "●●●●●●" },
+  team: { loginId: "대우청라-김팀장", password: "<REDACTED_FOR_MIGRATION>" },
+  manager: { loginId: "대우청라-박명식", password: "<REDACTED_FOR_MIGRATION>" },
+  hq: { loginId: "안전보건-조동문", password: "<REDACTED_FOR_MIGRATION>" },
+  ceo: { loginId: "부현대표-김홍수", password: "<REDACTED_FOR_MIGRATION>" },
 } as const;

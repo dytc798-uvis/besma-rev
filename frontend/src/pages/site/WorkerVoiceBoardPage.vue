@@ -8,6 +8,13 @@
       <button class="stitch-btn-secondary" type="button" @click="load">새로고침</button>
     </div>
 
+    <p v-if="operationSuccess" class="operation-message operation-message--success" role="status">
+      {{ operationSuccess }}
+    </p>
+    <p v-if="operationError" class="operation-message operation-message--error" role="alert">
+      {{ operationError }}
+    </p>
+
     <template v-if="isSite">
       <section class="summary-grid">
         <article class="summary-card">
@@ -422,6 +429,8 @@ const afterPhotos = ref<Record<number, File | null>>({});
 const actionStatusDrafts = ref<Record<number, string>>({});
 const siteCommentDrafts = ref<Record<number, string>>({});
 const hqCommentDrafts = ref<Record<number, string>>({});
+const operationSuccess = ref("");
+const operationError = ref("");
 const createDraft = ref<DraftRow>({
   worker_name: "",
   worker_birth_date: "",
@@ -528,6 +537,24 @@ function onAfterPhotoChange(e: Event, itemId: number) {
 
 function toggleComments(itemId: number) {
   openedCommentsItemId.value = openedCommentsItemId.value === itemId ? null : itemId;
+}
+
+function operationErrorMessage(error: unknown): string {
+  const ax = error as { response?: { data?: { detail?: unknown } }; message?: string };
+  const detail = ax.response?.data?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  return ax.message || "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+}
+
+async function runOperation(successMessage: string, action: () => Promise<void>) {
+  operationSuccess.value = "";
+  operationError.value = "";
+  try {
+    await action();
+    operationSuccess.value = successMessage;
+  } catch (error: unknown) {
+    operationError.value = operationErrorMessage(error);
+  }
 }
 
 function receiptLabel(v?: string | null) {
@@ -769,12 +796,14 @@ async function saveSiteComment(itemId: number) {
 }
 
 async function saveHqComment(itemId: number) {
-  const form = new FormData();
-  form.append("comment", hqCommentDrafts.value[itemId] || "");
-  await api.post(`/safety-features/worker-voice/items/${itemId}/hq-review-comment`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
+  await runOperation("본사 코멘트를 저장했습니다.", async () => {
+    const form = new FormData();
+    form.append("comment", hqCommentDrafts.value[itemId] || "");
+    await api.post(`/safety-features/worker-voice/items/${itemId}/hq-review-comment`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    await load();
   });
-  await load();
 }
 
 async function requestRiskDb(itemId: number) {
@@ -783,8 +812,10 @@ async function requestRiskDb(itemId: number) {
 }
 
 async function hqApproveRiskDb(itemId: number) {
-  await api.post(`/safety-features/worker-voice/items/${itemId}/approve-risk-db-registration`);
-  await load();
+  await runOperation("위험성평가 DB 등록을 승인했습니다.", async () => {
+    await api.post(`/safety-features/worker-voice/items/${itemId}/approve-risk-db-registration`);
+    await load();
+  });
 }
 
 async function hqRejectRiskDb(itemId: number) {
@@ -805,13 +836,15 @@ async function promote(itemId: number) {
 async function addComment(itemId: number) {
   const body = (commentDrafts.value[itemId] || "").trim();
   if (!body) return;
-  const form = new FormData();
-  form.append("body", body);
-  await api.post(`/safety-features/worker-voice/items/${itemId}/comments`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
+  await runOperation("댓글을 등록했습니다.", async () => {
+    const form = new FormData();
+    form.append("body", body);
+    await api.post(`/safety-features/worker-voice/items/${itemId}/comments`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    commentDrafts.value[itemId] = "";
+    await load();
   });
-  commentDrafts.value[itemId] = "";
-  await load();
 }
 
 void load();
@@ -841,6 +874,26 @@ void load();
   margin: 6px 0 0;
   color: #64748b;
   font-size: 13px;
+}
+
+.operation-message {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.operation-message--success {
+  border: 1px solid #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.operation-message--error {
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
 }
 
 .summary-grid {

@@ -56,6 +56,7 @@ def _load_erp_login_aliases() -> dict[str, dict[str, str]]:
                 if not erp_login_id or not name:
                     continue
                 aliases[erp_login_id] = {
+                    "erp_login_id": erp_login_id,
                     "name": name,
                     "birth6": (row.get("birth6") or "").strip(),
                     "employee_code": (row.get("employee_code") or "").strip(),
@@ -73,18 +74,23 @@ def _authenticate_erp_login_alias(db: Session, login_id: str, password: str) -> 
     if not alias:
         return None
 
-    allowed_roles = {Role.SITE.value, Role.SITE_FUNCTIONAL_EVAL.value}
     candidates = (
         db.query(user_models.User)
         .filter(
             user_models.User.name == alias["name"],
             user_models.User.is_active.is_(True),
-            user_models.User.role.in_(allowed_roles),
+            ~user_models.User.role.in_([Role.WORKER.value]),
         )
         .all()
     )
     matched = [user for user in candidates if verify_password(password, user.password_hash)]
     if len(matched) != 1:
+        named_login_matched = [user for user in matched if "-" in (user.login_id or "")]
+        if len(named_login_matched) == 1:
+            return named_login_matched[0]
+        site_matched = [user for user in matched if user.role == Role.SITE]
+        if len(site_matched) == 1:
+            return site_matched[0]
         return None
     return matched[0]
 

@@ -23,10 +23,10 @@ const API =
   (FE.includes("besma.co.kr") ? "https://api.besma.co.kr" : "http://127.0.0.1:8001");
 
 const ACCOUNTS = {
-  site: { login: "대우청라-박명식", password: "661123" },
-  hqOfficer: { login: "안전보건-정상익", password: "790808" },
-  hq: { login: "안전보건-조동문", password: "600321" },
-  ceo: { login: "부현대표-김홍수", password: "611001" },
+  site: { login: "대우청라-박명식", password: "<REDACTED_FOR_MIGRATION>" },
+  hqOfficer: { login: "안전보건-정상익", password: "<REDACTED_FOR_MIGRATION>" },
+  hq: { login: "안전보건-조동문", password: "<REDACTED_FOR_MIGRATION>" },
+  ceo: { login: "부현대표-김홍수", password: "<REDACTED_FOR_MIGRATION>" },
 };
 
 async function loginViaApi(page, { login, password }) {

@@ -20,11 +20,11 @@ const FE = process.env.FE_BASE || "http://127.0.0.1:5174";
 const API = process.env.API_BASE || (FE.includes("besma.co.kr") ? "https://api.besma.co.kr" : "http://127.0.0.1:8001");
 
 const ACCOUNTS = {
-  team: { login: "대우청라-박명식", password: "661123", label: "소장(동의·현장)" },
-  manager: { login: "대우청라-박명식", password: "661123", label: "소장" },
-  hq: { login: "안전보건-조동문", password: "600321", label: "안전보건실장" },
-  hqOfficer: { login: "안전보건-정상익", password: "600321", label: "안전보건 담당" },
-  ceo: { login: "부현대표-김홍수", password: "611001", label: "대표이사" },
+  team: { login: "대우청라-박명식", password: "<REDACTED_FOR_MIGRATION>", label: "소장(동의·현장)" },
+  manager: { login: "대우청라-박명식", password: "<REDACTED_FOR_MIGRATION>", label: "소장" },
+  hq: { login: "안전보건-조동문", password: "<REDACTED_FOR_MIGRATION>", label: "안전보건실장" },
+  hqOfficer: { login: "안전보건-정상익", password: "<REDACTED_FOR_MIGRATION>", label: "안전보건 담당" },
+  ceo: { login: "부현대표-김홍수", password: "<REDACTED_FOR_MIGRATION>", label: "대표이사" },
 };
 
 async function loginViaApi(page, { login, password }) {

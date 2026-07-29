@@ -16,6 +16,13 @@
     <aside class="layout-sidebar">
       <h1>BESMA CSMS 안전보건플랫폼 · 현장</h1>
       <nav v-if="!isMobileViewport" class="layout-menu">
+        <RouterLink
+          :class="menuLinkClass('field-form-uploads', '/site/field-form-uploads')"
+          :style="menuOrderStyle('field-form-uploads')"
+          to="/site/field-form-uploads"
+        >
+          현장 양식 업로드
+        </RouterLink>
         <RouterLink :class="menuLinkClass('dashboard', '/site/dashboard')" to="/site/dashboard">대시보드</RouterLink>
         <RouterLink :class="menuLinkClass('notices', '/site/notices')" :style="menuOrderStyle('notices')" to="/site/notices">공지사항</RouterLink>
         <RouterLink
@@ -77,6 +84,9 @@
         <RouterLink :class="menuLinkClass('user-guide', '/site/user-guide')" :style="menuOrderStyle('user-guide')" to="/site/user-guide">기능인인정제 설명</RouterLink>
       </nav>
       <nav v-else class="layout-menu layout-menu-mobile-site">
+        <RouterLink :class="menuLinkClass('field-form-uploads', '/site/field-form-uploads')" to="/site/field-form-uploads" @click="closeMobileDrawer">
+          현장 양식 업로드
+        </RouterLink>
         <RouterLink :class="menuLinkClass('mobile', '/site/mobile')" to="/site/mobile" @click="closeMobileDrawer">
           일일안전회의(일일위험성평가)
         </RouterLink>
@@ -210,6 +220,7 @@ const tickerDurationSec = ref(18);
 const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
 const menuOrderMap = ref<Record<string, number>>({});
 const SITE_FIXED_MENU_KEYS = [
+  "field-form-uploads",
   "notices",
   "safety-policy-goals",
   "risk-library",
@@ -235,6 +246,7 @@ const deploymentMenuClass = computed(() =>
   deploymentNeedsHighlight.value ? "site-deploy-menu-highlight" : menuLinkClass("new-site-deployment", "/site/new-site-deployment"),
 );
 const PRIMARY_MENUS = [
+  "field-form-uploads",
   "mobile",
   "safety-policy-goals",
   "risk-library",
@@ -599,6 +611,13 @@ function menuIcon(key: string) {
   border-left-color: #93c5fd;
   opacity: 1;
   font-weight: 700;
+}
+
+.menu-link-primary[href="/site/field-form-uploads"]:not(.menu-link-active) {
+  background: #fff7ed;
+  color: #fed7aa;
+  border-left-color: #f97316;
+  font-weight: 800;
 }
 
 .menu-icon {

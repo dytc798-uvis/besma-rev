@@ -14,11 +14,11 @@ const FE = process.env.FE_BASE || "http://127.0.0.1:5174";
 const PHASE = process.argv[2] || "all";
 
 const SHOTS = [
-  { phase: "pre", file: "01_team_leader_roster", login: "대우청라-김팀장", password: "750101", url: "/site/functional-eval", wait: 2500 },
-  { phase: "pre", file: "02_manager_roster_pending", login: "대우청라-박명식", password: "661123", url: "/site/functional-eval", wait: 2500 },
-  { phase: "post", file: "03_hq_approvals", login: "안전보건-조동문", password: "600321", url: "/hq-safe/functional-eval", wait: 3000 },
-  { phase: "post", file: "04_ceo_approvals", login: "부현대표-김홍수", password: "611001", url: "/hq-safe/functional-eval", wait: 3000 },
-  { phase: "post", file: "05_manager_final", login: "대우청라-박명식", password: "661123", url: "/site/functional-eval", wait: 2500 },
+  { phase: "pre", file: "01_team_leader_roster", login: "대우청라-김팀장", password: "<REDACTED_FOR_MIGRATION>", url: "/site/functional-eval", wait: 2500 },
+  { phase: "pre", file: "02_manager_roster_pending", login: "대우청라-박명식", password: "<REDACTED_FOR_MIGRATION>", url: "/site/functional-eval", wait: 2500 },
+  { phase: "post", file: "03_hq_approvals", login: "안전보건-조동문", password: "<REDACTED_FOR_MIGRATION>", url: "/hq-safe/functional-eval", wait: 3000 },
+  { phase: "post", file: "04_ceo_approvals", login: "부현대표-김홍수", password: "<REDACTED_FOR_MIGRATION>", url: "/hq-safe/functional-eval", wait: 3000 },
+  { phase: "post", file: "05_manager_final", login: "대우청라-박명식", password: "<REDACTED_FOR_MIGRATION>", url: "/site/functional-eval", wait: 2500 },
 ];
 
 const ACTIVE = SHOTS.filter((s) => PHASE === "all" || s.phase === PHASE);

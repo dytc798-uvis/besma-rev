@@ -70,9 +70,7 @@ export const useAuthStore = defineStore("auth", () => {
   const mustChangePassword = computed(() => !!user.value?.must_change_password);
   const needsFeConsent = computed(() => !!user.value?.needs_fe_consent);
   const feConsentRequired = computed(() => !!user.value?.fe_consent_required);
-  const needsFeOnboarding = computed(
-    () => needsFeConsent.value && (mustChangePassword.value || feConsentRequired.value),
-  );
+  const needsFeOnboarding = computed(() => needsFeConsent.value && feConsentRequired.value);
   const isTestPersonaMode = computed(() => import.meta.env.DEV);
   const effectivePersona = computed<TestPersona | null>(() => {
     if (!isTestPersonaMode.value) return null;

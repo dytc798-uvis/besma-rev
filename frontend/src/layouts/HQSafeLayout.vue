@@ -26,6 +26,13 @@
         <div class="hq-menu-group">
           <p class="hq-menu-section-label">주요업무</p>
           <RouterLink
+            class="hq-field-form-menu-highlight"
+            :style="menuOrderPrimaryStyle('field-form-uploads')"
+            to="/hq-safe/field-form-uploads"
+          >
+            현장 양식 업로드
+          </RouterLink>
+          <RouterLink
             class="hq-fe-menu-highlight"
             :style="menuOrderPrimaryStyle('functional-eval')"
             to="/hq-safe/functional-eval"
@@ -509,6 +516,15 @@ function handleLogout() {
   border-left: 3px solid #2563eb;
   margin-left: 8px;
   padding-left: 11px;
+}
+
+.hq-safe-shell .layout-menu a.hq-field-form-menu-highlight:not(.router-link-active) {
+  font-weight: 800;
+  background: #fff7ed;
+  color: #9a3412;
+  border-left: 4px solid #f97316;
+  margin-left: 8px;
+  padding-left: 10px;
 }
 
 .hq-menu-count-badge {

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="login-page">
     <div class="login-hero" aria-hidden="true">
       <img :src="ONLY_LOGO_SRC" alt="" class="login-bg-logo" />
@@ -36,9 +36,9 @@
         </form>
 
         <div class="login-issue-block">
-          <p class="login-issue-text">아이디를 받지 못하셨나요?</p>
+          <p class="login-issue-text">아이디 또는 비밀번호가 기억나지 않나요?</p>
           <button type="button" class="secondary login-issue-btn" @click="showIssueModal = true">
-            아이디 발급
+            나의 아이디 확인
           </button>
         </div>
       </div>
@@ -68,7 +68,6 @@ const showIssueModal = ref(false);
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
-const NAVIGATION_TIMEOUT_MS = 5_000;
 
 onMounted(() => {
   auth.prepareLoginPage();
@@ -98,40 +97,22 @@ async function handleLogin() {
       return;
     }
     const redirectPath = typeof route.query.redirect === "string" ? route.query.redirect : "";
-    const target = redirectPath
-      ? redirectPath
-      : auth.user?.role === "WORKER"
-        ? { name: "worker-mobile-list" }
-        : auth.user?.ui_type === "HQ_SAFE"
-            ? { name: hqSafeHomeRouteName() }
-          : auth.user?.role === "SITE_FUNCTIONAL_EVAL"
-            ? { name: "site-functional-eval-field-form-uploads" }
-            : auth.user?.ui_type === "SITE"
-              ? { name: siteMobileOrDesktopHomeName(auth.user?.login_id) }
-              : auth.user?.ui_type === "HQ_OTHER"
-                ? { name: "hq-other-field-form-uploads" }
-                : { name: hqSafeHomeRouteName() };
-    loading.value = false;
-    await Promise.race([
-      router.push(target),
-      new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("LOGIN_NAVIGATION_TIMEOUT")), NAVIGATION_TIMEOUT_MS);
-      }),
-    ]);
-    return;
-  } catch (err) {
-    if (err instanceof Error && err.message === "LOGIN_NAVIGATION_TIMEOUT") {
-      const fallback =
-        auth.user?.role === "SITE_FUNCTIONAL_EVAL"
-          ? "/site/functional-eval/field-form-uploads"
-          : auth.user?.ui_type === "HQ_SAFE"
-            ? "/hq-safe/field-form-uploads"
-            : auth.user?.ui_type === "SITE"
-              ? "/site/field-form-uploads"
-              : "/";
-      window.location.assign(fallback);
-      return;
+    if (redirectPath) {
+      await router.push(redirectPath);
+    } else if (auth.user?.role === "WORKER") {
+      await router.push({ name: "worker-mobile-list" });
+    } else if (auth.user?.ui_type === "HQ_SAFE") {
+      await router.push({ name: hqSafeHomeRouteName() });
+    } else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
+      await router.push({ name: "site-functional-eval-field-form-uploads" });
+    } else if (auth.user?.ui_type === "SITE") {
+      await router.push({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
+    } else if (auth.user?.ui_type === "HQ_OTHER") {
+      await router.push({ name: "hq-other-field-form-uploads" });
+    } else {
+      await router.push({ name: hqSafeHomeRouteName() });
     }
+  } catch (err) {
     errorMessage.value = formatLoginError(err);
   } finally {
     loading.value = false;

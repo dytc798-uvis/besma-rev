@@ -5,6 +5,7 @@
 
 /** 주요업무 기본 순서: 기능인제 → 기능인제 설명 → 강조 메뉴 → … → 신규현장 배포(맨 아래) */
 export const HQ_SIDEBAR_PRIMARY_KEYS = [
+  "field-form-uploads",
   "functional-eval",
   "functional-eval-monitoring",
   "functional-eval-rewards-sanctions",
@@ -22,6 +23,7 @@ export const HQ_SIDEBAR_PRIMARY_KEYS = [
 
 /** 현장 SITE `menu-link-primary`와 동일 정책: 주요 업무 강조 */
 export const HQ_SIDEBAR_EMPHASIS_KEYS = [
+  "field-form-uploads",
   "notices",
   "safety-policy-goals",
   "risk-library",
