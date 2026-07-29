@@ -1186,8 +1186,6 @@ def get_hq_checklists(
 ):
     if not _hq_checklist_allowed_for_read(current_user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
-    if current_user.role == Role.HQ_OTHER:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
 
     items: list[dict] = []
     for row in HQ_CHECKLIST_CATALOG:
@@ -1351,6 +1349,8 @@ def download_hq_checklist_file(
     disposition: str = Query("attachment"),
 ):
     if not _hq_checklist_allowed_for_read(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    if current_user.role == Role.HQ_OTHER:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     entry = db.query(HQChecklistEntry).filter(HQChecklistEntry.id == entry_id).first()
     if entry is None or not entry.file_path:
