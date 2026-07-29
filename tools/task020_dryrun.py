@@ -186,6 +186,21 @@ def main() -> None:
         sheet.auto_filter.ref = sheet.dimensions
     wb.save(args.out / "020_파일연결복구_DRYRUN_매핑.xlsx")
 
+    for filename, title, dataset in (
+        ("020_제출문서_복구후보_매핑표.xlsx", "제출문서", rows),
+        ("020_기준양식_복구후보_매핑표.xlsx", "기준양식", form_rows),
+    ):
+        split_wb = Workbook()
+        split_ws = split_wb.active
+        split_ws.title = title
+        split_headers = list(dataset[0])
+        split_ws.append(split_headers)
+        for row in dataset:
+            split_ws.append([row[h] for h in split_headers])
+        split_ws.freeze_panes = "A2"
+        split_ws.auto_filter.ref = split_ws.dimensions
+        split_wb.save(args.out / filename)
+
     sql = [
         "-- TASK020 REVIEW ONLY / APPLY DISABLED",
         "-- 이 파일의 UPDATE 문은 모두 주석이며 실행해도 DB를 변경하지 않습니다.",
@@ -201,6 +216,12 @@ def main() -> None:
             )
     sql.extend(["ROLLBACK;", "-- DB 변경 0건 보장: 실제 적용 스위치/실행문 없음"])
     (args.out / "020_파일연결복구_검토전용.sql").write_text("\n".join(sql) + "\n", encoding="utf-8")
+    (args.out / "020_파일연결복구_DRYRUN.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (args.out / "020_파일연결복구_적용전검토.sql").write_text(
+        "\n".join(sql) + "\n", encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":
