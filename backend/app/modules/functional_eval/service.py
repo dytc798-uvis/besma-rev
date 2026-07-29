@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import re
+import secrets
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -3672,29 +3673,35 @@ def apply_team_leader_assignments_file(
             login_id = build_eval_login_id(site_alias, leader_name)
             if not login_id:
                 continue
-            initial_pw = _rrn_front_password(meta["rrn"])
-            if not initial_pw:
+            identity_confirmed = _rrn_front_password(meta["rrn"])
+            if not identity_confirmed:
                 continue
             user = db.query(User).filter(User.login_id == login_id).first()
+            temporary_password: str | None = None
             if user is None:
+                temporary_password = secrets.token_urlsafe(12)
                 user = User(
                     name=leader_name,
                     login_id=login_id,
-                    password_hash=get_password_hash(initial_pw),
+                    password_hash=get_password_hash(temporary_password),
                     role=Role.SITE_FUNCTIONAL_EVAL,
                     ui_type=UIType.SITE,
                     site_id=site.id,
-                    must_change_password=False,
+                    must_change_password=True,
+                    temporary_password_expires_at=utc_now() + timedelta(hours=24),
                 )
                 db.add(user)
                 created_accounts += 1
             else:
                 user.name = leader_name
-                user.password_hash = get_password_hash(initial_pw)
                 user.role = Role.SITE_FUNCTIONAL_EVAL
                 user.ui_type = UIType.SITE
                 user.site_id = site.id
-                user.must_change_password = False
+                if user.password_changed_at is None:
+                    temporary_password = secrets.token_urlsafe(12)
+                    user.password_hash = get_password_hash(temporary_password)
+                    user.must_change_password = True
+                    user.temporary_password_expires_at = utc_now() + timedelta(hours=24)
                 db.add(user)
 
             team_workers = meta["workers"]
@@ -3729,7 +3736,7 @@ def apply_team_leader_assignments_file(
                     "site_code": site_code,
                     "team_leader_name": leader_name,
                     "login_id": login_id,
-                    "initial_password": initial_pw,
+                    "initial_password": temporary_password or "(기존 비밀번호 유지)",
                     "team_worker_count": len(team_workers),
                 }
             )

@@ -473,6 +473,7 @@ def apply_viewer_accounts(
     source_path: Path | None = None,
     actor: User | None = None,
 ) -> ViewerProvisionResult:
+    raise ValueError("USE_ACCOUNT_REQUEST_WORKFLOW")
     path = resolve_sawon_source_path(db, source_path)
     if path is None:
         raise ValueError("사원리스트 파일을 찾을 수 없습니다.")

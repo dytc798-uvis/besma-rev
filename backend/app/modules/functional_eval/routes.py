@@ -1725,13 +1725,7 @@ def dry_run_hq_viewer_accounts(db: DbDep, current_user: CurrentUserDep):
 @router.post("/hq/viewer-accounts/apply")
 def apply_hq_viewer_accounts(db: DbDep, current_user: CurrentUserDep):
     assert_fe_hq_admin(current_user)
-    from app.modules.functional_eval import fe_viewer_provisioning_service
-
-    try:
-        result = fe_viewer_provisioning_service.apply_viewer_accounts(db, actor=current_user)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return result.to_dict()
+    raise HTTPException(status_code=409, detail="USE_ACCOUNT_REQUEST_WORKFLOW")
 
 
 @router.get("/hq/viewer-accounts/logs")

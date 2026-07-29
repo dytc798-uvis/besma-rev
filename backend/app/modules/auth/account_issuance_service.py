@@ -587,6 +587,10 @@ def issue_site_accounts(
     birth6_raw: str,
     request_ip: str | None,
 ) -> dict[str, Any]:
+    raise AccountIssuanceError(
+        "기존 즉시 발급은 중단되었습니다. 승인 기반 계정·업무 권한 신청을 이용해 주세요.",
+        internal_reason="legacy_self_service_disabled",
+    )
     site_code = (site_code or "").strip()
     requested_site_code = site_code
     name = (name or "").strip()
@@ -790,6 +794,10 @@ def issue_hq_account(
     department: str | None,
     request_ip: str | None,
 ) -> dict[str, Any]:
+    raise AccountIssuanceError(
+        "기존 즉시 발급은 중단되었습니다. 승인 기반 계정·업무 권한 신청을 이용해 주세요.",
+        internal_reason="legacy_self_service_disabled",
+    )
     name = (name or "").strip()
     department = (department or "").strip() or None
     birth6 = _normalize_birth6(birth6_raw)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+import secrets
 import shutil
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -35,9 +36,6 @@ from app.modules.new_site_deployment.models import (
 )
 from app.modules.sites.models import Site
 from app.modules.users.models import User
-
-INITIAL_SITE_PASSWORD = "1111"
-
 
 def _role_value(user: User) -> str:
     return user.role.value if hasattr(user.role, "value") else str(user.role)
@@ -195,16 +193,19 @@ def _provision_site_user(
     site: Site,
     must_change_password: bool = True,
 ) -> User:
+    temporary_password = secrets.token_urlsafe(12)
+    expires_at = utc_now() + timedelta(hours=24)
     user = db.query(User).filter(User.login_id == login_id).first()
     if user is None:
         user = User(
             name=name,
             login_id=login_id,
-            password_hash=get_password_hash(INITIAL_SITE_PASSWORD),
+            password_hash=get_password_hash(temporary_password),
             role=Role.SITE,
             ui_type=UIType.SITE,
             site_id=site.id,
             must_change_password=must_change_password,
+            temporary_password_expires_at=expires_at,
             is_active=True,
         )
         db.add(user)
@@ -214,9 +215,10 @@ def _provision_site_user(
         user.ui_type = UIType.SITE
         user.site_id = site.id
         user.is_active = True
-        if must_change_password:
-            user.password_hash = get_password_hash(INITIAL_SITE_PASSWORD)
+        if must_change_password and user.password_changed_at is None:
+            user.password_hash = get_password_hash(temporary_password)
             user.must_change_password = True
+            user.temporary_password_expires_at = expires_at
         db.add(user)
     return user
 

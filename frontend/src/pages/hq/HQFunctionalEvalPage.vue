@@ -879,7 +879,7 @@
                 <th>현장코드</th>
                 <th>팀장명</th>
                 <th>아이디</th>
-                <th>초기비밀번호</th>
+                <th>24시간 임시비밀번호</th>
                 <th>담당인원</th>
               </tr>
             </thead>
@@ -900,14 +900,14 @@
     <section v-if="canManageViewerAccounts" class="panel viewer-provision-panel">
       <h2 class="hq-review-title">본사 조회전용 계정 일괄 생성</h2>
       <p class="panel-sub">
-        사원리스트 기준 · 현장 인원·기존 계정 제외 · 아이디 <code>부현본사-이름</code> · 초기비밀번호 생년월일 6자리
+        기존 일괄 생성은 중단되었습니다. 신규 계정은 승인 기반 계정·업무 권한 신청을 이용하세요.
       </p>
       <div class="hq-review-actions">
         <button class="stitch-btn-secondary" type="button" :disabled="viewerProvisionLoading" @click="runViewerDryRun">
           {{ viewerProvisionLoading ? "확인 중…" : "Dry-run" }}
         </button>
-        <button class="stitch-btn-primary" type="button" :disabled="viewerProvisionLoading" @click="applyViewerAccounts">
-          {{ viewerProvisionLoading ? "생성 중…" : "Apply 생성" }}
+        <button class="stitch-btn-primary" type="button" disabled>
+          승인 기반 신청 사용
         </button>
       </div>
       <p v-if="viewerProvisionMessage" class="meta" :class="{ success: viewerProvisionOk }">{{ viewerProvisionMessage }}</p>

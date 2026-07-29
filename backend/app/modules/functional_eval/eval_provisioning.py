@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+import secrets
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -252,7 +253,8 @@ def _upsert_eval_user(
             role=Role.SITE_FUNCTIONAL_EVAL,
             ui_type=UIType.SITE,
             site_id=site.id,
-            must_change_password=False,
+            must_change_password=True,
+            temporary_password_expires_at=utc_now() + timedelta(hours=24),
         )
         db.add(user)
     else:
@@ -267,7 +269,8 @@ def _upsert_eval_user(
         user.site_id = site.id
         if should_reset_initial_password:
             user.password_hash = get_password_hash(password_plain)
-            user.must_change_password = False
+            user.must_change_password = True
+            user.temporary_password_expires_at = utc_now() + timedelta(hours=24)
         db.add(user)
     return user
 
@@ -513,8 +516,9 @@ def _provision_evaluators_from_attendance(
                 if (row.job_name or "").strip() == "소장":
                     manager_rrn = row.rrn_raw
                     break
-        manager_pw = _rrn_front_password(manager_rrn or "")
-        if manager_pw:
+        manager_identity_confirmed = _rrn_front_password(manager_rrn or "")
+        if manager_identity_confirmed:
+            manager_pw = secrets.token_urlsafe(12)
             _upsert_eval_user(
                 db,
                 login_id=manager_login,
@@ -569,8 +573,9 @@ def _provision_evaluators_from_attendance(
                 role = "팀장"
                 evaluator_login = build_eval_login_id(reg.site_alias, rep_name)
                 rep_rrn = _lookup_rep_rrn(db, period.id, site_code, rep_name, name_rrn)
-                rep_pw = _rrn_front_password(rep_rrn or "")
-                if rep_pw and evaluator_login and is_person_rep_name(rep_name):
+                rep_identity_confirmed = _rrn_front_password(rep_rrn or "")
+                if rep_identity_confirmed and evaluator_login and is_person_rep_name(rep_name):
+                    rep_pw = secrets.token_urlsafe(12)
                     _upsert_eval_user(
                         db,
                         login_id=evaluator_login,
