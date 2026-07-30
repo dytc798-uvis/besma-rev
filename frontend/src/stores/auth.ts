@@ -16,9 +16,15 @@ export interface AuthUser {
   department?: string | null;
   map_preference?: "NAVER" | "TMAP" | null;
   can_system_backup?: boolean;
+  can_role_preview?: boolean;
 }
 
-export type TestPersona = "HQ_ADMIN" | "SITE_MANAGER" | "WORKER";
+export type TestPersona =
+  | "HQ_ADMIN"
+  | "SITE_STAFF"
+  | "SITE_MANAGER"
+  | "HQ_OTHER"
+  | "WORKER";
 
 const TEST_PERSONA_STORAGE_KEY = "besma_test_persona";
 const TEST_SITE_CONTEXT_STORAGE_KEY = "besma_test_site_context_id";
@@ -72,7 +78,10 @@ export const useAuthStore = defineStore("auth", () => {
   const needsFeConsent = computed(() => !!user.value?.needs_fe_consent);
   const feConsentRequired = computed(() => !!user.value?.fe_consent_required);
   const needsFeOnboarding = computed(() => needsFeConsent.value && feConsentRequired.value);
-  const isTestPersonaMode = computed(() => import.meta.env.DEV);
+  const isTestPersonaMode = computed(() => import.meta.env.DEV || !!user.value?.can_role_preview);
+  const isRolePreviewActive = computed(
+    () => !!user.value?.can_role_preview && !!selectedPersona.value,
+  );
   const effectivePersona = computed<TestPersona | null>(() => {
     if (!isTestPersonaMode.value) return null;
     return selectedPersona.value;
@@ -82,12 +91,19 @@ export const useAuthStore = defineStore("auth", () => {
       return user.value?.ui_type ?? null;
     }
     if (effectivePersona.value === "HQ_ADMIN") return "HQ_SAFE";
-    if (effectivePersona.value === "SITE_MANAGER") return "SITE";
+    if (effectivePersona.value === "HQ_OTHER") return "HQ_OTHER";
+    if (
+      effectivePersona.value === "SITE_STAFF" ||
+      effectivePersona.value === "SITE_MANAGER"
+    ) return "SITE";
     return "SITE";
   });
   const effectiveSiteId = computed<number | null>(() => {
     if (user.value?.site_id) return user.value.site_id;
-    if (isTestPersonaMode.value && effectivePersona.value === "SITE_MANAGER") {
+    if (
+      isTestPersonaMode.value &&
+      (effectivePersona.value === "SITE_STAFF" || effectivePersona.value === "SITE_MANAGER")
+    ) {
       return testSiteContextId.value;
     }
     return user.value?.site_id ?? null;
@@ -248,6 +264,7 @@ export const useAuthStore = defineStore("auth", () => {
     feConsentRequired,
     needsFeOnboarding,
     isTestPersonaMode,
+    isRolePreviewActive,
     effectivePersona,
     effectiveUiType,
     selectedPersona,

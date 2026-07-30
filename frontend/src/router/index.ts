@@ -513,8 +513,12 @@ router.beforeEach(async (to, _from, next) => {
         next({ name: "worker-mobile-list" });
         return;
       }
-      if (auth.effectivePersona === "SITE_MANAGER") {
+      if (auth.effectivePersona === "SITE_MANAGER" || auth.effectivePersona === "SITE_STAFF") {
         next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
+        return;
+      }
+      if (auth.effectivePersona === "HQ_OTHER") {
+        next({ name: "hq-other-dashboard" });
         return;
       }
       if (auth.effectiveUiType === "HQ_SAFE") {
@@ -531,7 +535,8 @@ router.beforeEach(async (to, _from, next) => {
 
     if (to.meta.persona && auth.effectivePersona && to.meta.persona !== auth.effectivePersona) {
       if (auth.effectivePersona === "HQ_ADMIN") next({ name: hqSafeHomeRouteName() });
-      else if (auth.effectivePersona === "SITE_MANAGER") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
+      else if (auth.effectivePersona === "SITE_MANAGER" || auth.effectivePersona === "SITE_STAFF") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
+      else if (auth.effectivePersona === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else next({ name: "worker-mobile-list" });
       return;
     }
@@ -562,8 +567,11 @@ router.beforeEach(async (to, _from, next) => {
       return;
     }
     if (auth.isTestPersonaMode) {
-      if (auth.effectivePersona === "HQ_ADMIN") next({ name: hqSafeHomeRouteName() });
+      if (!auth.effectivePersona && auth.user?.can_role_preview) next({ name: "persona-select" });
+      else if (auth.effectivePersona === "HQ_ADMIN") next({ name: hqSafeHomeRouteName() });
       else if (auth.effectivePersona === "SITE_MANAGER") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
+      else if (auth.effectivePersona === "SITE_STAFF") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
+      else if (auth.effectivePersona === "HQ_OTHER") next({ name: "hq-other-dashboard" });
       else if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });

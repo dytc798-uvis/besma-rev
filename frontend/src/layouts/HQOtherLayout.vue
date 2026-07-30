@@ -37,6 +37,9 @@
         </div>
       </header>
       <main class="layout-main">
+        <div v-if="auth.isRolePreviewActive" class="role-preview-banner">
+          읽기 전용 검증모드 · 본사 타부서 · 저장·다운로드·승인·삭제가 차단됩니다.
+        </div>
         <RouterView />
       </main>
     </section>

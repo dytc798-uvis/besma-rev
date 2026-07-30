@@ -40,6 +40,14 @@ export const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const auth = useAuthStore();
+  const method = (config.method || "get").toLowerCase();
+  if (
+    auth.isRolePreviewActive &&
+    !["get", "head", "options"].includes(method) &&
+    !config.url?.includes("/auth/login")
+  ) {
+    return Promise.reject(new Error("ROLE_PREVIEW_READ_ONLY"));
+  }
   const token = auth.token || localStorage.getItem("besma_token");
   stampAuthToken(config, token);
   if (token) {

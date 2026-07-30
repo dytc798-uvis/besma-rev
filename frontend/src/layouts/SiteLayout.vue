@@ -170,6 +170,9 @@
             {{ auth.user?.name }} ({{ auth.user?.login_id }})
             <template v-if="auth.isTestPersonaMode && auth.effectivePersona"> / Persona: {{ auth.effectivePersona }}</template>
           </span>
+          <button v-if="auth.isTestPersonaMode" type="button" class="secondary" @click="goPersonaSelect">
+            관점 전환
+          </button>
           <RouterLink v-if="!isMobileViewport" class="secondary header-link" to="/change-password">비밀번호 변경</RouterLink>
           <RouterLink v-if="!isMobileViewport" class="secondary header-link" to="/access-requests">권한 신청</RouterLink>
           <button type="button" class="secondary" @click="handleLogout">로그아웃</button>
@@ -197,6 +200,11 @@
         </div>
       </div>
       <main class="layout-main">
+        <div v-if="auth.isRolePreviewActive" class="role-preview-banner">
+          읽기 전용 검증모드 ·
+          {{ auth.effectivePersona === "SITE_MANAGER" ? "현장소장" : "현장 담당자" }}
+          · 저장·서명·삭제가 차단됩니다.
+        </div>
         <RouterView />
       </main>
     </section>
@@ -485,6 +493,10 @@ function handleMenuOrderUpdated(event: Event) {
 function handleLogout() {
   auth.logout();
   router.push({ name: "login" });
+}
+
+function goPersonaSelect() {
+  router.push({ name: "persona-select" });
 }
 
 function toggleSidebar() {

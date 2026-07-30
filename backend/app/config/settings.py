@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     weather_hq_lat: float | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_LAT")
     weather_hq_lon: float | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_LON")
     weather_hq_site_limit: int = Field(default=5, validation_alias="BESMA_HQ_WEATHER_SITE_LIMIT")
+    kma_api_key: str | None = Field(default=None, validation_alias="KMA_API_KEY")
 
     cors_origins: list[str] = [
         "http://localhost:5173",
