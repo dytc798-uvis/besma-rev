@@ -2,9 +2,9 @@
   <section class="weather-panel">
     <div class="weather-head">
       <div>
-        <p class="eyebrow">위치 기반 작업 기상</p>
-        <h2>현재 날씨와 5일 예보</h2>
-        <small v-if="overview">{{ overview.location_name }} · {{ overview.source_label }}</small>
+        <p class="eyebrow">현재 위치</p>
+        <h2>{{ overview?.location_name || "위치 확인 중" }}</h2>
+        <small v-if="overview">{{ overview.source_label }} · {{ overview.location_attribution }}</small>
       </div>
       <button class="secondary" type="button" :disabled="loading" @click="load">
         {{ loading ? "조회 중…" : "현재 위치 새로고침" }}
@@ -66,6 +66,8 @@ interface ForecastDay {
 }
 interface WeatherOverview {
   location_name: string;
+  location_source: string;
+  location_attribution: string;
   source_label: string;
   source: string;
   kma_notice: string;
