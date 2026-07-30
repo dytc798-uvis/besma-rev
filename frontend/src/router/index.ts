@@ -430,7 +430,12 @@ router.beforeEach(async (to, _from, next) => {
     next({ name: "login" });
     return;
   }
-  if (to.meta.devOnly && auth.isTestPersonaMode && !auth.effectivePersona) {
+  if (
+    to.meta.devOnly &&
+    auth.isTestPersonaMode &&
+    !auth.effectivePersona &&
+    to.name !== "persona-select"
+  ) {
     next({ name: "persona-select" });
     return;
   }
