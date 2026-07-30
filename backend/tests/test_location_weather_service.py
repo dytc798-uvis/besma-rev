@@ -2,6 +2,7 @@ from app.modules.weather import service
 
 
 def test_location_overview_combines_current_weather_and_forecast(monkeypatch):
+    monkeypatch.setattr(service, "_reverse_location_name", lambda _lat, _lon: "서울특별시 중구 명동")
     monkeypatch.setattr(
         service,
         "_fetch_json",
@@ -38,6 +39,17 @@ def test_location_overview_combines_current_weather_and_forecast(monkeypatch):
     assert len(result["forecast_days"]) == 2
     assert "HEAT" in {item["code"] for item in result["forecast_days"][0]["risk_flags"]}
     assert "RAIN" in {item["code"] for item in result["forecast_days"][1]["risk_flags"]}
+
+
+def test_location_overview_resolves_neighbourhood_for_gps(monkeypatch):
+    monkeypatch.setattr(service, "_reverse_location_name", lambda _lat, _lon: "부산광역시 해운대구 우동")
+    monkeypatch.setattr(service, "_fetch_json", lambda _params: {"current": {}, "daily": {"time": []}})
+
+    result = service.build_location_overview(35.1631, 129.1635)
+
+    assert result["location_name"] == "부산광역시 해운대구 우동"
+    assert result["location_source"] == "GPS"
+    assert "OpenStreetMap" in result["location_attribution"]
 
 
 def test_location_overview_sends_location_and_five_day_request(monkeypatch):

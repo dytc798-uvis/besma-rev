@@ -1,16 +1,16 @@
 <template>
   <div class="heat-page">
-    <header class="page-head">
-      <div><p class="eyebrow">온열질환 예방</p><h1>체감온도 기록</h1><p>온도·습도를 입력하면 체감온도와 필요 조치를 자동 안내합니다.</p></div>
-      <button class="secondary" type="button" @click="loadRecords">새로고침</button>
-    </header>
-
     <LocationWeatherOverview
       :site-id="auth.effectiveSiteId"
       :read-only="false"
       auto-apply
       @use-current="useWeatherValues"
     />
+
+    <header class="page-head">
+      <div><p class="eyebrow">온열질환 예방</p><h1>체감온도 기록</h1><p>온도·습도를 입력하면 체감온도와 필요 조치를 자동 안내합니다.</p></div>
+      <button class="secondary" type="button" @click="loadRecords">새로고침</button>
+    </header>
 
     <p v-if="auth.isRolePreviewActive" class="preview-help">
       읽기 전용 검증모드입니다. 화면 입력과 체감온도 계산은 시험할 수 있지만 기록 저장과 서명은 전송되지 않습니다.
@@ -37,6 +37,7 @@
       </div>
       <fieldset>
         <legend>실제 실시조치</legend>
+        <p class="action-default-note">체감온도 구간별 기본 조치입니다. 실제 실시한 내용과 다르면 서명 전에 수정하세요.</p>
         <label v-for="option in actionOptions" :key="option.code" class="check">
           <input v-model="form.actual_actions" type="checkbox" :value="option.code" />{{ option.label }}
         </label>
@@ -109,14 +110,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
 import SignaturePad from "@/components/SignaturePad.vue";
 import LocationWeatherOverview from "@/components/weather/LocationWeatherOverview.vue";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { downloadBlobAsFile } from "@/utils/blobDownload";
 
-interface HeatRecord { id:number; measured_at:string; work_location:string; recorder_name:string; air_temperature_c:number; relative_humidity_pct:number; apparent_temperature_c:number; risk_level:string; risk_label:string; status:string; action_compliance:string; actual_action_labels:string[]; site_name?:string }
+interface HeatRecord { id:number; measured_at:string; work_location:string; work_process?:string|null; recorder_name:string; air_temperature_c:number; relative_humidity_pct:number; apparent_temperature_c:number; risk_level:string; risk_label:string; status:string; action_compliance:string; actual_action_labels:string[]; site_name?:string }
 const actionOptions = [
   {code:"WATER",label:"물 제공 및 섭취"},{code:"SHADE_COOLING",label:"그늘·냉방장소 제공"},{code:"VENTILATION",label:"통풍·환기"},
   {code:"REST",label:"휴식 실시"},{code:"WORK_TIME_ADJUSTMENT",label:"작업시간 조정"},{code:"COOLING_GEAR",label:"개인 냉방장구 지급"},
@@ -131,9 +132,11 @@ const confirmForm=reactive({name:"",title:"현장소장"});
 function apparent(t:number,rh:number){const tw=t*Math.atan(.151977*Math.sqrt(rh+8.313659))+Math.atan(t+rh)-Math.atan(rh-1.67633)+.00391838*Math.pow(rh,1.5)*Math.atan(.023101*rh)-4.686035;return Math.round((-0.2442+.55399*tw+.45535*t-.0022*tw*tw+.00278*tw*t+3)*10)/10}
 const apparentTemperature=computed(()=>apparent(Number(form.air_temperature_c)||0,Number(form.relative_humidity_pct)||0));
 const policy=computed(()=>{const v=apparentTemperature.value;if(v>=38)return{risk_level:"DANGER",risk_label:"극심한 폭염",legal_guidance:"체감온도 33℃ 이상: 매 2시간 이내 20분 이상 휴식이 필요합니다.",company_guidance:"긴급작업 외 옥외작업 중지와 건강상태 즉시 확인을 권고합니다."};if(v>=35)return{risk_level:"WARNING",risk_label:"경고",legal_guidance:"체감온도 33℃ 이상: 매 2시간 이내 20분 이상 휴식이 필요합니다.",company_guidance:"고강도·14~17시 옥외작업을 조정하고 냉방·건강확인을 강화하세요."};if(v>=33)return{risk_level:"CAUTION",risk_label:"주의",legal_guidance:"체감온도 33℃ 이상: 매 2시간 이내 20분 이상 휴식이 필요합니다.",company_guidance:"물·그늘·휴식과 취약근로자 건강상태를 확인하세요."};if(v>=31)return{risk_level:"INTEREST",risk_label:"관심",legal_guidance:"폭염작업에 해당할 수 있어 체감온도와 실제 조치를 일자별로 기록해야 합니다.",company_guidance:"물·그늘·환기·휴식·작업시간 조정 중 실제 조치를 확인하세요."};return{risk_level:"NORMAL",risk_label:"일반",legal_guidance:"체감온도를 확인하고 기본 예방조치를 유지하세요.",company_guidance:"물 제공, 환기 및 건강상태를 확인하세요."}});
+function defaultActionsForRisk(level:string){if(level==="DANGER")return["WATER","SHADE_COOLING","REST","WORK_TIME_ADJUSTMENT","COOLING_GEAR","WORK_STOP","HEALTH_MONITORING"];if(level==="WARNING")return["WATER","SHADE_COOLING","REST","WORK_TIME_ADJUSTMENT","COOLING_GEAR","HEALTH_MONITORING"];if(level==="CAUTION")return["WATER","SHADE_COOLING","REST","HEALTH_MONITORING"];if(level==="INTEREST")return["WATER","SHADE_COOLING","VENTILATION","HEALTH_MONITORING"];return["WATER","VENTILATION"]}
+watch(()=>policy.value.risk_level,(level,previous)=>{if(level!==previous)form.actual_actions=defaultActionsForRisk(level)},{immediate:true});
 function openSignature(){error.value="";if(!form.work_location.trim()){error.value="작업장소를 입력하세요.";return}showRecorderSignature.value=true;nextTick(()=>recorderPad.value?.clear())}
-async function saveRecord(){if(!recorderPad.value?.hasInk()){error.value="점검자 서명을 직접 입력하세요.";return}saving.value=true;error.value="";try{await api.post("/heat-stress/records",{...form,recorder_signature_data:recorderPad.value.toDataUrl()});Object.assign(form,{measured_at:nowLocal(),work_location:"",work_process:"",actual_actions:[],action_notes:""});showRecorderSignature.value=false;await loadRecords()}catch(e:any){error.value=e?.response?.data?.detail||"기록 저장에 실패했습니다."}finally{saving.value=false}}
-async function loadRecords(){const res=await api.get("/heat-stress/records",{params:{limit:100,site_id:auth.effectiveSiteId||undefined}});records.value=res.data.items}
+async function saveRecord(){if(!recorderPad.value?.hasInk()){error.value="점검자 서명을 직접 입력하세요.";return}saving.value=true;error.value="";try{await api.post("/heat-stress/records",{...form,recorder_signature_data:recorderPad.value.toDataUrl()});Object.assign(form,{measured_at:nowLocal(),actual_actions:defaultActionsForRisk(policy.value.risk_level),action_notes:""});showRecorderSignature.value=false;await loadRecords()}catch(e:any){error.value=e?.response?.data?.detail||"기록 저장에 실패했습니다."}finally{saving.value=false}}
+async function loadRecords(){const res=await api.get("/heat-stress/records",{params:{limit:100,site_id:auth.effectiveSiteId||undefined}});records.value=res.data.items;const latest=records.value[0];if(latest){if(!form.work_location.trim())form.work_location=latest.work_location||"";if(!form.work_process.trim())form.work_process=latest.work_process||""}}
 function useWeatherValues(payload:{temperature:number|null;humidity:number|null;source:string}){if(payload.temperature!=null)form.air_temperature_c=Number(payload.temperature);if(payload.humidity!=null)form.relative_humidity_pct=Number(payload.humidity);form.measurement_source=payload.source.startsWith("KMA")?"KMA_REFERENCE":"WEATHER_REFERENCE"}
 function formatDate(v:string){return new Date(v).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
 async function downloadPdf(row:HeatRecord){const res=await api.get(`/heat-stress/records/${row.id}/pdf`,{responseType:"blob"});downloadBlobAsFile(res.data,`${row.site_name||"현장"}_체감온도기록_${row.id}.pdf`)}
@@ -142,6 +145,6 @@ onMounted(loadRecords);
 </script>
 
 <style scoped>
-.heat-page{max-width:1120px;margin:0 auto;display:grid;gap:18px}.page-head,.section-head,.record-actions,.actions{display:flex;justify-content:space-between;align-items:center;gap:12px}.eyebrow{color:#0f766e;font-weight:800;margin:0}.page-head h1{margin:3px 0}.page-head p:last-child{color:#64748b;margin:0}.panel{background:#fff;border:1px solid #dbe4ee;border-radius:18px;padding:22px}.panel h2{margin-top:0}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.form-grid label,.wide{display:flex;flex-direction:column;gap:6px;font-weight:700}input,select,textarea{border:1px solid #cbd5e1;border-radius:10px;padding:11px;background:#fff;font:inherit}.temperature-result{margin:18px 0;padding:18px;border-radius:15px;background:#f0fdfa;display:flex;justify-content:space-between;align-items:center}.temperature-result div{display:flex;flex-direction:column}.temperature-result strong{font-size:34px}.risk,.badge{display:inline-block;padding:6px 11px;border-radius:999px;background:#dbeafe;font-weight:800}.temperature-result.caution,.temperature-result.warning{background:#fff7ed}.temperature-result.danger{background:#fef2f2}.guidance{border-left:4px solid #0f766e;padding:2px 14px;margin:16px 0}.guidance p{display:grid;grid-template-columns:110px 1fr;gap:8px}.notice{color:#b45309;font-size:13px}fieldset{border:1px solid #dbe4ee;border-radius:12px;padding:12px;margin:14px 0}.check{display:inline-flex;gap:6px;margin:7px 14px 7px 0}.signature-box,.confirm-box{background:#f8fafc;border-radius:14px;padding:16px;margin-top:16px}.error,.warning{color:#b91c1c;font-weight:700}.empty{text-align:center;color:#64748b;padding:25px}.badge.status{background:#e2e8f0}.record-table-wrap{overflow-x:auto}.record-table{width:100%;min-width:940px;border-collapse:collapse}.record-table th,.record-table td{padding:13px 11px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top}.record-table th{background:#f8fafc;color:#475569;font-size:13px;white-space:nowrap}.record-table td>small,.record-table td>strong{display:block}.record-table td>small{margin-top:4px;color:#64748b}.record-table td .badge{margin-top:6px;font-size:12px}.record-actions{justify-content:flex-start;margin-top:8px}.record-actions button{padding:7px 10px;font-size:12px}.compact{margin-bottom:12px}button{border:0;border-radius:10px;background:#0f766e;color:#fff;padding:10px 15px;font-weight:800;cursor:pointer}button.secondary{background:#e2e8f0;color:#334155}button:disabled{opacity:.55}@media(max-width:768px){.heat-page{padding:2px}.page-head{align-items:flex-start}.panel{padding:15px;border-radius:14px}.form-grid{grid-template-columns:1fr}.guidance p{display:block}.guidance strong{display:block;margin-bottom:4px}}
+.heat-page{max-width:1120px;margin:0 auto;display:grid;gap:18px}.page-head,.section-head,.record-actions,.actions{display:flex;justify-content:space-between;align-items:center;gap:12px}.eyebrow{color:#0f766e;font-weight:800;margin:0}.page-head h1{margin:3px 0}.page-head p:last-child{color:#64748b;margin:0}.panel{background:#fff;border:1px solid #dbe4ee;border-radius:18px;padding:22px}.panel h2{margin-top:0}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.form-grid label,.wide{display:flex;flex-direction:column;gap:6px;font-weight:700}input,select,textarea{border:1px solid #cbd5e1;border-radius:10px;padding:11px;background:#fff;font:inherit}.temperature-result{margin:18px 0;padding:18px;border-radius:15px;background:#f0fdfa;display:flex;justify-content:space-between;align-items:center}.temperature-result div{display:flex;flex-direction:column}.temperature-result strong{font-size:34px}.risk,.badge{display:inline-block;padding:6px 11px;border-radius:999px;background:#dbeafe;font-weight:800}.temperature-result.caution,.temperature-result.warning{background:#fff7ed}.temperature-result.danger{background:#fef2f2}.guidance{border-left:4px solid #0f766e;padding:2px 14px;margin:16px 0}.guidance p{display:grid;grid-template-columns:110px 1fr;gap:8px}.notice{color:#b45309;font-size:13px}fieldset{border:1px solid #dbe4ee;border-radius:12px;padding:12px;margin:14px 0}.action-default-note{margin:4px 0 10px;color:#92400e;font-size:13px}.check{display:inline-flex;gap:6px;margin:7px 14px 7px 0}.signature-box,.confirm-box{background:#f8fafc;border-radius:14px;padding:16px;margin-top:16px}.error,.warning{color:#b91c1c;font-weight:700}.empty{text-align:center;color:#64748b;padding:25px}.badge.status{background:#e2e8f0}.record-table-wrap{overflow-x:auto}.record-table{width:100%;min-width:940px;border-collapse:collapse}.record-table th,.record-table td{padding:13px 11px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top}.record-table th{background:#f8fafc;color:#475569;font-size:13px;white-space:nowrap}.record-table td>small,.record-table td>strong{display:block}.record-table td>small{margin-top:4px;color:#64748b}.record-table td .badge{margin-top:6px;font-size:12px}.record-actions{justify-content:flex-start;margin-top:8px}.record-actions button{padding:7px 10px;font-size:12px}.compact{margin-bottom:12px}button{border:0;border-radius:10px;background:#0f766e;color:#fff;padding:10px 15px;font-weight:800;cursor:pointer}button.secondary{background:#e2e8f0;color:#334155}button:disabled{opacity:.55}@media(max-width:768px){.heat-page{padding:2px}.page-head{align-items:flex-start}.panel{padding:15px;border-radius:14px}.form-grid{grid-template-columns:1fr}.guidance p{display:block}.guidance strong{display:block;margin-bottom:4px}}
 .preview-help{margin:0;border:1px solid #fdba74;border-radius:12px;background:#fff7ed;color:#9a3412;padding:11px 14px;font-weight:800}
 </style>

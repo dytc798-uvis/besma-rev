@@ -10,7 +10,9 @@ from app.modules.heat_stress.service import calculate_apparent_temperature
 
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 KST = timezone(timedelta(hours=9))
+_LOCATION_CACHE: dict[tuple[float, float], str] = {}
 
 
 WEATHER_LABELS = {
@@ -45,6 +47,44 @@ def _fetch_json(params: dict[str, object]) -> dict:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _reverse_location_name(latitude: float, longitude: float) -> str:
+    cache_key = (round(latitude, 3), round(longitude, 3))
+    cached = _LOCATION_CACHE.get(cache_key)
+    if cached:
+        return cached
+    url = f"{NOMINATIM_REVERSE_URL}?{urlencode({
+        'lat': latitude,
+        'lon': longitude,
+        'format': 'jsonv2',
+        'addressdetails': 1,
+        'zoom': 16,
+        'accept-language': 'ko',
+    })}"
+    request = Request(
+        url,
+        headers={"User-Agent": "BESMA-CSMS/1.0 (https://www.besma.co.kr)"},
+    )
+    with urlopen(request, timeout=settings.weather_http_timeout_seconds) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    address = payload.get("address") or {}
+    candidates = [
+        address.get("city") or address.get("state"),
+        address.get("borough") or address.get("county") or address.get("city_district"),
+        address.get("quarter")
+        or address.get("neighbourhood")
+        or address.get("suburb")
+        or address.get("village")
+        or address.get("town"),
+    ]
+    parts: list[str] = []
+    for value in candidates:
+        if value and value not in parts:
+            parts.append(str(value))
+    label = " ".join(parts) or payload.get("display_name") or f"현재 위치 ({latitude:.4f}, {longitude:.4f})"
+    _LOCATION_CACHE[cache_key] = label
+    return label
+
+
 def _risk_flags(
     *,
     apparent_temperature: float | None,
@@ -66,6 +106,14 @@ def _risk_flags(
 
 
 def build_location_overview(latitude: float, longitude: float, location_name: str | None = None) -> dict:
+    resolved_location_name = location_name
+    location_source = "SITE"
+    if not resolved_location_name:
+        location_source = "GPS"
+        try:
+            resolved_location_name = _reverse_location_name(latitude, longitude)
+        except Exception:
+            resolved_location_name = f"현재 위치 ({latitude:.4f}, {longitude:.4f})"
     payload = _fetch_json(
         {
             "latitude": round(latitude, 5),
@@ -131,7 +179,9 @@ def build_location_overview(latitude: float, longitude: float, location_name: st
         calculated = calculate_apparent_temperature(float(temperature), float(humidity))
     return {
         "available": True,
-        "location_name": location_name or "현재 위치",
+        "location_name": resolved_location_name,
+        "location_source": location_source,
+        "location_attribution": "동네명 © OpenStreetMap contributors",
         "latitude": latitude,
         "longitude": longitude,
         "source": "OPEN_METEO_LOCATION",
