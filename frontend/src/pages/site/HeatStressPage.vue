@@ -5,11 +5,21 @@
       <button class="secondary" type="button" @click="loadRecords">새로고침</button>
     </header>
 
+    <LocationWeatherOverview
+      :site-id="auth.effectiveSiteId"
+      :read-only="false"
+      @use-current="useWeatherValues"
+    />
+
+    <p v-if="auth.isRolePreviewActive" class="preview-help">
+      읽기 전용 검증모드입니다. 화면 입력과 체감온도 계산은 시험할 수 있지만 기록 저장과 서명은 전송되지 않습니다.
+    </p>
+
     <section class="panel form-panel">
       <h2>새 기록</h2>
       <div class="form-grid">
         <label><span>점검 일시</span><input v-model="form.measured_at" type="datetime-local" /></label>
-        <label><span>측정 구분</span><select v-model="form.measurement_source"><option value="ON_SITE">현장 실측</option><option value="KMA_REFERENCE">기상청 자료</option></select></label>
+        <label><span>측정 구분</span><select v-model="form.measurement_source"><option value="ON_SITE">현장 실측</option><option value="KMA_REFERENCE">기상청 자료</option><option value="WEATHER_REFERENCE">위치 기반 기상 참고값</option></select></label>
         <label><span>작업장소</span><input v-model="form.work_location" placeholder="예: 지상 3층 외부" /></label>
         <label><span>공정</span><input v-model="form.work_process" placeholder="예: 배관 설치" /></label>
         <label><span>온도(℃)</span><input v-model.number="form.air_temperature_c" type="number" inputmode="decimal" step="0.1" min="-20" max="60" /></label>
@@ -38,8 +48,8 @@
       </div>
       <p v-if="error" class="error">{{ error }}</p>
       <div class="actions">
-        <button v-if="!showRecorderSignature" type="button" @click="openSignature">입력 확인 및 서명</button>
-        <button v-else type="button" :disabled="saving" @click="saveRecord">{{ saving ? "저장 중…" : "서명하고 기록 확정" }}</button>
+        <button v-if="!showRecorderSignature" type="button" :disabled="auth.isRolePreviewActive" @click="openSignature">입력 확인 및 서명</button>
+        <button v-else type="button" :disabled="saving || auth.isRolePreviewActive" @click="saveRecord">{{ saving ? "저장 중…" : "서명하고 기록 확정" }}</button>
       </div>
     </section>
 
@@ -54,8 +64,8 @@
         <p>{{ row.actual_action_labels.join(", ") || "실제 조치 미입력" }}</p>
         <p v-if="row.action_compliance === 'ACTION_REQUIRED'" class="warning">추가 조치 확인 필요</p>
         <div class="record-actions">
-          <button class="secondary" type="button" @click="downloadPdf(row)">PDF 출력</button>
-          <button v-if="row.status !== 'CONFIRMED'" type="button" @click="confirmingId = confirmingId === row.id ? null : row.id">관리자 확인 서명</button>
+          <button class="secondary" type="button" :disabled="auth.isRolePreviewActive" @click="downloadPdf(row)">PDF 출력</button>
+          <button v-if="row.status !== 'CONFIRMED' && canShowManagerConfirm" type="button" :disabled="auth.isRolePreviewActive" @click="confirmingId = confirmingId === row.id ? null : row.id">관리자 확인 서명</button>
         </div>
         <div v-if="confirmingId === row.id" class="confirm-box">
           <div class="form-grid compact">
@@ -73,6 +83,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import SignaturePad from "@/components/SignaturePad.vue";
+import LocationWeatherOverview from "@/components/weather/LocationWeatherOverview.vue";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { downloadBlobAsFile } from "@/utils/blobDownload";
@@ -84,6 +95,7 @@ const actionOptions = [
   {code:"WORK_STOP",label:"옥외작업 중지"},{code:"HEALTH_MONITORING",label:"건강상태 확인"},{code:"NOT_IMPLEMENTED",label:"필요조치 미실시"},{code:"OTHER",label:"기타"},
 ];
 const auth=useAuthStore(); const records=ref<HeatRecord[]>([]); const saving=ref(false); const confirming=ref(false); const error=ref(""); const showRecorderSignature=ref(false); const confirmingId=ref<number|null>(null);
+const canShowManagerConfirm=computed(()=>auth.effectivePersona!=="SITE_STAFF");
 const recorderPad=ref<InstanceType<typeof SignaturePad>|null>(null); const confirmerPad=ref<InstanceType<typeof SignaturePad>|null>(null);
 const nowLocal=()=>{const d=new Date(Date.now()-new Date().getTimezoneOffset()*60000);return d.toISOString().slice(0,16)};
 const form=reactive({measured_at:nowLocal(),measurement_source:"ON_SITE",work_location:"",work_process:"",air_temperature_c:30,relative_humidity_pct:60,actual_actions:[] as string[],action_notes:""});
@@ -93,7 +105,8 @@ const apparentTemperature=computed(()=>apparent(Number(form.air_temperature_c)||
 const policy=computed(()=>{const v=apparentTemperature.value;if(v>=38)return{risk_level:"DANGER",risk_label:"극심한 폭염",legal_guidance:"체감온도 33℃ 이상: 매 2시간 이내 20분 이상 휴식이 필요합니다.",company_guidance:"긴급작업 외 옥외작업 중지와 건강상태 즉시 확인을 권고합니다."};if(v>=35)return{risk_level:"WARNING",risk_label:"경고",legal_guidance:"체감온도 33℃ 이상: 매 2시간 이내 20분 이상 휴식이 필요합니다.",company_guidance:"고강도·14~17시 옥외작업을 조정하고 냉방·건강확인을 강화하세요."};if(v>=33)return{risk_level:"CAUTION",risk_label:"주의",legal_guidance:"체감온도 33℃ 이상: 매 2시간 이내 20분 이상 휴식이 필요합니다.",company_guidance:"물·그늘·휴식과 취약근로자 건강상태를 확인하세요."};if(v>=31)return{risk_level:"INTEREST",risk_label:"관심",legal_guidance:"폭염작업에 해당할 수 있어 체감온도와 실제 조치를 일자별로 기록해야 합니다.",company_guidance:"물·그늘·환기·휴식·작업시간 조정 중 실제 조치를 확인하세요."};return{risk_level:"NORMAL",risk_label:"일반",legal_guidance:"체감온도를 확인하고 기본 예방조치를 유지하세요.",company_guidance:"물 제공, 환기 및 건강상태를 확인하세요."}});
 function openSignature(){error.value="";if(!form.work_location.trim()){error.value="작업장소를 입력하세요.";return}showRecorderSignature.value=true;nextTick(()=>recorderPad.value?.clear())}
 async function saveRecord(){if(!recorderPad.value?.hasInk()){error.value="점검자 서명을 직접 입력하세요.";return}saving.value=true;error.value="";try{await api.post("/heat-stress/records",{...form,recorder_signature_data:recorderPad.value.toDataUrl()});Object.assign(form,{measured_at:nowLocal(),work_location:"",work_process:"",actual_actions:[],action_notes:""});showRecorderSignature.value=false;await loadRecords()}catch(e:any){error.value=e?.response?.data?.detail||"기록 저장에 실패했습니다."}finally{saving.value=false}}
-async function loadRecords(){const res=await api.get("/heat-stress/records",{params:{limit:100}});records.value=res.data.items}
+async function loadRecords(){const res=await api.get("/heat-stress/records",{params:{limit:100,site_id:auth.effectiveSiteId||undefined}});records.value=res.data.items}
+function useWeatherValues(payload:{temperature:number|null;humidity:number|null;source:string}){if(payload.temperature!=null)form.air_temperature_c=Number(payload.temperature);if(payload.humidity!=null)form.relative_humidity_pct=Number(payload.humidity);form.measurement_source=payload.source.startsWith("KMA")?"KMA_REFERENCE":"WEATHER_REFERENCE"}
 function formatDate(v:string){return new Date(v).toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}
 async function downloadPdf(row:HeatRecord){const res=await api.get(`/heat-stress/records/${row.id}/pdf`,{responseType:"blob"});downloadBlobAsFile(res.data,`${row.site_name||"현장"}_체감온도기록_${row.id}.pdf`)}
 async function confirmRecord(id:number){if(!confirmForm.name.trim()){error.value="확인자 성명을 입력하세요.";return}if(!confirmerPad.value?.hasInk()){error.value="확인자 서명을 직접 입력하세요.";return}confirming.value=true;try{await api.post(`/heat-stress/records/${id}/confirm`,{confirmer_name:confirmForm.name,confirmer_title:confirmForm.title,confirmer_signature_data:confirmerPad.value.toDataUrl()});confirmingId.value=null;confirmForm.name="";await loadRecords()}catch(e:any){error.value=e?.response?.data?.detail||"확인 서명에 실패했습니다."}finally{confirming.value=false}}
@@ -102,4 +115,5 @@ onMounted(loadRecords);
 
 <style scoped>
 .heat-page{max-width:980px;margin:0 auto;display:grid;gap:18px}.page-head,.section-head,.record-main,.record-actions,.actions{display:flex;justify-content:space-between;align-items:center;gap:12px}.eyebrow{color:#0f766e;font-weight:800;margin:0}.page-head h1{margin:3px 0}.page-head p:last-child{color:#64748b;margin:0}.panel{background:#fff;border:1px solid #dbe4ee;border-radius:18px;padding:22px}.panel h2{margin-top:0}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.form-grid label,.wide{display:flex;flex-direction:column;gap:6px;font-weight:700}input,select,textarea{border:1px solid #cbd5e1;border-radius:10px;padding:11px;background:#fff;font:inherit}.temperature-result{margin:18px 0;padding:18px;border-radius:15px;background:#f0fdfa;display:flex;justify-content:space-between;align-items:center}.temperature-result div{display:flex;flex-direction:column}.temperature-result strong{font-size:34px}.risk,.badge{padding:6px 11px;border-radius:999px;background:#dbeafe;font-weight:800}.temperature-result.caution,.temperature-result.warning{background:#fff7ed}.temperature-result.danger{background:#fef2f2}.guidance{border-left:4px solid #0f766e;padding:2px 14px;margin:16px 0}.guidance p{display:grid;grid-template-columns:110px 1fr;gap:8px}.notice{color:#b45309;font-size:13px}fieldset{border:1px solid #dbe4ee;border-radius:12px;padding:12px;margin:14px 0}.check{display:inline-flex;gap:6px;margin:7px 14px 7px 0}.signature-box,.confirm-box{background:#f8fafc;border-radius:14px;padding:16px;margin-top:16px}.error,.warning{color:#b91c1c;font-weight:700}.empty{text-align:center;color:#64748b;padding:25px}.record-card{border-top:1px solid #e2e8f0;padding:17px 0}.record-main>div:first-child{display:flex;flex-direction:column;gap:5px}.badges{display:flex;gap:6px}.badge.status{background:#e2e8f0}.record-actions{justify-content:flex-end}.compact{margin-bottom:12px}button{border:0;border-radius:10px;background:#0f766e;color:#fff;padding:10px 15px;font-weight:800;cursor:pointer}button.secondary{background:#e2e8f0;color:#334155}button:disabled{opacity:.55}@media(max-width:768px){.heat-page{padding:2px}.page-head{align-items:flex-start}.panel{padding:15px;border-radius:14px}.form-grid{grid-template-columns:1fr}.guidance p{display:block}.guidance strong{display:block;margin-bottom:4px}.record-main{align-items:flex-start}.badges{flex-direction:column}.record-actions button{flex:1}}
+.preview-help{margin:0;border:1px solid #fdba74;border-radius:12px;background:#fff7ed;color:#9a3412;padding:11px 14px;font-weight:800}
 </style>

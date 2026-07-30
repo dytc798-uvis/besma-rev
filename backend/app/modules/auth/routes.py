@@ -22,6 +22,7 @@ from app.modules.auth.account_issuance_service import (
 from app.modules.sites.models import Site
 from app.modules.users.models import User
 from app.core.system_backup_access import can_system_backup
+from app.core.role_preview_access import can_role_preview
 from app.schemas.auth import (
     ChangePasswordRequest,
     FindLoginIdsRequest,
@@ -201,10 +202,34 @@ def me(db: DbDep, current_user=Depends(get_current_user)) -> UserMe:
     return base.model_copy(
         update={
             "can_system_backup": can_system_backup(current_user.login_id),
+            "can_role_preview": can_role_preview(current_user.login_id),
             "needs_fe_consent": needs_fe,
             "fe_consent_required": consent_req,
         }
     )
+
+
+@router.get("/role-preview/sites")
+def role_preview_sites(db: DbDep, current_user=Depends(get_current_user)):
+    if not can_role_preview(current_user.login_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="ROLE_PREVIEW_NOT_ALLOWED")
+    rows = (
+        db.query(Site)
+        .filter(Site.status.is_(None) | (~Site.status.in_(["CLOSED", "COMPLETED", "DONE"])))
+        .order_by(Site.site_name.asc(), Site.id.asc())
+        .all()
+    )
+    return [
+        {
+            "id": row.id,
+            "site_code": row.site_code,
+            "site_name": row.site_name,
+            "address": row.address,
+            "latitude": row.latitude,
+            "longitude": row.longitude,
+        }
+        for row in rows
+    ]
 
 
 @router.post("/issue-accounts", response_model=IssueAccountResponse)

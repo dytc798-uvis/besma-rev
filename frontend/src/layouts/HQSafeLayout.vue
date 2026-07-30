@@ -207,6 +207,15 @@
               / Persona: {{ auth.effectivePersona }}
             </template>
           </span>
+          <button
+            v-if="auth.isTestPersonaMode"
+            class="secondary"
+            type="button"
+            style="margin-right: 8px"
+            @click="goPersonaSelect"
+          >
+            관점 전환
+          </button>
           <RouterLink
             v-if="!isMobileViewport"
             class="secondary"
@@ -219,6 +228,9 @@
         </div>
       </header>
       <main class="layout-main">
+        <div v-if="auth.isRolePreviewActive" class="role-preview-banner">
+          읽기 전용 검증모드 · {{ auth.effectivePersona }} · 저장·승인·서명·삭제가 차단됩니다.
+        </div>
         <RouterView />
       </main>
     </section>
@@ -428,6 +440,10 @@ function collapseSidebar() {
 function handleLogout() {
   auth.logout();
   router.push({ name: "login" });
+}
+
+function goPersonaSelect() {
+  router.push({ name: "persona-select" });
 }
 </script>
 

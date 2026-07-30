@@ -33,6 +33,7 @@ class UserMe(BaseModel):
     needs_fe_consent: bool = False
     fe_consent_required: bool = False
     can_system_backup: bool = False
+    can_role_preview: bool = False
 
     class Config:
         from_attributes = True

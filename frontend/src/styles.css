@@ -606,3 +606,13 @@ body.fe-sheet-open-body {
     border-radius: 0 !important;
   }
 }
+.role-preview-banner {
+  margin: 0 0 14px;
+  border: 1px solid #fdba74;
+  border-radius: 12px;
+  background: #fff7ed;
+  color: #9a3412;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 800;
+}

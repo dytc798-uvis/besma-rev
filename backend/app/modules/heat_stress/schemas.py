@@ -32,8 +32,8 @@ class HeatStressCreate(BaseModel):
     @classmethod
     def validate_source(cls, value: str) -> str:
         value = value.strip().upper()
-        if value not in {"ON_SITE", "KMA_REFERENCE"}:
-            raise ValueError("measurement_source must be ON_SITE or KMA_REFERENCE")
+        if value not in {"ON_SITE", "KMA_REFERENCE", "WEATHER_REFERENCE"}:
+            raise ValueError("measurement_source must be ON_SITE, KMA_REFERENCE or WEATHER_REFERENCE")
         return value
 
     @field_validator("actual_actions")
