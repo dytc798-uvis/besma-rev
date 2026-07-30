@@ -29,6 +29,27 @@ class Settings(BaseSettings):
     )
 
     storage_root: Path = BASE_DIR / "storage"
+    safety_ledger_nas_root: Path | None = Field(
+        default=None,
+        validation_alias="BESMA_SAFETY_LEDGER_NAS_ROOT",
+    )
+    safety_ledger_card_template_path: Path | None = Field(
+        default=None,
+        validation_alias="BESMA_SAFETY_LEDGER_CARD_TEMPLATE_PATH",
+    )
+    safety_ledger_jo_card_template_path: Path | None = Field(
+        default=None,
+        validation_alias="BESMA_SAFETY_LEDGER_JO_CARD_TEMPLATE_PATH",
+    )
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+    safety_ledger_vision_model: str = Field(
+        default="gpt-5.6-terra",
+        validation_alias="BESMA_SAFETY_LEDGER_VISION_MODEL",
+    )
+    safety_ledger_vision_timeout_seconds: float = Field(
+        default=45.0,
+        validation_alias="BESMA_SAFETY_LEDGER_VISION_TIMEOUT_SECONDS",
+    )
     accident_nas_root: Path | None = Field(default=None, validation_alias="BESMA_ACCIDENT_NAS_ROOT")
     documents_dir_name: str = "documents"
     images_dir_name: str = "images"
