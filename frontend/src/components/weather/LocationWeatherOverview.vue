@@ -87,7 +87,6 @@ const emit = defineEmits<{ "use-current": [payload: { temperature: number | null
 const overview = ref<WeatherOverview | null>(null);
 const loading = ref(false);
 const error = ref("");
-const autoApplied = ref(false);
 const canUseCurrentValues = computed(
   () => !props.readOnly && overview.value?.current.temperature_c != null && overview.value?.current.relative_humidity_pct != null,
 );
@@ -127,9 +126,8 @@ async function load() {
         await api.get("/weather/location-overview", { params: { site_id: props.siteId } })
       ).data;
     }
-    if (props.autoApply && !autoApplied.value) {
+    if (props.autoApply) {
       applyCurrentValues();
-      autoApplied.value = true;
     }
   } catch (loadError: any) {
     if (loadError?.code === 1) error.value = "위치 권한이 거부되었습니다. 브라우저에서 위치 사용을 허용해 주세요.";
