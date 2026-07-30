@@ -8,6 +8,7 @@
     <LocationWeatherOverview
       :site-id="auth.effectiveSiteId"
       :read-only="false"
+      auto-apply
       @use-current="useWeatherValues"
     />
 
@@ -56,26 +57,53 @@
     <section class="panel">
       <div class="section-head"><h2>최근 기록</h2><span>{{ records.length }}건</span></div>
       <div v-if="!records.length" class="empty">아직 기록이 없습니다.</div>
-      <article v-for="row in records" :key="row.id" class="record-card">
-        <div class="record-main">
-          <div><strong>{{ formatDate(row.measured_at) }}</strong><span>{{ row.work_location }} · {{ row.apparent_temperature_c.toFixed(1) }}℃</span></div>
-          <div class="badges"><span :class="['badge', row.risk_level.toLowerCase()]">{{ row.risk_label }}</span><span class="badge status">{{ row.status === 'CONFIRMED' ? '확인 완료' : '확인 대기' }}</span></div>
-        </div>
-        <p>{{ row.actual_action_labels.join(", ") || "실제 조치 미입력" }}</p>
-        <p v-if="row.action_compliance === 'ACTION_REQUIRED'" class="warning">추가 조치 확인 필요</p>
-        <div class="record-actions">
-          <button class="secondary" type="button" :disabled="auth.isRolePreviewActive" @click="downloadPdf(row)">PDF 출력</button>
-          <button v-if="row.status !== 'CONFIRMED' && canShowManagerConfirm" type="button" :disabled="auth.isRolePreviewActive" @click="confirmingId = confirmingId === row.id ? null : row.id">관리자 확인 서명</button>
-        </div>
-        <div v-if="confirmingId === row.id" class="confirm-box">
+      <div v-if="records.length" class="record-table-wrap">
+        <table class="record-table">
+          <thead>
+            <tr>
+              <th>측정일시·작성자</th>
+              <th>온도</th>
+              <th>습도</th>
+              <th>체감온도</th>
+              <th>조치사항</th>
+              <th>확인</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template v-for="row in records" :key="row.id">
+              <tr>
+                <td><strong>{{ formatDate(row.measured_at) }}</strong><small>{{ row.recorder_name }} · {{ row.work_location }}</small></td>
+                <td>{{ row.air_temperature_c.toFixed(1) }}℃</td>
+                <td>{{ row.relative_humidity_pct.toFixed(0) }}%</td>
+                <td><strong>{{ row.apparent_temperature_c.toFixed(1) }}℃</strong><span :class="['badge', row.risk_level.toLowerCase()]">{{ row.risk_label }}</span></td>
+                <td>
+                  {{ row.actual_action_labels.join(", ") || "실제 조치 미입력" }}
+                  <small v-if="row.action_compliance === 'ACTION_REQUIRED'" class="warning">추가 조치 확인 필요</small>
+                </td>
+                <td>
+                  <span class="badge status">{{ row.status === 'CONFIRMED' ? '확인 완료' : '확인 대기' }}</span>
+                  <div class="record-actions">
+                    <button class="secondary" type="button" :disabled="auth.isRolePreviewActive" @click="downloadPdf(row)">PDF</button>
+                    <button v-if="row.status !== 'CONFIRMED' && canShowManagerConfirm" type="button" :disabled="auth.isRolePreviewActive" @click="confirmingId = confirmingId === row.id ? null : row.id">확인 서명</button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="confirmingId === row.id">
+                <td colspan="6">
+                  <div class="confirm-box">
           <div class="form-grid compact">
             <label><span>확인자 성명</span><input v-model="confirmForm.name" /></label>
             <label><span>직책</span><select v-model="confirmForm.title"><option>현장소장</option><option>관리감독자</option><option>안전관리자</option><option>기타 현장관리자</option></select></label>
           </div>
           <SignaturePad ref="confirmerPad" :height="160" />
           <button type="button" :disabled="confirming" @click="confirmRecord(row.id)">확인 서명 완료</button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
         </div>
-      </article>
     </section>
   </div>
 </template>
@@ -88,7 +116,7 @@ import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
 import { downloadBlobAsFile } from "@/utils/blobDownload";
 
-interface HeatRecord { id:number; measured_at:string; work_location:string; apparent_temperature_c:number; risk_level:string; risk_label:string; status:string; action_compliance:string; actual_action_labels:string[]; site_name?:string }
+interface HeatRecord { id:number; measured_at:string; work_location:string; recorder_name:string; air_temperature_c:number; relative_humidity_pct:number; apparent_temperature_c:number; risk_level:string; risk_label:string; status:string; action_compliance:string; actual_action_labels:string[]; site_name?:string }
 const actionOptions = [
   {code:"WATER",label:"물 제공 및 섭취"},{code:"SHADE_COOLING",label:"그늘·냉방장소 제공"},{code:"VENTILATION",label:"통풍·환기"},
   {code:"REST",label:"휴식 실시"},{code:"WORK_TIME_ADJUSTMENT",label:"작업시간 조정"},{code:"COOLING_GEAR",label:"개인 냉방장구 지급"},
@@ -114,6 +142,6 @@ onMounted(loadRecords);
 </script>
 
 <style scoped>
-.heat-page{max-width:980px;margin:0 auto;display:grid;gap:18px}.page-head,.section-head,.record-main,.record-actions,.actions{display:flex;justify-content:space-between;align-items:center;gap:12px}.eyebrow{color:#0f766e;font-weight:800;margin:0}.page-head h1{margin:3px 0}.page-head p:last-child{color:#64748b;margin:0}.panel{background:#fff;border:1px solid #dbe4ee;border-radius:18px;padding:22px}.panel h2{margin-top:0}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.form-grid label,.wide{display:flex;flex-direction:column;gap:6px;font-weight:700}input,select,textarea{border:1px solid #cbd5e1;border-radius:10px;padding:11px;background:#fff;font:inherit}.temperature-result{margin:18px 0;padding:18px;border-radius:15px;background:#f0fdfa;display:flex;justify-content:space-between;align-items:center}.temperature-result div{display:flex;flex-direction:column}.temperature-result strong{font-size:34px}.risk,.badge{padding:6px 11px;border-radius:999px;background:#dbeafe;font-weight:800}.temperature-result.caution,.temperature-result.warning{background:#fff7ed}.temperature-result.danger{background:#fef2f2}.guidance{border-left:4px solid #0f766e;padding:2px 14px;margin:16px 0}.guidance p{display:grid;grid-template-columns:110px 1fr;gap:8px}.notice{color:#b45309;font-size:13px}fieldset{border:1px solid #dbe4ee;border-radius:12px;padding:12px;margin:14px 0}.check{display:inline-flex;gap:6px;margin:7px 14px 7px 0}.signature-box,.confirm-box{background:#f8fafc;border-radius:14px;padding:16px;margin-top:16px}.error,.warning{color:#b91c1c;font-weight:700}.empty{text-align:center;color:#64748b;padding:25px}.record-card{border-top:1px solid #e2e8f0;padding:17px 0}.record-main>div:first-child{display:flex;flex-direction:column;gap:5px}.badges{display:flex;gap:6px}.badge.status{background:#e2e8f0}.record-actions{justify-content:flex-end}.compact{margin-bottom:12px}button{border:0;border-radius:10px;background:#0f766e;color:#fff;padding:10px 15px;font-weight:800;cursor:pointer}button.secondary{background:#e2e8f0;color:#334155}button:disabled{opacity:.55}@media(max-width:768px){.heat-page{padding:2px}.page-head{align-items:flex-start}.panel{padding:15px;border-radius:14px}.form-grid{grid-template-columns:1fr}.guidance p{display:block}.guidance strong{display:block;margin-bottom:4px}.record-main{align-items:flex-start}.badges{flex-direction:column}.record-actions button{flex:1}}
+.heat-page{max-width:1120px;margin:0 auto;display:grid;gap:18px}.page-head,.section-head,.record-actions,.actions{display:flex;justify-content:space-between;align-items:center;gap:12px}.eyebrow{color:#0f766e;font-weight:800;margin:0}.page-head h1{margin:3px 0}.page-head p:last-child{color:#64748b;margin:0}.panel{background:#fff;border:1px solid #dbe4ee;border-radius:18px;padding:22px}.panel h2{margin-top:0}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.form-grid label,.wide{display:flex;flex-direction:column;gap:6px;font-weight:700}input,select,textarea{border:1px solid #cbd5e1;border-radius:10px;padding:11px;background:#fff;font:inherit}.temperature-result{margin:18px 0;padding:18px;border-radius:15px;background:#f0fdfa;display:flex;justify-content:space-between;align-items:center}.temperature-result div{display:flex;flex-direction:column}.temperature-result strong{font-size:34px}.risk,.badge{display:inline-block;padding:6px 11px;border-radius:999px;background:#dbeafe;font-weight:800}.temperature-result.caution,.temperature-result.warning{background:#fff7ed}.temperature-result.danger{background:#fef2f2}.guidance{border-left:4px solid #0f766e;padding:2px 14px;margin:16px 0}.guidance p{display:grid;grid-template-columns:110px 1fr;gap:8px}.notice{color:#b45309;font-size:13px}fieldset{border:1px solid #dbe4ee;border-radius:12px;padding:12px;margin:14px 0}.check{display:inline-flex;gap:6px;margin:7px 14px 7px 0}.signature-box,.confirm-box{background:#f8fafc;border-radius:14px;padding:16px;margin-top:16px}.error,.warning{color:#b91c1c;font-weight:700}.empty{text-align:center;color:#64748b;padding:25px}.badge.status{background:#e2e8f0}.record-table-wrap{overflow-x:auto}.record-table{width:100%;min-width:940px;border-collapse:collapse}.record-table th,.record-table td{padding:13px 11px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top}.record-table th{background:#f8fafc;color:#475569;font-size:13px;white-space:nowrap}.record-table td>small,.record-table td>strong{display:block}.record-table td>small{margin-top:4px;color:#64748b}.record-table td .badge{margin-top:6px;font-size:12px}.record-actions{justify-content:flex-start;margin-top:8px}.record-actions button{padding:7px 10px;font-size:12px}.compact{margin-bottom:12px}button{border:0;border-radius:10px;background:#0f766e;color:#fff;padding:10px 15px;font-weight:800;cursor:pointer}button.secondary{background:#e2e8f0;color:#334155}button:disabled{opacity:.55}@media(max-width:768px){.heat-page{padding:2px}.page-head{align-items:flex-start}.panel{padding:15px;border-radius:14px}.form-grid{grid-template-columns:1fr}.guidance p{display:block}.guidance strong{display:block;margin-bottom:4px}}
 .preview-help{margin:0;border:1px solid #fdba74;border-radius:12px;background:#fff7ed;color:#9a3412;padding:11px 14px;font-weight:800}
 </style>

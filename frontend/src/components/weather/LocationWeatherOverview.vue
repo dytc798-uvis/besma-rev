@@ -27,11 +27,7 @@
         <button
           v-if="canUseCurrentValues"
           type="button"
-          @click="$emit('use-current', {
-            temperature: overview.current.temperature_c,
-            humidity: overview.current.relative_humidity_pct,
-            source: overview.source,
-          })"
+          @click="applyCurrentValues"
         >
           현재값을 체감온도 입력에 사용
         </button>
@@ -84,11 +80,12 @@ interface WeatherOverview {
   forecast_days: ForecastDay[];
 }
 
-const props = defineProps<{ siteId?: number | null; readOnly?: boolean }>();
-defineEmits<{ "use-current": [payload: { temperature: number | null; humidity: number | null; source: string }] }>();
+const props = defineProps<{ siteId?: number | null; readOnly?: boolean; autoApply?: boolean }>();
+const emit = defineEmits<{ "use-current": [payload: { temperature: number | null; humidity: number | null; source: string }] }>();
 const overview = ref<WeatherOverview | null>(null);
 const loading = ref(false);
 const error = ref("");
+const autoApplied = ref(false);
 const canUseCurrentValues = computed(
   () => !props.readOnly && overview.value?.current.temperature_c != null && overview.value?.current.relative_humidity_pct != null,
 );
@@ -112,23 +109,26 @@ async function load() {
   error.value = "";
   overview.value = null;
   try {
-    const params: Record<string, number> = {};
-    if (props.siteId) params.site_id = props.siteId;
     try {
-      overview.value = (await api.get("/weather/location-overview", { params })).data;
-      return;
-    } catch (siteError: any) {
-      if (siteError?.response?.status !== 422) throw siteError;
+      const position = await currentPosition();
+      overview.value = (
+        await api.get("/weather/location-overview", {
+          params: {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          },
+        })
+      ).data;
+    } catch (positionError) {
+      if (!props.siteId) throw positionError;
+      overview.value = (
+        await api.get("/weather/location-overview", { params: { site_id: props.siteId } })
+      ).data;
     }
-    const position = await currentPosition();
-    overview.value = (
-      await api.get("/weather/location-overview", {
-        params: {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        },
-      })
-    ).data;
+    if (props.autoApply && !autoApplied.value) {
+      applyCurrentValues();
+      autoApplied.value = true;
+    }
   } catch (loadError: any) {
     if (loadError?.code === 1) error.value = "위치 권한이 거부되었습니다. 브라우저에서 위치 사용을 허용해 주세요.";
     else if (loadError?.response?.data?.detail === "WEATHER_PROVIDER_UNAVAILABLE") error.value = "기상자료 제공처에 일시적으로 연결할 수 없습니다.";
@@ -136,6 +136,15 @@ async function load() {
   } finally {
     loading.value = false;
   }
+}
+
+function applyCurrentValues() {
+  if (!overview.value) return;
+  emit("use-current", {
+    temperature: overview.value.current.temperature_c,
+    humidity: overview.value.current.relative_humidity_pct,
+    source: overview.value.source,
+  });
 }
 
 function numberText(value: number | null, unit: string, digits = 1) {
