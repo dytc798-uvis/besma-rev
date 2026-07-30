@@ -38,6 +38,7 @@ def location_overview(
         if current_user.role in {Role.SITE, Role.SITE_FUNCTIONAL_EVAL} and current_user.site_id != site.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SITE_SCOPE_MISMATCH")
 
+    explicit_gps_location = latitude is not None and longitude is not None
     lat = latitude if latitude is not None else (site.latitude if site else None)
     lon = longitude if longitude is not None else (site.longitude if site else None)
     if lat is None or lon is None:
@@ -48,6 +49,10 @@ def location_overview(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="ROLE_PREVIEW_NOT_ALLOWED")
 
     try:
-        return build_location_overview(float(lat), float(lon), site.site_name if site else "현재 위치")
+        return build_location_overview(
+            float(lat),
+            float(lon),
+            None if explicit_gps_location else (site.site_name if site else None),
+        )
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="WEATHER_PROVIDER_UNAVAILABLE") from exc
