@@ -25,11 +25,11 @@
           <div><dt>풍속</dt><dd>{{ numberText(overview.current.wind_speed_kmh, "km/h") }}</dd></div>
         </dl>
         <button
-          v-if="canUseCurrentValues"
+          v-if="canRecordTemperature"
           type="button"
-          @click="applyCurrentValues"
+          @click="openTemperatureRecord"
         >
-          현재값을 체감온도 입력에 사용
+          온도기록
         </button>
       </div>
 
@@ -83,11 +83,14 @@ interface WeatherOverview {
 }
 
 const props = defineProps<{ siteId?: number | null; readOnly?: boolean; autoApply?: boolean }>();
-const emit = defineEmits<{ "use-current": [payload: { temperature: number | null; humidity: number | null; source: string }] }>();
+const emit = defineEmits<{
+  "use-current": [payload: { temperature: number | null; humidity: number | null; source: string }];
+  "open-record": [];
+}>();
 const overview = ref<WeatherOverview | null>(null);
 const loading = ref(false);
 const error = ref("");
-const canUseCurrentValues = computed(
+const canRecordTemperature = computed(
   () => !props.readOnly && overview.value?.current.temperature_c != null && overview.value?.current.relative_humidity_pct != null,
 );
 
@@ -145,6 +148,11 @@ function applyCurrentValues() {
     humidity: overview.value.current.relative_humidity_pct,
     source: overview.value.source,
   });
+}
+
+function openTemperatureRecord() {
+  applyCurrentValues();
+  emit("open-record");
 }
 
 function numberText(value: number | null, unit: string, digits = 1) {
