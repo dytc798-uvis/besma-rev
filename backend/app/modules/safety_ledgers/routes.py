@@ -261,7 +261,12 @@ def _export_paths(db, user) -> tuple[Path, Path]:
         export_dir / card_filename,
         template_path=card_template,
     )
-    vehicle_path = build_vehicle_workbook(vehicle, vehicle_logs, export_dir / vehicle_filename)
+    vehicle_path = build_vehicle_workbook(
+        vehicle,
+        vehicle_logs,
+        export_dir / vehicle_filename,
+        template_path=settings.safety_ledger_vehicle_template_path,
+    )
     copy_exports_to_nas((card_path, vehicle_path), settings.safety_ledger_nas_root)
     return card_path, vehicle_path
 

@@ -24,10 +24,10 @@ LOGIN_ID = "안전보건-정상익"
 
 RECEIPTS = (
     ("KakaoTalk_20260803_075542817.jpg", datetime(2026, 7, 29, 11, 49, 53), None, "뉴메카마트", 31_000, "간식비", "박카스·비타500"),
-    ("KakaoTalk_20260803_075542817_01.jpg", datetime(2026, 7, 30, 7, 41, 18), None, "도림주유소", 81_000, "주유비", "휘발유 44.142L / 원승인 120,000원 취소 후 최종 승인 81,000원"),
+    ("KakaoTalk_20260803_075542817_01.jpg", datetime(2026, 7, 30, 7, 41, 18), None, "도림주유소", 81_000, "주유비", "휘발유 44.142L"),
     ("KakaoTalk_20260803_075542817_02.jpg", datetime(2026, 7, 30, 15, 24, 56), None, "세미즈", 13_500, "간식비", "음료 4잔"),
-    ("KakaoTalk_20260803_075542817_03.jpg", datetime(2026, 7, 31, 10, 44, 19), "대우청라 C18BL", "하삼동커피 청라점", 6_300, "간식비", "대우청라 C18BL 현장 방문"),
-    ("KakaoTalk_20260803_075542817_04.jpg", datetime(2026, 7, 31, 14, 23, 48), "대우청라 C18BL", "전주한식뷔페", 17_000, "중식비", "식대 2명 / 대우청라 C18BL 현장 방문"),
+    ("KakaoTalk_20260803_075542817_03.jpg", datetime(2026, 7, 31, 10, 44, 19), "대우청라 C18BL", "하삼동커피 청라점", 6_300, "간식비", None),
+    ("KakaoTalk_20260803_075542817_04.jpg", datetime(2026, 7, 31, 14, 23, 48), "대우청라 C18BL", "전주한식뷔페", 17_000, "중식비", "식대 2명"),
 )
 
 
@@ -64,6 +64,13 @@ def main(stage: Path) -> None:
                 .first()
             )
             if duplicate:
+                duplicate.used_at = used_at
+                duplicate.site_name = site_name
+                duplicate.merchant = merchant
+                duplicate.amount = amount
+                duplicate.description = description
+                duplicate.note = note
+                db.add(duplicate)
                 continue
             db.add(
                 SafetyCardExpense(
@@ -92,15 +99,15 @@ def main(stage: Path) -> None:
             raise FileNotFoundError(dashboard_source)
         dashboard_path = store_image(dashboard_source, "vehicle")
         reconstructed_logs = (
-            (date(2026, 7, 28), "박영선", None, None, "서울 서대문구 북아현로1길(자택)↔롯데-인천효성지역; 거리 미확정(8/3 누적사진 기준 복원)"),
-            (date(2026, 7, 29), "박영선", None, None, "서울 서대문구 북아현로1길(자택)↔대우-장위6구역; 거리 미확정(8/3 누적사진 기준 복원)"),
+            (date(2026, 7, 28), "박영선", None, 49.0, "서울 서대문구 북아현로1길(자택)↔롯데-인천효성지역; 편도 약 24.6km, 왕복 약 49km"),
+            (date(2026, 7, 29), "박영선", None, 26.0, "서울 서대문구 북아현로1길(자택)↔대우-장위6구역; 편도 약 13.0km, 왕복 약 26km"),
             (date(2026, 7, 31), "정상익", None, 70.0, "후곡마을(자택)↔대우청라 C18BL; 편도 35km, 왕복 70km"),
             (
                 date(2026, 8, 3),
                 "정상익",
                 561,
-                222.0,
-                "후곡마을(자택)→회사 도착 후 촬영; 222km는 7/28·7/29·8/3 미배분 누적분, 전체 증가 292km 중 7/31 확정 70km 제외",
+                147.0,
+                "후곡마을(자택)→회사 도착 후 촬영; 147km는 7/30 및 8/3 잔여 누적분, 전체 증가 292km 중 7/28 추정 49km·7/29 추정 26km·7/31 확정 70km 제외",
             ),
         )
         for driven_on, driver_name, odometer_km, trip_km, purpose in reconstructed_logs:

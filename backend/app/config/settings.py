@@ -41,6 +41,10 @@ class Settings(BaseSettings):
         default=None,
         validation_alias="BESMA_SAFETY_LEDGER_JO_CARD_TEMPLATE_PATH",
     )
+    safety_ledger_vehicle_template_path: Path | None = Field(
+        default=None,
+        validation_alias="BESMA_SAFETY_LEDGER_VEHICLE_TEMPLATE_PATH",
+    )
     openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     safety_ledger_vision_model: str = Field(
         default="gpt-5.6-terra",

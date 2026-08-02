@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import calendar
 import shutil
+from copy import copy
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -85,7 +86,6 @@ def build_card_workbook(
                 note_parts = [
                     item.note,
                     f"시간 {when:%H:%M}" if item.used_at else None,
-                    f"카드 끝4자리 {item.card_last4}" if item.card_last4 else None,
                 ]
                 ws.cell(row_index, 7, " / ".join(part for part in note_parts if part))
             ws["E45"] = "=SUM(E4:E44)"
@@ -152,6 +152,8 @@ def build_vehicle_workbook(
     vehicle: SafetyVehicle,
     logs: Iterable[SafetyVehicleLog],
     output_path: Path,
+    *,
+    template_path: Path | None = None,
 ) -> Path:
     grouped: dict[tuple[int, int], list[SafetyVehicleLog]] = defaultdict(list)
     for row in logs:
@@ -159,6 +161,73 @@ def build_vehicle_workbook(
     if not grouped:
         now = datetime.now()
         grouped[(now.year, now.month)] = []
+
+    if template_path and template_path.is_file():
+        wb = load_workbook(template_path)
+        source = wb["7월"] if "7월" in wb.sheetnames else wb.worksheets[0]
+        target_sheets = []
+        for year, month in sorted(grouped):
+            title = f"{month}월"
+            if title in wb.sheetnames:
+                ws = wb[title]
+            else:
+                ws = wb.copy_worksheet(source)
+                for validation in source.data_validations.dataValidation:
+                    ws.add_data_validation(copy(validation))
+                ws.title = title
+            target_sheets.append((year, month, ws))
+        keep = {id(ws) for _year, _month, ws in target_sheets}
+        for ws in list(wb.worksheets):
+            if id(ws) not in keep:
+                wb.remove(ws)
+
+        running_end: int | None = None
+        for year, month, ws in target_sheets:
+            rows = sorted(grouped[(year, month)], key=lambda item: (item.driven_on, item.created_at, item.id))
+            readings = [item.odometer_km for item in rows if item.odometer_km is not None]
+            first = rows[0] if rows else None
+            inferred_start = (
+                max(0, int(first.odometer_km - first.trip_km))
+                if first and first.odometer_km is not None and first.trip_km is not None
+                else (min(readings) if readings else None)
+            )
+            start_km = running_end if running_end is not None else inferred_start
+            calculated_end = (
+                int(round(start_km + sum(float(item.trip_km or 0) for item in rows)))
+                if start_km is not None
+                else None
+            )
+            end_candidates = readings + ([calculated_end] if calculated_end is not None else [])
+            if end_candidates:
+                running_end = max(end_candidates)
+
+            ws["A7"] = vehicle.vehicle_name
+            ws["E7"] = vehicle.plate_number
+            ws["G7"] = start_km
+            ws["H7"] = vehicle.ownership_type
+            last_day = calendar.monthrange(year, month)[1]
+            for day in range(1, 32):
+                row_index = 10 + day
+                if day <= last_day:
+                    ws.cell(row_index, 1, year)
+                    ws.cell(row_index, 2, month)
+                    ws.cell(row_index, 3, day)
+                    ws.cell(row_index, 4, vehicle.department)
+                    for col_index in range(5, 9):
+                        ws.cell(row_index, col_index).value = None
+                else:
+                    for col_index in range(1, 9):
+                        ws.cell(row_index, col_index).value = None
+            for item in rows:
+                row_index = 10 + item.driven_on.day
+                ws.cell(row_index, 5, item.driver_name)
+                ws.cell(row_index, 6, item.use_type if str(item.use_type).startswith(tuple("1234567")) else "6.업무용(왕복)")
+                ws.cell(row_index, 7, item.trip_km)
+                ws.cell(row_index, 8, item.purpose or "")
+            ws["G42"] = "=SUM(G11:G41,G7)"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        wb.save(output_path)
+        return output_path
 
     wb = Workbook()
     wb.remove(wb.active)
@@ -173,8 +242,14 @@ def build_vehicle_workbook(
             else (min(readings) if readings else None)
         )
         start_km = running_end if running_end is not None else inferred_start
-        if readings:
-            running_end = max(readings)
+        calculated_end = (
+            int(round(start_km + sum(float(item.trip_km or 0) for item in rows)))
+            if start_km is not None
+            else None
+        )
+        end_candidates = readings + ([calculated_end] if calculated_end is not None else [])
+        if end_candidates:
+            running_end = max(end_candidates)
         ws = wb.create_sheet(_sheet_title(year, month))
         ws.merge_cells("A1:H1")
         ws["A1"] = "운행기록부 (업무용승용차)"
