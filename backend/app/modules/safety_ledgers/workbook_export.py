@@ -4,7 +4,7 @@ import calendar
 import shutil
 from copy import copy
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -38,6 +38,7 @@ def build_card_workbook(
     output_path: Path,
     *,
     template_path: Path | None = None,
+    site_names_by_date: dict[date, str] | None = None,
 ) -> Path:
     grouped: dict[tuple[int, int], list[SafetyCardExpense]] = defaultdict(list)
     for row in expenses:
@@ -79,13 +80,12 @@ def build_card_workbook(
             for row_index, item in enumerate(rows, 4):
                 when = item.used_at or item.created_at
                 ws.cell(row_index, 2, when.date())
-                ws.cell(row_index, 3, item.site_name or "")
+                ws.cell(row_index, 3, item.site_name or (site_names_by_date or {}).get(when.date(), ""))
                 ws.cell(row_index, 4, item.merchant or "")
                 ws.cell(row_index, 5, item.amount)
                 ws.cell(row_index, 6, item.description or "")
                 note_parts = [
                     item.note,
-                    f"시간 {when:%H:%M}" if item.used_at else None,
                 ]
                 ws.cell(row_index, 7, " / ".join(part for part in note_parts if part))
             ws["E45"] = "=SUM(E4:E44)"
@@ -119,7 +119,7 @@ def build_card_workbook(
             values = [
                 index,
                 when,
-                item.site_name or "",
+                item.site_name or (site_names_by_date or {}).get(when.date(), ""),
                 item.merchant or "",
                 item.amount,
                 item.description or "",

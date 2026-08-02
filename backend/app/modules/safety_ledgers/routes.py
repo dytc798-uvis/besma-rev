@@ -192,6 +192,16 @@ def _normalized_description(description: str | None, merchant: str | None) -> st
     return clean or None
 
 
+def _vehicle_destination(purpose: str | None) -> str | None:
+    match = re.search(r"[↔→]\s*([^;]+)", (purpose or "").strip())
+    if not match:
+        return None
+    destination = match.group(1).strip()
+    if destination in {"회사", "후곡마을(자택)", "자택"}:
+        return None
+    return destination or None
+
+
 def _serialize_vehicle_log(row: SafetyVehicleLog) -> dict[str, Any]:
     return {
         "id": row.id,
@@ -245,6 +255,16 @@ def _export_paths(db, user) -> tuple[Path, Path]:
         .order_by(SafetyCardExpense.used_at.asc(), SafetyCardExpense.id.asc())
         .all()
     )
+    destination_candidates: dict[date, set[str]] = {}
+    for log in vehicle_logs:
+        destination = _vehicle_destination(log.purpose)
+        if destination:
+            destination_candidates.setdefault(log.driven_on, set()).add(destination)
+    site_names_by_date = {
+        driven_on: next(iter(candidates))
+        for driven_on, candidates in destination_candidates.items()
+        if len(candidates) == 1
+    }
     card_filename = CARD_FILENAME if card_scope == _SHARED_CARD_SCOPE else "조동문_법인카드 정산서.xlsx"
     vehicle_filename = (
         VEHICLE_FILENAME
@@ -260,6 +280,7 @@ def _export_paths(db, user) -> tuple[Path, Path]:
         expenses,
         export_dir / card_filename,
         template_path=card_template,
+        site_names_by_date=site_names_by_date,
     )
     vehicle_path = build_vehicle_workbook(
         vehicle,
