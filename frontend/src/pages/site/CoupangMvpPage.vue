@@ -229,7 +229,7 @@
                 :key="object.id"
                 :transform="`translate(${object.x} ${object.y})`"
                 class="drawing-object"
-                :class="{ selected: selectedId === object.id, locked: object.locked }"
+                :class="{ selected: selectedId === object.id, locked: object.locked, 'continuation-source': continuationSourceId === object.id }"
                 @pointerdown.stop.prevent="startDrag($event, object)"
                 @click.stop="selectedId = object.id"
               >
@@ -254,12 +254,12 @@
                 <template v-else-if="object.type === 'route'">
                   <line
                     :x1="object.route_x1" :y1="object.route_y1"
-                    :x2="object.route_x2" :y2="object.route_y2"
+                    :x2="routeLineEnd(object).x" :y2="routeLineEnd(object).y"
                     :stroke="object.color || '#dc2626'"
                     :stroke-width="object.stroke_width || 12"
-                    stroke-linecap="round"
+                    stroke-linecap="butt"
                   />
-                  <polygon :points="arrowHeadPoints(object)" :fill="object.color || '#dc2626'" />
+                  <polygon v-if="object.show_arrow_head !== false" :points="arrowHeadPoints(object)" :fill="object.color || '#dc2626'" />
                   <line
                     :x1="object.route_x1" :y1="object.route_y1"
                     :x2="object.route_x2" :y2="object.route_y2"
@@ -496,6 +496,7 @@ type DrawingObject = {
   route_y2?: number;
   stroke_width?: number;
   arrow_head_size?: number;
+  show_arrow_head?: boolean;
   opacity?: number;
   locked?: boolean;
 };
@@ -558,6 +559,7 @@ const documents = ref<StoredDocument[]>([]);
 const selectedId = ref<string | null>(null);
 const routeMode = ref(false);
 const areaMode = ref(false);
+const continuationSourceId = ref<string | null>(null);
 const svgRef = ref<SVGSVGElement | null>(null);
 const canvasWrap = ref<HTMLElement | null>(null);
 const assetUrls = reactive<Record<string, string>>({});
@@ -637,6 +639,7 @@ const previewSvgMarkup = computed(() => {
 let dragState: { id: string; offsetX: number; offsetY: number } | null = null;
 let drawingDraft: { id: string; startX: number; startY: number; type: "route" | "area" } | null = null;
 let areaResizeState: { id: string; oppositeX: number; oppositeY: number } | null = null;
+let routeContinuation: { sourceId: string; startX: number; startY: number } | null = null;
 
 onMounted(async () => {
   try {
@@ -886,6 +889,7 @@ function makeId(prefix: string) {
 }
 
 function addIcon(tool: { label: string; glyph: string; button_glyph?: string; color: string }) {
+  cancelRouteContinuation(true);
   routeMode.value = false;
   areaMode.value = false;
   const index = drawing.objects.filter((item) => item.type === "icon").length;
@@ -906,13 +910,38 @@ function addIcon(tool: { label: string; glyph: string; button_glyph?: string; co
 }
 
 function toggleRouteMode() {
-  routeMode.value = !routeMode.value;
+  if (routeMode.value) {
+    cancelRouteContinuation(true);
+    routeMode.value = false;
+    notify("이동경로 그리기를 취소했습니다.");
+    return;
+  }
+  const selected = selectedObject.value;
   areaMode.value = false;
+  if (selected?.type === "route") {
+    if (selected.locked) {
+      notify("고정된 이동경로입니다. 먼저 고정해제하세요.", true);
+      return;
+    }
+    selected.show_arrow_head = false;
+    routeContinuation = {
+      sourceId: selected.id,
+      startX: selected.x + (selected.route_x2 || 0),
+      startY: selected.y + (selected.route_y2 || 0),
+    };
+    continuationSourceId.value = selected.id;
+    routeMode.value = true;
+    markDirty();
+    notify("기존 화살표 머리에서 다음 이동 지점까지 드래그하세요.");
+    return;
+  }
   selectedId.value = null;
-  notify(routeMode.value ? "도면에서 이동 시작점을 누르고 끝점까지 드래그하세요." : "이동경로 그리기를 취소했습니다.");
+  routeMode.value = true;
+  notify("도면에서 이동 시작점을 누르고 끝점까지 드래그하세요.");
 }
 
 function toggleAreaMode() {
+  cancelRouteContinuation(true);
   areaMode.value = !areaMode.value;
   routeMode.value = false;
   selectedId.value = null;
@@ -957,31 +986,59 @@ function arrowHeadPoints(object: DrawingObject) {
   return `${x2},${y2} ${leftX},${leftY} ${rightX},${rightY}`;
 }
 
+function routeLineEnd(object: DrawingObject) {
+  const x1 = object.route_x1 || 0;
+  const y1 = object.route_y1 || 0;
+  const x2 = object.route_x2 || 0;
+  const y2 = object.route_y2 || 0;
+  if (object.show_arrow_head === false) return { x: x2, y: y2 };
+  const size = object.arrow_head_size || 38;
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const inset = size * 0.78;
+  return {
+    x: x2 - Math.cos(angle) * inset,
+    y: y2 - Math.sin(angle) * inset,
+  };
+}
+
+function cancelRouteContinuation(restoreHead: boolean) {
+  if (routeContinuation && restoreHead) {
+    const source = drawing.objects.find((item) => item.id === routeContinuation!.sourceId);
+    if (source) source.show_arrow_head = true;
+  }
+  routeContinuation = null;
+  continuationSourceId.value = null;
+}
+
 function startCanvasDrawing(event: PointerEvent) {
   if ((!routeMode.value && !areaMode.value) || !svgRef.value || event.button !== 0) return;
   const point = svgPoint(event);
   const type = routeMode.value ? "route" : "area";
+  const startPoint = type === "route" && routeContinuation
+    ? { x: routeContinuation.startX, y: routeContinuation.startY }
+    : point;
   const object: DrawingObject = {
     id: makeId(type),
     type,
-    x: point.x,
-    y: point.y,
+    x: startPoint.x,
+    y: startPoint.y,
     w: 20,
     h: 20,
     label: type === "route" ? "이동경로" : "작업범위",
     color: "#dc2626",
     ...(type === "route"
-      ? { stroke_width: 12, arrow_head_size: 38, route_x1: 0, route_y1: 0, route_x2: 20, route_y2: 20 }
+      ? { stroke_width: 12, arrow_head_size: 38, show_arrow_head: true, route_x1: 0, route_y1: 0, route_x2: 20, route_y2: 20 }
       : { opacity: 0.22 }),
   };
   drawing.objects.push(object);
-  drawingDraft = { id: object.id, startX: point.x, startY: point.y, type };
+  drawingDraft = { id: object.id, startX: startPoint.x, startY: startPoint.y, type };
   selectedId.value = object.id;
   svgRef.value.setPointerCapture(event.pointerId);
   event.preventDefault();
 }
 
 function startDrag(event: PointerEvent, object: DrawingObject) {
+  cancelRouteContinuation(true);
   routeMode.value = false;
   areaMode.value = false;
   selectedId.value = object.id;
@@ -1058,8 +1115,10 @@ function endDrag(event: PointerEvent) {
     if (object && tooSmall) {
       drawing.objects.splice(drawing.objects.indexOf(object), 1);
       selectedId.value = null;
+      if (drawingDraft.type === "route") cancelRouteContinuation(true);
       notify(drawingDraft.type === "route" ? "이동경로를 조금 더 길게 드래그해 주세요." : "작업범위를 조금 더 크게 드래그해 주세요.", true);
     } else {
+      if (drawingDraft.type === "route") cancelRouteContinuation(false);
       notify(drawingDraft.type === "route" ? "이동경로를 추가했습니다. 이름·색상·굵기를 바꿀 수 있습니다." : "반투명 작업범위를 추가했습니다. 이름·색상·투명도를 바꿀 수 있습니다.");
     }
     svgRef.value?.releasePointerCapture?.(event.pointerId);
@@ -1362,7 +1421,7 @@ input,textarea,select { width: 100%; box-sizing: border-box; border: 1px solid #
 button { font: inherit; cursor: pointer; }.text-button { padding: 0; border: 0; color: #2563eb; background: transparent; font-size: 12px; font-weight: 800; }
 .upload-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }.upload-button { display: flex; justify-content: center; align-items: center; min-height: 44px; margin: 0; padding: 0 12px; border: 1px dashed #64748b; border-radius: 12px; color: #1e3a5f; background: #eff6ff; cursor: pointer; }.upload-button.accent { color: #075985; border-color: #0891b2; background: #ecfeff; }.upload-button input { display: none; }
 .tool-strip { display: flex; gap: 7px; padding: 2px 0 12px; overflow-x: auto; }.tool-strip button { flex: 0 0 auto; display: grid; justify-items: center; gap: 2px; min-width: 68px; padding: 7px 8px; border: 1px solid #dbe3ed; border-radius: 11px; color: #334155; background: #fff; font-size: 11px; font-weight: 800; }.tool-strip button span { font-size: 22px; }.tool-strip .route-tool,.tool-strip .area-tool { min-width: 105px; color: #1d4ed8; border-color: #93c5fd; background: #eff6ff; }.tool-strip .area-tool { color: #b91c1c; border-color: #fca5a5; background: #fff1f2; }.tool-strip .route-tool.active,.tool-strip .area-tool.active { color: #fff; border-color: #1d4ed8; background: #1d4ed8; }.tool-strip .area-tool.active { border-color: #b91c1c; background: #b91c1c; }
-.canvas-wrap { width: 100%; overflow: auto; border: 1px solid #94a3b8; border-radius: 14px; background: #e2e8f0; }.drawing-svg { display: block; width: 100%; min-width: 520px; aspect-ratio: 1.6; background: #fff; touch-action: none; user-select: none; }.drawing-svg.route-mode { cursor: crosshair; }.drawing-object { cursor: grab; }.drawing-object:active { cursor: grabbing; }.drawing-object.locked { cursor: not-allowed; }.area-resize-handle { fill: #fff; stroke: #2563eb; stroke-width: 8; cursor: nwse-resize; }.empty-drawing text { fill: #64748b; font-size: 34px; font-weight: 800; }.empty-drawing .small { font-size: 22px; font-weight: 500; }
+.canvas-wrap { width: 100%; overflow: auto; border: 1px solid #94a3b8; border-radius: 14px; background: #e2e8f0; }.drawing-svg { display: block; width: 100%; min-width: 520px; aspect-ratio: 1.6; background: #fff; touch-action: none; user-select: none; }.drawing-svg.route-mode { cursor: crosshair; }.drawing-object { cursor: grab; }.drawing-object:active { cursor: grabbing; }.drawing-object.locked { cursor: not-allowed; }.drawing-object.continuation-source { pointer-events: none; }.area-resize-handle { fill: #fff; stroke: #2563eb; stroke-width: 8; cursor: nwse-resize; }.empty-drawing text { fill: #64748b; font-size: 34px; font-weight: 800; }.empty-drawing .small { font-size: 22px; font-weight: 500; }
 .selection-tools { position: sticky; z-index: 8; top: 4px; display: grid; grid-template-columns: minmax(130px,1.3fr) repeat(3,minmax(100px,1fr)) auto; gap: 10px; align-items: end; margin-bottom: 10px; padding: 12px; border: 1px solid #60a5fa; border-radius: 12px; background: #eff6ff; box-shadow: 0 7px 18px rgba(37,99,235,.14); }.selection-tools label { margin: 0; }.selection-actions { display: flex; gap: 5px; flex-wrap: wrap; }.selection-actions button { min-height: 38px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; }.selection-actions button.locked { color: #fff; border-color: #475569; background: #475569; }.selection-actions .danger { color: #b91c1c; }.color-control { display: grid; gap: 6px; color: #475569; font-size: 12px; font-weight: 800; }.color-hotkeys { display: flex; align-items: center; gap: 6px; }.color-hotkeys button,.color-hotkeys input { width: 28px; height: 28px; min-height: 28px; padding: 0; border: 2px solid #94a3b8; border-radius: 50%; box-sizing: border-box; }.color-hotkeys button.active { border-color: #0f172a; box-shadow: 0 0 0 3px #bfdbfe; }.color-hotkeys input { overflow: hidden; background: #fff; cursor: pointer; }
 .history-panel { max-height: 720px; overflow: auto; }.history-item { display: grid; width: 100%; gap: 5px; margin-bottom: 8px; padding: 12px; text-align: left; border: 1px solid #e2e8f0; border-radius: 11px; background: #f8fafc; }.history-item.active { border-color: #2563eb; background: #eff6ff; }.history-item span,.empty-list { color: #64748b; font-size: 11px; }
 .preview-panel { grid-column: 1 / -1; }.preview-panel .panel-title p { margin: 4px 0 0; color: #64748b; font-size: 12px; }.preview-page-tabs { display: flex; gap: 6px; padding-bottom: 10px; overflow-x: auto; }.preview-page-tabs button { flex: 0 0 auto; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 9px; color: #475569; background: #fff; font-size: 11px; font-weight: 800; }.preview-page-tabs button.active { color: #fff; border-color: #173f70; background: #173f70; }
