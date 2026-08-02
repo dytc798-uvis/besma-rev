@@ -25,7 +25,7 @@ try {
     $cardTarget = Join-Path $OutputDirectory "company-card-template.xlsx"
     Copy-Item -LiteralPath $cardSource.FullName -Destination $cardTarget -Force
     $templateBook = $excel.Workbooks.Open($cardTarget, 0, $false)
-    $templateBook.Worksheets.Item(1).Delete()
+    $templateBook.Worksheets.Item(2).Delete()
     $sheet = $templateBook.Worksheets.Item(1)
     $sheet.Name = "template"
     $sheet.Range("B4:G44").ClearContents()
