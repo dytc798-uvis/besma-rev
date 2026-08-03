@@ -193,11 +193,12 @@ def _normalized_description(description: str | None, merchant: str | None) -> st
 
 
 def _vehicle_destination(purpose: str | None) -> str | None:
-    match = re.search(r"[↔→]\s*([^;]+)", (purpose or "").strip())
-    if not match:
-        return None
-    destination = match.group(1).strip()
+    clean = (purpose or "").strip()
+    match = re.search(r"[↔→]\s*([^;]+)", clean)
+    destination = match.group(1).strip() if match else clean
     if destination in {"회사", "후곡마을(자택)", "자택"}:
+        return None
+    if destination in {"", "본사", "안전보건실 업무"}:
         return None
     return destination or None
 

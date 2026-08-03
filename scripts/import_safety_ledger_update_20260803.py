@@ -55,15 +55,16 @@ def main(stage: Path) -> None:
         vehicle = db.query(SafetyVehicle).filter_by(plate_number=PLATE_NUMBER).one()
 
         purpose_updates = {
-            "20260722_065238.jpg": "후곡마을(자택)→쿠팡 양지5센터; 안전관리자 지원 시작(7/22~7/24)",
-            "20260724_055627.jpg": "쿠팡 양지5센터→후곡마을(자택); 안전관리자 지원 종료 후 복귀(7/24)",
+            "20260722_065238.jpg": ("3.업무용", "쿠팡 양지5센터"),
+            "20260724_055627.jpg": ("3.업무용", "쿠팡 양지5센터"),
         }
-        for original_name, purpose in purpose_updates.items():
+        for original_name, (use_type, purpose) in purpose_updates.items():
             row = (
                 db.query(SafetyVehicleLog)
                 .filter_by(vehicle_id=vehicle.id, dashboard_original_name=original_name)
                 .one()
             )
+            row.use_type = use_type
             row.purpose = purpose
             db.add(row)
 
@@ -112,18 +113,19 @@ def main(stage: Path) -> None:
             raise FileNotFoundError(dashboard_source)
         dashboard_path = store_image(dashboard_source, "vehicle")
         reconstructed_logs = (
-            (date(2026, 7, 28), "박영선", None, 49.0, "서울 서대문구 북아현로1길(자택)↔롯데-인천효성지역; 편도 약 24.6km, 왕복 약 49km"),
-            (date(2026, 7, 29), "박영선", None, 26.0, "서울 서대문구 북아현로1길(자택)↔대우-장위6구역; 편도 약 13.0km, 왕복 약 26km"),
-            (date(2026, 7, 31), "정상익", None, 70.0, "후곡마을(자택)↔대우청라 C18BL; 편도 35km, 왕복 70km"),
+            (date(2026, 7, 28), "박영선", None, 49.0, "6.업무용(왕복)", "롯데-인천효성지역"),
+            (date(2026, 7, 29), "박영선", None, 26.0, "6.업무용(왕복)", "대우-장위6구역"),
+            (date(2026, 7, 31), "정상익", None, 70.0, "6.업무용(왕복)", "대우청라 C18BL"),
             (
                 date(2026, 8, 3),
                 "정상익",
                 561,
                 147.0,
-                "후곡마을(자택)→회사 도착 후 촬영; 147km는 7/30 및 8/3 잔여 누적분, 전체 증가 292km 중 7/28 추정 49km·7/29 추정 26km·7/31 확정 70km 제외",
+                "1.출근용",
+                "본사",
             ),
         )
-        for driven_on, driver_name, odometer_km, trip_km, purpose in reconstructed_logs:
+        for driven_on, driver_name, odometer_km, trip_km, use_type, purpose in reconstructed_logs:
             original_name = (
                 dashboard_name
                 if driven_on == date(2026, 8, 3)
@@ -139,6 +141,7 @@ def main(stage: Path) -> None:
                 duplicate_log.driver_name = driver_name
                 duplicate_log.odometer_km = odometer_km
                 duplicate_log.trip_km = trip_km
+                duplicate_log.use_type = use_type
                 duplicate_log.purpose = purpose
                 db.add(duplicate_log)
                 updated_vehicle += 1
@@ -150,6 +153,7 @@ def main(stage: Path) -> None:
                     driver_name=driver_name,
                     odometer_km=odometer_km,
                     trip_km=trip_km,
+                    use_type=use_type,
                     purpose=purpose,
                     dashboard_image_path=dashboard_path,
                     dashboard_original_name=original_name,

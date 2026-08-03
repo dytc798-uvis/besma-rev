@@ -46,8 +46,10 @@ try {
         }
     }
     $sourceSheet = $templateBook.Worksheets.Item(1)
-    $sourceSheet.Copy([Type]::Missing, $sourceSheet)
-    for ($month = 7; $month -le 8; $month++) {
+    for ($copyIndex = 2; $copyIndex -le 6; $copyIndex++) {
+        $sourceSheet.Copy([Type]::Missing, $templateBook.Worksheets.Item($templateBook.Worksheets.Count))
+    }
+    for ($month = 7; $month -le 12; $month++) {
         $sheetIndex = $month - 6
         $sheet = $templateBook.Worksheets.Item($sheetIndex)
         $sheet.Name = "${month}${monthSuffix}"

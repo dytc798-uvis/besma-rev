@@ -161,6 +161,10 @@ def build_vehicle_workbook(
     if not grouped:
         now = datetime.now()
         grouped[(now.year, now.month)] = []
+    latest_year = max(year for year, _month in grouped)
+    latest_month = max(month for year, month in grouped if year == latest_year)
+    for month in range(latest_month + 1, 13):
+        grouped.setdefault((latest_year, month), [])
 
     if template_path and template_path.is_file():
         wb = load_workbook(template_path)
@@ -221,7 +225,7 @@ def build_vehicle_workbook(
             for item in rows:
                 row_index = 10 + item.driven_on.day
                 ws.cell(row_index, 5, item.driver_name)
-                ws.cell(row_index, 6, item.use_type if str(item.use_type).startswith(tuple("1234567")) else "6.업무용(왕복)")
+                ws.cell(row_index, 6, item.use_type if str(item.use_type).startswith(tuple("1234567")) else "3.업무용")
                 ws.cell(row_index, 7, item.trip_km)
                 ws.cell(row_index, 8, item.purpose or "")
             ws["G42"] = "=SUM(G11:G41,G7)"
@@ -287,7 +291,7 @@ def build_vehicle_workbook(
                 item.driven_on.day,
                 vehicle.department,
                 item.driver_name,
-                item.use_type,
+                item.use_type if str(item.use_type).startswith(tuple("1234567")) else "3.업무용",
                 item.trip_km,
                 item.purpose or "",
             ]
