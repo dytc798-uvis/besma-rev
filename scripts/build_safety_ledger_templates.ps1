@@ -53,6 +53,7 @@ try {
         $sheetIndex = $month - 6
         $sheet = $templateBook.Worksheets.Item($sheetIndex)
         $sheet.Name = "${month}${monthSuffix}"
+        $sheet.Range("G7").ClearContents()
         $sheet.Range("E11:H41").ClearContents()
         for ($day = 1; $day -le 31; $day++) {
             $row = 10 + $day
@@ -66,7 +67,7 @@ try {
                 $sheet.Range("A${row}:H${row}").ClearContents()
             }
         }
-        $sheet.Range("G42").Formula = "=SUM(G11:G41,G7)"
+        $sheet.Range("G42").Formula = "=SUM(G11:G41)"
     }
     $templateBook.Save()
     $templateBook.Close($false)

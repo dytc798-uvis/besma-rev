@@ -185,29 +185,11 @@ def build_vehicle_workbook(
             if id(ws) not in keep:
                 wb.remove(ws)
 
-        running_end: int | None = None
         for year, month, ws in target_sheets:
             rows = sorted(grouped[(year, month)], key=lambda item: (item.driven_on, item.created_at, item.id))
-            readings = [item.odometer_km for item in rows if item.odometer_km is not None]
-            first = rows[0] if rows else None
-            inferred_start = (
-                max(0, int(first.odometer_km - first.trip_km))
-                if first and first.odometer_km is not None and first.trip_km is not None
-                else (min(readings) if readings else None)
-            )
-            start_km = running_end if running_end is not None else inferred_start
-            calculated_end = (
-                int(round(start_km + sum(float(item.trip_km or 0) for item in rows)))
-                if start_km is not None
-                else None
-            )
-            end_candidates = readings + ([calculated_end] if calculated_end is not None else [])
-            if end_candidates:
-                running_end = max(end_candidates)
-
             ws["A7"] = vehicle.vehicle_name
             ws["E7"] = vehicle.plate_number
-            ws["G7"] = start_km
+            ws["G7"] = None
             ws["H7"] = vehicle.ownership_type
             last_day = calendar.monthrange(year, month)[1]
             for day in range(1, 32):
@@ -228,32 +210,15 @@ def build_vehicle_workbook(
                 ws.cell(row_index, 6, item.use_type if str(item.use_type).startswith(tuple("1234567")) else "3.업무용")
                 ws.cell(row_index, 7, item.trip_km)
                 ws.cell(row_index, 8, item.purpose or "")
-            ws["G42"] = "=SUM(G11:G41,G7)"
+            ws["G42"] = "=SUM(G11:G41)"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         wb.save(output_path)
         return output_path
 
     wb = Workbook()
     wb.remove(wb.active)
-    running_end: int | None = None
     for (year, month), rows in sorted(grouped.items()):
         rows = sorted(rows, key=lambda item: (item.driven_on, item.created_at, item.id))
-        readings = [item.odometer_km for item in rows if item.odometer_km is not None]
-        first = rows[0] if rows else None
-        inferred_start = (
-            max(0, int(first.odometer_km - first.trip_km))
-            if first and first.odometer_km is not None and first.trip_km is not None
-            else (min(readings) if readings else None)
-        )
-        start_km = running_end if running_end is not None else inferred_start
-        calculated_end = (
-            int(round(start_km + sum(float(item.trip_km or 0) for item in rows)))
-            if start_km is not None
-            else None
-        )
-        end_candidates = readings + ([calculated_end] if calculated_end is not None else [])
-        if end_candidates:
-            running_end = max(end_candidates)
         ws = wb.create_sheet(_sheet_title(year, month))
         ws.merge_cells("A1:H1")
         ws["A1"] = "운행기록부 (업무용승용차)"
@@ -263,7 +228,7 @@ def build_vehicle_workbook(
         info = [
             ("A3", "①차종", "B3", vehicle.vehicle_name),
             ("D3", "②차량번호", "E3", vehicle.plate_number),
-            ("G3", "③기초km", "H3", start_km),
+            ("G3", "③기초km", "H3", None),
             ("A4", "④명의구분", "B4", vehicle.ownership_type),
             ("D4", "부서", "E4", vehicle.department),
             (

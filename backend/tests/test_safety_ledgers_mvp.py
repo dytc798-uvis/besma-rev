@@ -198,7 +198,19 @@ def test_workbooks_preserve_expected_columns(tmp_path: Path):
     vehicle_sheet = load_workbook(vehicle_path, data_only=False).active
     card_sheet = load_workbook(card_path, data_only=False).active
     assert vehicle_sheet["E3"].value == "181하8339"
+    assert vehicle_sheet["H3"].value is None
     assert vehicle_sheet["E7"].value == "박영선"
     assert vehicle_sheet["G7"].value == 35
     assert card_sheet["D4"].value == "안전식당"
     assert card_sheet["E4"].value == 22000
+
+    template_path = Path(__file__).parents[1] / "app" / "modules" / "safety_ledgers" / "templates" / "company-vehicle-template.xlsx"
+    template_output = build_vehicle_workbook(
+        vehicle,
+        [log],
+        tmp_path / "vehicle-from-template.xlsx",
+        template_path=template_path,
+    )
+    template_sheet = load_workbook(template_output, data_only=False)["7월"]
+    assert template_sheet["G7"].value is None
+    assert template_sheet["G42"].value == "=SUM(G11:G41)"
