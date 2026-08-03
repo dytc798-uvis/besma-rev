@@ -56,13 +56,13 @@ def main(stage: Path) -> None:
         vehicle = db.query(SafetyVehicle).filter_by(plate_number=PLATE_NUMBER).one()
 
         purpose_updates = {
-            "20260717_140502.jpg": ("3.업무용", None),
-            "20260722_065238.jpg": ("3.업무용", "쿠팡 양지5센터"),
-            "20260724_055627.jpg": ("3.업무용", "쿠팡 양지5센터"),
-            "20260725_060529.jpg": ("6.업무용(왕복)", "원당1구역"),
-            "20260727_064422.jpg": ("3.업무용", None),
+            "20260717_140502.jpg": ("3.업무용", None, None),
+            "20260722_065238.jpg": ("3.업무용", "쿠팡 양지5센터", None),
+            "20260724_055627.jpg": ("3.업무용", "쿠팡 양지5센터", None),
+            "20260725_060529.jpg": ("6.업무용(왕복)", "원당1구역", None),
+            "20260727_064422.jpg": ("1.출근용", "본사", 35.0),
         }
-        for original_name, (use_type, purpose) in purpose_updates.items():
+        for original_name, (use_type, purpose, trip_km) in purpose_updates.items():
             row = (
                 db.query(SafetyVehicleLog)
                 .filter_by(vehicle_id=vehicle.id, dashboard_original_name=original_name)
@@ -70,6 +70,8 @@ def main(stage: Path) -> None:
             )
             row.use_type = use_type
             row.purpose = purpose
+            if trip_km is not None:
+                row.trip_km = trip_km
             db.add(row)
 
         for original_name, used_at, site_name, merchant, amount, description, note in RECEIPTS:
@@ -128,6 +130,7 @@ def main(stage: Path) -> None:
             .delete(synchronize_session=False)
         )
         reconstructed_logs = (
+            (date(2026, 7, 26), "정상익", None, 70.0, "5.출퇴근용(왕복)", "본사"),
             (date(2026, 7, 28), "박영선", None, 49.0, "6.업무용(왕복)", "롯데-인천효성지역"),
             (date(2026, 7, 29), "박영선", None, 26.0, "6.업무용(왕복)", "대우-장위6구역"),
             (date(2026, 7, 31), "정상익", None, 70.0, "6.업무용(왕복)", "대우청라 C18BL"),
