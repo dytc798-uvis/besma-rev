@@ -49,7 +49,7 @@ def _longest_span(flags: list[bool]) -> tuple[int, int] | None:
     return best
 
 
-def _receipt_print_image(path: Path) -> BytesIO:
+def _receipt_print_image(path: Path) -> tuple[BytesIO, int, int]:
     with Image.open(path) as opened:
         image = ImageOps.exif_transpose(opened).convert("RGB")
     sample = image.copy()
@@ -76,14 +76,32 @@ def _receipt_print_image(path: Path) -> BytesIO:
         )
         image = image.crop(box)
 
-    canvas = Image.new("RGB", (1400, 1700), "white")
-    fitted = image.copy()
-    fitted.thumbnail((1300, 1600), Image.Resampling.LANCZOS)
-    canvas.paste(fitted, ((canvas.width - fitted.width) // 2, (canvas.height - fitted.height) // 2))
+    image.thumbnail((1600, 2400), Image.Resampling.LANCZOS)
     stream = BytesIO()
-    canvas.save(stream, format="JPEG", quality=92, optimize=True)
+    image.save(stream, format="JPEG", quality=92, optimize=True)
     stream.seek(0)
-    return stream
+    return stream, image.width, image.height
+
+
+def _receipt_pages(rows: list[tuple[SafetyCardExpense, BytesIO, int, int]]):
+    pages: list[list[tuple[SafetyCardExpense, BytesIO, int, int]]] = []
+    index = 0
+    while index < len(rows):
+        remaining = len(rows) - index
+        if remaining <= 3:
+            take = remaining
+        else:
+            next_three = rows[index : index + 3]
+            has_long_receipt = any(height / max(width, 1) > 1.7 for _item, _stream, width, height in next_three)
+            take = 2 if has_long_receipt else 3
+        pages.append(rows[index : index + take])
+        index += take
+    if len(pages) >= 2 and len(pages[-1]) == 1:
+        if len(pages[-2]) == 2:
+            pages[-2].extend(pages.pop())
+        else:
+            pages[-1].insert(0, pages[-2].pop())
+    return pages
 
 
 def _append_receipt_evidence(
@@ -101,34 +119,25 @@ def _append_receipt_evidence(
         if not path.is_absolute() and receipt_storage_root is not None:
             path = receipt_storage_root / path
         if path.is_file():
-            evidence_rows.append((item, path))
+            try:
+                stream, width, height = _receipt_print_image(path)
+            except (OSError, ValueError):
+                continue
+            streams.append(stream)
+            evidence_rows.append((item, stream, width, height))
 
-    for index, (item, path) in enumerate(evidence_rows, 1):
-        when = item.used_at or item.created_at
-        ws = wb.create_sheet(f"영수증{index:02d}")
+    for page_index, page_rows in enumerate(_receipt_pages(evidence_rows), 1):
+        ws = wb.create_sheet(f"영수증{page_index:02d}")
         ws.merge_cells("A1:H1")
-        ws["A1"] = f"법인카드 영수증 증빙 {index:02d}"
+        ws["A1"] = f"법인카드 영수증 증빙 {page_index:02d}"
         ws["A1"].font = Font(size=16, bold=True, color="FFFFFF")
         ws["A1"].fill = PatternFill("solid", fgColor=_BLUE)
         ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
-        ws.merge_cells("A2:H3")
-        ws["A2"] = " | ".join(
-            part
-            for part in [
-                f"{when:%Y-%m-%d}",
-                item.site_name,
-                item.merchant,
-                f"{int(item.amount or 0):,}원",
-            ]
-            if part
-        )
-        ws["A2"].font = Font(size=11, bold=True, color="1F2937")
-        ws["A2"].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         for column in range(1, 9):
             ws.column_dimensions[get_column_letter(column)].width = 12
         ws.row_dimensions[1].height = 26
-        ws.row_dimensions[2].height = 20
-        ws.row_dimensions[3].height = 12
+        for row_index in range(2, 58):
+            ws.row_dimensions[row_index].height = 12
         ws.sheet_view.showGridLines = False
         ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.page_setup.paperSize = ws.PAPERSIZE_A4
@@ -139,17 +148,34 @@ def _append_receipt_evidence(
         ws.page_margins.right = 0.25
         ws.page_margins.top = 0.3
         ws.page_margins.bottom = 0.3
-        ws.print_area = "A1:H55"
-        try:
-            stream = _receipt_print_image(path)
-        except (OSError, ValueError):
-            wb.remove(ws)
-            continue
-        streams.append(stream)
-        receipt = ExcelImage(stream)
-        receipt.width = 690
-        receipt.height = 838
-        ws.add_image(receipt, "A5")
+        ws.print_area = "A1:H57"
+        slot_count = len(page_rows)
+        slot_rows = 27 if slot_count == 2 else 18
+        max_height = 285 if slot_count == 2 else 175
+        for slot_index, (item, stream, width, height) in enumerate(page_rows):
+            when = item.used_at or item.created_at
+            meta_row = 2 + slot_index * slot_rows
+            image_row = meta_row + 2
+            ws.merge_cells(start_row=meta_row, start_column=1, end_row=meta_row + 1, end_column=8)
+            meta_cell = ws.cell(meta_row, 1)
+            meta_cell.value = " | ".join(
+                part
+                for part in [
+                    f"{when:%Y-%m-%d}",
+                    item.site_name,
+                    item.merchant,
+                    f"{int(item.amount or 0):,}원",
+                ]
+                if part
+            )
+            meta_cell.font = Font(size=10, bold=True, color="1F2937")
+            meta_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            receipt = ExcelImage(stream)
+            scale = min(620 / max(width, 1), max_height / max(height, 1))
+            receipt.width = round(width * scale)
+            receipt.height = round(height * scale)
+            anchor_column = "B" if receipt.width >= 420 else "C"
+            ws.add_image(receipt, f"{anchor_column}{image_row}")
     return streams
 
 
