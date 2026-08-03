@@ -249,7 +249,7 @@ def _serialize_card(row: SafetyCardExpense) -> dict[str, Any]:
     }
 
 
-def _export_paths(db, user, *, include_receipt_evidence: bool = False) -> tuple[Path, Path]:
+def _export_paths(db, user) -> tuple[Path, Path]:
     card_scope, _card_label = _card_scope(user)
     vehicle = _ensure_vehicle_for_user(db, user)
     export_dir = _storage_dir("exports")
@@ -276,8 +276,6 @@ def _export_paths(db, user, *, include_receipt_evidence: bool = False) -> tuple[
         if len(candidates) == 1
     }
     card_filename = CARD_FILENAME if card_scope == _SHARED_CARD_SCOPE else "조동문_법인카드 정산서.xlsx"
-    if include_receipt_evidence:
-        card_filename = card_filename.removesuffix(".xlsx") + "_영수증증빙포함.xlsx"
     vehicle_filename = (
         VEHICLE_FILENAME
         if vehicle.plate_number == "181하8339"
@@ -293,8 +291,6 @@ def _export_paths(db, user, *, include_receipt_evidence: bool = False) -> tuple[
         export_dir / card_filename,
         template_path=card_template,
         site_names_by_date=site_names_by_date,
-        receipt_storage_root=settings.storage_root,
-        include_receipt_evidence=include_receipt_evidence,
     )
     vehicle_path = build_vehicle_workbook(
         vehicle,
@@ -303,7 +299,7 @@ def _export_paths(db, user, *, include_receipt_evidence: bool = False) -> tuple[
         template_path=settings.safety_ledger_vehicle_template_path,
     )
     copy_exports_to_nas(
-        (card_path,) if include_receipt_evidence else (card_path, vehicle_path),
+        (card_path, vehicle_path),
         settings.safety_ledger_nas_root,
     )
     return card_path, vehicle_path
@@ -511,11 +507,6 @@ async def create_card_expense(
     description: Annotated[str | None, Form()] = None,
     card_last4: Annotated[str | None, Form()] = None,
     note: Annotated[str | None, Form()] = None,
-    rotation_degrees: Annotated[int, Form()] = 0,
-    crop_left: Annotated[float, Form()] = 0,
-    crop_top: Annotated[float, Form()] = 0,
-    crop_right: Annotated[float, Form()] = 0,
-    crop_bottom: Annotated[float, Form()] = 0,
 ):
     _assert_access(current_user)
     card_scope, _card_label = _card_scope(current_user)
@@ -534,18 +525,7 @@ async def create_card_expense(
     )
     confidence = int(extracted.get("confidence", 0)) if extracted else None
     status_value = "AUTO_EXTRACTED" if extracted else ("EXTRACTION_FAILED" if extraction_error else "NEEDS_REVIEW")
-    crop_values = [max(0.0, min(0.95, float(value or 0))) for value in (crop_left, crop_top, crop_right, crop_bottom)]
-    if crop_values[0] + crop_values[2] >= 0.99 or crop_values[1] + crop_values[3] >= 0.99:
-        path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail="영수증 크롭 영역이 너무 작습니다.")
     extraction_payload = extracted or {"error": extraction_error}
-    extraction_payload["image_transform"] = {
-        "rotation_degrees": int(rotation_degrees or 0) % 360,
-        "crop_left": crop_values[0],
-        "crop_top": crop_values[1],
-        "crop_right": crop_values[2],
-        "crop_bottom": crop_values[3],
-    }
     row = SafetyCardExpense(
         card_scope=card_scope,
         used_at=(extracted_used_at if used_at_is_default and extracted_used_at else used_at)
@@ -647,11 +627,11 @@ def download_export(kind: str, db: DbDep, current_user: CurrentUserDep):
     _assert_access(current_user)
     card_scope, _card_label = _card_scope(current_user)
     if kind == "card":
-        card_path, _vehicle_path = _export_paths(db, current_user, include_receipt_evidence=True)
+        card_path, _vehicle_path = _export_paths(db, current_user)
         filename = (
-            "안전실_법인카드 정산서_영수증증빙포함.xlsx"
+            "안전실_법인카드 정산서.xlsx"
             if card_scope == _SHARED_CARD_SCOPE
-            else "조동문_법인카드 정산서_영수증증빙포함.xlsx"
+            else "조동문_법인카드 정산서.xlsx"
         )
         path = card_path
     elif kind == "vehicle":

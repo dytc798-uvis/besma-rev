@@ -6,11 +6,13 @@
         <small>원본은 보존되고 출력할 영역만 저장됩니다.</small>
       </div>
       <div class="rotate-buttons">
+        <button v-if="autoCrop" type="button" class="auto-crop" @click="applyAutoCrop()">자동 크롭</button>
         <button type="button" @click="rotate(-90)">↶ 90°</button>
         <button type="button" @click="rotate(90)">↷ 90°</button>
         <button type="button" @click="reset">초기화</button>
       </div>
     </div>
+    <p v-if="autoCrop" class="auto-note">사진을 출력 칸 비율에 맞춰 자동 크롭했습니다. 아래 슬라이더로 언제든 수정할 수 있습니다.</p>
     <div class="preview-stage">
       <img v-if="previewUrl" :src="previewUrl" alt="크롭 미리보기" :style="previewStyle" />
     </div>
@@ -43,13 +45,24 @@ const props = withDefaults(defineProps<{
   file: File | null;
   modelValue: ImageTransform;
   showCaption?: boolean;
-}>(), { showCaption: false });
+  autoCrop?: boolean;
+  targetAspect?: number;
+}>(), { showCaption: false, autoCrop: false, targetAspect: 82 / 65 });
 const emit = defineEmits<{ (event: "update:modelValue", value: ImageTransform): void }>();
 const previewUrl = ref("");
+const imageSize = ref({ width: 0, height: 0 });
 
 watch(() => props.file, (file) => {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
   previewUrl.value = file ? URL.createObjectURL(file) : "";
+  imageSize.value = { width: 0, height: 0 };
+  if (!previewUrl.value) return;
+  const image = new window.Image();
+  image.onload = () => {
+    imageSize.value = { width: image.naturalWidth, height: image.naturalHeight };
+    if (props.autoCrop) applyAutoCrop();
+  };
+  image.src = previewUrl.value;
 }, { immediate: true });
 onBeforeUnmount(() => {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
@@ -68,8 +81,31 @@ function update(patch: Partial<ImageTransform>) {
   emit("update:modelValue", { ...props.modelValue, ...patch });
 }
 
+function autoCropPatch(rotation = props.modelValue.rotation_degrees || 0): Partial<ImageTransform> {
+  const { width, height } = imageSize.value;
+  if (!width || !height) return {};
+  const target = Math.max(0.2, Number(props.targetAspect) || 82 / 65);
+  const desiredBeforeRotation = rotation % 180 ? 1 / target : target;
+  const source = width / height;
+  let horizontal = 0;
+  let vertical = 0;
+  if (source > desiredBeforeRotation) horizontal = (1 - desiredBeforeRotation / source) / 2;
+  else if (source < desiredBeforeRotation) vertical = (1 - source / desiredBeforeRotation) / 2;
+  return {
+    crop_left: Number(horizontal.toFixed(4)),
+    crop_right: Number(horizontal.toFixed(4)),
+    crop_top: Number(vertical.toFixed(4)),
+    crop_bottom: Number(vertical.toFixed(4)),
+  };
+}
+
+function applyAutoCrop(rotation = props.modelValue.rotation_degrees || 0) {
+  update({ ...autoCropPatch(rotation) });
+}
+
 function rotate(delta: number) {
-  update({ rotation_degrees: ((props.modelValue.rotation_degrees || 0) + delta + 360) % 360 });
+  const rotation = ((props.modelValue.rotation_degrees || 0) + delta + 360) % 360;
+  update({ rotation_degrees: rotation, ...(props.autoCrop ? autoCropPatch(rotation) : {}) });
 }
 
 function setCrop(key: keyof Pick<ImageTransform, "crop_left" | "crop_top" | "crop_right" | "crop_bottom">, event: Event) {
@@ -99,6 +135,8 @@ function reset() {
 .crop-head small { color: #64748b; }
 .rotate-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 button { min-height: 38px; padding: 7px 11px; border: 1px solid #9bb8b8; border-radius: 9px; background: white; color: #164e63; font-weight: 800; cursor: pointer; }
+.auto-crop { border-color: #0f6b6d; color: white; background: #0f6b6d; }
+.auto-note { margin: 9px 0 0; color: #176b4b; font-size: 12px; font-weight: 700; }
 .preview-stage { display: grid; place-items: center; min-height: 220px; max-height: 390px; margin: 12px 0; overflow: hidden; border-radius: 10px; background: #1f2937; }
 .preview-stage img { display: block; max-width: 90%; max-height: 350px; object-fit: contain; transition: transform .15s ease, clip-path .15s ease; }
 .crop-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }

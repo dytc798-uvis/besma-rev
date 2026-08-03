@@ -62,7 +62,13 @@
         </label>
         <article v-for="(photo, index) in photos" :key="photo.key" class="photo-editor-row">
           <div class="photo-row-head"><b>{{ index + 1 }}. {{ photo.file.name }}</b><button type="button" @click="removePhoto(index)">삭제</button></div>
-          <ImageCropEditor v-model="photo.transform" :file="photo.file" show-caption />
+          <ImageCropEditor
+            v-model="photo.transform"
+            :file="photo.file"
+            :target-aspect="82 / 65"
+            auto-crop
+            show-caption
+          />
         </article>
       </section>
 

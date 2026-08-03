@@ -209,8 +209,6 @@ def test_workbooks_preserve_expected_columns(tmp_path: Path):
     card_path = build_card_workbook(
         [expense],
         tmp_path / "card.xlsx",
-        receipt_storage_root=tmp_path,
-        include_receipt_evidence=True,
     )
     vehicle_sheet = load_workbook(vehicle_path, data_only=False).active
     card_sheet = load_workbook(card_path, data_only=False).active
@@ -221,9 +219,8 @@ def test_workbooks_preserve_expected_columns(tmp_path: Path):
     assert card_sheet["D4"].value == "안전식당"
     assert card_sheet["E4"].value == 22000
     card_book = load_workbook(card_path, data_only=False)
-    assert card_book.sheetnames[-1] == "영수증01"
-    assert len(card_book["영수증01"]._images) == 1
-    assert card_book["영수증01"].page_setup.paperSize == 9
+    assert not any(sheet_name.startswith("영수증") for sheet_name in card_book.sheetnames)
+    assert all(not sheet._images for sheet in card_book.worksheets)
 
     template_path = Path(__file__).parents[1] / "app" / "modules" / "safety_ledgers" / "templates" / "company-vehicle-template.xlsx"
     template_output = build_vehicle_workbook(

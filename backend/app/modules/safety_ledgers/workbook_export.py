@@ -240,8 +240,6 @@ def build_card_workbook(
     *,
     template_path: Path | None = None,
     site_names_by_date: dict[date, str] | None = None,
-    receipt_storage_root: Path | None = None,
-    include_receipt_evidence: bool = False,
 ) -> Path:
     expense_rows = list(expenses)
     grouped: dict[tuple[int, int], list[SafetyCardExpense]] = defaultdict(list)
@@ -294,15 +292,8 @@ def build_card_workbook(
                 ws.cell(row_index, 7, " / ".join(part for part in note_parts if part))
             ws["E45"] = "=SUM(E4:E44)"
             ws.print_area = "A1:G46"
-        streams = (
-            _append_receipt_evidence(wb, expense_rows, receipt_storage_root)
-            if include_receipt_evidence
-            else []
-        )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         wb.save(output_path)
-        for stream in streams:
-            stream.close()
         return output_path
 
     wb = Workbook()
@@ -354,15 +345,8 @@ def build_card_workbook(
         ws.auto_filter.ref = f"A3:G{max(3, total_row - 1)}"
         ws.sheet_view.showGridLines = False
 
-    streams = (
-        _append_receipt_evidence(wb, expense_rows, receipt_storage_root)
-        if include_receipt_evidence
-        else []
-    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_path)
-    for stream in streams:
-        stream.close()
     return output_path
 
 
