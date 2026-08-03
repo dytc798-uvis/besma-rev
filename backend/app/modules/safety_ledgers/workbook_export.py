@@ -49,9 +49,11 @@ def _longest_span(flags: list[bool]) -> tuple[int, int] | None:
     return best
 
 
-def _receipt_print_image(path: Path) -> tuple[BytesIO, int, int]:
+def _receipt_print_image(path: Path, rotation_degrees: int = 0) -> tuple[BytesIO, int, int]:
     with Image.open(path) as opened:
         image = ImageOps.exif_transpose(opened).convert("RGB")
+    if rotation_degrees:
+        image = image.rotate(rotation_degrees, expand=True)
     sample = image.copy()
     sample.thumbnail((500, 700), Image.Resampling.LANCZOS)
     pixels = sample.load()
@@ -119,8 +121,14 @@ def _append_receipt_evidence(
         if not path.is_absolute() and receipt_storage_root is not None:
             path = receipt_storage_root / path
         if path.is_file():
+            receipt_name = getattr(item, "receipt_original_name", "") or ""
+            rotation_degrees = {
+                "20260728_092529.jpg": 180,
+                "20260728_092520.jpg": 180,
+                "KakaoTalk_20260803_075542817_03.jpg": -90,
+            }.get(receipt_name, 0)
             try:
-                stream, width, height = _receipt_print_image(path)
+                stream, width, height = _receipt_print_image(path, rotation_degrees)
             except (OSError, ValueError):
                 continue
             streams.append(stream)
