@@ -341,12 +341,23 @@ def build_vehicle_workbook(
                 else:
                     for col_index in range(1, 9):
                         ws.cell(row_index, col_index).value = None
+            rows_by_day: dict[int, list[SafetyVehicleLog]] = defaultdict(list)
             for item in rows:
-                row_index = 10 + item.driven_on.day
-                ws.cell(row_index, 5, item.driver_name)
-                ws.cell(row_index, 6, item.use_type if str(item.use_type).startswith(tuple("1234567")) else "3.업무용")
-                ws.cell(row_index, 7, item.trip_km)
-                ws.cell(row_index, 8, item.purpose or "")
+                rows_by_day[item.driven_on.day].append(item)
+            for day, day_rows in rows_by_day.items():
+                row_index = 10 + day
+                drivers = list(dict.fromkeys(item.driver_name for item in day_rows if item.driver_name))
+                use_types = list(
+                    dict.fromkeys(
+                        item.use_type if str(item.use_type).startswith(tuple("1234567")) else "3.업무용"
+                        for item in day_rows
+                    )
+                )
+                purposes = list(dict.fromkeys(item.purpose for item in day_rows if item.purpose))
+                ws.cell(row_index, 5, " / ".join(drivers))
+                ws.cell(row_index, 6, use_types[0] if len(use_types) == 1 else "3.업무용")
+                ws.cell(row_index, 7, sum(float(item.trip_km or 0) for item in day_rows))
+                ws.cell(row_index, 8, " / ".join(purposes))
             ws["G42"] = "=SUM(G11:G41)"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         wb.save(output_path)
