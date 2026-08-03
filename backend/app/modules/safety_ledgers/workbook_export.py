@@ -58,25 +58,21 @@ def _receipt_print_image(path: Path) -> BytesIO:
     width, height = sample.size
     paper = [
         [
-            min(pixels[x, y]) >= 135 and max(pixels[x, y]) - min(pixels[x, y]) <= 65
+            min(pixels[x, y]) >= 185 and max(pixels[x, y]) - min(pixels[x, y]) <= 65
             for x in range(width)
         ]
         for y in range(height)
     ]
     columns = [sum(paper[y][x] for y in range(height)) / height >= 0.35 for x in range(width)]
-    rows = [sum(paper[y]) / width >= 0.20 for y in range(height)]
     x_span = _longest_span(columns)
-    y_span = _longest_span(rows)
-    if x_span and y_span and x_span[1] - x_span[0] >= width * 0.35 and y_span[1] - y_span[0] >= height * 0.45:
+    if x_span and x_span[1] - x_span[0] >= width * 0.35:
         scale_x = image.width / width
-        scale_y = image.height / height
         margin_x = max(8, int((x_span[1] - x_span[0]) * scale_x * 0.025))
-        margin_y = max(8, int((y_span[1] - y_span[0]) * scale_y * 0.02))
         box = (
             max(0, int(x_span[0] * scale_x) - margin_x),
-            max(0, int(y_span[0] * scale_y) - margin_y),
+            0,
             min(image.width, int(x_span[1] * scale_x) + margin_x),
-            min(image.height, int(y_span[1] * scale_y) + margin_y),
+            image.height,
         )
         image = image.crop(box)
 
