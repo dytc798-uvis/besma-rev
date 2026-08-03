@@ -54,6 +54,19 @@ def main(stage: Path) -> None:
         actor = SimpleNamespace(id=user["id"], name=user["name"])
         vehicle = db.query(SafetyVehicle).filter_by(plate_number=PLATE_NUMBER).one()
 
+        purpose_updates = {
+            "20260722_065238.jpg": "후곡마을(자택)→쿠팡 양지5센터; 안전관리자 지원 시작(7/22~7/24)",
+            "20260724_055627.jpg": "쿠팡 양지5센터→후곡마을(자택); 안전관리자 지원 종료 후 복귀(7/24)",
+        }
+        for original_name, purpose in purpose_updates.items():
+            row = (
+                db.query(SafetyVehicleLog)
+                .filter_by(vehicle_id=vehicle.id, dashboard_original_name=original_name)
+                .one()
+            )
+            row.purpose = purpose
+            db.add(row)
+
         for original_name, used_at, site_name, merchant, amount, description, note in RECEIPTS:
             source = stage / original_name
             if not source.is_file():
