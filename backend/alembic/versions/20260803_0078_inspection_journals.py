@@ -1,7 +1,7 @@
 """inspection journals and cropped evidence photos
 
 Revision ID: 20260803_0078
-Revises: 20260629_0077
+Revises: 20260729_0079
 Create Date: 2026-08-03
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 
 
 revision = "20260803_0078"
-down_revision = "20260629_0077"
+down_revision = "20260729_0079"
 branch_labels = None
 depends_on = None
 
