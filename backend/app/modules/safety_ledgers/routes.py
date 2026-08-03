@@ -16,6 +16,7 @@ from sqlalchemy.orm import joinedload
 from app.config.settings import settings
 from app.core.auth import DbDep
 from app.core.datetime_utils import utc_now
+from app.core.image_storage import resized_jpeg_bytes
 from app.core.permissions import CurrentUserDep, assert_hq_safe_workspace
 from app.modules.safety_ledgers.image_extraction import extract_image
 from app.modules.safety_ledgers.models import (
@@ -128,9 +129,17 @@ async def _save_image(file: UploadFile, kind: str) -> tuple[Path, str, str]:
         raise HTTPException(status_code=400, detail="빈 사진은 업로드할 수 없습니다.")
     if len(content) > _MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="사진은 15MB 이하만 업로드할 수 있습니다.")
+    stored_media_type = media_type
+    if kind == "receipts":
+        try:
+            content = resized_jpeg_bytes(content, max_long_edge=2000, quality=88)
+        except (OSError, ValueError):
+            raise HTTPException(status_code=400, detail="영수증 사진을 읽거나 리사이징할 수 없습니다.")
+        suffix = ".jpg"
+        stored_media_type = "image/jpeg"
     path = _storage_dir(kind) / f"{uuid.uuid4().hex}{suffix}"
     path.write_bytes(content)
-    return path, Path(file.filename or f"capture{suffix}").name[:255], media_type
+    return path, Path(file.filename or f"capture{suffix}").name[:255], stored_media_type
 
 
 def _ensure_vehicle_for_user(db, user) -> SafetyVehicle:
@@ -502,6 +511,11 @@ async def create_card_expense(
     description: Annotated[str | None, Form()] = None,
     card_last4: Annotated[str | None, Form()] = None,
     note: Annotated[str | None, Form()] = None,
+    rotation_degrees: Annotated[int, Form()] = 0,
+    crop_left: Annotated[float, Form()] = 0,
+    crop_top: Annotated[float, Form()] = 0,
+    crop_right: Annotated[float, Form()] = 0,
+    crop_bottom: Annotated[float, Form()] = 0,
 ):
     _assert_access(current_user)
     card_scope, _card_label = _card_scope(current_user)
@@ -520,6 +534,18 @@ async def create_card_expense(
     )
     confidence = int(extracted.get("confidence", 0)) if extracted else None
     status_value = "AUTO_EXTRACTED" if extracted else ("EXTRACTION_FAILED" if extraction_error else "NEEDS_REVIEW")
+    crop_values = [max(0.0, min(0.95, float(value or 0))) for value in (crop_left, crop_top, crop_right, crop_bottom)]
+    if crop_values[0] + crop_values[2] >= 0.99 or crop_values[1] + crop_values[3] >= 0.99:
+        path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="영수증 크롭 영역이 너무 작습니다.")
+    extraction_payload = extracted or {"error": extraction_error}
+    extraction_payload["image_transform"] = {
+        "rotation_degrees": int(rotation_degrees or 0) % 360,
+        "crop_left": crop_values[0],
+        "crop_top": crop_values[1],
+        "crop_right": crop_values[2],
+        "crop_bottom": crop_values[3],
+    }
     row = SafetyCardExpense(
         card_scope=card_scope,
         used_at=(extracted_used_at if used_at_is_default and extracted_used_at else used_at)
@@ -539,7 +565,7 @@ async def create_card_expense(
         receipt_original_name=original_name,
         extraction_status=status_value,
         extraction_confidence=confidence,
-        extraction_raw_json=json.dumps(extracted or {"error": extraction_error}, ensure_ascii=False),
+        extraction_raw_json=json.dumps(extraction_payload, ensure_ascii=False),
         created_by_user_id=current_user.id,
     )
     db.add(row)

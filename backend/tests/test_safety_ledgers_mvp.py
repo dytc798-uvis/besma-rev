@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,6 +24,12 @@ from app.modules.safety_ledgers.models import (
     SafetyVehicleLog,
 )
 from app.modules.safety_ledgers.workbook_export import build_card_workbook, build_vehicle_workbook
+
+
+def _valid_jpeg_bytes(width: int = 900, height: int = 1400) -> bytes:
+    stream = BytesIO()
+    Image.new("RGB", (width, height), "white").save(stream, "JPEG")
+    return stream.getvalue()
 
 
 def _client(tmp_path: Path, monkeypatch, *, user_name: str = "정상익") -> TestClient:
@@ -126,7 +133,7 @@ def test_upload_review_and_export_flow(tmp_path: Path, monkeypatch):
             "description": "중식비",
             "card_last4": "8339",
         },
-        files={"receipt": ("receipt.jpg", b"\xff\xd8\xff\xd9", "image/jpeg")},
+        files={"receipt": ("receipt.jpg", _valid_jpeg_bytes(), "image/jpeg")},
     )
     assert expense.status_code == 200, expense.text
     expense_row = expense.json()

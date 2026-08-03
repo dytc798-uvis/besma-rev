@@ -101,12 +101,17 @@
             accept="image/*"
             capture="environment"
             required
-            @change="receiptPhoto = fileFromEvent($event)"
+            @change="onReceiptSelected"
           />
           <b>{{ receiptPhoto ? receiptPhoto.name : "영수증 사진 촬영 / 선택" }}</b>
           <span><strong>영수증의 위·아래와 네 모서리를 포함한 전체가 한 화면에 보이도록 촬영하세요.</strong></span>
           <span>승인일시, 가맹점, 금액, 카드번호 일부가 선명해야 합니다.</span>
         </label>
+        <ImageCropEditor
+          v-if="receiptPhoto"
+          v-model="receiptTransform"
+          :file="receiptPhoto"
+        />
         <div class="form-grid">
           <label>사용일시<input v-model="cardForm.used_at" type="datetime-local" @change="cardUsedAtEdited = true" /></label>
           <label>사용처 (선택)<input v-model="cardForm.merchant" /></label>
@@ -185,6 +190,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api } from "@/services/api";
+import ImageCropEditor, { type ImageTransform } from "@/components/ImageCropEditor.vue";
 
 type Tab = "vehicle" | "card";
 interface VehicleInfo {
@@ -262,6 +268,7 @@ const notice = ref("");
 const error = ref("");
 const vehiclePhoto = ref<File | null>(null);
 const receiptPhoto = ref<File | null>(null);
+const receiptTransform = ref<ImageTransform>(emptyImageTransform());
 const cardNumberDraft = ref("");
 const cardUsedAtEdited = ref(false);
 const vehiclePhotoInput = ref<HTMLInputElement | null>(null);
@@ -312,6 +319,15 @@ function fileFromEvent(event: Event): File | null {
   return (event.target as HTMLInputElement).files?.[0] || null;
 }
 
+function emptyImageTransform(): ImageTransform {
+  return { rotation_degrees: 0, crop_left: 0, crop_top: 0, crop_right: 0, crop_bottom: 0 };
+}
+
+function onReceiptSelected(event: Event) {
+  receiptPhoto.value = fileFromEvent(event);
+  receiptTransform.value = emptyImageTransform();
+}
+
 function appendIf(form: FormData, key: string, value: unknown) {
   if (value !== null && value !== undefined && String(value).trim() !== "") form.append(key, String(value));
 }
@@ -334,6 +350,9 @@ async function submitCard() {
   if (!receiptPhoto.value) return;
   const form = new FormData();
   form.append("receipt", receiptPhoto.value);
+  for (const [key, value] of Object.entries(receiptTransform.value)) {
+    if (key !== "caption") form.append(key, String(value));
+  }
   form.append("used_at_is_default", String(!cardUsedAtEdited.value));
   for (const [key, value] of Object.entries(cardForm)) {
     if (key !== "description") appendIf(form, key, value);
@@ -342,6 +361,7 @@ async function submitCard() {
   appendIf(form, "description", description);
   await submitForm("/safety-ledgers/card-expenses", form, "영수증과 사용내역을 저장했습니다.");
   receiptPhoto.value = null;
+  receiptTransform.value = emptyImageTransform();
   if (receiptInput.value) receiptInput.value.value = "";
   Object.assign(cardForm, {
     used_at: localDateTimeInput(),

@@ -37,6 +37,7 @@ def init_db() -> None:
     from app.modules.accidents import models as accidents_models  # noqa: F401
     from app.modules.functional_eval import models as functional_eval_models  # noqa: F401
     from app.modules.safety_ledgers import models as safety_ledger_models  # noqa: F401
+    from app.modules.inspection_journals import models as inspection_journal_models  # noqa: F401
     from app.modules.safety_ledgers.models import ensure_safety_ledger_schema
     from app.modules.auth import account_issuance_models  # noqa: F401
     from app.modules.pdf_signing import models as pdf_signing_models  # noqa: F401

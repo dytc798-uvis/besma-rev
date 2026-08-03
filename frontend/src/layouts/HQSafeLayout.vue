@@ -40,6 +40,12 @@
             운행기록부
           </RouterLink>
           <RouterLink
+            class="hq-field-form-menu-highlight"
+            to="/hq-safe/inspection-journals"
+          >
+            점검·교육일지
+          </RouterLink>
+          <RouterLink
             v-if="canAccessCoupangLab"
             class="hq-coupang-lab-highlight"
             to="/hq-safe/coupang-mvp-lab"

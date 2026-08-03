@@ -70,6 +70,7 @@ import HQNewSiteDeploymentPage from "@/pages/hq/HQNewSiteDeploymentPage.vue";
 import HQSystemBackupPage from "@/pages/hq/HQSystemBackupPage.vue";
 import FieldFormUploadPage from "@/pages/field-form-uploads/FieldFormUploadPage.vue";
 import SafetyLedgersPage from "@/pages/safety-ledgers/SafetyLedgersPage.vue";
+import InspectionJournalPage from "@/pages/inspection-journals/InspectionJournalPage.vue";
 import PdfSigningAdminPage from "@/pages/pdf-signing/PdfSigningAdminPage.vue";
 import PdfSigningPublicPage from "@/pages/pdf-signing/PdfSigningPublicPage.vue";
 import { isMobileOpsSiteLogin, siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
@@ -156,6 +157,7 @@ const routes: RouteRecordRaw[] = [
       { path: "safety-ledgers", redirect: { name: "hq-safe-card-expenses" } },
       { path: "card-expenses", name: "hq-safe-card-expenses", component: SafetyLedgersPage, meta: { ledgerTab: "card" } },
       { path: "vehicle-logs", name: "hq-safe-vehicle-logs", component: SafetyLedgersPage, meta: { ledgerTab: "vehicle" } },
+      { path: "inspection-journals", name: "hq-safe-inspection-journals", component: InspectionJournalPage },
       { path: "documents", name: "hq-safe-documents", component: HQDocumentsDashboardPage },
       {
         path: "document-instances/:instanceId",

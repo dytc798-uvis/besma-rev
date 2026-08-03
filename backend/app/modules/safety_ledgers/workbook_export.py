@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import calendar
+import json
 import shutil
 from io import BytesIO
 from copy import copy
@@ -49,9 +50,23 @@ def _longest_span(flags: list[bool]) -> tuple[int, int] | None:
     return best
 
 
-def _receipt_print_image(path: Path, rotation_degrees: int = 0) -> tuple[BytesIO, int, int]:
+def _receipt_print_image(
+    path: Path,
+    rotation_degrees: int = 0,
+    crop: tuple[float, float, float, float] = (0, 0, 0, 0),
+) -> tuple[BytesIO, int, int]:
     with Image.open(path) as opened:
         image = ImageOps.exif_transpose(opened).convert("RGB")
+    left, top, right, bottom = (max(0.0, min(0.95, float(value or 0))) for value in crop)
+    if left + right < 0.99 and top + bottom < 0.99 and any((left, top, right, bottom)):
+        image = image.crop(
+            (
+                round(image.width * left),
+                round(image.height * top),
+                max(round(image.width * left) + 1, round(image.width * (1 - right))),
+                max(round(image.height * top) + 1, round(image.height * (1 - bottom))),
+            )
+        )
     if rotation_degrees:
         image = image.rotate(rotation_degrees, expand=True)
     sample = image.copy()
@@ -78,9 +93,9 @@ def _receipt_print_image(path: Path, rotation_degrees: int = 0) -> tuple[BytesIO
         )
         image = image.crop(box)
 
-    image.thumbnail((1600, 2400), Image.Resampling.LANCZOS)
+    image.thumbnail((1400, 2000), Image.Resampling.LANCZOS)
     stream = BytesIO()
-    image.save(stream, format="JPEG", quality=92, optimize=True)
+    image.save(stream, format="JPEG", quality=88, optimize=True, progressive=True)
     stream.seek(0)
     return stream, image.width, image.height
 
@@ -122,13 +137,29 @@ def _append_receipt_evidence(
             path = receipt_storage_root / path
         if path.is_file():
             receipt_name = getattr(item, "receipt_original_name", "") or ""
-            rotation_degrees = {
+            fallback_rotation = {
                 "20260728_092529.jpg": 180,
                 "20260728_092520.jpg": 180,
                 "KakaoTalk_20260803_075542817_03.jpg": -90,
             }.get(receipt_name, 0)
+            transform = {}
             try:
-                stream, width, height = _receipt_print_image(path, rotation_degrees)
+                raw = json.loads(getattr(item, "extraction_raw_json", "") or "{}")
+                transform = raw.get("image_transform") if isinstance(raw, dict) else {}
+                transform = transform if isinstance(transform, dict) else {}
+            except (json.JSONDecodeError, TypeError):
+                transform = {}
+            rotation_degrees = (
+                -int(transform.get("rotation_degrees") or 0) % 360
+                if transform
+                else fallback_rotation
+            )
+            crop = tuple(
+                float(transform.get(key) or 0)
+                for key in ("crop_left", "crop_top", "crop_right", "crop_bottom")
+            )
+            try:
+                stream, width, height = _receipt_print_image(path, rotation_degrees, crop)
             except (OSError, ValueError):
                 continue
             streams.append(stream)

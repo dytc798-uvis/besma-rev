@@ -32,6 +32,11 @@
         <span class="copy"><strong>현장검색</strong><small>전 현장 검색·현재 위치에서 길찾기</small></span>
         <b aria-hidden="true">→</b>
       </RouterLink>
+      <RouterLink class="work-card entry-inspection" :to="{ name: 'hq-safe-inspection-journals' }">
+        <span class="icon" aria-hidden="true">📝</span>
+        <span class="copy"><strong>점검·교육일지</strong><small>법정 교육내용·사진·결재란 출력</small></span>
+        <b aria-hidden="true">→</b>
+      </RouterLink>
     </nav>
   </main>
 </template>
