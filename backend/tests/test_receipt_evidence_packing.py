@@ -43,3 +43,5 @@ def test_receipt_evidence_packs_two_or_three_receipts_per_a4_page(tmp_path: Path
     assert sorted(len(sheet._images) for sheet in evidence_sheets) == [2, 3]
     assert all(sheet.page_setup.paperSize == 9 for sheet in evidence_sheets)
     assert all(sheet.page_setup.fitToWidth == 1 for sheet in evidence_sheets)
+    two_receipt_sheet = next(sheet for sheet in evidence_sheets if len(sheet._images) == 2)
+    assert [image.anchor._from.col for image in two_receipt_sheet._images] == [0, 4]

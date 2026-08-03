@@ -150,14 +150,31 @@ def _append_receipt_evidence(
         ws.page_margins.bottom = 0.3
         ws.print_area = "A1:H57"
         slot_count = len(page_rows)
-        slot_rows = 27 if slot_count == 2 else 18
-        max_height = 285 if slot_count == 2 else 175
         for slot_index, (item, stream, width, height) in enumerate(page_rows):
             when = item.used_at or item.created_at
-            meta_row = 2 + slot_index * slot_rows
-            image_row = meta_row + 2
-            ws.merge_cells(start_row=meta_row, start_column=1, end_row=meta_row + 1, end_column=8)
-            meta_cell = ws.cell(meta_row, 1)
+            if slot_count == 2:
+                start_column = 1 if slot_index == 0 else 5
+                end_column = 4 if slot_index == 0 else 8
+                meta_row = 2
+                image_row = 5
+                max_width = 330
+                max_height = 650
+                anchor_column = "A" if slot_index == 0 else "E"
+            else:
+                start_column = 1
+                end_column = 8
+                meta_row = 2 + slot_index * 18
+                image_row = meta_row + 2
+                max_width = 620
+                max_height = 175
+                anchor_column = "B"
+            ws.merge_cells(
+                start_row=meta_row,
+                start_column=start_column,
+                end_row=meta_row + 1,
+                end_column=end_column,
+            )
+            meta_cell = ws.cell(meta_row, start_column)
             meta_cell.value = " | ".join(
                 part
                 for part in [
@@ -171,10 +188,9 @@ def _append_receipt_evidence(
             meta_cell.font = Font(size=10, bold=True, color="1F2937")
             meta_cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             receipt = ExcelImage(stream)
-            scale = min(620 / max(width, 1), max_height / max(height, 1))
+            scale = min(max_width / max(width, 1), max_height / max(height, 1))
             receipt.width = round(width * scale)
             receipt.height = round(height * scale)
-            anchor_column = "B" if receipt.width >= 420 else "C"
             ws.add_image(receipt, f"{anchor_column}{image_row}")
     return streams
 
