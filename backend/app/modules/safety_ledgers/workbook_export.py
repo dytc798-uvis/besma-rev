@@ -349,7 +349,7 @@ def build_vehicle_workbook(
                 wb.remove(ws)
 
         for year, month, ws in target_sheets:
-            rows = sorted(grouped[(year, month)], key=lambda item: (item.driven_on, item.created_at, item.id))
+            rows = sorted(grouped[(year, month)], key=lambda item: (item.driven_on, item.id))
             ws["A7"] = vehicle.vehicle_name
             ws["E7"] = vehicle.plate_number
             ws["G7"] = None
@@ -392,7 +392,7 @@ def build_vehicle_workbook(
     wb = Workbook()
     wb.remove(wb.active)
     for (year, month), rows in sorted(grouped.items()):
-        rows = sorted(rows, key=lambda item: (item.driven_on, item.created_at, item.id))
+        rows = sorted(rows, key=lambda item: (item.driven_on, item.id))
         ws = wb.create_sheet(_sheet_title(year, month))
         ws.merge_cells("A1:H1")
         ws["A1"] = "운행기록부 (업무용승용차)"
