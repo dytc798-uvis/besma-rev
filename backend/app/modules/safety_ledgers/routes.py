@@ -240,7 +240,7 @@ def _serialize_card(row: SafetyCardExpense) -> dict[str, Any]:
     }
 
 
-def _export_paths(db, user) -> tuple[Path, Path]:
+def _export_paths(db, user, *, include_receipt_evidence: bool = False) -> tuple[Path, Path]:
     card_scope, _card_label = _card_scope(user)
     vehicle = _ensure_vehicle_for_user(db, user)
     export_dir = _storage_dir("exports")
@@ -267,6 +267,8 @@ def _export_paths(db, user) -> tuple[Path, Path]:
         if len(candidates) == 1
     }
     card_filename = CARD_FILENAME if card_scope == _SHARED_CARD_SCOPE else "조동문_법인카드 정산서.xlsx"
+    if include_receipt_evidence:
+        card_filename = card_filename.removesuffix(".xlsx") + "_영수증증빙포함.xlsx"
     vehicle_filename = (
         VEHICLE_FILENAME
         if vehicle.plate_number == "181하8339"
@@ -283,6 +285,7 @@ def _export_paths(db, user) -> tuple[Path, Path]:
         template_path=card_template,
         site_names_by_date=site_names_by_date,
         receipt_storage_root=settings.storage_root,
+        include_receipt_evidence=include_receipt_evidence,
     )
     vehicle_path = build_vehicle_workbook(
         vehicle,
@@ -290,7 +293,10 @@ def _export_paths(db, user) -> tuple[Path, Path]:
         export_dir / vehicle_filename,
         template_path=settings.safety_ledger_vehicle_template_path,
     )
-    copy_exports_to_nas((card_path, vehicle_path), settings.safety_ledger_nas_root)
+    copy_exports_to_nas(
+        (card_path,) if include_receipt_evidence else (card_path, vehicle_path),
+        settings.safety_ledger_nas_root,
+    )
     return card_path, vehicle_path
 
 
@@ -614,11 +620,16 @@ def receipt_image(expense_id: int, db: DbDep, current_user: CurrentUserDep):
 def download_export(kind: str, db: DbDep, current_user: CurrentUserDep):
     _assert_access(current_user)
     card_scope, _card_label = _card_scope(current_user)
-    card_path, vehicle_path = _export_paths(db, current_user)
     if kind == "card":
-        filename = CARD_FILENAME if card_scope == _SHARED_CARD_SCOPE else "조동문_법인카드 정산서.xlsx"
+        card_path, _vehicle_path = _export_paths(db, current_user, include_receipt_evidence=True)
+        filename = (
+            "안전실_법인카드 정산서_영수증증빙포함.xlsx"
+            if card_scope == _SHARED_CARD_SCOPE
+            else "조동문_법인카드 정산서_영수증증빙포함.xlsx"
+        )
         path = card_path
     elif kind == "vehicle":
+        _card_path, vehicle_path = _export_paths(db, current_user)
         filename = (
             VEHICLE_FILENAME
             if (getattr(current_user, "name", "") or "").strip() != "조동문"

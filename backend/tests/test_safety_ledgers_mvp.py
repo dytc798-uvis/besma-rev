@@ -203,6 +203,7 @@ def test_workbooks_preserve_expected_columns(tmp_path: Path):
         [expense],
         tmp_path / "card.xlsx",
         receipt_storage_root=tmp_path,
+        include_receipt_evidence=True,
     )
     vehicle_sheet = load_workbook(vehicle_path, data_only=False).active
     card_sheet = load_workbook(card_path, data_only=False).active
