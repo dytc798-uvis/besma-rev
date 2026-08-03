@@ -55,8 +55,11 @@ def main(stage: Path) -> None:
         vehicle = db.query(SafetyVehicle).filter_by(plate_number=PLATE_NUMBER).one()
 
         purpose_updates = {
+            "20260717_140502.jpg": ("3.업무용", None),
             "20260722_065238.jpg": ("3.업무용", "쿠팡 양지5센터"),
             "20260724_055627.jpg": ("3.업무용", "쿠팡 양지5센터"),
+            "20260725_060529.jpg": ("3.업무용", None),
+            "20260727_064422.jpg": ("3.업무용", None),
         }
         for original_name, (use_type, purpose) in purpose_updates.items():
             row = (
