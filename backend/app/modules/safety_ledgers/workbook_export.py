@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import calendar
 import shutil
+from io import BytesIO
 from copy import copy
 from collections import defaultdict
 from datetime import date, datetime
@@ -9,8 +10,10 @@ from pathlib import Path
 from typing import Iterable
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.drawing.image import Image as ExcelImage
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from PIL import Image, ImageOps
 
 from app.modules.safety_ledgers.models import SafetyCardExpense, SafetyVehicle, SafetyVehicleLog
 
@@ -33,15 +36,138 @@ def _style_table(ws, start_row: int, end_row: int, end_col: int) -> None:
             cell.alignment = Alignment(vertical="center", wrap_text=True)
 
 
+def _longest_span(flags: list[bool]) -> tuple[int, int] | None:
+    best: tuple[int, int] | None = None
+    start: int | None = None
+    for index, enabled in enumerate(flags + [False]):
+        if enabled and start is None:
+            start = index
+        elif not enabled and start is not None:
+            if best is None or index - start > best[1] - best[0]:
+                best = (start, index)
+            start = None
+    return best
+
+
+def _receipt_print_image(path: Path) -> BytesIO:
+    with Image.open(path) as opened:
+        image = ImageOps.exif_transpose(opened).convert("RGB")
+    sample = image.copy()
+    sample.thumbnail((500, 700), Image.Resampling.LANCZOS)
+    pixels = sample.load()
+    width, height = sample.size
+    paper = [
+        [
+            min(pixels[x, y]) >= 135 and max(pixels[x, y]) - min(pixels[x, y]) <= 65
+            for x in range(width)
+        ]
+        for y in range(height)
+    ]
+    columns = [sum(paper[y][x] for y in range(height)) / height >= 0.35 for x in range(width)]
+    rows = [sum(paper[y]) / width >= 0.20 for y in range(height)]
+    x_span = _longest_span(columns)
+    y_span = _longest_span(rows)
+    if x_span and y_span and x_span[1] - x_span[0] >= width * 0.35 and y_span[1] - y_span[0] >= height * 0.45:
+        scale_x = image.width / width
+        scale_y = image.height / height
+        margin_x = max(8, int((x_span[1] - x_span[0]) * scale_x * 0.025))
+        margin_y = max(8, int((y_span[1] - y_span[0]) * scale_y * 0.02))
+        box = (
+            max(0, int(x_span[0] * scale_x) - margin_x),
+            max(0, int(y_span[0] * scale_y) - margin_y),
+            min(image.width, int(x_span[1] * scale_x) + margin_x),
+            min(image.height, int(y_span[1] * scale_y) + margin_y),
+        )
+        image = image.crop(box)
+
+    canvas = Image.new("RGB", (1400, 1700), "white")
+    fitted = image.copy()
+    fitted.thumbnail((1300, 1600), Image.Resampling.LANCZOS)
+    canvas.paste(fitted, ((canvas.width - fitted.width) // 2, (canvas.height - fitted.height) // 2))
+    stream = BytesIO()
+    canvas.save(stream, format="JPEG", quality=92, optimize=True)
+    stream.seek(0)
+    return stream
+
+
+def _append_receipt_evidence(
+    wb,
+    expenses: list[SafetyCardExpense],
+    receipt_storage_root: Path | None,
+) -> list[BytesIO]:
+    streams: list[BytesIO] = []
+    evidence_rows = []
+    for item in sorted(expenses, key=lambda row: (row.used_at or row.created_at, row.id)):
+        raw_path = getattr(item, "receipt_image_path", None)
+        if not raw_path:
+            continue
+        path = Path(raw_path)
+        if not path.is_absolute() and receipt_storage_root is not None:
+            path = receipt_storage_root / path
+        if path.is_file():
+            evidence_rows.append((item, path))
+
+    for index, (item, path) in enumerate(evidence_rows, 1):
+        when = item.used_at or item.created_at
+        ws = wb.create_sheet(f"영수증{index:02d}")
+        ws.merge_cells("A1:H1")
+        ws["A1"] = f"법인카드 영수증 증빙 {index:02d}"
+        ws["A1"].font = Font(size=16, bold=True, color="FFFFFF")
+        ws["A1"].fill = PatternFill("solid", fgColor=_BLUE)
+        ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+        ws.merge_cells("A2:H3")
+        ws["A2"] = " | ".join(
+            part
+            for part in [
+                f"{when:%Y-%m-%d}",
+                item.site_name,
+                item.merchant,
+                f"{int(item.amount or 0):,}원",
+            ]
+            if part
+        )
+        ws["A2"].font = Font(size=11, bold=True, color="1F2937")
+        ws["A2"].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        for column in range(1, 9):
+            ws.column_dimensions[get_column_letter(column)].width = 12
+        ws.row_dimensions[1].height = 26
+        ws.row_dimensions[2].height = 20
+        ws.row_dimensions[3].height = 12
+        ws.sheet_view.showGridLines = False
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.page_setup.orientation = ws.ORIENTATION_PORTRAIT
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_margins.left = 0.25
+        ws.page_margins.right = 0.25
+        ws.page_margins.top = 0.3
+        ws.page_margins.bottom = 0.3
+        ws.print_area = "A1:H55"
+        try:
+            stream = _receipt_print_image(path)
+        except (OSError, ValueError):
+            wb.remove(ws)
+            continue
+        streams.append(stream)
+        receipt = ExcelImage(stream)
+        receipt.width = 690
+        receipt.height = 838
+        ws.add_image(receipt, "A5")
+    return streams
+
+
 def build_card_workbook(
     expenses: Iterable[SafetyCardExpense],
     output_path: Path,
     *,
     template_path: Path | None = None,
     site_names_by_date: dict[date, str] | None = None,
+    receipt_storage_root: Path | None = None,
 ) -> Path:
+    expense_rows = list(expenses)
     grouped: dict[tuple[int, int], list[SafetyCardExpense]] = defaultdict(list)
-    for row in expenses:
+    for row in expense_rows:
         when = row.used_at or row.created_at
         grouped[(when.year, when.month)].append(row)
     if not grouped:
@@ -90,8 +216,11 @@ def build_card_workbook(
                 ws.cell(row_index, 7, " / ".join(part for part in note_parts if part))
             ws["E45"] = "=SUM(E4:E44)"
             ws.print_area = "A1:G46"
+        streams = _append_receipt_evidence(wb, expense_rows, receipt_storage_root)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         wb.save(output_path)
+        for stream in streams:
+            stream.close()
         return output_path
 
     wb = Workbook()
@@ -143,8 +272,11 @@ def build_card_workbook(
         ws.auto_filter.ref = f"A3:G{max(3, total_row - 1)}"
         ws.sheet_view.showGridLines = False
 
+    streams = _append_receipt_evidence(wb, expense_rows, receipt_storage_root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_path)
+    for stream in streams:
+        stream.close()
     return output_path
 
 

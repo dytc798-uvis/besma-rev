@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
+from PIL import Image
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -192,9 +193,17 @@ def test_workbooks_preserve_expected_columns(tmp_path: Path):
         description="중식비",
         card_last4="8339",
         note=None,
+        receipt_image_path="receipts/test-receipt.jpg",
     )
+    receipt_path = tmp_path / expense.receipt_image_path
+    receipt_path.parent.mkdir(parents=True)
+    Image.new("RGB", (900, 1400), "white").save(receipt_path)
     vehicle_path = build_vehicle_workbook(vehicle, [log], tmp_path / "vehicle.xlsx")
-    card_path = build_card_workbook([expense], tmp_path / "card.xlsx")
+    card_path = build_card_workbook(
+        [expense],
+        tmp_path / "card.xlsx",
+        receipt_storage_root=tmp_path,
+    )
     vehicle_sheet = load_workbook(vehicle_path, data_only=False).active
     card_sheet = load_workbook(card_path, data_only=False).active
     assert vehicle_sheet["E3"].value == "181하8339"
@@ -203,6 +212,10 @@ def test_workbooks_preserve_expected_columns(tmp_path: Path):
     assert vehicle_sheet["G7"].value == 35
     assert card_sheet["D4"].value == "안전식당"
     assert card_sheet["E4"].value == 22000
+    card_book = load_workbook(card_path, data_only=False)
+    assert card_book.sheetnames[-1] == "영수증01"
+    assert len(card_book["영수증01"]._images) == 1
+    assert card_book["영수증01"].page_setup.paperSize == 9
 
     template_path = Path(__file__).parents[1] / "app" / "modules" / "safety_ledgers" / "templates" / "company-vehicle-template.xlsx"
     template_output = build_vehicle_workbook(

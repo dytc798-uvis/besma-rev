@@ -282,6 +282,7 @@ def _export_paths(db, user) -> tuple[Path, Path]:
         export_dir / card_filename,
         template_path=card_template,
         site_names_by_date=site_names_by_date,
+        receipt_storage_root=settings.storage_root,
     )
     vehicle_path = build_vehicle_workbook(
         vehicle,
