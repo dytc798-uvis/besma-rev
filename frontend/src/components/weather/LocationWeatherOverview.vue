@@ -1,5 +1,13 @@
 <template>
   <section class="weather-panel">
+    <div v-if="permissionState === 'denied'" class="permission-reminder" role="alert">
+      <div>
+        <strong>현재 위치 사용이 차단되어 있습니다.</strong>
+        <span>현장 위치의 기상·체감온도를 정확히 보려면 위치 권한을 허용해 주세요. 허용될 때까지 이 안내는 방문할 때마다 표시됩니다.</span>
+        <small v-if="permissionHelp">{{ permissionHelp }}</small>
+      </div>
+      <button type="button" @click="requestLocationPermission">위치 권한 다시 요청</button>
+    </div>
     <div class="weather-head">
       <div>
         <p class="eyebrow">현재 위치</p>
@@ -90,6 +98,8 @@ const emit = defineEmits<{
 const overview = ref<WeatherOverview | null>(null);
 const loading = ref(false);
 const error = ref("");
+const permissionState = ref<PermissionState | "unsupported">("prompt");
+const permissionHelp = ref("");
 const canRecordTemperature = computed(
   () => !props.readOnly && overview.value?.current.temperature_c != null && overview.value?.current.relative_humidity_pct != null,
 );
@@ -108,6 +118,37 @@ function currentPosition(): Promise<GeolocationPosition> {
   });
 }
 
+async function syncPermissionState() {
+  if (!navigator.permissions?.query) {
+    permissionState.value = "unsupported";
+    return;
+  }
+  try {
+    const status = await navigator.permissions.query({ name: "geolocation" });
+    permissionState.value = status.state;
+    status.onchange = () => {
+      permissionState.value = status.state;
+      if (status.state === "granted") permissionHelp.value = "";
+    };
+  } catch {
+    permissionState.value = "unsupported";
+  }
+}
+
+async function requestLocationPermission() {
+  permissionHelp.value = "";
+  try {
+    await currentPosition();
+    permissionState.value = "granted";
+    await load();
+  } catch {
+    await syncPermissionState();
+    permissionHelp.value = permissionState.value === "denied"
+      ? "브라우저 주소창의 자물쇠·사이트 설정에서 위치 권한을 ‘허용’으로 바꾼 뒤 다시 눌러 주세요."
+      : "위치 확인을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+}
+
 async function load() {
   loading.value = true;
   error.value = "";
@@ -115,6 +156,7 @@ async function load() {
   try {
     try {
       const position = await currentPosition();
+      permissionState.value = "granted";
       overview.value = (
         await api.get("/weather/location-overview", {
           params: {
@@ -133,7 +175,10 @@ async function load() {
       applyCurrentValues();
     }
   } catch (loadError: any) {
-    if (loadError?.code === 1) error.value = "위치 권한이 거부되었습니다. 브라우저에서 위치 사용을 허용해 주세요.";
+    if (loadError?.code === 1) {
+      permissionState.value = "denied";
+      error.value = "위치 권한이 거부되었습니다. 브라우저에서 위치 사용을 허용해 주세요.";
+    }
     else if (loadError?.response?.data?.detail === "WEATHER_PROVIDER_UNAVAILABLE") error.value = "기상자료 제공처에 일시적으로 연결할 수 없습니다.";
     else error.value = "현장 좌표 또는 현재 위치를 확인할 수 없습니다.";
   } finally {
@@ -163,10 +208,15 @@ function dayLabel(value: string) {
 }
 
 defineExpose({ load });
-onMounted(load);
+onMounted(async () => {
+  await syncPermissionState();
+  await load();
+});
 </script>
 
 <style scoped>
 .weather-panel{background:#fff;border:1px solid #bfdbfe;border-radius:18px;padding:22px;display:grid;gap:16px}.weather-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.weather-head h2{margin:3px 0}.eyebrow{margin:0;color:#0369a1;font-weight:900}.secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.current-card{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:24px;border-radius:16px;background:linear-gradient(135deg,#eff6ff,#ecfeff);padding:18px}.current-card>div{display:grid}.current-card>div strong{font-size:36px}.current-card dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0}.current-card dl div{background:rgba(255,255,255,.75);border-radius:10px;padding:9px}.current-card dt{font-size:12px;color:#64748b}.current-card dd{margin:3px 0 0;font-weight:900}.forecast-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}.forecast-grid article{border:1px solid #e2e8f0;border-radius:12px;padding:12px;display:grid;gap:5px}.forecast-grid b{font-size:13px}.risk-list{display:flex;flex-wrap:wrap;gap:4px}.risk-list span{border-radius:999px;background:#ffedd5;color:#9a3412;padding:3px 7px;font-size:11px;font-weight:900}.source-note{margin:0;color:#64748b;font-size:12px;line-height:1.55}.weather-error{color:#b91c1c;font-weight:800}button{border:0;border-radius:10px;background:#0369a1;color:#fff;padding:10px 13px;font-weight:800;cursor:pointer}button:disabled{opacity:.55}
+.permission-reminder{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px;border:1px solid #fb923c;border-radius:13px;background:#fff7ed;color:#9a3412}.permission-reminder>div{display:grid;gap:4px}.permission-reminder span,.permission-reminder small{line-height:1.45}.permission-reminder button{flex:0 0 auto;background:#c2410c}
 @media(max-width:800px){.current-card{grid-template-columns:1fr}.current-card dl{grid-template-columns:repeat(2,1fr)}.forecast-grid{grid-template-columns:repeat(2,1fr)}.forecast-grid article:first-child{grid-column:1/-1}.weather-head{display:grid}}
+@media(max-width:800px){.permission-reminder{align-items:stretch;flex-direction:column}.permission-reminder button{width:100%}}
 </style>
