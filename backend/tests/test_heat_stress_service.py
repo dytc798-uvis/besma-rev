@@ -1,6 +1,10 @@
+import io
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-from app.modules.heat_stress.pdf import build_default_pdf
+from pypdf import PdfReader
+
+from app.modules.heat_stress.pdf import build_default_pdf, build_ledger_pdf
 from app.modules.heat_stress.service import (
     FORMULA_VERSION,
     action_compliance,
@@ -29,8 +33,6 @@ def test_actual_action_is_never_automatically_completed():
 
 
 def test_default_pdf_contains_one_valid_page():
-    from datetime import datetime
-
     row = SimpleNamespace(
         id=1,
         measured_at=datetime(2026, 7, 29, 14, 0),
@@ -57,3 +59,34 @@ def test_default_pdf_contains_one_valid_page():
     content = build_default_pdf(row, "테스트 현장")
     assert content.startswith(b"%PDF-")
     assert len(content) > 1000
+
+
+def test_ledger_pdf_groups_dates_and_spans_pages():
+    rows = []
+    start = datetime(2026, 7, 28, 8, 0)
+    for index in range(10):
+        measured_at = start + timedelta(hours=index * 2)
+        row = SimpleNamespace(
+            id=index + 1,
+            measured_at=measured_at,
+            work_location="지상 3층 외부",
+            work_process="배관 설치",
+            air_temperature_c=33.0,
+            relative_humidity_pct=70.0,
+            apparent_temperature_c=34.3,
+            actual_actions_json='["REST", "WATER"]',
+            action_notes="20분 휴식 및 음용수 제공",
+            recorder_name="점검자",
+            recorder_signed_at=measured_at + timedelta(minutes=5),
+            recorder_signature_data=None,
+            confirmer_name="현장소장" if index % 2 == 0 else None,
+            confirmer_title="현장소장" if index % 2 == 0 else None,
+            confirmer_signed_at=measured_at + timedelta(minutes=10) if index % 2 == 0 else None,
+            confirmer_signature_data=None,
+        )
+        rows.append((row, "테스트 현장"))
+
+    content = build_ledger_pdf(rows)
+    reader = PdfReader(io.BytesIO(content))
+    assert content.startswith(b"%PDF-")
+    assert len(reader.pages) >= 2

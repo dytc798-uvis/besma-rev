@@ -15,7 +15,7 @@ from app.core.enums import Role
 from app.core.permissions import CurrentUserDep, HQ_SAFE_WORKSPACE_ROLES
 from app.modules.functional_eval.signature_service import validate_signature_data
 from app.modules.heat_stress.models import HeatStressAuditLog, HeatStressRecord
-from app.modules.heat_stress.pdf import build_default_pdf
+from app.modules.heat_stress.pdf import build_default_pdf, build_ledger_pdf
 from app.modules.heat_stress.schemas import HeatStressConfirm, HeatStressCreate
 from app.modules.heat_stress.service import (
     ACTION_LABELS,
@@ -253,6 +253,61 @@ def download_record_pdf(record_id: int, db: DbDep, current_user: CurrentUserDep)
     ))
     db.commit()
     filename = f"{site_name}_체감온도기록_{record.measured_at.strftime('%Y%m%d_%H%M')}.pdf"
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@router.get("/ledger.pdf")
+def download_ledger_pdf(
+    db: DbDep,
+    current_user: CurrentUserDep,
+    site_id: int | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+):
+    if not (_is_site(current_user) or _role(current_user) in HQ_SAFE_WORKSPACE_ROLES):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리대장 출력 권한이 없습니다.")
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="시작일은 종료일보다 늦을 수 없습니다.")
+
+    resolved_site_id = _assert_site_context(current_user) if _is_site(current_user) else site_id
+    query = db.query(HeatStressRecord, Site.site_name).join(Site, Site.id == HeatStressRecord.site_id)
+    if resolved_site_id:
+        query = query.filter(HeatStressRecord.site_id == resolved_site_id)
+    if date_from:
+        query = query.filter(HeatStressRecord.measured_at >= datetime.combine(date_from, time.min))
+    if date_to:
+        query = query.filter(HeatStressRecord.measured_at < datetime.combine(date_to + timedelta(days=1), time.min))
+    rows = query.order_by(HeatStressRecord.measured_at.asc(), HeatStressRecord.id.asc()).all()
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="출력할 체감온도 기록이 없습니다.")
+
+    content = build_ledger_pdf(rows, date_from=date_from, date_to=date_to)
+    first_record = rows[0][0]
+    db.add(HeatStressAuditLog(
+        record_id=first_record.id,
+        event_type="LEDGER_PDF_EXPORT",
+        actor_user_id=current_user.id,
+        actor_name=current_user.name,
+        detail_json=json.dumps(
+            {
+                "record_count": len(rows),
+                "site_id": resolved_site_id,
+                "date_from": date_from.isoformat() if date_from else None,
+                "date_to": date_to.isoformat() if date_to else None,
+            },
+            ensure_ascii=False,
+        ),
+    ))
+    db.commit()
+    if date_from or date_to:
+        period = f"{date_from.isoformat() if date_from else '처음'}_{date_to.isoformat() if date_to else '현재'}"
+    else:
+        period = "전체기간"
+    filename = f"체감온도관리대장_{period}.pdf"
     return StreamingResponse(
         BytesIO(content),
         media_type="application/pdf",

@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import base64
 import io
-from datetime import datetime
+from datetime import date, datetime
 
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfgen import canvas
 
-from app.modules.heat_stress.service import ACTION_LABELS, parse_actions
+from app.modules.heat_stress.service import ACTION_LABELS, parse_actions, policy_for
 
 
 def _font() -> str:
@@ -84,5 +84,168 @@ def build_default_pdf(record, site_name: str) -> bytes:
             except Exception:
                 pass
     _text(c, f"양식: {record.template_code} / 기록번호: {record.id}", 18 * mm, 13 * mm, font, 7)
+    c.save()
+    return out.getvalue()
+
+
+def _short(value: object, limit: int) -> str:
+    text = str(value or "-").strip() or "-"
+    return text if len(text) <= limit else text[: max(1, limit - 1)] + "…"
+
+
+def _draw_lines(
+    c: canvas.Canvas,
+    lines: list[str],
+    x: float,
+    top: float,
+    font: str,
+    size: float = 7,
+    leading: float = 3.4 * mm,
+) -> None:
+    c.setFont(font, size)
+    for index, line in enumerate(lines):
+        c.drawString(x, top - index * leading, line)
+
+
+def build_ledger_pdf(
+    rows: list[tuple[object, str]],
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> bytes:
+    """Build a date-grouped, multi-page heat-stress management ledger."""
+
+    font = _font()
+    out = io.BytesIO()
+    page_size = landscape(A4)
+    c = canvas.Canvas(out, pagesize=page_size)
+    width, height = page_size
+    margin_x = 10 * mm
+    bottom_y = 12 * mm
+    row_height = 23 * mm
+    date_height = 7 * mm
+    header_height = 8 * mm
+    columns = [
+        ("시간", 16 * mm),
+        ("현장", 34 * mm),
+        ("작업장소 / 공정", 42 * mm),
+        ("온도 / 습도", 25 * mm),
+        ("체감 / 단계", 24 * mm),
+        ("실제 실시조치", 55 * mm),
+        ("점검자 / 서명", 40 * mm),
+        ("관리자 확인 / 서명", 41 * mm),
+    ]
+    table_width = sum(column_width for _, column_width in columns)
+    sorted_rows = sorted(rows, key=lambda item: (item[0].measured_at, item[0].id))
+
+    if date_from and date_to:
+        period_label = date_from.isoformat() if date_from == date_to else f"{date_from.isoformat()} ~ {date_to.isoformat()}"
+    elif date_from:
+        period_label = f"{date_from.isoformat()} 이후"
+    elif date_to:
+        period_label = f"{date_to.isoformat()} 이전"
+    elif sorted_rows:
+        period_label = f"{sorted_rows[0][0].measured_at.date().isoformat()} ~ {sorted_rows[-1][0].measured_at.date().isoformat()}"
+    else:
+        period_label = "전체 기간"
+
+    page_number = 0
+
+    def start_page() -> float:
+        nonlocal page_number
+        if page_number:
+            c.showPage()
+        page_number += 1
+        _text(c, "체감온도 관리대장", margin_x, height - 14 * mm, font, 16)
+        _text(c, f"기간: {period_label}", margin_x, height - 23 * mm, font, 8)
+        c.setFont(font, 7)
+        c.drawRightString(width - margin_x, height - 23 * mm, f"출력: {datetime.now().strftime('%Y-%m-%d %H:%M')} / {page_number}쪽")
+        y = height - 29 * mm
+        x = margin_x
+        c.setFillColorRGB(0.92, 0.95, 0.97)
+        for label, column_width in columns:
+            c.rect(x, y - header_height, column_width, header_height, fill=1, stroke=1)
+            c.setFillColorRGB(0.1, 0.15, 0.2)
+            c.setFont(font, 7)
+            c.drawCentredString(x + column_width / 2, y - 5.2 * mm, label)
+            c.setFillColorRGB(0.92, 0.95, 0.97)
+            x += column_width
+        c.setFillColorRGB(0, 0, 0)
+        return y - header_height
+
+    def draw_date_heading(y: float, day: date, continued: bool = False) -> float:
+        c.setFillColorRGB(0.88, 0.96, 0.94)
+        c.rect(margin_x, y - date_height, table_width, date_height, fill=1, stroke=1)
+        c.setFillColorRGB(0.05, 0.35, 0.31)
+        _text(c, f"{day.strftime('%Y년 %m월 %d일')}" + (" (계속)" if continued else ""), margin_x + 3 * mm, y - 4.8 * mm, font, 8)
+        c.setFillColorRGB(0, 0, 0)
+        return y - date_height
+
+    def draw_signature(signature_data: str | None, x: float, y: float, cell_width: float) -> None:
+        raw = _signature_bytes(signature_data)
+        if not raw:
+            return
+        try:
+            c.drawImage(
+                ImageReader(io.BytesIO(raw)),
+                x + 2 * mm,
+                y + 2 * mm,
+                cell_width - 4 * mm,
+                9 * mm,
+                preserveAspectRatio=True,
+                anchor="c",
+                mask="auto",
+            )
+        except Exception:
+            return
+
+    y = start_page()
+    if not sorted_rows:
+        _text(c, "출력할 체감온도 기록이 없습니다.", margin_x, y - 15 * mm, font, 10)
+
+    current_day: date | None = None
+    for record, site_name in sorted_rows:
+        record_day = record.measured_at.date()
+        if record_day != current_day:
+            if y - date_height - row_height < bottom_y:
+                y = start_page()
+            y = draw_date_heading(y, record_day)
+            current_day = record_day
+        if y - row_height < bottom_y:
+            y = start_page()
+            y = draw_date_heading(y, record_day, continued=True)
+
+        row_bottom = y - row_height
+        x = margin_x
+        for _, column_width in columns:
+            c.rect(x, row_bottom, column_width, row_height, fill=0, stroke=1)
+            x += column_width
+
+        risk_label = policy_for(record.apparent_temperature_c)["risk_label"]
+        action_labels = [ACTION_LABELS.get(action, action) for action in parse_actions(record.actual_actions_json)]
+        locations = [_short(record.work_location, 18), _short(record.work_process or "-", 18)]
+        values = [
+            [record.measured_at.strftime("%H:%M")],
+            [_short(site_name, 16)],
+            locations,
+            [f"{record.air_temperature_c:.1f}℃", f"{record.relative_humidity_pct:.0f}%"],
+            [f"{record.apparent_temperature_c:.1f}℃", _short(risk_label, 10)],
+            [_short(", ".join(action_labels) or "미입력", 30), _short(record.action_notes or "", 30)],
+            [_short(record.recorder_name, 12), record.recorder_signed_at.strftime("%H:%M") if record.recorder_signed_at else "-"],
+            [
+                _short(record.confirmer_name or "확인 대기", 12),
+                _short(record.confirmer_title or "", 12),
+                record.confirmer_signed_at.strftime("%H:%M") if record.confirmer_signed_at else "-",
+            ],
+        ]
+        x = margin_x
+        for index, ((_, column_width), lines) in enumerate(zip(columns, values)):
+            _draw_lines(c, lines, x + 2 * mm, y - 5 * mm, font, 6.7)
+            if index == 6:
+                draw_signature(record.recorder_signature_data, x, row_bottom, column_width)
+            elif index == 7:
+                draw_signature(record.confirmer_signature_data, x, row_bottom, column_width)
+            x += column_width
+        y = row_bottom
+
     c.save()
     return out.getvalue()

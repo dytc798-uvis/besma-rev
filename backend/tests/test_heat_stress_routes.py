@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import unquote
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -86,10 +87,21 @@ def test_site_create_confirm_pdf_and_scope(tmp_path: Path):
     pdf = client.get(f"/heat-stress/records/{record_id}/pdf")
     assert pdf.status_code == 200
     assert pdf.content.startswith(b"%PDF-")
+    ledger = client.get("/heat-stress/ledger.pdf")
+    assert ledger.status_code == 200
+    assert ledger.content.startswith(b"%PDF-")
+    assert "체감온도관리대장_전체기간.pdf" in unquote(ledger.headers["content-disposition"])
 
     current["user"] = SimpleNamespace(id=13, name="일반본사", role=Role.HQ_OTHER, site_id=None)
     assert client.get(f"/heat-stress/records/{record_id}/pdf").status_code == 200
+    assert client.get("/heat-stress/ledger.pdf").status_code == 403
+
+    current["user"] = SimpleNamespace(id=14, name="본사 안전", role=Role.HQ_SAFE, site_id=None)
+    hq_ledger = client.get("/heat-stress/ledger.pdf?date_from=2026-07-29&date_to=2026-07-29")
+    assert hq_ledger.status_code == 200
+    assert hq_ledger.content.startswith(b"%PDF-")
+    assert client.get("/heat-stress/ledger.pdf?date_from=2026-07-30&date_to=2026-07-29").status_code == 422
 
     with local() as db:
         assert db.query(HeatStressRecord).count() == 2
-        assert db.query(HeatStressAuditLog).count() == 5
+        assert db.query(HeatStressAuditLog).count() == 7
