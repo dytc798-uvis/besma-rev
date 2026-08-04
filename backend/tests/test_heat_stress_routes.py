@@ -58,6 +58,20 @@ def test_site_create_confirm_pdf_and_scope(tmp_path: Path):
     assert created.json()["action_compliance"] == "ACTION_REQUIRED"
     assert created.json()["status"] == "CONFIRM_PENDING"
 
+    repeated = client.post("/heat-stress/records", json={
+        "measured_at": datetime(2026, 7, 29, 14, 0).isoformat(),
+        "work_location": "옥외",
+        "work_process": "배관",
+        "measurement_source": "ON_SITE",
+        "air_temperature_c": 33,
+        "relative_humidity_pct": 70,
+        "actual_actions": ["WATER"],
+        "action_notes": "같은 날 추가 측정",
+        "recorder_signature_data": PNG,
+    })
+    assert repeated.status_code == 201, repeated.text
+    assert repeated.json()["id"] != record_id
+
     current["user"] = SimpleNamespace(id=11, name="다른 현장", role=Role.SITE, site_id=2)
     assert client.get(f"/heat-stress/records/{record_id}").status_code == 403
 
@@ -77,4 +91,5 @@ def test_site_create_confirm_pdf_and_scope(tmp_path: Path):
     assert client.get(f"/heat-stress/records/{record_id}/pdf").status_code == 403
 
     with local() as db:
-        assert db.query(HeatStressAuditLog).count() == 3
+        assert db.query(HeatStressRecord).count() == 2
+        assert db.query(HeatStressAuditLog).count() == 4
