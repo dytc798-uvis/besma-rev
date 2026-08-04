@@ -104,11 +104,11 @@ async function handleLogin() {
     } else if (auth.user?.ui_type === "HQ_SAFE") {
       await router.push({ name: hqSafeHomeRouteName() });
     } else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
-      await router.push({ name: "site-functional-eval-field-form-uploads" });
+      await router.push({ name: "site-heat-stress" });
     } else if (auth.user?.ui_type === "SITE") {
       await router.push({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     } else if (auth.user?.ui_type === "HQ_OTHER") {
-      await router.push({ name: "hq-other-field-form-uploads" });
+      await router.push({ name: "hq-other-heat-stress" });
     } else {
       await router.push({ name: hqSafeHomeRouteName() });
     }

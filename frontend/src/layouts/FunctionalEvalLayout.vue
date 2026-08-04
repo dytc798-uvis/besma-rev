@@ -16,8 +16,6 @@
       <h1>기능인 인정제 평가</h1>
       <nav class="layout-menu">
         <RouterLink
-          class="fe-field-form-highlight"
-          :class="{ active: isFieldFormUploadRoute }"
           :to="{ name: 'site-functional-eval-field-form-uploads' }"
           @click="closeMobileDrawer"
         >
@@ -476,26 +474,6 @@ function logout() {
   background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%);
   color: #fff;
   font-weight: 600;
-}
-
-.fe-field-form-highlight {
-  display: block;
-  margin: 0 10px 12px;
-  padding: 12px 14px;
-  border-radius: 8px;
-  background: #fff7ed;
-  color: #9a3412;
-  border-left: 4px solid #f97316;
-  font-size: 15px;
-  font-weight: 800;
-  text-decoration: none;
-}
-
-.fe-field-form-highlight.active,
-.fe-field-form-highlight.router-link-active {
-  background: linear-gradient(90deg, #ea580c 0%, #c2410c 100%);
-  color: #fff;
-  border-left-color: #fed7aa;
 }
 
 @media (min-width: 769px) {

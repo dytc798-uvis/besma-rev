@@ -74,7 +74,7 @@ function routeByPersona(persona: TestPersona) {
     return;
   }
   if (persona === "HQ_OTHER") {
-    router.push({ name: "hq-other-dashboard" });
+    router.push({ name: "hq-other-heat-stress" });
     return;
   }
   if (persona === "SITE_STAFF" || persona === "SITE_MANAGER") {
@@ -114,7 +114,7 @@ function goDefault() {
     router.push({ name: siteMobileOrDesktopHomeName() });
     return;
   }
-  router.push({ name: "hq-other-field-form-uploads" });
+  router.push({ name: "hq-other-heat-stress" });
 }
 
 onMounted(async () => {

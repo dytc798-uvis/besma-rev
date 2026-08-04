@@ -14,7 +14,13 @@ router = APIRouter(prefix="/weather", tags=["weather"])
 def _can_view(user) -> bool:
     return user.role in (
         set(HQ_SAFE_WORKSPACE_ROLES)
-        | {Role.HQ_OTHER, Role.SITE, Role.SITE_FUNCTIONAL_EVAL}
+        | {
+            Role.HQ_OTHER,
+            Role.HQ_BUDGET_ESTIMATE,
+            Role.HQ_OUTSOURCING_PURCHASE,
+            Role.SITE,
+            Role.SITE_FUNCTIONAL_EVAL,
+        }
     )
 
 

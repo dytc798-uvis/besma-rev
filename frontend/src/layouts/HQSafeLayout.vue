@@ -54,7 +54,6 @@
             쿠팡 MVP 실험실
           </RouterLink>
           <RouterLink
-            class="hq-field-form-menu-highlight"
             :style="menuOrderPrimaryStyle('field-form-uploads')"
             to="/hq-safe/field-form-uploads"
           >
@@ -136,7 +135,6 @@
             <span v-if="unreadCommunicationCount > 0" class="hq-menu-count-badge">{{ unreadCommunicationCount }}</span>
           </RouterLink>
           <RouterLink :style="menuOrderPrimaryStyle('safety-education')" to="/hq-safe/safety-education">안전교육 및 안전점검</RouterLink>
-          <RouterLink v-if="canAccessAccidents" :style="menuOrderPrimaryStyle('accidents')" to="/hq-safe/accidents">사고관리</RouterLink>
           <RouterLink
             v-for="m in dynamicMenus"
             :key="`hq-dyn-${m.slug}`"
@@ -144,13 +142,6 @@
             :to="`/hq-safe/custom-menus/${m.slug}`"
           >
             {{ m.title }}
-          </RouterLink>
-          <RouterLink
-            :style="menuOrderPrimaryStyle('new-site-deployment')"
-            to="/hq-safe/new-site-deployment"
-          >
-            신규현장 배포 현황
-            <span v-if="deployIncompleteCount > 0" class="hq-menu-count-badge">{{ deployIncompleteCount }}</span>
           </RouterLink>
         </div>
 
@@ -259,9 +250,6 @@ const sidebarCollapsed = ref(false);
 const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
 const menuOrderPrimary = ref<Record<string, number>>({});
 const menuOrderSecondary = ref<Record<string, number>>({});
-const canAccessAccidents = computed(() =>
-  ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
-);
 const canAccessPdfSigning = computed(() =>
   ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
 );
@@ -273,7 +261,6 @@ const canAccessCoupangLab = computed(
 );
 const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
 const canSystemBackup = computed(() => userCanSystemBackup(auth.user));
-const deployIncompleteCount = ref(0);
 const feReviewPendingCount = ref(0);
 
 const isFunctionalEvalRoute = computed(() => route.path.includes("/functional-eval"));
@@ -305,18 +292,15 @@ onMounted(() => {
   loadBadge();
   void loadUnreadCommunications();
   loadDynamicMenus();
-  void loadDeploymentMenuStatus();
   void loadFunctionalEvalReviewCount();
   window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   window.addEventListener("besma-hq-communication-read", handleCommunicationRead as EventListener);
-  window.addEventListener("besma-nsd-updated", loadDeploymentMenuStatus as EventListener);
   window.addEventListener("besma-fe-review-updated", loadFunctionalEvalReviewCount as EventListener);
 });
 
 onUnmounted(() => {
   window.removeEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   window.removeEventListener("besma-hq-communication-read", handleCommunicationRead as EventListener);
-  window.removeEventListener("besma-nsd-updated", loadDeploymentMenuStatus as EventListener);
   window.removeEventListener("besma-fe-review-updated", loadFunctionalEvalReviewCount as EventListener);
 });
 
@@ -342,15 +326,6 @@ async function loadUnreadCommunications() {
     unreadCommunicationCount.value = items.filter((row) => !row.is_read).length;
   } catch {
     unreadCommunicationCount.value = 0;
-  }
-}
-
-async function loadDeploymentMenuStatus() {
-  try {
-    const res = await api.get("/new-site-deployment/menu-status");
-    deployIncompleteCount.value = res.data?.incomplete_count ?? 0;
-  } catch {
-    deployIncompleteCount.value = 0;
   }
 }
 

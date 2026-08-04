@@ -105,7 +105,7 @@ async function handleChangePassword() {
     }
 
     if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
-      router.replace({ name: "site-functional-eval-field-form-uploads" });
+      router.replace({ name: "site-heat-stress" });
       return;
     }
 
@@ -120,7 +120,7 @@ async function handleChangePassword() {
     }
 
     if (auth.user?.ui_type === "HQ_OTHER") {
-      router.replace({ name: "hq-other-field-form-uploads" });
+      router.replace({ name: "hq-other-heat-stress" });
       return;
     }
 

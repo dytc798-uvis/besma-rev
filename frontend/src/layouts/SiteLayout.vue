@@ -34,13 +34,6 @@
         >
           안전보건 방침 및 목표
         </RouterLink>
-        <RouterLink
-          v-if="showDeploymentMenu"
-          :class="deploymentMenuClass"
-          to="/site/new-site-deployment"
-        >
-          신규현장 배포 현황
-        </RouterLink>
         <p v-if="!isMobileViewport" class="site-menu-section-label">주요업무</p>
         <RouterLink :class="menuLinkClass('risk-library', '/site/risk-library')" :style="menuOrderStyle('risk-library')" to="/site/risk-library">
           <span class="menu-icon" v-if="menuIcon('risk-library')">{{ menuIcon("risk-library") }}</span>
@@ -70,9 +63,15 @@
           <span class="menu-link-label">내 현장 문서</span>
           <span v-if="badge.incomplete_count > 0" class="menu-count-badge" aria-label="미완료 문서 수">{{ badge.incomplete_count }}</span>
         </RouterLink>
-        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" :style="menuOrderStyle('worker-voice')" to="/site/worker-voice">
+        <a
+          :class="menuLinkClass('worker-voice', '/site/worker-voice')"
+          :style="menuOrderStyle('worker-voice')"
+          :href="WORKER_VOICE_FORM_URL"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           근로자의견청취
-        </RouterLink>
+        </a>
         <RouterLink :class="menuLinkClass('communications', '/site/communications')" :style="menuOrderStyle('communications')" to="/site/communications">
           소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span>
         </RouterLink>
@@ -98,9 +97,15 @@
           <span class="menu-link-label">내 현장 문서</span>
           <span v-if="badge.incomplete_count > 0" class="menu-count-badge" aria-label="미완료 문서 수">{{ badge.incomplete_count }}</span>
         </RouterLink>
-        <RouterLink :class="menuLinkClass('worker-voice', '/site/worker-voice')" to="/site/worker-voice" @click="closeMobileDrawer">
+        <a
+          :class="menuLinkClass('worker-voice', '/site/worker-voice')"
+          :href="WORKER_VOICE_FORM_URL"
+          target="_blank"
+          rel="noopener noreferrer"
+          @click="closeMobileDrawer"
+        >
           근로자의견청취
-        </RouterLink>
+        </a>
         <RouterLink
           :class="menuLinkClass('mobile-communications', '/site/mobile/communications')"
           to="/site/mobile/communications"
@@ -231,6 +236,8 @@ const tickerTrackRef = ref<HTMLElement | null>(null);
 const tickerDurationSec = ref(18);
 const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
 const menuOrderMap = ref<Record<string, number>>({});
+const WORKER_VOICE_FORM_URL =
+  "https://docs.google.com/forms/d/e/1FAIpQLSdOZEdPT5_6OREzPZ2fhtwYiXqzaoGjXjaOCSAazgJoRIBUlg/viewform";
 const SITE_FIXED_MENU_KEYS = [
   "field-form-uploads",
   "notices",
@@ -250,15 +257,9 @@ const SITE_FIXED_MENU_KEYS = [
 const sidebarCollapsed = ref(false);
 const isMobileViewport = ref(false);
 const mobileDrawerOpen = ref(false);
-const showDeploymentMenu = ref(false);
-const deploymentNeedsHighlight = ref(false);
 let unreadTimer: number | null = null;
 const headerSiteLabel = computed(() => (siteName.value ? `현장: ${siteName.value}` : "현장: -"));
-const deploymentMenuClass = computed(() =>
-  deploymentNeedsHighlight.value ? "site-deploy-menu-highlight" : menuLinkClass("new-site-deployment", "/site/new-site-deployment"),
-);
 const PRIMARY_MENUS = [
-  "field-form-uploads",
   "mobile",
   "safety-policy-goals",
   "risk-library",
@@ -275,7 +276,6 @@ onMounted(() => {
   window.addEventListener("besma-notice-ticker-read", handleNoticeTickerRead as EventListener);
   window.addEventListener("besma-doc-comment-ticker-ack", handleDocCommentTickerAck as EventListener);
   window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
-  window.addEventListener("besma-nsd-updated", loadDeploymentSiteStatus as EventListener);
   unreadTimer = window.setInterval(() => {
     void Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDocCommentTicker()]);
   }, 30000);
@@ -366,24 +366,7 @@ async function initializeLayout() {
     await auth.loadMe();
   }
   await Promise.all([loadBadge(), loadSiteName()]);
-  await Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDocCommentTicker(), loadDynamicMenus(), loadDeploymentSiteStatus()]);
-}
-
-async function loadDeploymentSiteStatus() {
-  if (auth.user?.role !== "SITE") {
-    showDeploymentMenu.value = false;
-    deploymentNeedsHighlight.value = false;
-    return;
-  }
-  try {
-    const res = await api.get("/new-site-deployment/my-site");
-    const item = res.data?.item;
-    showDeploymentMenu.value = Boolean(item);
-    deploymentNeedsHighlight.value = Boolean(item && !item.is_complete);
-  } catch {
-    showDeploymentMenu.value = false;
-    deploymentNeedsHighlight.value = false;
-  }
+  await Promise.all([loadCommunicationUnreadCount(), loadNoticeTicker(), loadDocCommentTicker(), loadDynamicMenus()]);
 }
 
 async function loadBadge() {
@@ -627,13 +610,6 @@ function menuIcon(key: string) {
   border-left-color: #93c5fd;
   opacity: 1;
   font-weight: 700;
-}
-
-.menu-link-primary[href="/site/field-form-uploads"]:not(.menu-link-active) {
-  background: #fff7ed;
-  color: #fed7aa;
-  border-left-color: #f97316;
-  font-weight: 800;
 }
 
 .menu-icon {

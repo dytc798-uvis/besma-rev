@@ -88,8 +88,8 @@ def test_site_create_confirm_pdf_and_scope(tmp_path: Path):
     assert pdf.content.startswith(b"%PDF-")
 
     current["user"] = SimpleNamespace(id=13, name="일반본사", role=Role.HQ_OTHER, site_id=None)
-    assert client.get(f"/heat-stress/records/{record_id}/pdf").status_code == 403
+    assert client.get(f"/heat-stress/records/{record_id}/pdf").status_code == 200
 
     with local() as db:
         assert db.query(HeatStressRecord).count() == 2
-        assert db.query(HeatStressAuditLog).count() == 4
+        assert db.query(HeatStressAuditLog).count() == 5

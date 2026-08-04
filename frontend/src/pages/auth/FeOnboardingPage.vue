@@ -96,7 +96,7 @@ async function handleConsentCompleted() {
 async function goHome() {
   await auth.loadMe({ skipAuthRedirect: true });
   if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") {
-    await router.replace({ name: "site-functional-eval-field-form-uploads" });
+    await router.replace({ name: "site-heat-stress" });
     return;
   }
   if (auth.user?.ui_type === "HQ_SAFE") {

@@ -3,7 +3,8 @@
     <aside class="layout-sidebar">
       <h1>BESMA CSMS 안전보건플랫폼 · 본사(타부서)</h1>
       <nav class="layout-menu">
-        <RouterLink class="hq-other-field-form-link" to="/hq-other/field-form-uploads">현장 양식 업로드</RouterLink>
+        <RouterLink to="/hq-other/heat-stress">전 현장 체감온도 현황</RouterLink>
+        <RouterLink to="/hq-other/field-form-uploads">현장 양식 업로드</RouterLink>
         <RouterLink to="/hq-other/dashboard">대시보드</RouterLink>
         <RouterLink to="/hq-other/documents">조회 가능한 문서</RouterLink>
         <RouterLink to="/hq-other/functional-eval-monitoring">기능인인정제 모니터링</RouterLink>
@@ -115,11 +116,5 @@ function toggleSidebar() {
   cursor: pointer;
 }
 
-.layout-menu a.hq-other-field-form-link:not(.router-link-active) {
-  background: #fff7ed;
-  color: #9a3412;
-  border-left: 4px solid #f97316;
-  font-weight: 800;
-}
 </style>
 

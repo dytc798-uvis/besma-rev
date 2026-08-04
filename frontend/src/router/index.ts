@@ -153,7 +153,7 @@ const routes: RouteRecordRaw[] = [
     component: HQSafeLayout,
     meta: { requiresAuth: true, uiType: "HQ_SAFE" },
     children: [
-      { path: "", redirect: { name: "hq-safe-dashboard" } },
+      { path: "", redirect: { name: "hq-safe-heat-stress" } },
       { path: "dashboard", name: "hq-safe-dashboard", component: HQSafeHomePage },
       { path: "operations-dashboard", name: "hq-safe-operations-dashboard", component: HQSafeDashboard },
       { path: "heat-stress", name: "hq-safe-heat-stress", component: HQHeatStressPage },
@@ -182,31 +182,31 @@ const routes: RouteRecordRaw[] = [
         path: "accidents",
         name: "hq-safe-accidents",
         component: HQAccidentsListPage,
-        meta: { requiresAccidentAdmin: true },
+        meta: { requiresAccidentAdmin: true, sealed: true },
       },
       {
         path: "accidents/worklist",
         name: "hq-safe-accidents-worklist",
         component: HQAccidentWorklistPage,
-        meta: { requiresAccidentAdmin: true },
+        meta: { requiresAccidentAdmin: true, sealed: true },
       },
       {
         path: "accidents/new",
         name: "hq-safe-accidents-new",
         component: HQAccidentInitialRegisterPage,
-        meta: { requiresAccidentAdmin: true },
+        meta: { requiresAccidentAdmin: true, sealed: true },
       },
       {
         path: "accidents/:id",
         name: "hq-safe-accident-detail",
         component: HQAccidentDetailPage,
-        meta: { requiresAccidentAdmin: true },
+        meta: { requiresAccidentAdmin: true, sealed: true },
       },
       {
         path: "accidents/:id/report",
         name: "hq-safe-accident-report",
         component: HQAccidentReportPage,
-        meta: { requiresAccidentAdmin: true },
+        meta: { requiresAccidentAdmin: true, sealed: true },
       },
       {
         path: "pdf-signing",
@@ -257,7 +257,7 @@ const routes: RouteRecordRaw[] = [
         name: "hq-safe-functional-eval-grade-report",
         component: HQFunctionalEvalGradeReportPage,
       },
-      { path: "new-site-deployment", name: "hq-safe-new-site-deployment", component: HQNewSiteDeploymentPage },
+      { path: "new-site-deployment", name: "hq-safe-new-site-deployment", component: HQNewSiteDeploymentPage, meta: { sealed: true } },
       { path: "tbm-beta", name: "hq-safe-tbm-beta", component: TbmBetaPage },
       { path: "system-backup", name: "hq-safe-system-backup", component: HQSystemBackupPage },
       { path: "coupang-mvp-lab", name: "hq-safe-coupang-mvp-lab", component: CoupangMvpPage },
@@ -268,7 +268,7 @@ const routes: RouteRecordRaw[] = [
     component: FunctionalEvalLayout,
     meta: { requiresAuth: true, uiType: "SITE", requiresFunctionalEval: true },
     children: [
-      { path: "", redirect: { name: "site-functional-eval-field-form-uploads" } },
+      { path: "", redirect: { name: "site-functional-eval-roster" } },
       { path: "roster", name: "site-functional-eval-roster", component: SiteFunctionalEvalPage },
       { path: "evaluate", name: "site-functional-eval-evaluate", component: SiteFunctionalEvalPage },
       { path: "field-form-uploads", name: "site-functional-eval-field-form-uploads", component: FieldFormUploadPage },
@@ -281,7 +281,7 @@ const routes: RouteRecordRaw[] = [
     component: SiteLayout,
     meta: { requiresAuth: true, uiType: "SITE" },
     children: [
-      { path: "", redirect: { name: "site-home" } },
+      { path: "", redirect: { name: "site-heat-stress" } },
       { path: "home", name: "site-home", component: SiteHomePage },
       { path: "heat-stress", name: "site-heat-stress", component: HeatStressPage },
       { path: "field-form-uploads", name: "site-field-form-uploads", component: FieldFormUploadPage },
@@ -319,7 +319,7 @@ const routes: RouteRecordRaw[] = [
       { path: "opinions", name: "site-opinions", component: OpinionListPage },
       { path: "opinions/:id", name: "site-opinion-detail", component: OpinionDetailPage },
       { path: "user-guide", name: "site-user-guide", component: UserGuidePage },
-      { path: "new-site-deployment", name: "site-new-site-deployment", component: SiteNewSiteDeploymentPage },
+      { path: "new-site-deployment", name: "site-new-site-deployment", component: SiteNewSiteDeploymentPage, meta: { sealed: true } },
     ],
   },
   {
@@ -327,7 +327,8 @@ const routes: RouteRecordRaw[] = [
     component: HQOtherLayout,
     meta: { requiresAuth: true, uiType: "HQ_OTHER" },
     children: [
-      { path: "", redirect: { name: "hq-other-field-form-uploads" } },
+      { path: "", redirect: { name: "hq-other-heat-stress" } },
+      { path: "heat-stress", name: "hq-other-heat-stress", component: HQHeatStressPage },
       { path: "field-form-uploads", name: "hq-other-field-form-uploads", component: FieldFormUploadPage },
       { path: "dashboard", name: "hq-other-dashboard", component: HQOtherDashboard },
       { path: "documents", name: "hq-other-documents", component: DocumentListPage },
@@ -445,17 +446,11 @@ router.beforeEach(async (to, _from, next) => {
   }
 
   const role = auth.user?.role || "";
-  const isDeploymentTeam = role === "HQ_BUDGET_ESTIMATE" || role === "HQ_OUTSOURCING_PURCHASE";
-  const goingDeployment = to.path.startsWith("/hq-safe/new-site-deployment");
-  if (
-    auth.isAuthenticated &&
-    isDeploymentTeam &&
-    !goingDeployment &&
-    to.path !== "/change-password" &&
-    to.path !== "/fe-onboarding" &&
-    to.name !== "login"
-  ) {
-    next({ name: "hq-safe-new-site-deployment" });
+  if (auth.isAuthenticated && to.meta.sealed) {
+    const uiType = auth.effectiveUiType || auth.user?.ui_type;
+    if (uiType === "SITE") next({ name: "site-heat-stress" });
+    else if (uiType === "HQ_OTHER") next({ name: "hq-other-heat-stress" });
+    else next({ name: "hq-safe-heat-stress" });
     return;
   }
 
@@ -466,18 +461,6 @@ router.beforeEach(async (to, _from, next) => {
     next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     return;
   }
-  if (
-    auth.isAuthenticated &&
-    isFunctionalEvalUser &&
-    !goingFunctionalEval &&
-    to.path !== "/change-password" &&
-    to.path !== "/fe-onboarding" &&
-    to.name !== "login"
-  ) {
-    next({ name: "site-functional-eval-field-form-uploads" });
-    return;
-  }
-
   const isFeViewer = isFunctionalEvalViewer(role);
   const goingFeViewerArea =
     to.path.startsWith("/hq-safe/functional-eval") ||
@@ -498,14 +481,14 @@ router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresPdfSigning && !canAccessHqSafeWorkspace(auth.user?.role)) {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
+    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-heat-stress" });
     else next({ name: "login" });
     return;
   }
   if (to.meta.requiresAccidentAdmin && !canAccessHqSafeWorkspace(auth.user?.role)) {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
+    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-heat-stress" });
     else next({ name: "login" });
     return;
   }
@@ -529,7 +512,7 @@ router.beforeEach(async (to, _from, next) => {
         return;
       }
       if (auth.effectivePersona === "HQ_OTHER") {
-        next({ name: "hq-other-dashboard" });
+        next({ name: "hq-other-heat-stress" });
         return;
       }
       if (auth.effectiveUiType === "HQ_SAFE") {
@@ -539,7 +522,7 @@ router.beforeEach(async (to, _from, next) => {
       if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
       else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-      else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
+      else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-heat-stress" });
       else next();
       return;
     }
@@ -547,7 +530,7 @@ router.beforeEach(async (to, _from, next) => {
     if (to.meta.persona && auth.effectivePersona && to.meta.persona !== auth.effectivePersona) {
       if (auth.effectivePersona === "HQ_ADMIN") next({ name: hqSafeHomeRouteName() });
       else if (auth.effectivePersona === "SITE_MANAGER" || auth.effectivePersona === "SITE_STAFF") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-      else if (auth.effectivePersona === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+      else if (auth.effectivePersona === "HQ_OTHER") next({ name: "hq-other-heat-stress" });
       else next({ name: "worker-mobile-list" });
       return;
     }
@@ -556,14 +539,14 @@ router.beforeEach(async (to, _from, next) => {
       if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.effectiveUiType === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
       else if (auth.effectiveUiType === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-      else next({ name: "hq-other-field-form-uploads" });
+      else next({ name: "hq-other-heat-stress" });
       return;
     }
   } else if (to.meta.uiType && auth.user && auth.user.ui_type !== to.meta.uiType) {
     if (auth.user.role === "WORKER") next({ name: "worker-mobile-list" });
     else if (!isWeleraserReference(auth.user?.login_id) && auth.user.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (!isWeleraserReference(auth.user?.login_id) && auth.user.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    else if (auth.user.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
+    else if (auth.user.ui_type === "HQ_OTHER") next({ name: "hq-other-heat-stress" });
     else next({ name: "login" });
     return;
   }
@@ -582,20 +565,20 @@ router.beforeEach(async (to, _from, next) => {
       else if (auth.effectivePersona === "HQ_ADMIN") next({ name: hqSafeHomeRouteName() });
       else if (auth.effectivePersona === "SITE_MANAGER") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
       else if (auth.effectivePersona === "SITE_STAFF") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-      else if (auth.effectivePersona === "HQ_OTHER") next({ name: "hq-other-dashboard" });
+      else if (auth.effectivePersona === "HQ_OTHER") next({ name: "hq-other-heat-stress" });
       else if (auth.effectivePersona === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
       else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
       else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-      else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
+      else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-heat-stress" });
       else next();
     } else if (auth.user?.role === "WORKER") next({ name: "worker-mobile-list" });
-    else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") next({ name: "site-functional-eval-field-form-uploads" });
+    else if (auth.user?.role === "SITE_FUNCTIONAL_EVAL") next({ name: "site-heat-stress" });
     else if (auth.user?.role === "HQ_BUDGET_ESTIMATE" || auth.user?.role === "HQ_OUTSOURCING_PURCHASE")
-      next({ name: "hq-safe-new-site-deployment" });
+      next({ name: "hq-safe-heat-stress" });
     else if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
-    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-field-form-uploads" });
+    else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-heat-stress" });
     else next();
     return;
   }

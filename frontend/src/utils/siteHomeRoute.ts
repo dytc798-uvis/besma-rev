@@ -4,12 +4,9 @@ export function isMobileOpsSiteLogin(loginId?: string | null): boolean {
   return MOBILE_OPS_SITE_LOGINS.has((loginId || "").trim().toLowerCase());
 }
 
-/** SITE account default route. */
+/** 모든 SITE 계정의 로그인 첫 화면은 체감온도 기록이다. */
 export function siteMobileOrDesktopHomeName(
-  loginId?: string | null,
-): "site-mobile-ops" | "site-home" {
-  if (isMobileOpsSiteLogin(loginId)) {
-    return "site-mobile-ops";
-  }
-  return "site-home";
+  _loginId?: string | null,
+): "site-heat-stress" {
+  return "site-heat-stress";
 }

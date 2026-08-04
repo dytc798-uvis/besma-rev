@@ -30,13 +30,19 @@ from app.modules.sites.models import Site
 
 router = APIRouter(prefix="/heat-stress", tags=["heat-stress"])
 
+HQ_HEAT_VIEW_ROLES = HQ_SAFE_WORKSPACE_ROLES | {
+    Role.HQ_OTHER,
+    Role.HQ_BUDGET_ESTIMATE,
+    Role.HQ_OUTSOURCING_PURCHASE,
+}
+
 
 def _role(user) -> Role | str:
     return user.role
 
 
 def _is_hq(user) -> bool:
-    return _role(user) in HQ_SAFE_WORKSPACE_ROLES
+    return _role(user) in HQ_HEAT_VIEW_ROLES
 
 
 def _is_site(user) -> bool:
