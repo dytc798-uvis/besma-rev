@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime, time, timedelta
 from io import BytesIO
 from urllib.parse import quote
@@ -272,7 +273,6 @@ def download_ledger_pdf(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리대장 출력 권한이 없습니다.")
     if date_from and date_to and date_from > date_to:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="시작일은 종료일보다 늦을 수 없습니다.")
-
     resolved_site_id = _assert_site_context(current_user) if _is_site(current_user) else site_id
     query = db.query(HeatStressRecord, Site.site_name).join(Site, Site.id == HeatStressRecord.site_id)
     if resolved_site_id:
@@ -285,7 +285,12 @@ def download_ledger_pdf(
     if not rows:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="출력할 체감온도 기록이 없습니다.")
 
-    content = build_ledger_pdf(rows, date_from=date_from, date_to=date_to)
+    content = build_ledger_pdf(
+        rows,
+        date_from=date_from,
+        date_to=date_to,
+        group_by_site=resolved_site_id is None,
+    )
     first_record = rows[0][0]
     db.add(HeatStressAuditLog(
         record_id=first_record.id,
@@ -303,11 +308,9 @@ def download_ledger_pdf(
         ),
     ))
     db.commit()
-    if date_from or date_to:
-        period = f"{date_from.isoformat() if date_from else '처음'}_{date_to.isoformat() if date_to else '현재'}"
-    else:
-        period = "전체기간"
-    filename = f"체감온도관리대장_{period}.pdf"
+    site_name = rows[0][1] if resolved_site_id else "전체현장"
+    safe_site_name = re.sub(r'[\\/:*?"<>|]+', "_", site_name).strip(" ._") or "현장"
+    filename = f"체감온도관리대장_{safe_site_name}.PDF"
     return StreamingResponse(
         BytesIO(content),
         media_type="application/pdf",

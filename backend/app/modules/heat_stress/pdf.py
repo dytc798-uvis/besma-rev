@@ -111,8 +111,9 @@ def build_ledger_pdf(
     rows: list[tuple[object, str]],
     date_from: date | None = None,
     date_to: date | None = None,
+    group_by_site: bool = False,
 ) -> bytes:
-    """Build a date-grouped, multi-page heat-stress management ledger."""
+    """Build a multi-page heat-stress ledger grouped by site and date when requested."""
 
     font = _font()
     out = io.BytesIO()
@@ -122,6 +123,7 @@ def build_ledger_pdf(
     margin_x = 10 * mm
     bottom_y = 12 * mm
     row_height = 23 * mm
+    site_height = 8 * mm
     date_height = 7 * mm
     header_height = 8 * mm
     columns = [
@@ -135,7 +137,14 @@ def build_ledger_pdf(
         ("관리자 확인 / 서명", 41 * mm),
     ]
     table_width = sum(column_width for _, column_width in columns)
-    sorted_rows = sorted(rows, key=lambda item: (item[0].measured_at, item[0].id))
+    sort_key = (
+        (lambda item: (str(item[1]), item[0].measured_at, item[0].id))
+        if group_by_site
+        else (lambda item: (item[0].measured_at, item[0].id))
+    )
+    sorted_rows = sorted(rows, key=sort_key)
+    site_names = sorted({str(site_name).strip() for _, site_name in sorted_rows if str(site_name).strip()})
+    site_label = site_names[0] if len(site_names) == 1 else "전체 현장"
 
     if date_from and date_to:
         period_label = date_from.isoformat() if date_from == date_to else f"{date_from.isoformat()} ~ {date_to.isoformat()}"
@@ -144,7 +153,8 @@ def build_ledger_pdf(
     elif date_to:
         period_label = f"{date_to.isoformat()} 이전"
     elif sorted_rows:
-        period_label = f"{sorted_rows[0][0].measured_at.date().isoformat()} ~ {sorted_rows[-1][0].measured_at.date().isoformat()}"
+        measured_dates = [record.measured_at.date() for record, _ in sorted_rows]
+        period_label = f"{min(measured_dates).isoformat()} ~ {max(measured_dates).isoformat()}"
     else:
         period_label = "전체 기간"
 
@@ -155,8 +165,8 @@ def build_ledger_pdf(
         if page_number:
             c.showPage()
         page_number += 1
-        _text(c, "체감온도 관리대장", margin_x, height - 14 * mm, font, 16)
-        _text(c, f"기간: {period_label}", margin_x, height - 23 * mm, font, 8)
+        _text(c, f"체감온도 관리대장 - {site_label}", margin_x, height - 14 * mm, font, 16)
+        _text(c, f"현장명: {site_label} / 기간: {period_label}", margin_x, height - 23 * mm, font, 8)
         c.setFont(font, 7)
         c.drawRightString(width - margin_x, height - 23 * mm, f"출력: {datetime.now().strftime('%Y-%m-%d %H:%M')} / {page_number}쪽")
         y = height - 29 * mm
@@ -180,6 +190,15 @@ def build_ledger_pdf(
         c.setFillColorRGB(0, 0, 0)
         return y - date_height
 
+    def draw_site_heading(y: float, name: str, continued: bool = False) -> float:
+        c.setFillColorRGB(0.86, 0.91, 0.98)
+        c.rect(margin_x, y - site_height, table_width, site_height, fill=1, stroke=1)
+        c.setFillColorRGB(0.08, 0.23, 0.48)
+        suffix = " (계속)" if continued else ""
+        _text(c, f"현장명: {name}{suffix}", margin_x + 3 * mm, y - 5.4 * mm, font, 9)
+        c.setFillColorRGB(0, 0, 0)
+        return y - site_height
+
     def draw_signature(signature_data: str | None, x: float, y: float, cell_width: float) -> None:
         raw = _signature_bytes(signature_data)
         if not raw:
@@ -202,16 +221,27 @@ def build_ledger_pdf(
     if not sorted_rows:
         _text(c, "출력할 체감온도 기록이 없습니다.", margin_x, y - 15 * mm, font, 10)
 
+    current_site: str | None = None
     current_day: date | None = None
     for record, site_name in sorted_rows:
         record_day = record.measured_at.date()
+        if group_by_site and site_name != current_site:
+            if y - site_height - date_height - row_height < bottom_y:
+                y = start_page()
+            y = draw_site_heading(y, site_name)
+            current_site = site_name
+            current_day = None
         if record_day != current_day:
             if y - date_height - row_height < bottom_y:
                 y = start_page()
+                if group_by_site:
+                    y = draw_site_heading(y, site_name, continued=True)
             y = draw_date_heading(y, record_day)
             current_day = record_day
         if y - row_height < bottom_y:
             y = start_page()
+            if group_by_site:
+                y = draw_site_heading(y, site_name, continued=True)
             y = draw_date_heading(y, record_day, continued=True)
 
         row_bottom = y - row_height

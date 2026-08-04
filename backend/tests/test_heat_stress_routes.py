@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -90,7 +91,7 @@ def test_site_create_confirm_pdf_and_scope(tmp_path: Path):
     ledger = client.get("/heat-stress/ledger.pdf")
     assert ledger.status_code == 200
     assert ledger.content.startswith(b"%PDF-")
-    assert "체감온도관리대장_전체기간.pdf" in unquote(ledger.headers["content-disposition"])
+    assert "체감온도관리대장_첫 현장.PDF" in unquote(ledger.headers["content-disposition"])
 
     current["user"] = SimpleNamespace(id=13, name="일반본사", role=Role.HQ_OTHER, site_id=None)
     assert client.get(f"/heat-stress/records/{record_id}/pdf").status_code == 200
@@ -100,8 +101,16 @@ def test_site_create_confirm_pdf_and_scope(tmp_path: Path):
     hq_ledger = client.get("/heat-stress/ledger.pdf?date_from=2026-07-29&date_to=2026-07-29")
     assert hq_ledger.status_code == 200
     assert hq_ledger.content.startswith(b"%PDF-")
+    assert "체감온도관리대장_전체현장.PDF" in unquote(hq_ledger.headers["content-disposition"])
     assert client.get("/heat-stress/ledger.pdf?date_from=2026-07-30&date_to=2026-07-29").status_code == 422
 
     with local() as db:
         assert db.query(HeatStressRecord).count() == 2
         assert db.query(HeatStressAuditLog).count() == 7
+        ledger_logs = db.query(HeatStressAuditLog).filter(
+            HeatStressAuditLog.event_type == "LEDGER_PDF_EXPORT"
+        ).order_by(HeatStressAuditLog.id.asc()).all()
+        site_detail = json.loads(ledger_logs[0].detail_json)
+        hq_detail = json.loads(ledger_logs[1].detail_json)
+        assert site_detail["site_id"] == 1 and site_detail["record_count"] == 2
+        assert hq_detail["site_id"] is None and hq_detail["record_count"] == 2

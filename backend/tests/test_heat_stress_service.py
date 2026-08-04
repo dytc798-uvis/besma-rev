@@ -84,9 +84,12 @@ def test_ledger_pdf_groups_dates_and_spans_pages():
             confirmer_signed_at=measured_at + timedelta(minutes=10) if index % 2 == 0 else None,
             confirmer_signature_data=None,
         )
-        rows.append((row, "테스트 현장"))
+        rows.append((row, "가 현장" if index < 5 else "나 현장"))
 
-    content = build_ledger_pdf(rows)
+    content = build_ledger_pdf(rows, group_by_site=True)
     reader = PdfReader(io.BytesIO(content))
     assert content.startswith(b"%PDF-")
     assert len(reader.pages) >= 2
+    extracted = "".join(page.extract_text() or "" for page in reader.pages)
+    assert "가 현장" in extracted
+    assert "나 현장" in extracted

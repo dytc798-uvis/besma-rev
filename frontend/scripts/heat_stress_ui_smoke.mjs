@@ -81,11 +81,12 @@ for (const profile of [
   await page.screenshot({ path: `${out}/026_체감온도_홈_${profile.name}.png`, fullPage: true });
   await page.goto(`${base}/site/heat-stress`, { waitUntil: "networkidle" });
   await page.getByRole("heading", { name: "체감온도 기록", exact: true }).waitFor();
+  const siteLedgerButtonVisible = await page.getByRole("button", { name: "체감온도관리대장", exact: true }).isVisible();
   await page.getByRole("button", { name: "추가 측정 기록", exact: true }).click();
   const apparent = await page.locator(".temperature-result strong").innerText();
   const persistedLocation = await page.locator("label").filter({ hasText: "작업장소" }).locator("input").inputValue();
   await page.screenshot({ path: `${out}/026_체감온도_입력_${profile.name}.png`, fullPage: true });
-  results.push({ kind: "site", profile: profile.name, cards, expectedCards: profile.expectedCards, apparent, persistedLocation, consoleErrors, pageErrors });
+  results.push({ kind: "site", profile: profile.name, cards, expectedCards: profile.expectedCards, apparent, persistedLocation, siteLedgerButtonVisible, consoleErrors, pageErrors });
   await page.close();
 }
 
@@ -98,12 +99,13 @@ await mockApi(hqPage, "HQ_SAFE");
 await hqPage.goto(`${base}/hq-safe/heat-stress`, { waitUntil: "networkidle" });
 await hqPage.getByRole("heading", { name: "체감온도 기록 현황", exact: true }).waitFor();
 const ledgerButtonVisible = await hqPage.getByRole("button", { name: "체감온도관리대장", exact: true }).isVisible();
+const groupedSiteHeading = (await hqPage.locator(".site-group").first().innerText()).includes("테스트 현장");
 await hqPage.screenshot({ path: `${out}/026_체감온도_관리대장_버튼_hq.png`, fullPage: true });
-results.push({ kind: "hq", profile: "hq-desktop", ledgerButtonVisible, consoleErrors: hqConsoleErrors, pageErrors: hqPageErrors });
+results.push({ kind: "hq", profile: "hq-desktop", ledgerButtonVisible, groupedSiteHeading, consoleErrors: hqConsoleErrors, pageErrors: hqPageErrors });
 await hqPage.close();
 
 await browser.close();
-if (results.some((r) => (r.kind === "site" && (r.cards !== r.expectedCards || r.persistedLocation !== "지상 3층 외부")) || (r.kind === "hq" && !r.ledgerButtonVisible) || r.consoleErrors.length || r.pageErrors.length)) {
+if (results.some((r) => (r.kind === "site" && (r.cards !== r.expectedCards || r.persistedLocation !== "지상 3층 외부" || !r.siteLedgerButtonVisible)) || (r.kind === "hq" && (!r.ledgerButtonVisible || !r.groupedSiteHeading)) || r.consoleErrors.length || r.pageErrors.length)) {
   console.error(JSON.stringify(results, null, 2));
   process.exit(1);
 }
