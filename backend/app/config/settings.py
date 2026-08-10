@@ -60,6 +60,13 @@ class Settings(BaseSettings):
         default=20 * 1024 * 1024,
         validation_alias="BESMA_DOCUMENT_UPLOAD_REJECT_MAX_BYTES",
     )
+    weather_cache_ttl_minutes: int = Field(default=20, validation_alias="BESMA_WEATHER_CACHE_TTL_MINUTES")
+    weather_http_timeout_seconds: float = Field(default=5.0, validation_alias="BESMA_WEATHER_HTTP_TIMEOUT_SECONDS")
+    weather_hq_name: str | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_NAME")
+    weather_hq_lat: float | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_LAT")
+    weather_hq_lon: float | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_LON")
+    weather_hq_site_limit: int = Field(default=5, validation_alias="BESMA_HQ_WEATHER_SITE_LIMIT")
+    kma_api_key: str | None = Field(default=None, validation_alias="KMA_API_KEY")
 
     cors_origins: list[str] = [
         "http://localhost:5173",
