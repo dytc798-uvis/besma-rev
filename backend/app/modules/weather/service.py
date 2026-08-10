@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.config.settings import settings
+from app.modules.dashboard.weather_service import WeatherLocation, build_weather_snapshot
 from app.modules.heat_stress.service import calculate_apparent_temperature
 
 
@@ -45,6 +46,18 @@ def _fetch_json(params: dict[str, object]) -> dict:
     request = Request(url, headers={"User-Agent": "BESMA-weather/1.0"})
     with urlopen(request, timeout=settings.weather_http_timeout_seconds) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _direct_kma_current(latitude: float, longitude: float, location_name: str) -> dict | None:
+    """Use a KMA direct observation when available while retaining the legacy provider as fallback."""
+    snapshot = build_weather_snapshot(
+        WeatherLocation(name=location_name, latitude=latitude, longitude=longitude)
+    )
+    if not snapshot.get("available"):
+        return None
+    if not str(snapshot.get("temperature_source") or "").startswith("kma"):
+        return None
+    return snapshot
 
 
 def _reverse_location_name(latitude: float, longitude: float) -> str:
@@ -114,6 +127,7 @@ def build_location_overview(latitude: float, longitude: float, location_name: st
             resolved_location_name = _reverse_location_name(latitude, longitude)
         except Exception:
             resolved_location_name = f"현재 위치 ({latitude:.4f}, {longitude:.4f})"
+    direct_kma = _direct_kma_current(latitude, longitude, resolved_location_name)
     payload = _fetch_json(
         {
             "latitude": round(latitude, 5),
@@ -174,6 +188,34 @@ def build_location_overview(latitude: float, longitude: float, location_name: st
 
     temperature = current.get("temperature_2m")
     humidity = current.get("relative_humidity_2m")
+    observed_at = current.get("time")
+    wind_speed_kmh = current.get("wind_speed_10m")
+    location_attribution = "동네명 © OpenStreetMap contributors"
+    source = "OPEN_METEO_LOCATION"
+    source_label = "위치 기반 기상자료"
+    kma_notice = "기상청 직접 관측값을 사용할 수 없어 위치 기반 기상자료를 사용 중입니다."
+    if direct_kma:
+        temperature = direct_kma.get("temperature")
+        humidity = direct_kma.get("humidity")
+        observed_at = direct_kma.get("observed_at") or direct_kma.get("updated_at")
+        wind_speed = direct_kma.get("wind_speed")
+        wind_speed_kmh = (float(wind_speed) * 3.6) if wind_speed is not None else None
+        station_name = direct_kma.get("kma_station_name")
+        station_id = direct_kma.get("kma_station_id")
+        distance_km = direct_kma.get("kma_station_distance_km")
+        if direct_kma.get("temperature_source") == "kma-asos":
+            source = "KMA_ASOS_NEAREST"
+            source_label = "기상청 최근접 ASOS 직접 관측값"
+            location_attribution = (
+                f"기상청 {station_name}({station_id}) · 약 {distance_km}km"
+                if station_name and distance_km is not None
+                else "기상청 직접 관측값"
+            )
+        else:
+            source = "KMA_GRID_FALLBACK"
+            source_label = "기상청 격자 관측값"
+            location_attribution = "기상청 ASOS 직접 관측 실패 시 격자 fallback"
+        kma_notice = "현재값은 기상청 직접 관측을 우선 사용합니다. AWS 직접관측은 승인 후 별도 전환합니다."
     calculated = None
     if temperature is not None and humidity is not None:
         calculated = calculate_apparent_temperature(float(temperature), float(humidity))
@@ -181,20 +223,16 @@ def build_location_overview(latitude: float, longitude: float, location_name: st
         "available": True,
         "location_name": resolved_location_name,
         "location_source": location_source,
-        "location_attribution": "동네명 © OpenStreetMap contributors",
+        "location_attribution": location_attribution,
         "latitude": latitude,
         "longitude": longitude,
-        "source": "OPEN_METEO_LOCATION",
-        "source_label": "위치 기반 기상자료",
+        "source": source,
+        "source_label": source_label,
         "kma_key_configured": bool(settings.kma_api_key),
-        "kma_notice": (
-            "기상청 AWS 연결 가능. 위치-관측지점 연결 및 단기예보 세부 API 승인 후 기상청 값으로 전환합니다."
-            if settings.kma_api_key
-            else "기상청 운영키가 아직 서버에 설정되지 않았습니다."
-        ),
+        "kma_notice": kma_notice,
         "fetched_at": datetime.now(KST).isoformat(),
         "current": {
-            "observed_at": current.get("time"),
+            "observed_at": observed_at,
             "weather_code": current.get("weather_code"),
             "weather_label": WEATHER_LABELS.get(current.get("weather_code"), "기상 정보"),
             "temperature_c": temperature,
@@ -202,7 +240,7 @@ def build_location_overview(latitude: float, longitude: float, location_name: st
             "apparent_temperature_c": calculated,
             "provider_apparent_temperature_c": current.get("apparent_temperature"),
             "precipitation_mm": current.get("precipitation"),
-            "wind_speed_kmh": current.get("wind_speed_10m"),
+            "wind_speed_kmh": wind_speed_kmh,
         },
         "forecast_days": days,
     }

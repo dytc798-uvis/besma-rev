@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     )
     weather_cache_ttl_minutes: int = Field(default=20, validation_alias="BESMA_WEATHER_CACHE_TTL_MINUTES")
     weather_http_timeout_seconds: float = Field(default=5.0, validation_alias="BESMA_WEATHER_HTTP_TIMEOUT_SECONDS")
+    weather_primary_source: str = Field(default="kma", validation_alias="BESMA_WEATHER_PRIMARY_SOURCE")
+    weather_kma_service_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("BESMA_WEATHER_KMA_SERVICE_KEY", "KMA_API_KEY"),
+    )
     weather_hq_name: str | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_NAME")
     weather_hq_lat: float | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_LAT")
     weather_hq_lon: float | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_LON")
