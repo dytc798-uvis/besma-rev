@@ -35,6 +35,11 @@ _HQ_ROLES = {
     Role.ACCIDENT_ADMIN.value,
     Role.FUNCTIONAL_EVAL_VIEWER.value,
 }
+_HQ_WRITE_ROLES = {
+    Role.HQ_SAFE.value,
+    Role.HQ_SAFE_ADMIN.value,
+    Role.SUPER_ADMIN.value,
+}
 
 _KEY_TIMESTAMP = "타임스탬프"
 _KEY_NAME = "1. 귀하의 성함을 입력하십시오."
@@ -56,6 +61,10 @@ def _assert_can_read(current_user: Any) -> None:
 
 def _is_hq_user(current_user: Any) -> bool:
     return _role_value(getattr(current_user, "role", None)) in _HQ_ROLES
+
+
+def _can_hq_write(current_user: Any) -> bool:
+    return _role_value(getattr(current_user, "role", None)) in _HQ_WRITE_ROLES
 
 
 def _assert_site_user(current_user: Any) -> None:
@@ -286,7 +295,7 @@ def _visible_opinion(db: DbDep, current_user: Any, opinion_id: int) -> WorkerFee
 
 @router.post("/sync")
 def sync_worker_feedback(db: DbDep, current_user: CurrentUserDep):
-    if not _is_hq_user(current_user):
+    if not _can_hq_write(current_user):
         raise HTTPException(status_code=403, detail="Not allowed")
     return _sync_from_google(db)
 
@@ -347,7 +356,7 @@ def score_worker_feedback_opinion(
     prevention_score: int = Body(..., ge=1, le=5),
     notes: str = Body(default=""),
 ):
-    if not _is_hq_user(current_user):
+    if not _can_hq_write(current_user):
         raise HTTPException(status_code=403, detail="Not allowed")
     row = _visible_opinion(db, current_user, opinion_id)
     if row.action_status != "DONE":
@@ -369,7 +378,7 @@ def award_worker_feedback_bonus(
     current_user: CurrentUserDep,
     bonus_points: int = Body(default=5, ge=1, le=100, embed=True),
 ):
-    if not _is_hq_user(current_user):
+    if not _can_hq_write(current_user):
         raise HTTPException(status_code=403, detail="Not allowed")
     row = _visible_opinion(db, current_user, opinion_id)
     if row.action_status != "DONE" or row.score_total is None:
