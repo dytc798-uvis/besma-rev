@@ -1,1180 +1,284 @@
 <template>
-  <div class="voice-page">
-    <div class="page-head">
+  <div class="feedback-page">
+    <header class="page-head">
       <div>
-        <h1 class="page-title">근로자의견청취 관리대장</h1>
-        <p class="page-sub">현재 대장을 기준으로 의견 목록을 관리하고, 엑셀 업로드는 초기 가져오기 용도로만 사용합니다.</p>
+        <p class="eyebrow">WORKER SAFETY VOICE</p>
+        <h1>근로자의견청취 관리대장</h1>
+        <p>Google Form 의견을 전화번호 우선으로 현장에 배정하고, 현장 조치와 본사 검토·안전가점을 한 흐름으로 관리합니다.</p>
       </div>
-      <button class="stitch-btn-secondary" type="button" @click="load">새로고침</button>
-    </div>
+      <div class="head-actions">
+        <a :href="FORM_URL" target="_blank" rel="noopener noreferrer" class="btn btn-ghost">의견 제출 폼</a>
+        <button class="btn btn-primary" type="button" :disabled="loading" @click="load">
+          {{ loading ? "동기화 중" : "새로고침" }}
+        </button>
+      </div>
+    </header>
 
-    <p v-if="operationSuccess" class="operation-message operation-message--success" role="status">
-      {{ operationSuccess }}
-    </p>
-    <p v-if="operationError" class="operation-message operation-message--error" role="alert">
-      {{ operationError }}
-    </p>
+    <p v-if="message" class="notice" :class="{ error: messageIsError }">{{ message }}</p>
 
-    <template v-if="isSite">
-      <section class="summary-grid">
-        <article class="summary-card">
-          <span class="summary-label">현재 대장</span>
-          <strong>{{ currentLedger?.ledger?.title || "자동 생성 대장" }}</strong>
-          <span class="summary-meta">{{ currentLedger?.ledger ? sourceLabel(currentLedger.ledger.source_type) : "수기 관리 준비됨" }}</span>
-        </article>
-        <article class="summary-card">
-          <span class="summary-label">의견 건수</span>
-          <strong>{{ siteItems.length }}</strong>
-          <span class="summary-meta">현장 의견 누적 관리 기준</span>
-        </article>
-        <article class="summary-card">
-          <span class="summary-label">최근 반영</span>
-          <strong>{{ formatDateTimeKst(currentLedger?.ledger?.uploaded_at, "—") }}</strong>
-          <span class="summary-meta">KST 기준</span>
-        </article>
-      </section>
+    <section class="kpi-grid">
+      <article><span>전체 의견</span><strong>{{ items.length }}</strong></article>
+      <article><span>현장 조치 대기</span><strong>{{ pendingCount }}</strong></article>
+      <article><span>조치 완료</span><strong>{{ doneCount }}</strong></article>
+      <article><span>현장 미매칭</span><strong>{{ unmatchedCount }}</strong></article>
+    </section>
 
-      <section class="panel">
-        <div class="panel-head">
-          <div>
-            <h2 class="panel-title">초기 가져오기</h2>
-            <p class="panel-sub">기본 운영은 엑셀/CSV 업로드로 대장을 반영합니다. 수동 row 입력은 보조 기능입니다.</p>
-          </div>
+    <section class="workflow-strip">
+      <span>1. 폼 접수</span><i>→</i><span>2. 전화번호로 현장 배정</span><i>→</i><span>3. 현장 즉시 조치</span><i>→</i><span>4. 본사 검토·가점</span>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <div>
+          <h2>{{ isSite ? "우리 현장 의견" : "전체 현장 의견" }}</h2>
+          <p>{{ isSite ? "우리 현장에 배정된 의견만 표시됩니다." : "본사는 모든 현장의 의견과 조치 결과를 확인합니다." }}</p>
         </div>
-        <div class="import-row">
-          <input ref="ledgerFileInput" type="file" accept=".xlsx,.xls,.csv" @change="onFileChange" />
-          <button class="stitch-btn-secondary" type="button" :disabled="!ledgerFile || uploading" @click="uploadLedger">
-            {{ uploading ? "가져오는 중..." : "엑셀 가져오기" }}
-          </button>
-        </div>
-        <ul class="import-list">
-          <li v-for="item in currentLedger?.imports || []" :key="item.id">
-            <strong>{{ item.title }}</strong>
-            <span>{{ item.file_name || "파일명 없음" }}</span>
-            <span>{{ formatDateTimeKst(item.uploaded_at, "-") }}</span>
-          </li>
-          <li v-if="(currentLedger?.imports || []).length === 0" class="empty-inline">가져온 이력이 없습니다.</li>
-        </ul>
-      </section>
+        <select v-model="statusFilter" aria-label="상태 필터">
+          <option value="ALL">전체 상태</option>
+          <option value="PENDING">미접수</option>
+          <option value="RECEIVED">접수</option>
+          <option value="DONE">조치완료</option>
+        </select>
+      </div>
 
-      <details class="manual-panel">
-        <summary>수동 row 추가 (보조)</summary>
-        <section class="panel nested-manual">
-          <div class="panel-head">
+      <div v-if="displayItems.length" class="opinion-list">
+        <article v-for="item in displayItems" :key="item.id" class="opinion-card">
+          <div class="opinion-top">
             <div>
-              <h2 class="panel-title">새 의견 row 추가</h2>
-              <p class="panel-sub">업로드로 반영되지 않는 예외 건만 필요할 때 펼쳐서 입력합니다.</p>
+              <span class="status" :class="statusClass(item.action_status)">{{ statusLabel(item.action_status) }}</span>
+              <span class="match" :class="{ bad: item.match_status !== 'matched' }">{{ matchLabel(item) }}</span>
+            </div>
+            <time>{{ formatDateTimeKst(item.submitted_at || item.submitted_at_raw, "-") }}</time>
+          </div>
+
+          <div class="opinion-main">
+            <div class="identity">
+              <strong>{{ item.worker_name || "익명" }}</strong>
+              <span>{{ item.phone_masked || "전화번호 없음" }}</span>
+              <span>{{ item.matched_site_name || item.submitted_site_name || "현장 미확인" }}</span>
+            </div>
+            <div class="content">
+              <span class="type">{{ item.opinion_type || "기타 의견" }}</span>
+              <p>{{ item.content || "내용 없음" }}</p>
             </div>
           </div>
-          <div class="form-grid">
-            <label>
-              <span>근로자명</span>
-              <input v-model="createDraft.worker_name" type="text" />
-            </label>
-            <label>
-              <span>생년월일</span>
-              <input v-model="createDraft.worker_birth_date" type="text" placeholder="예: 1980-01-01" />
-            </label>
-            <label>
-              <span>연락처</span>
-              <input v-model="createDraft.worker_phone_number" type="text" />
-            </label>
-            <label>
-              <span>의견 종류</span>
-              <input v-model="createDraft.opinion_kind" type="text" placeholder="예: 대면청취" />
-            </label>
-            <label class="span-2">
-              <span>의견 내용</span>
-              <textarea v-model="createDraft.opinion_text" rows="3" />
-            </label>
-            <label class="span-2">
-              <span>조치 전</span>
-              <textarea v-model="createDraft.action_before" rows="2" placeholder="현장 상태나 문제 상황" />
-            </label>
-            <label class="span-2">
-              <span>조치 후</span>
-              <textarea v-model="createDraft.action_after" rows="2" placeholder="실행한 조치 또는 결과" />
-            </label>
-            <label>
-              <span>담당자</span>
-              <input v-model="createDraft.action_owner" type="text" />
-            </label>
-          </div>
-          <div class="panel-actions">
-            <button class="stitch-btn-primary" type="button" :disabled="savingCreate" @click="createItem">
-              {{ savingCreate ? "추가 중..." : "row 추가" }}
-            </button>
-          </div>
-        </section>
-      </details>
 
-      <section class="panel">
-        <div class="panel-head">
-          <div>
-            <h2 class="panel-title">의견 목록</h2>
-            <p class="panel-sub">저장하면 현재 대장과 목록이 즉시 다시 조회됩니다.</p>
+          <div v-if="item.action_result" class="action-result">
+            <span>현장 조치결과</span>
+            <p>{{ item.action_result }}</p>
           </div>
-        </div>
-        <p v-if="dashboardListFilter" class="dashboard-filter-banner">{{ dashboardFilterBannerText }}</p>
-        <div class="table-wrap">
-          <table class="ledger-table">
-            <thead>
-              <tr>
-                <th>No</th>
-                <th>근로자</th>
-                <th>의견</th>
-                <th>조치 전(문제상황) / 조치 후(조치결과)</th>
-                <th>담당</th>
-                <th>사진</th>
-                <th>운영 처리 (접수·조치·현장메모)</th>
-                <th>위험성평가 DB (요청·본사판단)</th>
-                <th>저장</th>
-              </tr>
-            </thead>
-            <tbody>
-              <template v-for="item in displaySiteItems" :key="item.id">
-                <tr>
-                  <td>{{ item.row_no }}</td>
-                  <td>
-                    <div class="cell-stack">
-                      <input v-model="drafts[item.id].worker_name" type="text" placeholder="근로자명" />
-                      <input v-model="drafts[item.id].worker_phone_number" type="text" placeholder="연락처" />
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-stack">
-                      <input v-model="drafts[item.id].opinion_kind" type="text" placeholder="의견 종류" />
-                      <textarea v-model="drafts[item.id].opinion_text" rows="3" />
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-stack">
-                      <textarea v-model="drafts[item.id].action_before" rows="2" placeholder="조치 전" />
-                      <textarea v-model="drafts[item.id].action_after" rows="2" placeholder="조치 후" />
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-stack">
-                      <input v-model="drafts[item.id].action_owner" type="text" placeholder="담당자" />
-                    </div>
-                  </td>
-                  <td>
-                    <div class="photo-col">
-                      <button v-if="item.before_photo_url" class="link-btn" type="button" @click="openFile(item.before_photo_url, `before-${item.id}.jpg`)">전 사진</button>
-                      <input type="file" accept="image/*" @change="onBeforePhotoChange($event, item.id)" />
-                      <button v-if="item.after_photo_url" class="link-btn" type="button" @click="openFile(item.after_photo_url, `after-${item.id}.jpg`)">후 사진</button>
-                      <input type="file" accept="image/*" @change="onAfterPhotoChange($event, item.id)" />
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-stack ops-block">
-                      <div class="sub-label">접수 판단</div>
-                      <span class="mini-badge" :class="receiptBadgeClass(item)">{{ receiptLabel(item.receipt_decision) }}</span>
-                      <div class="btn-row">
-                        <button class="stitch-btn-secondary btn-sm" type="button" :disabled="!canSiteApprove(item)" @click="siteApprove(item.id)">접수</button>
-                        <button class="stitch-btn-secondary btn-sm danger" type="button" :disabled="!canSiteReject(item)" @click="siteReject(item.id)">반려</button>
-                      </div>
-                      <div class="sub-label">조치 상태</div>
-                      <select v-model="actionStatusDrafts[item.id]" class="action-select">
-                        <option value="not_started">미조치</option>
-                        <option value="in_progress">조치중</option>
-                        <option value="completed">조치완료</option>
-                      </select>
-                      <button class="stitch-btn-secondary btn-sm" type="button" @click="saveActionStatus(item.id)">조치 저장</button>
-                      <div class="sub-label">현장 메모 (운영)</div>
-                      <textarea v-model="siteCommentDrafts[item.id]" rows="2" placeholder="현장 코멘트" />
-                      <button class="stitch-btn-secondary btn-sm" type="button" @click="saveSiteComment(item.id)">메모 저장</button>
-                      <button class="stitch-btn-secondary btn-sm" type="button" @click="toggleComments(item.id)">이력 코멘트</button>
-                    </div>
-                  </td>
-                  <td>
-                    <div class="cell-stack db-block">
-                      <p class="db-hint">접수와 별개로, DB 반영은 현장 요청 후 본사가 승인합니다.</p>
-                      <div>
-                        <span class="mini-badge db-badge">{{ riskDbRequestLabel(item.risk_db_request_status) }}</span>
-                        <span class="mini-badge db-badge-hq" :class="riskDbHqBadgeClass(item.risk_db_hq_status)">{{ riskDbHqLabel(item.risk_db_hq_status) }}</span>
-                      </div>
-                      <button
-                        class="stitch-btn-primary btn-sm"
-                        type="button"
-                        :disabled="!canRequestRiskDb(item)"
-                        title="반복 위험이 있거나 타 현장 적용이 필요한 경우에만 누르세요. 접수·조치와 별개입니다."
-                        @click="requestRiskDb(item.id)"
-                      >
-                        위험성평가 DB 등록 요청
-                      </button>
-                    </div>
-                  </td>
-                  <td>
-                    <button class="stitch-btn-primary btn-sm" type="button" @click="saveSiteItem(item.id)">저장</button>
-                  </td>
-                </tr>
-                <tr v-if="openedCommentsItemId === item.id">
-                  <td colspan="9">
-                    <div class="comment-box">
-                      <p v-for="c in item.comments" :key="c.id">- {{ c.body }} ({{ c.created_by_name || "-" }})</p>
-                      <p v-if="item.comments.length === 0" class="empty-inline">댓글이 없습니다.</p>
-                      <div class="comment-write">
-                        <input v-model="commentDrafts[item.id]" type="text" placeholder="댓글 입력" />
-                        <button class="stitch-btn-secondary btn-sm" type="button" @click="addComment(item.id)">등록</button>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              </template>
-              <tr v-if="siteItems.length === 0">
-                <td colspan="9" class="empty-cell">등록된 의견 항목이 없습니다.</td>
-              </tr>
-              <tr v-else-if="displaySiteItems.length === 0">
-                <td colspan="9" class="empty-cell">이 필터에 해당하는 의견 항목이 없습니다.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </template>
 
-    <section v-else class="panel">
-      <div class="panel-head">
-        <div>
-          <h2 class="panel-title">전체 의견 목록</h2>
-          <p class="panel-sub">본사는 위험성평가 DB 등록 요청에 대한 승인·반려와 포상 후보만 처리합니다. 접수·조치는 현장 전용입니다.</p>
-        </div>
+          <div v-if="isSite" class="card-actions">
+            <button v-if="item.action_status === 'PENDING'" class="btn btn-ghost" type="button" @click="receive(item.id)">접수 확인</button>
+            <button v-if="item.action_status !== 'DONE'" class="btn btn-primary" type="button" @click="complete(item.id)">조치완료 기록</button>
+            <span v-else class="completed-copy">조치 의무 이행 완료</span>
+          </div>
+
+          <div v-else class="hq-review">
+            <div class="score-grid">
+              <label>적정성<select v-model.number="scoreDrafts[item.id].appropriateness"><option v-for="n in 5" :key="n" :value="n">{{ n }}</option></select></label>
+              <label>실행성<select v-model.number="scoreDrafts[item.id].actionability"><option v-for="n in 5" :key="n" :value="n">{{ n }}</option></select></label>
+              <label>예방성<select v-model.number="scoreDrafts[item.id].prevention"><option v-for="n in 5" :key="n" :value="n">{{ n }}</option></select></label>
+              <label class="notes">본사 메모<input v-model="scoreDrafts[item.id].notes" type="text" placeholder="부적정 의견 제외 사유 등" /></label>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-ghost" type="button" :disabled="item.action_status !== 'DONE'" @click="score(item.id)">검토 저장</button>
+              <button class="btn btn-accent" type="button" :disabled="!canAward(item)" @click="award(item.id)">
+                {{ item.bonus_awarded_at ? `안전가점 +${item.bonus_points} 확정` : "안전가점 +5 확정" }}
+              </button>
+              <span v-if="item.score_total != null">검토점수 {{ item.score_total }}/15</span>
+            </div>
+          </div>
+        </article>
       </div>
-      <p v-if="dashboardListFilter" class="dashboard-filter-banner">{{ dashboardFilterBannerText }}</p>
-      <div class="table-wrap">
-        <table class="ledger-table hq-table">
-          <thead>
-            <tr>
-              <th>대장</th>
-              <th>근로자</th>
-              <th>의견</th>
-              <th>조치</th>
-              <th>접수·조치</th>
-              <th>DB요청/HQ</th>
-              <th>본사 메모</th>
-              <th>DB·포상</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template v-for="item in displayHqItems" :key="item.id">
-              <tr>
-                <td>{{ item.ledger_title }}</td>
-                <td>{{ item.worker_name || "-" }}</td>
-                <td>{{ item.opinion_text }}</td>
-                <td>{{ item.action_after || item.action_before || "-" }}</td>
-                <td>
-                  <div class="cell-stack">
-                    <span>{{ receiptLabel(item.receipt_decision) }}</span>
-                    <span class="text-muted">조치: {{ actionStatusLabelUi(item.action_status) }}</span>
-                  </div>
-                </td>
-                <td>
-                  <div class="cell-stack">
-                    <span>{{ riskDbRequestLabel(item.risk_db_request_status) }}</span>
-                    <span class="mini-badge db-badge-hq" :class="riskDbHqBadgeClass(item.risk_db_hq_status)">{{ riskDbHqLabel(item.risk_db_hq_status) }}</span>
-                    <span v-if="item.ready_for_risk_db" class="text-ok">DB 승격 확정</span>
-                  </div>
-                </td>
-                <td>
-                  <textarea v-model="hqCommentDrafts[item.id]" rows="2" placeholder="본사 코멘트 (DB 검토 등)" />
-                  <button class="stitch-btn-secondary btn-sm" type="button" @click="saveHqComment(item.id)">저장</button>
-                  <button class="stitch-btn-secondary btn-sm" type="button" @click="toggleComments(item.id)">이력 코멘트</button>
-                </td>
-                <td class="action-inline">
-                  <button
-                    class="stitch-btn-secondary btn-sm"
-                    type="button"
-                    :disabled="!canHqApproveRiskDb(item)"
-                    title="현장에서 위험성평가 DB 등록 요청을 한 항목만 승인할 수 있습니다."
-                    @click="hqApproveRiskDb(item.id)"
-                  >
-                    DB 등록 승인
-                  </button>
-                  <button class="stitch-btn-secondary btn-sm danger" type="button" :disabled="!canHqRejectRiskDb(item)" @click="hqRejectRiskDb(item.id)">DB 등록 반려</button>
-                  <button class="stitch-btn-primary btn-sm" type="button" :disabled="!canPromote(item)" @click="promote(item.id)">포상후보등록</button>
-                </td>
-              </tr>
-              <tr v-if="openedCommentsItemId === item.id">
-                <td colspan="8">
-                  <div class="comment-box">
-                    <p v-for="c in item.comments" :key="c.id">- {{ c.body }} ({{ c.created_by_name || "-" }})</p>
-                    <p v-if="item.comments.length === 0" class="empty-inline">댓글이 없습니다.</p>
-                    <div class="comment-write">
-                      <input v-model="commentDrafts[item.id]" type="text" placeholder="댓글 입력" />
-                      <button class="stitch-btn-secondary btn-sm" type="button" @click="addComment(item.id)">등록</button>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </template>
-            <tr v-if="items.length === 0">
-              <td colspan="8" class="empty-cell">데이터가 없습니다.</td>
-            </tr>
-            <tr v-else-if="displayHqItems.length === 0">
-              <td colspan="8" class="empty-cell">이 필터에 해당하는 row가 없습니다.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <p v-else class="empty">표시할 의견이 없습니다.</p>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api } from "@/services/api";
 import { useAuthStore } from "@/stores/auth";
-import { canPreviewInBrowser } from "@/utils/filePreview";
 import { formatDateTimeKst } from "@/utils/datetime";
-import {
-  isLedgerDashboardFilter,
-  ledgerFilterDescription,
-  rowMatchesLedgerFilter,
-  type LedgerDashboardFilter,
-} from "@/utils/ledgerDashboardFilter";
 
-interface CommentRow {
+interface FeedbackItem {
   id: number;
-  body: string;
-  created_by_name?: string | null;
-}
-
-interface WorkerVoiceItemRow {
-  id: number;
-  row_no: number;
-  ledger_title: string;
-  ledger_source_type?: string;
+  submitted_at?: string | null;
+  submitted_at_raw?: string | null;
   worker_name?: string | null;
-  worker_birth_date?: string | null;
-  worker_phone_number?: string | null;
-  opinion_kind?: string | null;
-  opinion_text: string;
-  action_before?: string | null;
-  action_after?: string | null;
-  action_status?: string | null;
-  action_owner?: string | null;
-  before_photo_url?: string | null;
-  after_photo_url?: string | null;
-  receipt_decision?: string | null;
-  site_approved: boolean;
-  site_rejected?: boolean;
-  site_reject_note?: string | null;
-  site_action_comment?: string | null;
-  site_comment?: string | null;
-  hq_review_comment?: string | null;
-  hq_comment?: string | null;
-  risk_db_request_status?: string | null;
-  risk_db_hq_status?: string | null;
-  ready_for_risk_db?: boolean;
-  hq_checked: boolean;
-  hq_final_approved?: boolean;
-  reward_candidate: boolean;
-  comments: CommentRow[];
+  phone_masked?: string | null;
+  opinion_type?: string | null;
+  content?: string | null;
+  submitted_site_name?: string | null;
+  matched_site_name?: string | null;
+  matched_worker_id?: number | null;
+  match_status: string;
+  action_status: string;
+  action_result?: string | null;
+  appropriateness_score?: number | null;
+  actionability_score?: number | null;
+  prevention_score?: number | null;
+  score_total?: number | null;
+  bonus_points: number;
+  bonus_awarded_at?: string | null;
+  notes?: string | null;
 }
 
-interface SiteLedgerPayload {
-  ledger: {
-    id: number;
-    title: string;
-    source_type: string;
-    uploaded_at: string | null;
-    file_name: string | null;
-  } | null;
-  items: WorkerVoiceItemRow[];
-  imports: Array<{ id: number; title: string; uploaded_at: string | null; file_name: string | null }>;
-}
+interface ScoreDraft { appropriateness: number; actionability: number; prevention: number; notes: string }
 
-interface DraftRow {
-  worker_name: string;
-  worker_birth_date: string;
-  worker_phone_number: string;
-  opinion_kind: string;
-  opinion_text: string;
-  action_before: string;
-  action_after: string;
-  action_owner: string;
-}
-
+const FORM_URL = "https://forms.gle/U6b7dg6y29eL3kBw6";
 const auth = useAuthStore();
-const route = useRoute();
-const dashboardListFilter = ref<LedgerDashboardFilter | null>(null);
+const items = ref<FeedbackItem[]>([]);
+const loading = ref(false);
+const message = ref("");
+const messageIsError = ref(false);
+const statusFilter = ref("ALL");
+const scoreDrafts = ref<Record<number, ScoreDraft>>({});
+let refreshTimer: number | null = null;
 
-watch(
-  () => route.query.filter,
-  (q) => {
-    const v = Array.isArray(q) ? q[0] : q;
-    dashboardListFilter.value = typeof v === "string" && isLedgerDashboardFilter(v) ? v : null;
-  },
-  { immediate: true },
-);
+const isSite = computed(() => auth.user?.role === "SITE");
+const pendingCount = computed(() => items.value.filter((x) => x.action_status !== "DONE").length);
+const doneCount = computed(() => items.value.filter((x) => x.action_status === "DONE").length);
+const unmatchedCount = computed(() => items.value.filter((x) => x.match_status !== "matched").length);
+const displayItems = computed(() => statusFilter.value === "ALL" ? items.value : items.value.filter((x) => x.action_status === statusFilter.value));
 
-const dashboardFilterBannerText = computed(() => {
-  const f = dashboardListFilter.value;
-  return f ? `대시보드 필터: ${ledgerFilterDescription(f)} (목록에 맞는 항목만 표시)` : "";
-});
-
-const items = ref<WorkerVoiceItemRow[]>([]);
-const currentLedger = ref<SiteLedgerPayload | null>(null);
-const ledgerFile = ref<File | null>(null);
-const ledgerFileInput = ref<HTMLInputElement | null>(null);
-const uploading = ref(false);
-const savingCreate = ref(false);
-const openedCommentsItemId = ref<number | null>(null);
-const drafts = ref<Record<number, DraftRow>>({});
-const commentDrafts = ref<Record<number, string>>({});
-const beforePhotos = ref<Record<number, File | null>>({});
-const afterPhotos = ref<Record<number, File | null>>({});
-const actionStatusDrafts = ref<Record<number, string>>({});
-const siteCommentDrafts = ref<Record<number, string>>({});
-const hqCommentDrafts = ref<Record<number, string>>({});
-const operationSuccess = ref("");
-const operationError = ref("");
-const createDraft = ref<DraftRow>({
-  worker_name: "",
-  worker_birth_date: "",
-  worker_phone_number: "",
-  opinion_kind: "",
-  opinion_text: "",
-  action_before: "",
-  action_after: "",
-  action_owner: "",
-});
-
-const role = computed(() => auth.user?.role ?? "");
-const isSite = computed(() => role.value === "SITE");
-const siteItems = computed(() => currentLedger.value?.items ?? []);
-
-const displaySiteItems = computed(() => {
-  const list = siteItems.value;
-  const f = dashboardListFilter.value;
-  if (!f) return list;
-  return list.filter((item) => rowMatchesLedgerFilter(item, f));
-});
-
-const displayHqItems = computed(() => {
-  const list = items.value;
-  const f = dashboardListFilter.value;
-  if (!f) return list;
-  return list.filter((item) => rowMatchesLedgerFilter(item, f));
-});
-
-function emptyDraft(): DraftRow {
-  return {
-    worker_name: "",
-    worker_birth_date: "",
-    worker_phone_number: "",
-    opinion_kind: "",
-    opinion_text: "",
-    action_before: "",
-    action_after: "",
-    action_owner: "",
-  };
-}
-
-function draftFromItem(item: WorkerVoiceItemRow): DraftRow {
-  return {
-    worker_name: item.worker_name || "",
-    worker_birth_date: item.worker_birth_date || "",
-    worker_phone_number: item.worker_phone_number || "",
-    opinion_kind: item.opinion_kind || "",
-    opinion_text: item.opinion_text || "",
-    action_before: normalizeActionText(item.action_before, item.row_no),
-    action_after: normalizeActionText(item.action_after, item.row_no),
-    action_owner: item.action_owner || "",
-  };
-}
-
-function normalizeActionText(value: string | null | undefined, rowNo: number) {
-  const text = (value || "").trim();
-  // 엑셀 파싱 잔여값(행번호만 들어온 경우)을 숨겨 혼선을 줄인다.
-  if (text && text === String(rowNo)) return "";
-  return text;
-}
-
-function syncDrafts(list: WorkerVoiceItemRow[]) {
-  drafts.value = Object.fromEntries(list.map((item) => [item.id, draftFromItem(item)]));
-}
-
-function actionStatusToUi(v?: string | null) {
-  const x = (v || "not_started").toLowerCase();
-  if (["in_progress"].includes(x)) return "in_progress";
-  if (["completed", "done", "closed", "shared", "share_done"].includes(x)) return "completed";
-  return "not_started";
-}
-
-function syncOpsDrafts(list: WorkerVoiceItemRow[]) {
-  const a: Record<number, string> = {};
-  const s: Record<number, string> = {};
-  for (const it of list) {
-    a[it.id] = actionStatusToUi(it.action_status);
-    s[it.id] = it.site_action_comment || it.site_comment || "";
+function syncScoreDrafts(rows: FeedbackItem[]) {
+  for (const item of rows) {
+    scoreDrafts.value[item.id] = {
+      appropriateness: item.appropriateness_score || 3,
+      actionability: item.actionability_score || 3,
+      prevention: item.prevention_score || 3,
+      notes: item.notes || "",
+    };
   }
-  actionStatusDrafts.value = { ...actionStatusDrafts.value, ...a };
-  siteCommentDrafts.value = { ...siteCommentDrafts.value, ...s };
 }
 
-function syncHqCommentDrafts(list: WorkerVoiceItemRow[]) {
-  const h: Record<number, string> = {};
-  for (const it of list) {
-    h[it.id] = it.hq_review_comment || it.hq_comment || "";
-  }
-  hqCommentDrafts.value = { ...hqCommentDrafts.value, ...h };
-}
-
-function onFileChange(e: Event) {
-  ledgerFile.value = (e.target as HTMLInputElement).files?.[0] ?? null;
-}
-
-function onBeforePhotoChange(e: Event, itemId: number) {
-  beforePhotos.value[itemId] = (e.target as HTMLInputElement).files?.[0] ?? null;
-}
-
-function onAfterPhotoChange(e: Event, itemId: number) {
-  afterPhotos.value[itemId] = (e.target as HTMLInputElement).files?.[0] ?? null;
-}
-
-function toggleComments(itemId: number) {
-  openedCommentsItemId.value = openedCommentsItemId.value === itemId ? null : itemId;
-}
-
-function operationErrorMessage(error: unknown): string {
+function errorText(error: unknown) {
   const ax = error as { response?: { data?: { detail?: unknown } }; message?: string };
-  const detail = ax.response?.data?.detail;
-  if (typeof detail === "string" && detail.trim()) return detail;
-  return ax.message || "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  return typeof ax.response?.data?.detail === "string" ? ax.response.data.detail : (ax.message || "요청을 처리하지 못했습니다.");
 }
 
-async function runOperation(successMessage: string, action: () => Promise<void>) {
-  operationSuccess.value = "";
-  operationError.value = "";
+async function load(silent = false) {
+  if (!silent) loading.value = true;
+  try {
+    const res = await api.get<{ items: FeedbackItem[]; sync?: { error?: string | null } }>("/worker-feedback/responses", { params: { limit: 500 } });
+    items.value = res.data.items || [];
+    syncScoreDrafts(items.value);
+    if (res.data.sync?.error) {
+      message.value = `Google Form 동기화 지연: ${res.data.sync.error}`;
+      messageIsError.value = true;
+    } else if (!silent) {
+      message.value = "Google Form 응답과 관리대장을 동기화했습니다.";
+      messageIsError.value = false;
+    }
+  } catch (error) {
+    message.value = errorText(error);
+    messageIsError.value = true;
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function run(success: string, action: () => Promise<unknown>) {
   try {
     await action();
-    operationSuccess.value = successMessage;
-  } catch (error: unknown) {
-    operationError.value = operationErrorMessage(error);
+    message.value = success;
+    messageIsError.value = false;
+    await load(true);
+  } catch (error) {
+    message.value = errorText(error);
+    messageIsError.value = true;
   }
 }
 
-function receiptLabel(v?: string | null) {
-  const x = (v || "").toLowerCase();
-  if (x === "accepted") return "접수";
-  if (x === "rejected") return "반려";
-  return "대기";
+function receive(id: number) { return run("의견을 접수했습니다.", () => api.post(`/worker-feedback/${id}/receive`)); }
+function complete(id: number) {
+  const result = window.prompt("현장에서 실시한 조치 결과를 입력하세요.", "");
+  if (!result?.trim()) return;
+  return run("현장 조치완료를 기록했습니다.", () => api.post(`/worker-feedback/${id}/complete`, { action_result: result.trim() }));
 }
-
-function receiptBadgeClass(item: WorkerVoiceItemRow) {
-  const x = (item.receipt_decision || "").toLowerCase();
-  if (x === "rejected") return "badge-warn";
-  if (x === "accepted") return "badge-slate";
-  return "";
+function score(id: number) {
+  const d = scoreDrafts.value[id];
+  return run("본사 검토를 저장했습니다.", () => api.patch(`/worker-feedback/${id}/score`, {
+    appropriateness_score: d.appropriateness,
+    actionability_score: d.actionability,
+    prevention_score: d.prevention,
+    notes: d.notes,
+  }));
 }
+function award(id: number) { return run("기능인 안전가점 5점을 확정했습니다.", () => api.post(`/worker-feedback/${id}/award`, { bonus_points: 5 })); }
+function canAward(item: FeedbackItem) { return item.action_status === "DONE" && item.score_total != null && !!item.matched_worker_id && !item.bonus_awarded_at; }
+function statusLabel(v: string) { return v === "DONE" ? "조치완료" : v === "RECEIVED" ? "접수" : "미접수"; }
+function statusClass(v: string) { return v === "DONE" ? "done" : v === "RECEIVED" ? "received" : "pending"; }
+function matchLabel(item: FeedbackItem) { return item.match_status === "matched" ? "현장 배정" : item.match_status === "ambiguous" ? "현장 중복 확인" : "현장 미확인"; }
 
-function actionStatusLabelUi(v?: string | null) {
-  const u = actionStatusToUi(v);
-  if (u === "in_progress") return "조치중";
-  if (u === "completed") return "조치완료";
-  return "미조치";
-}
-
-function riskDbRequestLabel(v?: string | null) {
-  return (v || "").toLowerCase() === "requested" ? "요청됨" : "미요청";
-}
-
-function riskDbHqLabel(v?: string | null) {
-  const x = (v || "").toLowerCase();
-  if (x === "approved") return "본사 승인";
-  if (x === "rejected") return "본사 반려";
-  return "본사 대기";
-}
-
-function riskDbHqBadgeClass(v?: string | null) {
-  const x = (v || "").toLowerCase();
-  if (x === "approved") return "badge-blue";
-  if (x === "rejected") return "badge-warn";
-  return "";
-}
-
-function sourceLabel(sourceType?: string) {
-  return sourceType === "IMPORT" ? "초기 가져오기 대장" : "수기 관리 대장";
-}
-
-function riskDbHqLocked(item: WorkerVoiceItemRow) {
-  return (item.risk_db_hq_status || "").toLowerCase() === "approved" || !!item.hq_final_approved;
-}
-
-function canSiteApprove(item: WorkerVoiceItemRow) {
-  const rec = (item.receipt_decision || "").toLowerCase();
-  return role.value === "SITE" && !riskDbHqLocked(item) && (rec !== "accepted" || !!item.site_rejected);
-}
-
-function canSiteReject(item: WorkerVoiceItemRow) {
-  const rec = (item.receipt_decision || "").toLowerCase();
-  return role.value === "SITE" && !riskDbHqLocked(item) && rec !== "rejected" && !item.site_rejected;
-}
-
-function canRequestRiskDb(item: WorkerVoiceItemRow) {
-  return (
-    role.value === "SITE" &&
-    (item.receipt_decision || "").toLowerCase() === "accepted" &&
-    !item.site_rejected &&
-    (item.risk_db_hq_status || "").toLowerCase() !== "approved"
-  );
-}
-
-function canHqApproveRiskDb(item: WorkerVoiceItemRow) {
-  return (
-    ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN"].includes(role.value) &&
-    (item.receipt_decision || "").toLowerCase() === "accepted" &&
-    !item.site_rejected &&
-    (item.risk_db_request_status || "").toLowerCase() === "requested" &&
-    (item.risk_db_hq_status || "").toLowerCase() === "pending"
-  );
-}
-
-function canHqRejectRiskDb(item: WorkerVoiceItemRow) {
-  return (
-    ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN"].includes(role.value) &&
-    (item.risk_db_request_status || "").toLowerCase() === "requested" &&
-    (item.risk_db_hq_status || "").toLowerCase() !== "approved"
-  );
-}
-
-function canPromote(item: WorkerVoiceItemRow) {
-  return (
-    ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN"].includes(role.value) &&
-    item.site_approved &&
-    !item.site_rejected &&
-    (item.risk_db_hq_status || "").toLowerCase() === "approved" &&
-    !item.reward_candidate
-  );
-}
-
-function downloadBlob(blob: Blob, fileName: string) {
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  window.URL.revokeObjectURL(url);
-}
-
-async function openFile(path: string, fileName: string | null) {
-  const previewable = canPreviewInBrowser(fileName);
-  const res = await api.get(path, {
-    params: { disposition: previewable ? "inline" : "attachment" },
-    responseType: "blob",
-  });
-  const contentType = (res.headers["content-type"] as string | undefined) || "application/octet-stream";
-  const blob = new Blob([res.data], { type: contentType });
-  if (!previewable) {
-    downloadBlob(blob, fileName || "download.bin");
-    return;
-  }
-  const url = window.URL.createObjectURL(blob);
-  window.open(url, "_blank", "noopener");
-  setTimeout(() => window.URL.revokeObjectURL(url), 5000);
-}
-
-async function load() {
-  if (isSite.value) {
-    const res = await api.get<SiteLedgerPayload>("/safety-features/worker-voice/ledger");
-    currentLedger.value = res.data;
-    items.value = res.data.items ?? [];
-    syncDrafts(items.value);
-    syncOpsDrafts(items.value);
-    return;
-  }
-  const res = await api.get<{ items: WorkerVoiceItemRow[] }>("/safety-features/worker-voice/items");
-  items.value = res.data.items ?? [];
-  syncHqCommentDrafts(items.value);
-}
-
-async function uploadLedger() {
-  if (!ledgerFile.value) return;
-  uploading.value = true;
-  try {
-    const form = new FormData();
-    form.append("file", ledgerFile.value);
-    await api.post("/safety-features/worker-voice/upload", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    ledgerFile.value = null;
-    if (ledgerFileInput.value) ledgerFileInput.value.value = "";
-    await load();
-  } finally {
-    uploading.value = false;
-  }
-}
-
-function buildFormFromDraft(draft: DraftRow) {
-  const form = new FormData();
-  form.append("worker_name", draft.worker_name || "");
-  form.append("worker_birth_date", draft.worker_birth_date || "");
-  form.append("worker_phone_number", draft.worker_phone_number || "");
-  form.append("opinion_kind", draft.opinion_kind || "");
-  form.append("opinion_text", draft.opinion_text || "");
-  form.append("action_before", draft.action_before || "");
-  form.append("action_after", draft.action_after || "");
-  form.append("action_status", "");
-  form.append("action_owner", draft.action_owner || "");
-  return form;
-}
-
-async function createItem() {
-  if (!createDraft.value.opinion_text.trim()) return;
-  savingCreate.value = true;
-  try {
-    await api.post("/safety-features/worker-voice/items", buildFormFromDraft(createDraft.value), {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    createDraft.value = emptyDraft();
-    await load();
-  } finally {
-    savingCreate.value = false;
-  }
-}
-
-async function saveSiteItem(itemId: number) {
-  const draft = drafts.value[itemId];
-  await api.post(`/safety-features/worker-voice/items/${itemId}`, buildFormFromDraft(draft), {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  if (beforePhotos.value[itemId]) {
-    const form = new FormData();
-    form.append("file", beforePhotos.value[itemId] as File);
-    await api.post(`/safety-features/worker-voice/items/${itemId}/before-photo`, form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-  }
-  if (afterPhotos.value[itemId]) {
-    const form = new FormData();
-    form.append("file", afterPhotos.value[itemId] as File);
-    await api.post(`/safety-features/worker-voice/items/${itemId}/after-photo`, form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-  }
-  beforePhotos.value[itemId] = null;
-  afterPhotos.value[itemId] = null;
+onMounted(async () => {
   await load();
-}
-
-async function siteApprove(itemId: number) {
-  await api.post(`/safety-features/worker-voice/items/${itemId}/site-approve`);
-  await load();
-}
-
-async function siteReject(itemId: number) {
-  const note = window.prompt("반려 사유(선택)") || "";
-  const form = new FormData();
-  form.append("reject_note", note);
-  await api.post(`/safety-features/worker-voice/items/${itemId}/site-reject`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  await load();
-}
-
-async function saveActionStatus(itemId: number) {
-  const form = new FormData();
-  form.append("action_status", actionStatusDrafts.value[itemId] || "not_started");
-  await api.post(`/safety-features/worker-voice/items/${itemId}/action-status`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  await load();
-}
-
-async function saveSiteComment(itemId: number) {
-  const form = new FormData();
-  form.append("comment", siteCommentDrafts.value[itemId] || "");
-  await api.post(`/safety-features/worker-voice/items/${itemId}/site-action-comment`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  await load();
-}
-
-async function saveHqComment(itemId: number) {
-  await runOperation("본사 코멘트를 저장했습니다.", async () => {
-    const form = new FormData();
-    form.append("comment", hqCommentDrafts.value[itemId] || "");
-    await api.post(`/safety-features/worker-voice/items/${itemId}/hq-review-comment`, form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    await load();
-  });
-}
-
-async function requestRiskDb(itemId: number) {
-  await api.post(`/safety-features/worker-voice/items/${itemId}/request-risk-db-registration`);
-  await load();
-}
-
-async function hqApproveRiskDb(itemId: number) {
-  await runOperation("위험성평가 DB 등록을 승인했습니다.", async () => {
-    await api.post(`/safety-features/worker-voice/items/${itemId}/approve-risk-db-registration`);
-    await load();
-  });
-}
-
-async function hqRejectRiskDb(itemId: number) {
-  const note = window.prompt("DB 등록 반려 사유(선택)") || "";
-  const form = new FormData();
-  form.append("reject_note", note);
-  await api.post(`/safety-features/worker-voice/items/${itemId}/reject-risk-db-registration`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  await load();
-}
-
-async function promote(itemId: number) {
-  await api.post(`/safety-features/worker-voice/items/${itemId}/reward-candidate`);
-  await load();
-}
-
-async function addComment(itemId: number) {
-  const body = (commentDrafts.value[itemId] || "").trim();
-  if (!body) return;
-  await runOperation("댓글을 등록했습니다.", async () => {
-    const form = new FormData();
-    form.append("body", body);
-    await api.post(`/safety-features/worker-voice/items/${itemId}/comments`, form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-    commentDrafts.value[itemId] = "";
-    await load();
-  });
-}
-
-void load();
+  refreshTimer = window.setInterval(() => void load(true), 30_000);
+});
+onUnmounted(() => { if (refreshTimer) window.clearInterval(refreshTimer); });
 </script>
 
 <style scoped>
-.voice-page {
-  display: grid;
-  gap: 16px;
+.feedback-page { display: grid; gap: 18px; color: #17221c; }
+.page-head { display: flex; justify-content: space-between; gap: 24px; padding: 24px; border-radius: 20px; background: linear-gradient(120deg, #f2f7ee 0%, #e4f0e8 55%, #d7e9e5 100%); border: 1px solid #c7d9cc; }
+.eyebrow { margin: 0 0 6px; color: #557362; font-size: 11px; font-weight: 800; letter-spacing: .16em; }
+h1 { margin: 0; font-size: 26px; font-family: "Noto Serif KR", Georgia, serif; }
+.page-head p:last-child, .panel-title p { margin: 7px 0 0; color: #5d6c63; font-size: 13px; }
+.head-actions, .card-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn { border: 1px solid transparent; border-radius: 10px; padding: 9px 13px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; text-decoration: none; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary { background: #1f5b42; color: white; }
+.btn-ghost { background: white; border-color: #b9cabf; color: #274a38; }
+.btn-accent { background: #d97706; color: white; }
+.notice { margin: 0; padding: 11px 14px; border-radius: 10px; background: #edf8ef; color: #24613d; font-size: 13px; }
+.notice.error { background: #fff1ed; color: #9a3412; }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.kpi-grid article { display: flex; justify-content: space-between; align-items: end; padding: 16px; background: white; border: 1px solid #dce5df; border-radius: 14px; }
+.kpi-grid span { color: #68776e; font-size: 12px; }
+.kpi-grid strong { font-size: 25px; }
+.workflow-strip { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px; border-radius: 12px; background: #243a30; color: #f5f8f6; font-size: 12px; font-weight: 700; }
+.workflow-strip i { color: #9bb6a6; font-style: normal; }
+.panel { padding: 18px; background: #fff; border: 1px solid #dce5df; border-radius: 18px; }
+.panel-title { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 14px; }
+.panel-title h2 { margin: 0; font-size: 19px; }
+.panel-title select, .score-grid select, .score-grid input { border: 1px solid #cbd8d0; border-radius: 8px; padding: 7px 9px; background: white; }
+.opinion-list { display: grid; gap: 12px; }
+.opinion-card { padding: 16px; border: 1px solid #dce5df; border-left: 4px solid #6b8f79; border-radius: 12px; background: #fbfdfb; }
+.opinion-top, .opinion-main { display: flex; justify-content: space-between; gap: 18px; }
+.opinion-top time { color: #718077; font-size: 12px; }
+.status, .match, .type { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; }
+.status.pending { background: #fff0d5; color: #945b00; }
+.status.received { background: #e1efff; color: #1e5d91; }
+.status.done { background: #dff3e4; color: #24613d; }
+.match { margin-left: 6px; background: #e8eeea; color: #526158; }
+.match.bad { background: #ffe7e2; color: #9a3412; }
+.opinion-main { margin-top: 14px; }
+.identity { width: 180px; flex: 0 0 180px; display: grid; align-content: start; gap: 3px; }
+.identity span { color: #66766c; font-size: 12px; }
+.content { flex: 1; }
+.content p, .action-result p { margin: 7px 0 0; line-height: 1.55; white-space: pre-wrap; }
+.type { background: #eef3ef; color: #3d5a49; }
+.action-result { margin-top: 13px; padding: 12px; border-radius: 9px; background: #f0f6f2; }
+.action-result span { color: #52705e; font-size: 11px; font-weight: 800; }
+.card-actions, .hq-review { margin-top: 14px; padding-top: 13px; border-top: 1px solid #e2e9e4; }
+.completed-copy { color: #287044; font-size: 12px; font-weight: 800; }
+.score-grid { display: grid; grid-template-columns: 100px 100px 100px minmax(180px, 1fr); gap: 8px; }
+.score-grid label { display: grid; gap: 4px; color: #5e6f65; font-size: 11px; font-weight: 700; }
+.empty { padding: 42px; text-align: center; color: #7b8980; }
+@media (max-width: 900px) {
+  .page-head, .opinion-main { flex-direction: column; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .workflow-strip { overflow-x: auto; justify-content: flex-start; white-space: nowrap; }
+  .identity { width: auto; flex-basis: auto; }
+  .score-grid { grid-template-columns: repeat(3, 1fr); }
+  .score-grid .notes { grid-column: 1 / -1; }
 }
-
-.page-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.page-sub {
-  margin: 6px 0 0;
-  color: #64748b;
-  font-size: 13px;
-}
-
-.operation-message {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.operation-message--success {
-  border: 1px solid #86efac;
-  background: #f0fdf4;
-  color: #166534;
-}
-
-.operation-message--error {
-  border: 1px solid #fca5a5;
-  background: #fef2f2;
-  color: #991b1b;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-}
-
-.summary-card,
-.panel {
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  background: #fff;
-  padding: 16px;
-}
-
-.summary-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.summary-label,
-.panel-sub {
-  color: #64748b;
-  font-size: 12px;
-}
-
-.summary-meta {
-  color: #475569;
-  font-size: 12px;
-}
-
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.panel-title {
-  margin: 0;
-  font-size: 18px;
-  color: #0f172a;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.form-grid label,
-.cell-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-grid label span {
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-
-.span-2 {
-  grid-column: 1 / -1;
-}
-
-input,
-textarea,
-select {
-  width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: 13px;
-}
-
-.panel-actions {
-  margin-top: 12px;
-}
-
-.import-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-}
-
-.import-list {
-  margin: 12px 0 0;
-  padding-left: 18px;
-  display: grid;
-  gap: 6px;
-  color: #334155;
-  font-size: 13px;
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-.ledger-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 1180px;
-}
-
-.hq-table {
-  min-width: 1100px;
-}
-
-.sub-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #64748b;
-}
-
-.db-hint {
-  margin: 0 0 6px;
-  font-size: 11px;
-  color: #64748b;
-  line-height: 1.35;
-}
-
-.ops-block .btn-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.db-block {
-  border: 1px dashed #cbd5e1;
-  border-radius: 10px;
-  padding: 8px;
-  background: #f8fafc;
-}
-
-.db-badge {
-  margin-right: 6px;
-}
-
-.action-select {
-  max-width: 140px;
-}
-
-.text-muted {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.text-ok {
-  font-size: 11px;
-  color: #166534;
-}
-
-.dashboard-filter-banner {
-  margin: 0 0 10px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  font-size: 12px;
-  color: #1e40af;
-}
-
-.hq-table .action-inline {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.ledger-table th,
-.ledger-table td {
-  border-bottom: 1px solid #e2e8f0;
-  padding: 10px;
-  vertical-align: top;
-  text-align: left;
-}
-
-.ledger-table th {
-  background: #f8fafc;
-  color: #334155;
-  font-size: 12px;
-}
-
-.photo-col,
-.action-inline {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.mini-badge {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: #eef2ff;
-  color: #334155;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.badge-good {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.badge-blue {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.badge-slate {
-  background: #e2e8f0;
-  color: #334155;
-}
-
-.badge-warn {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.stitch-btn-secondary.danger {
-  color: #b91c1c;
-}
-
-.btn-sm {
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.comment-box {
-  display: grid;
-  gap: 8px;
-  color: #334155;
-  font-size: 13px;
-}
-
-.comment-write {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.comment-write input {
-  flex: 1;
-}
-
-.link-btn {
-  border: 0;
-  background: transparent;
-  color: #2563eb;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-}
-
-.empty-inline,
-.empty-cell {
-  color: #64748b;
-}
-
-.empty-cell {
-  text-align: center;
-}
-
-@media (max-width: 960px) {
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .span-2 {
-    grid-column: auto;
-  }
-
-  .page-head {
-    flex-direction: column;
-  }
+@media (max-width: 560px) {
+  .kpi-grid { grid-template-columns: 1fr; }
+  .page-head { padding: 18px; }
+  .panel { padding: 12px; }
+  .panel-title { align-items: flex-start; flex-direction: column; }
 }
 </style>

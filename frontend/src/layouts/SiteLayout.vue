@@ -63,15 +63,13 @@
           <span class="menu-link-label">내 현장 문서</span>
           <span v-if="badge.incomplete_count > 0" class="menu-count-badge" aria-label="미완료 문서 수">{{ badge.incomplete_count }}</span>
         </RouterLink>
-        <a
+        <RouterLink
           :class="menuLinkClass('worker-voice', '/site/worker-voice')"
           :style="menuOrderStyle('worker-voice')"
-          :href="WORKER_VOICE_FORM_URL"
-          target="_blank"
-          rel="noopener noreferrer"
+          to="/site/worker-voice"
         >
           근로자의견청취
-        </a>
+        </RouterLink>
         <RouterLink :class="menuLinkClass('communications', '/site/communications')" :style="menuOrderStyle('communications')" to="/site/communications">
           소통자료 <span v-if="communicationUnreadCount > 0">({{ communicationUnreadCount }})</span>
         </RouterLink>
@@ -97,15 +95,13 @@
           <span class="menu-link-label">내 현장 문서</span>
           <span v-if="badge.incomplete_count > 0" class="menu-count-badge" aria-label="미완료 문서 수">{{ badge.incomplete_count }}</span>
         </RouterLink>
-        <a
+        <RouterLink
           :class="menuLinkClass('worker-voice', '/site/worker-voice')"
-          :href="WORKER_VOICE_FORM_URL"
-          target="_blank"
-          rel="noopener noreferrer"
+          to="/site/worker-voice"
           @click="closeMobileDrawer"
         >
           근로자의견청취
-        </a>
+        </RouterLink>
         <RouterLink
           :class="menuLinkClass('mobile-communications', '/site/mobile/communications')"
           to="/site/mobile/communications"
@@ -236,8 +232,6 @@ const tickerTrackRef = ref<HTMLElement | null>(null);
 const tickerDurationSec = ref(18);
 const dynamicMenus = ref<Array<{ id: number; slug: string; title: string }>>([]);
 const menuOrderMap = ref<Record<string, number>>({});
-const WORKER_VOICE_FORM_URL =
-  "https://docs.google.com/forms/d/e/1FAIpQLSdOZEdPT5_6OREzPZ2fhtwYiXqzaoGjXjaOCSAazgJoRIBUlg/viewform";
 const SITE_FIXED_MENU_KEYS = [
   "field-form-uploads",
   "notices",

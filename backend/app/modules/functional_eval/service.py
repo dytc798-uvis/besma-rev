@@ -1819,8 +1819,9 @@ def _worker_bonus_points_total(db: Session, worker_id: int) -> int:
     from sqlalchemy import func
 
     from app.modules.functional_eval.customer_rewards import REWARD_STATUS_APPROVED
+    from app.modules.worker_feedback.models import WorkerFeedbackOpinion
 
-    total = (
+    customer_reward_total = (
         db.query(func.coalesce(func.sum(FunctionalEvalCustomerReward.bonus_points), 0))
         .filter(
             FunctionalEvalCustomerReward.worker_id == worker_id,
@@ -1828,7 +1829,15 @@ def _worker_bonus_points_total(db: Session, worker_id: int) -> int:
         )
         .scalar()
     )
-    return int(total or 0)
+    worker_feedback_total = (
+        db.query(func.coalesce(func.sum(WorkerFeedbackOpinion.bonus_points), 0))
+        .filter(
+            WorkerFeedbackOpinion.matched_worker_id == worker_id,
+            WorkerFeedbackOpinion.bonus_awarded_at.isnot(None),
+        )
+        .scalar()
+    )
+    return int(customer_reward_total or 0) + int(worker_feedback_total or 0)
 
 
 def serialize_worker_adjustments(db: Session, worker: FunctionalEvalWorker) -> dict[str, Any]:

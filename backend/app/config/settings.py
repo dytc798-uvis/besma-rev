@@ -76,6 +76,22 @@ class Settings(BaseSettings):
     weather_hq_lon: float | None = Field(default=None, validation_alias="BESMA_HQ_WEATHER_LON")
     weather_hq_site_limit: int = Field(default=5, validation_alias="BESMA_HQ_WEATHER_SITE_LIMIT")
     kma_api_key: str | None = Field(default=None, validation_alias="KMA_API_KEY")
+    google_worker_feedback_webapp_url: str | None = Field(
+        default=None,
+        validation_alias="GOOGLE_WORKER_FEEDBACK_WEBAPP_URL",
+    )
+    google_worker_feedback_deployment_id: str | None = Field(
+        default=None,
+        validation_alias="GOOGLE_WORKER_FEEDBACK_DEPLOYMENT_ID",
+    )
+    google_worker_feedback_secret: str | None = Field(
+        default=None,
+        validation_alias="GOOGLE_WORKER_FEEDBACK_SECRET",
+    )
+    google_worker_feedback_timeout_seconds: float = Field(
+        default=15.0,
+        validation_alias="GOOGLE_WORKER_FEEDBACK_TIMEOUT_SECONDS",
+    )
 
     cors_origins: list[str] = [
         "http://localhost:5173",
