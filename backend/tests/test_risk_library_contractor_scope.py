@@ -16,6 +16,7 @@ from app.modules.risk_library.models import (
     RiskLibraryItemRevision,
 )
 from app.modules.sites.models import Site
+from scripts.import_risk_standard_rev07 import ManifestRow, import_rows
 
 
 def _add_item(db, label: str, *, is_common: bool) -> RiskLibraryItem:
@@ -145,3 +146,42 @@ def test_site_scope_designation_and_assignment_are_limited_to_its_contractor(tmp
         assert other_assignment.status_code == 404
     finally:
         app.dependency_overrides.clear()
+
+
+def test_import_demotes_existing_company_specific_item_and_is_idempotent(tmp_path):
+    db_file = tmp_path / "contractor_import.db"
+    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    from app.modules.users import models as user_models  # noqa: F401
+
+    Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    item = _add_item(db, "회사전용", is_common=True)
+    db.commit()
+    manifest_row = ManifestRow(
+        item_id="RA-TEST-001",
+        is_common=False,
+        contractors=("대우건설",),
+        trade="전기공사",
+        detail_work="회사전용 작업",
+        work_step="회사전용 세부작업",
+        hazard="회사전용 위험요인",
+        accident_type="",
+        measure="회사전용 개선대책",
+        risk_f=2,
+        risk_s=4,
+        risk_r=8,
+        note=None,
+        source_file="test.xlsx",
+    )
+
+    first = import_rows(db, [manifest_row], apply_changes=True)
+    db.refresh(item)
+    assert item.is_common is False
+    assert first["demoted_contractor_only"] == 1
+    assert first["new_contractor_links"] == 1
+
+    second = import_rows(db, [manifest_row], apply_changes=True)
+    assert second["demoted_contractor_only"] == 0
+    assert second["new_contractor_links"] == 0
+    db.close()

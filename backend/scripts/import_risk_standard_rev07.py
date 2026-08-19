@@ -4,7 +4,7 @@ import argparse
 import csv
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 
@@ -71,7 +71,7 @@ def parse_manifest(path: Path) -> list[ManifestRow]:
     with path.open("r", encoding="utf-8-sig", newline="") as stream:
         raw_rows = list(csv.DictReader(stream))
     rows: list[ManifestRow] = []
-    seen: set[tuple[str, str]] = set()
+    row_indexes: dict[tuple[str, str], int] = {}
     for number, raw in enumerate(raw_rows, start=2):
         hazard = clean(raw.get("hazard"))
         measure = clean(raw.get("measure"))
@@ -80,9 +80,23 @@ def parse_manifest(path: Path) -> list[ManifestRow]:
         if not hazard or not measure or not trade or not detail:
             raise ValueError(f"manifest row {number}: required practical field is empty")
         key = normalized_pair(hazard, measure)
-        if key in seen:
+        if key in row_indexes:
+            index = row_indexes[key]
+            existing = rows[index]
+            merged_contractors = tuple(
+                dict.fromkeys((*existing.contractors, *(
+                    contractor.strip()
+                    for contractor in clean(raw.get("contractors")).split(";")
+                    if contractor.strip()
+                )))
+            )
+            rows[index] = replace(
+                existing,
+                is_common=existing.is_common or clean(raw.get("is_common")).upper() == "Y",
+                contractors=merged_contractors,
+            )
             continue
-        seen.add(key)
+        row_indexes[key] = len(rows)
         risk_f = max(1, min(4, to_int(raw.get("btms_frequency"), 1)))
         risk_s = max(1, min(5, to_int(raw.get("btms_severity"), 1)))
         rows.append(
@@ -172,6 +186,7 @@ def import_rows(db, rows: list[ManifestRow], *, apply_changes: bool) -> dict[str
         "new_items": 0,
         "new_contractor_links": 0,
         "promoted_common": 0,
+        "demoted_contractor_only": 0,
         "new_keywords": 0,
     }
 
@@ -184,6 +199,9 @@ def import_rows(db, rows: list[ManifestRow], *, apply_changes: bool) -> dict[str
             if row.is_common and not item.is_common:
                 item.is_common = True
                 counts["promoted_common"] += 1
+            elif not row.is_common and item.is_common:
+                item.is_common = False
+                counts["demoted_contractor_only"] += 1
         else:
             item = RiskLibraryItem(
                 source_scope="HQ_STANDARD",
