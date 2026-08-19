@@ -39,6 +39,7 @@ from app.modules.system_backup.routes import router as system_backup_router
 from app.modules.coupang_mvp.routes import router as coupang_mvp_router
 from app.modules.heat_stress.routes import router as heat_stress_router
 from app.modules.weather.routes import router as weather_router
+from app.modules.public_accident_cases.routes import router as public_accident_cases_router
 
 
 _original_request_form = Request.form
@@ -115,6 +116,7 @@ def create_app() -> FastAPI:
     app.include_router(coupang_mvp_router)
     app.include_router(heat_stress_router)
     app.include_router(weather_router)
+    app.include_router(public_accident_cases_router)
 
     @app.on_event("startup")
     async def on_startup() -> None:
