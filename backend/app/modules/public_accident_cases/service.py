@@ -56,6 +56,7 @@ SENSITIVE_VALUE_PATTERNS = (
     re.compile(r"\b01[016789][- ]?\d{3,4}[- ]?\d{4}\b"),
     re.compile(r"\b[A-Za-z]:\\"),
     re.compile(r"[/\\](?:Users|SecureKeys|srv|home)[/\\]", re.IGNORECASE),
+    re.compile(r"['\"]?(?:19|20)\d{2}['\"]?!R\d+\b", re.IGNORECASE),
 )
 
 

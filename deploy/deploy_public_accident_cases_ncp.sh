@@ -21,6 +21,32 @@ test -f "$module_source/service.py"
 test -f "$module_source/public_cases.json"
 test -f "$module_source/__init__.py"
 
+expected_count="$(python3 - "$module_source/public_cases.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+source = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+required = {
+    "survey_status": "제출완료",
+    "risk_promotion_status": "승격대상",
+    "distribution_status": "전파대상",
+    "publication_status": "PUBLISHED",
+}
+cases = source.get("cases")
+if not isinstance(cases, list):
+    raise SystemExit("public accident-case list is invalid")
+print(sum(all(case.get(key) == value for key, value in required.items()) for case in cases))
+PY
+)"
+case "$expected_count" in
+  ""|*[!0-9]*) echo "invalid public accident-case count: $expected_count" >&2; exit 2 ;;
+esac
+if [ "$expected_count" -lt 1 ]; then
+  echo "public accident-case dataset is empty" >&2
+  exit 2
+fi
+
 sudo -n install -d -o root -g besma -m 0750 "$snapshot"
 sudo -n cp -a "$main_target" "$snapshot/main.py.before"
 if sudo -n test -d "$module_target"; then
@@ -75,7 +101,7 @@ rollback_main() {
 trap rollback_main ERR
 
 sudo -n -u besma bash -c "cd '$app_root' && .venv/bin/python -m py_compile app/main.py app/modules/$module_name/service.py app/modules/$module_name/routes.py"
-sudo -n -u besma bash -c "cd '$app_root' && .venv/bin/python -c 'from app.modules.public_accident_cases.service import load_public_dataset; data=load_public_dataset(); assert data[\"case_count\"] == 5; print(\"PUBLIC_DATASET_OK count=5\")'"
+sudo -n -u besma bash -c "cd '$app_root' && .venv/bin/python -c 'from app.modules.public_accident_cases.service import load_public_dataset; data=load_public_dataset(); expected=$expected_count; assert data[\"case_count\"] == expected; print(\"PUBLIC_DATASET_OK count=%d\" % expected)'"
 sudo -n systemctl restart besma-backend.service
 for _ in $(seq 1 30); do
   if sudo -n systemctl is-active --quiet besma-backend.service && curl -fsS --max-time 2 http://127.0.0.1:8001/health >/dev/null; then
