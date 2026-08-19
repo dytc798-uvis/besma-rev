@@ -147,6 +147,12 @@ def get_risk_library(
     offset: int = 0,
 ):
     _assert_risk_library_access(current_user)
+    contractor_name = None
+    contractor_scope_required = False
+    if _resolve_role_value(current_user) == Role.SITE.value and current_user.site_id is not None:
+        contractor_scope_required = True
+        site = db.query(Site).filter(Site.id == current_user.site_id).first()
+        contractor_name = site.contractor_name if site else None
     result = list_risk_library_entries(
         db,
         keyword=keyword,
@@ -155,6 +161,8 @@ def get_risk_library(
         risk_type=risk_type,
         limit=min(max(limit, 1), 1000),
         offset=max(offset, 0),
+        contractor_name=contractor_name,
+        contractor_scope_required=contractor_scope_required,
     )
     return RiskLibraryReadResponse(**result)
 

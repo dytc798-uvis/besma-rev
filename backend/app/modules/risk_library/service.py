@@ -10,7 +10,7 @@ import secrets
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, or_
+from sqlalchemy import exists, func, or_
 from sqlalchemy.orm import Session
 
 from app.config.settings import settings
@@ -34,6 +34,8 @@ from app.modules.risk_library.models import (
     DailyWorkPlanItem,
     DailyWorkPlanItemRiskRef,
     RiskLibraryItem,
+    RiskLibraryContractor,
+    RiskLibraryItemContractor,
     RiskLibraryItemRevision,
     RiskLibraryKeyword,
     WorkerFeedback,
@@ -206,11 +208,37 @@ def _is_office_work(normalized_text: str, explicit_hits: set[str]) -> bool:
     return has_office_keyword and not has_field_keyword
 
 
+def _normalize_contractor_key(value: str | None) -> str:
+    normalized = (value or "").strip().lower()
+    for token in ("주식회사", "(주)", "㈜"):
+        normalized = normalized.replace(token, "")
+    return re.sub(r"[^0-9a-z가-힣]+", "", normalized)
+
+
+def _contractor_scope_predicate(
+    contractor_name: str | None,
+    *,
+    contractor_scope_required: bool = False,
+):
+    contractor_key = _normalize_contractor_key(contractor_name)
+    if not contractor_key:
+        return RiskLibraryItem.is_common.is_(True) if contractor_scope_required else None
+    assigned_to_contractor = exists().where(
+        RiskLibraryItemContractor.risk_item_id == RiskLibraryItem.id,
+        RiskLibraryItemContractor.contractor_id == RiskLibraryContractor.id,
+        RiskLibraryContractor.contractor_key == contractor_key,
+        RiskLibraryContractor.is_active.is_(True),
+    )
+    return or_(RiskLibraryItem.is_common.is_(True), assigned_to_contractor)
+
+
 def recommend_risks_for_work_item(
     db: Session,
     work_name: str,
     work_description: str,
     top_n: int = 10,
+    contractor_name: str | None = None,
+    contractor_scope_required: bool = False,
 ) -> list[dict[str, Any]]:
     text = f"{work_name or ''} {work_description or ''}".strip()
     normalized_text = _normalize_recommendation_text(text)
@@ -224,7 +252,7 @@ def recommend_risks_for_work_item(
         return []
 
     token_list = sorted(tokens)
-    score_rows = (
+    score_query = (
         db.query(
             RiskLibraryKeyword.risk_revision_id.label("risk_revision_id"),
             func.sum(RiskLibraryKeyword.weight).label("score"),
@@ -239,22 +267,32 @@ def recommend_risks_for_work_item(
             RiskLibraryItem.is_active.is_(True),
             RiskLibraryKeyword.keyword.in_(token_list),
         )
-        .group_by(RiskLibraryKeyword.risk_revision_id)
+    )
+    scope_predicate = _contractor_scope_predicate(
+        contractor_name,
+        contractor_scope_required=contractor_scope_required,
+    )
+    if scope_predicate is not None:
+        score_query = score_query.filter(scope_predicate)
+    score_rows = (
+        score_query.group_by(RiskLibraryKeyword.risk_revision_id)
         .order_by(func.sum(RiskLibraryKeyword.weight).desc())
         .limit(max(1, top_n))
         .all()
     )
 
     score_map = {int(r.risk_revision_id): float(r.score or 0.0) for r in score_rows}
-    revisions = (
+    revision_query = (
         db.query(RiskLibraryItemRevision)
         .join(RiskLibraryItem, RiskLibraryItem.id == RiskLibraryItemRevision.item_id)
         .filter(
             RiskLibraryItemRevision.is_current.is_(True),
             RiskLibraryItem.is_active.is_(True),
         )
-        .all()
     )
+    if scope_predicate is not None:
+        revision_query = revision_query.filter(scope_predicate)
+    revisions = revision_query.all()
     revision_ids = [r.id for r in revisions]
     revisions = (
         revisions
@@ -351,6 +389,8 @@ def list_risk_library_entries(
     risk_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    contractor_name: str | None = None,
+    contractor_scope_required: bool = False,
 ) -> dict[str, Any]:
     query_obj = (
         db.query(RiskLibraryItemRevision)
@@ -360,6 +400,12 @@ def list_risk_library_entries(
             RiskLibraryItem.is_active.is_(True),
         )
     )
+    scope_predicate = _contractor_scope_predicate(
+        contractor_name,
+        contractor_scope_required=contractor_scope_required,
+    )
+    if scope_predicate is not None:
+        query_obj = query_obj.filter(scope_predicate)
 
     keyword_value = (keyword or "").strip()
     if keyword_value:
@@ -518,11 +564,19 @@ def run_recommendation_for_plan_item(
     if item is None:
         raise ValueError("plan_item_not_found")
 
+    site = (
+        db.query(Site)
+        .join(DailyWorkPlan, DailyWorkPlan.site_id == Site.id)
+        .filter(DailyWorkPlan.id == item.plan_id)
+        .first()
+    )
     recommendations = recommend_risks_for_work_item(
         db=db,
         work_name=item.work_name,
         work_description=item.work_description,
         top_n=top_n,
+        contractor_name=site.contractor_name if site else None,
+        contractor_scope_required=site is not None,
     )
     if not recommendations:
         return {"recommended_count": 0, "upserted_count": 0}

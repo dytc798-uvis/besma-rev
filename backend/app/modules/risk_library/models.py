@@ -27,6 +27,7 @@ class RiskLibraryItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     source_scope: Mapped[str] = mapped_column(String(20), nullable=False)
     owner_site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"), nullable=True)
+    is_common: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=utc_now, nullable=False
@@ -39,6 +40,83 @@ class RiskLibraryItem(Base):
         "RiskLibraryItemRevision",
         back_populates="item",
         cascade="all, delete-orphan",
+    )
+
+
+class RiskLibraryContractor(Base):
+    __tablename__ = "risk_library_contractors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    contractor_key: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+    contractor_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    evaluation_method: Mapped[str] = mapped_column(String(30), nullable=False, default="회사 4×5")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
+class RiskLibraryItemContractor(Base):
+    __tablename__ = "risk_library_item_contractors"
+    __table_args__ = (
+        UniqueConstraint(
+            "risk_item_id",
+            "contractor_id",
+            name="uq_risk_library_item_contractor",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    risk_item_id: Mapped[int] = mapped_column(
+        ForeignKey("risk_library_items.id"), nullable=False, index=True
+    )
+    contractor_id: Mapped[int] = mapped_column(
+        ForeignKey("risk_library_contractors.id"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+
+
+class RiskAssessmentSiteRole(Base):
+    __tablename__ = "risk_assessment_site_roles"
+    __table_args__ = (
+        UniqueConstraint("site_id", name="uq_risk_assessment_site_roles_site"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), nullable=False, index=True)
+    inspector_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    verifier_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    appointed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+
+class RiskLibrarySiteAssignment(Base):
+    __tablename__ = "risk_library_site_assignments"
+    __table_args__ = (
+        UniqueConstraint(
+            "site_id",
+            "risk_item_id",
+            name="uq_risk_library_site_assignment",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"), nullable=False, index=True)
+    risk_item_id: Mapped[int] = mapped_column(
+        ForeignKey("risk_library_items.id"), nullable=False, index=True
+    )
+    improvement_owner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    improvement_verifier_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    updated_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False
     )
 
 

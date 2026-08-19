@@ -6,8 +6,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.modules.risk_library.models import RiskLibraryItem, RiskLibraryItemRevision, RiskLibraryKeyword
+from app.modules.risk_library.models import (
+    RiskLibraryContractor,
+    RiskLibraryItem,
+    RiskLibraryItemContractor,
+    RiskLibraryItemRevision,
+    RiskLibraryKeyword,
+)
 from app.modules.search.service import search_risk_library
+from app.modules.risk_library.service import list_risk_library_entries
 
 
 def _setup_db():
@@ -24,8 +31,23 @@ def _setup_db():
     return SessionLocal()
 
 
-def _add_item(db, *, work_category: str, risk_factor: str, countermeasure: str, risk_r: int = 5):
-    item = RiskLibraryItem(source_scope="HQ_STANDARD", owner_site_id=None, is_active=True)
+def _add_item(
+    db,
+    *,
+    work_category: str,
+    risk_factor: str,
+    countermeasure: str,
+    risk_r: int = 5,
+    risk_f: int = 1,
+    risk_s: int = 1,
+    is_common: bool = True,
+):
+    item = RiskLibraryItem(
+        source_scope="HQ_STANDARD",
+        owner_site_id=None,
+        is_common=is_common,
+        is_active=True,
+    )
     db.add(item)
     db.flush()
     rev = RiskLibraryItemRevision(
@@ -40,8 +62,8 @@ def _add_item(db, *, work_category: str, risk_factor: str, countermeasure: str, 
         risk_factor=risk_factor,
         risk_cause="미기재",
         countermeasure=countermeasure,
-        risk_f=1,
-        risk_s=1,
+        risk_f=risk_f,
+        risk_s=risk_s,
         risk_r=risk_r,
         revised_by_user_id=None,
         revised_at=datetime.utcnow(),
@@ -108,4 +130,104 @@ def test_search_risk_library_token_prefilter_and_score():
     assert out["total"] >= 1
     assert any(r["risk_revision_id"] == rev_a.id for r in out["results"])
     assert out["results"][0]["matched_tokens"]
+
+
+def test_search_risk_library_scopes_items_and_converts_contractor_method():
+    db = _setup_db()
+    common_revision = _add_item(
+        db,
+        work_category="공통작업",
+        risk_factor="공통 위험",
+        countermeasure="공통 대책",
+        is_common=True,
+    )
+    daewoo = RiskLibraryContractor(
+        contractor_key="대우건설",
+        contractor_name="대우건설",
+        evaluation_method="도급사 4×3",
+        is_active=True,
+    )
+    lotte = RiskLibraryContractor(
+        contractor_key="롯데건설",
+        contractor_name="롯데건설",
+        evaluation_method="회사 4×5",
+        is_active=True,
+    )
+    db.add_all([daewoo, lotte])
+    db.flush()
+    daewoo_revision = _add_item(
+        db,
+        work_category="대우작업",
+        risk_factor="대우 위험",
+        countermeasure="대우 대책",
+        risk_r=20,
+        risk_f=4,
+        risk_s=5,
+        is_common=False,
+    )
+    lotte_revision = _add_item(
+        db,
+        work_category="롯데작업",
+        risk_factor="롯데 위험",
+        countermeasure="롯데 대책",
+        is_common=False,
+    )
+    db.add_all(
+        [
+            RiskLibraryItemContractor(
+                risk_item_id=daewoo_revision.item_id,
+                contractor_id=daewoo.id,
+            ),
+            RiskLibraryItemContractor(
+                risk_item_id=lotte_revision.item_id,
+                contractor_id=lotte.id,
+            ),
+        ]
+    )
+    db.commit()
+
+    out = search_risk_library(
+        db,
+        query="",
+        mode="quick",
+        contractor_name="(주) 대우건설",
+        limit=20,
+    )
+    result_ids = {row["risk_item_id"] for row in out["results"]}
+    assert daewoo_revision.item_id in result_ids
+    assert lotte_revision.item_id not in result_ids
+    assert out["total"] == 2
+    assert out["evaluation_method"] == "도급사 4×3"
+    converted = next(row for row in out["results"] if row["risk_item_id"] == daewoo_revision.item_id)
+    assert (converted["display_f"], converted["display_s"], converted["display_r"]) == (4, 3, 12)
+    assert converted["risk_grade"] == "상"
+
+    plain_library = list_risk_library_entries(
+        db,
+        contractor_name="(주) 대우건설",
+        limit=20,
+    )
+    plain_item_ids = {row["risk_item_id"] for row in plain_library["items"]}
+    assert daewoo_revision.item_id in plain_item_ids
+    assert lotte_revision.item_id not in plain_item_ids
+
+    unassigned_site = search_risk_library(
+        db,
+        query="",
+        mode="quick",
+        contractor_scope_required=True,
+        limit=20,
+    )
+    assert {row["risk_item_id"] for row in unassigned_site["results"]} == {
+        common_revision.item_id
+    }
+
+    unassigned_plain_library = list_risk_library_entries(
+        db,
+        contractor_scope_required=True,
+        limit=20,
+    )
+    assert {
+        row["risk_item_id"] for row in unassigned_plain_library["items"]
+    } == {common_revision.item_id}
 
