@@ -15,7 +15,7 @@ export interface RiskLibraryItem {
   display_f: number | null;
   display_s: number | null;
   display_r: number | null;
-  risk_grade: "상" | "중" | "하" | "";
+  risk_grade: string;
   evaluation_method: string;
   improvement_owner_name: string | null;
   improvement_verifier_name: string | null;

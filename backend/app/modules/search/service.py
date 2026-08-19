@@ -67,7 +67,25 @@ def normalize_contractor_key(value: str | None) -> str:
     return re.sub(r"[^0-9a-z가-힣]+", "", text)
 
 
-def _risk_grade(risk_r: int | None) -> str:
+def _company_risk_level(risk_r: int | None) -> str:
+    """BTMS-PS-002 10항의 4×5 위험수준 6구간을 반환한다."""
+    score = int(risk_r or 0)
+    if score <= 0:
+        return ""
+    if score <= 3:
+        return "무시"
+    if score <= 6:
+        return "미미"
+    if score <= 8:
+        return "경미"
+    if score <= 12:
+        return "상당"
+    if score <= 15:
+        return "중대"
+    return "허용불가"
+
+
+def _legacy_three_level(risk_r: int | None) -> str:
     score = int(risk_r or 0)
     if score <= 0:
         return ""
@@ -87,10 +105,14 @@ def convert_risk_score(
     frequency = int(risk_f or 0)
     severity = int(risk_s or 0)
     base_score = frequency * severity if frequency and severity else None
-    grade = _risk_grade(base_score)
 
     if evaluation_method == "상·중·하 직접판정":
-        return {"display_f": None, "display_s": None, "display_r": None, "risk_grade": grade}
+        return {
+            "display_f": None,
+            "display_s": None,
+            "display_r": None,
+            "risk_grade": _legacy_three_level(base_score),
+        }
 
     display_f = frequency or None
     display_s = severity or None
@@ -105,6 +127,10 @@ def convert_risk_score(
             display_s = (1, 1, 2, 3, 3)[min(max(severity, 1), 5) - 1]
 
     display_r = display_f * display_s if display_f and display_s else None
+    if evaluation_method == "회사 4×5":
+        grade = _company_risk_level(base_score)
+    else:
+        grade = "기준확인"
     return {
         "display_f": display_f,
         "display_s": display_s,

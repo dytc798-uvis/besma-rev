@@ -13,7 +13,7 @@ from app.modules.risk_library.models import (
     RiskLibraryItemRevision,
     RiskLibraryKeyword,
 )
-from app.modules.search.service import search_risk_library
+from app.modules.search.service import convert_risk_score, search_risk_library
 from app.modules.risk_library.service import list_risk_library_entries
 
 
@@ -200,7 +200,7 @@ def test_search_risk_library_scopes_items_and_converts_contractor_method():
     assert out["evaluation_method"] == "도급사 4×3"
     converted = next(row for row in out["results"] if row["risk_item_id"] == daewoo_revision.item_id)
     assert (converted["display_f"], converted["display_s"], converted["display_r"]) == (4, 3, 12)
-    assert converted["risk_grade"] == "상"
+    assert converted["risk_grade"] == "기준확인"
 
     plain_library = list_risk_library_entries(
         db,
@@ -230,4 +230,22 @@ def test_search_risk_library_scopes_items_and_converts_contractor_method():
     assert {
         row["risk_item_id"] for row in unassigned_plain_library["items"]
     } == {common_revision.item_id}
+
+
+def test_company_risk_levels_follow_btms_procedure_six_bands():
+    cases = [
+        ((1, 3), "무시"),
+        ((2, 2), "미미"),
+        ((2, 4), "경미"),
+        ((3, 3), "상당"),
+        ((3, 5), "중대"),
+        ((4, 4), "허용불가"),
+    ]
+    for (frequency, severity), expected in cases:
+        converted = convert_risk_score(
+            frequency,
+            severity,
+            evaluation_method="회사 4×5",
+        )
+        assert converted["risk_grade"] == expected
 
