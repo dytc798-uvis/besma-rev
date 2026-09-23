@@ -108,6 +108,18 @@ function isWeleraserReference(loginId: string | undefined): boolean {
 
 const routes: RouteRecordRaw[] = [
   {
+    path: "/law-register",
+    name: "public-law-register",
+    component: () => import("@/pages/public/LawRegisterPage.vue"),
+    meta: { publicAccess: true },
+  },
+  {
+    path: "/services/:service(worker-voice|heat-stress|opinions)",
+    name: "public-service-entry",
+    component: () => import("@/pages/public/ServiceEntryPage.vue"),
+    meta: { requiresAuth: true, serviceEntry: true },
+  },
+  {
     path: "/",
     redirect: { name: "login" },
   },
@@ -392,7 +404,7 @@ router.beforeEach(async (to, _from, next) => {
     next({ path: normalizedPath, query: to.query, hash: to.hash, replace: true });
     return;
   }
-  if (to.meta.publicSign || isPublicSignPath(to.path)) {
+  if (to.meta.publicAccess || to.meta.publicSign || isPublicSignPath(to.path)) {
     next();
     return;
   }
@@ -458,7 +470,7 @@ router.beforeEach(async (to, _from, next) => {
     return;
   }
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    next({ name: "login" });
+    next({ name: "login", query: to.meta.serviceEntry ? { redirect: to.fullPath } : undefined });
     return;
   }
 

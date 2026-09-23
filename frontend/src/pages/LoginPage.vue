@@ -44,6 +44,8 @@
       </div>
     </div>
 
+    <PublicServiceMenu class="login-public-menu" />
+
     <AccountIssueModal v-if="showIssueModal" @close="showIssueModal = false" />
   </div>
 </template>
@@ -58,6 +60,7 @@ import { FE_GUIDE_SAMPLE_LOGIN, isFeGuidePreview } from "@/utils/feGuidePreview"
 import { formatLoginError } from "@/utils/loginError";
 import { siteMobileOrDesktopHomeName } from "@/utils/siteHomeRoute";
 import { hqSafeHomeRouteName } from "@/utils/hqHomeRoute";
+import PublicServiceMenu from "@/components/public/PublicServiceMenu.vue";
 
 const loginId = ref("");
 const password = ref("");
@@ -125,6 +128,7 @@ async function handleLogin() {
   display: flex;
   justify-content: center;
   align-items: center;
+  gap: 32px;
   min-height: 100vh;
   padding: 24px 16px;
   overflow: hidden;
@@ -156,6 +160,12 @@ async function handleLogin() {
   position: relative;
   z-index: 1;
   width: min(100%, 380px);
+}
+
+.login-public-menu { position: relative; z-index: 1; width: 340px; }
+@media (max-width: 760px) {
+  .login-page { flex-direction: column; gap: 20px; padding: 28px 16px; }
+  .login-public-menu { width: min(100%, 380px); }
 }
 
 .login-card {

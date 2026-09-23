@@ -22,7 +22,7 @@ async function bootstrap() {
 
   const auth = useAuthStore();
   const onPublicSignPage =
-    typeof window !== "undefined" && isPublicSignPath(window.location.pathname);
+    typeof window !== "undefined" && (isPublicSignPath(window.location.pathname) || window.location.pathname.replace(/\/$/, '') === '/law-register');
   if (auth.token && !auth.user && !onPublicSignPage) {
     void auth.bootstrapSession();
   }
