@@ -1,7 +1,7 @@
 <template>
   <div class="card">
     <div class="card-title">사고 등록</div>
-    <p class="muted">자동 파싱은 보조 기능입니다. 양식 미준수 보고도 HQ가 직접 보정해 저장할 수 있습니다.</p>
+    <p class="muted">LLM 없이 정해진 보고문 항목명으로만 분리합니다. 결과를 확인·보완한 뒤 저장하세요.</p>
 
     <div class="mode-toggle">
       <button type="button" class="toggle-btn" :class="{ active: inputMode === 'auto' }" @click="setMode('auto')">자동입력</button>
@@ -193,6 +193,8 @@ const lookups = reactive<AccidentLookups>({
   statuses: [],
   management_categories: [],
   site_names: [],
+  industrial_accident_report_statuses: [],
+  medical_opinion_statuses: [],
 });
 const templates = [
   {
@@ -231,6 +233,16 @@ function createManualForm(): AccidentCreatePayload {
     accident_place: null,
     work_content: null,
     injured_person_name: null,
+    injured_person_birth_date: null,
+    contractor_name: null,
+    construction_team: null,
+    site_manager_name: null,
+    work_team: null,
+    job_name: null,
+    accident_type: null,
+    injury_severity: null,
+    leave_period: null,
+    industrial_accident_status: null,
     accident_circumstance: null,
     accident_reason: null,
     injured_part: null,
@@ -238,6 +250,11 @@ function createManualForm(): AccidentCreatePayload {
     action_taken: null,
     notes: null,
     initial_report_template: null,
+    industrial_accident_report_status: "미정",
+    industrial_accident_report_submitted_at: null,
+    medical_opinion_status: "미정",
+    medical_opinion_received_at: null,
+    medical_opinion_summary: null,
     parse_status_override: null,
     parse_note_override: null,
   };
@@ -407,6 +424,8 @@ async function loadLookups() {
     lookups.statuses = data.statuses;
     lookups.management_categories = data.management_categories;
     lookups.site_names = data.site_names;
+    lookups.industrial_accident_report_statuses = data.industrial_accident_report_statuses;
+    lookups.medical_opinion_statuses = data.medical_opinion_statuses;
   } catch {
     errorMessage.value = "등록 화면 초기값을 불러오지 못했습니다.";
   }

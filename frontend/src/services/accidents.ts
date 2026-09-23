@@ -17,10 +17,16 @@ export interface AccidentListItem {
   site_name: string | null;
   site_standard_name: string | null;
   injured_person_name: string | null;
+  contractor_name: string | null;
+  construction_team: string | null;
+  accident_type: string | null;
   accident_datetime_text: string | null;
   accident_datetime: string | null;
   status: string;
   management_category: string;
+  industrial_accident_report_status: string;
+  medical_opinion_status: string;
+  nas_sync_status: string;
   is_complete: boolean;
   has_attachments: boolean;
   nas_folder_path: string | null;
@@ -33,6 +39,13 @@ export interface AccidentDetail extends AccidentListItem {
   source_type: string;
   message_raw: string;
   reporter_name: string | null;
+  injured_person_birth_date: string | null;
+  site_manager_name: string | null;
+  work_team: string | null;
+  job_name: string | null;
+  injury_severity: string | null;
+  leave_period: string | null;
+  industrial_accident_status: string | null;
   accident_place: string | null;
   work_content: string | null;
   accident_circumstance: string | null;
@@ -43,6 +56,13 @@ export interface AccidentDetail extends AccidentListItem {
   initial_report_template: string | null;
   nas_folder_key: string | null;
   notes: string | null;
+  industrial_accident_report_submitted_at: string | null;
+  medical_opinion_received_at: string | null;
+  medical_opinion_summary: string | null;
+  nas_sync_version: number;
+  nas_synced_version: number;
+  nas_synced_at: string | null;
+  nas_sync_error: string | null;
   parse_note: string | null;
   created_by_user_id: number | null;
   updated_by_user_id: number | null;
@@ -71,6 +91,8 @@ export interface AccidentLookups {
   statuses: string[];
   management_categories: string[];
   site_names: string[];
+  industrial_accident_report_statuses: string[];
+  medical_opinion_statuses: string[];
 }
 
 export interface AccidentUpdatePayload {
@@ -83,6 +105,16 @@ export interface AccidentUpdatePayload {
   accident_place: string | null;
   work_content: string | null;
   injured_person_name: string | null;
+  injured_person_birth_date: string | null;
+  contractor_name: string | null;
+  construction_team: string | null;
+  site_manager_name: string | null;
+  work_team: string | null;
+  job_name: string | null;
+  accident_type: string | null;
+  injury_severity: string | null;
+  leave_period: string | null;
+  industrial_accident_status: string | null;
   accident_circumstance: string | null;
   accident_reason: string | null;
   injured_part: string | null;
@@ -90,6 +122,11 @@ export interface AccidentUpdatePayload {
   action_taken: string | null;
   notes: string | null;
   initial_report_template: string | null;
+  industrial_accident_report_status: string;
+  industrial_accident_report_submitted_at: string | null;
+  medical_opinion_status: string;
+  medical_opinion_received_at: string | null;
+  medical_opinion_summary: string | null;
 }
 
 export interface AccidentCreatePayload extends AccidentUpdatePayload {
@@ -171,6 +208,17 @@ export async function fetchAccidentParsePreview(payload: { message_raw: string }
 export async function syncAccidentsToMasterExcel() {
   const res = await api.post<AccidentMasterExcelSyncResult>("/accidents/export-to-master-excel");
   return res.data;
+}
+
+export async function downloadAccidentMaster(downloadPassword: string): Promise<Blob> {
+  const res = await api.post(
+    "/accidents/export/master",
+    { download_password: downloadPassword },
+    { responseType: "blob" },
+  );
+  return new Blob([res.data], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
 }
 
 /** 백엔드 검증 후 탐색기 실행용 .bat 파일을 내려받는다(Windows에서 더블클릭). */

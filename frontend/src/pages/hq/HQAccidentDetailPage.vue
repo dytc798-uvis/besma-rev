@@ -36,35 +36,6 @@
       </section>
 
       <section class="sec">
-        <h3 class="sec-title">후속조치 수동 체크리스트</h3>
-        <p class="muted">
-          자동 연동 없이 수동 체크만 관리합니다. (현재 브라우저에만 저장)
-        </p>
-        <div class="manual-checklist">
-          <label v-for="item in followupChecklistItems" :key="item.key" class="manual-check-item">
-            <input
-              :checked="followupChecklist[item.key]"
-              type="checkbox"
-              @change="toggleFollowupChecklist(item.key, ($event.target as HTMLInputElement).checked)"
-            />
-            <span>{{ item.label }}</span>
-          </label>
-        </div>
-        <div class="field full-row">
-          <label>수동 체크 메모</label>
-          <textarea
-            :value="followupChecklistMemo"
-            class="input"
-            rows="3"
-            @input="updateFollowupChecklistMemo(($event.target as HTMLTextAreaElement).value)"
-          />
-        </div>
-        <div class="actions">
-          <button type="button" class="secondary" @click="resetFollowupChecklist">수동 체크 초기화</button>
-        </div>
-      </section>
-
-      <section class="sec">
         <h3 class="sec-title">사고정보 수정</h3>
         <form class="form-grid" @submit.prevent="saveDetail">
           <div class="field">
@@ -78,6 +49,22 @@
             <input v-model="form.reporter_name" class="input" />
           </div>
           <div class="field">
+            <label>도급사</label>
+            <input v-model="form.contractor_name" class="input" />
+          </div>
+          <div class="field">
+            <label>공사팀</label>
+            <input v-model="form.construction_team" class="input" />
+          </div>
+          <div class="field">
+            <label>현장소장</label>
+            <input v-model="form.site_manager_name" class="input" />
+          </div>
+          <div class="field">
+            <label>재해자 생년월일</label>
+            <input v-model="form.injured_person_birth_date" class="input" type="date" />
+          </div>
+          <div class="field">
             <label>상태</label>
             <select v-model="form.status" class="input">
               <option v-for="item in lookups.statuses" :key="item" :value="item">{{ item }}</option>
@@ -88,6 +75,34 @@
             <select v-model="form.management_category" class="input">
               <option v-for="item in lookups.management_categories" :key="item" :value="item">{{ item }}</option>
             </select>
+          </div>
+          <div class="field">
+            <label>산업재해조사표 제출상황</label>
+            <select v-model="form.industrial_accident_report_status" class="input">
+              <option v-for="item in lookups.industrial_accident_report_statuses" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>산업재해조사표 제출일시</label>
+            <input v-model="form.industrial_accident_report_submitted_at" class="input" type="datetime-local" />
+          </div>
+          <div class="field">
+            <label>의사소견서 상태</label>
+            <select v-model="form.medical_opinion_status" class="input">
+              <option v-for="item in lookups.medical_opinion_statuses" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>의사소견서 수령일시</label>
+            <input v-model="form.medical_opinion_received_at" class="input" type="datetime-local" />
+          </div>
+          <div class="field" style="grid-column: span 2">
+            <label>의사소견 요약</label>
+            <textarea v-model="form.medical_opinion_summary" class="input" rows="2" />
+          </div>
+          <div class="field" style="grid-column: span 2">
+            <label>PC·NAS 동기화 상태</label>
+            <input class="input" :value="detail.nas_sync_status" readonly />
           </div>
           <div class="field">
             <label>사고일시(원문)</label>
@@ -104,6 +119,30 @@
           <div class="field">
             <label>작업명</label>
             <input v-model="form.work_content" class="input" />
+          </div>
+          <div class="field">
+            <label>작업팀</label>
+            <input v-model="form.work_team" class="input" />
+          </div>
+          <div class="field">
+            <label>직종</label>
+            <input v-model="form.job_name" class="input" />
+          </div>
+          <div class="field">
+            <label>사고유형</label>
+            <input v-model="form.accident_type" class="input" />
+          </div>
+          <div class="field">
+            <label>부상정도</label>
+            <input v-model="form.injury_severity" class="input" />
+          </div>
+          <div class="field">
+            <label>휴업기간</label>
+            <input v-model="form.leave_period" class="input" />
+          </div>
+          <div class="field">
+            <label>산재 진행상태</label>
+            <input v-model="form.industrial_accident_status" class="input" />
           </div>
           <div class="field">
             <label>재해부위</label>
@@ -208,6 +247,8 @@ const lookups = reactive<AccidentLookups>({
   statuses: [],
   management_categories: [],
   site_names: [],
+  industrial_accident_report_statuses: [],
+  medical_opinion_statuses: [],
 });
 const loading = ref(true);
 const saving = ref(false);
@@ -217,29 +258,6 @@ const nasOpening = ref(false);
 const errorMessage = ref("");
 const uploadFile = ref<File | null>(null);
 const syncingForm = ref(false);
-const followupChecklistMemo = ref("");
-const followupChecklistItems = [
-  { key: "initial_registration", label: "최초사고보고에 의한 사고 등록" },
-  { key: "report_within_3_days", label: "3일 내 사고보고서 제출" },
-  { key: "education_log_within_5_days", label: "5일 내 교육일지" },
-  { key: "risk_assessment_submission", label: "수시 위험성평가 제출" },
-  { key: "fit_for_work_opinion", label: "근로가능 소견서" },
-  { key: "industrial_accident_report", label: "산업재해조사표 신고" },
-  { key: "medical_benefit_application", label: "요양급여 신청" },
-] as const;
-type FollowupChecklistKey = (typeof followupChecklistItems)[number]["key"];
-type FollowupChecklistState = Record<FollowupChecklistKey, boolean>;
-
-const followupChecklist = reactive<FollowupChecklistState>({
-  initial_registration: false,
-  report_within_3_days: false,
-  education_log_within_5_days: false,
-  risk_assessment_submission: false,
-  fit_for_work_opinion: false,
-  industrial_accident_report: false,
-  medical_benefit_application: false,
-});
-
 const form = reactive<AccidentUpdatePayload>({
   site_standard_name: "",
   reporter_name: null,
@@ -250,6 +268,16 @@ const form = reactive<AccidentUpdatePayload>({
   accident_place: null,
   work_content: null,
   injured_person_name: null,
+  injured_person_birth_date: null,
+  contractor_name: null,
+  construction_team: null,
+  site_manager_name: null,
+  work_team: null,
+  job_name: null,
+  accident_type: null,
+  injury_severity: null,
+  leave_period: null,
+  industrial_accident_status: null,
   accident_circumstance: null,
   accident_reason: null,
   injured_part: null,
@@ -257,10 +285,14 @@ const form = reactive<AccidentUpdatePayload>({
   action_taken: null,
   notes: null,
   initial_report_template: null,
+  industrial_accident_report_status: "미정",
+  industrial_accident_report_submitted_at: null,
+  medical_opinion_status: "미정",
+  medical_opinion_received_at: null,
+  medical_opinion_summary: null,
 });
 
 const accidentId = computed(() => Number(route.params.id));
-const followupChecklistStorageKey = computed(() => `besma:accident-followup:${accidentId.value}`);
 const displayNasPath = computed(() => {
   if (!detail.value) return "";
   return toDisplayedAccidentNasPath(detail.value.nas_folder_path, detail.value.accident_id);
@@ -286,58 +318,6 @@ const parseWarningMessage = computed(() => {
   return "";
 });
 
-function persistFollowupChecklist() {
-  const key = followupChecklistStorageKey.value;
-  if (!Number.isFinite(accidentId.value) || accidentId.value <= 0) return;
-  const payload = {
-    checks: { ...followupChecklist },
-    memo: followupChecklistMemo.value,
-  };
-  window.localStorage.setItem(key, JSON.stringify(payload));
-}
-
-function resetFollowupChecklistState() {
-  for (const item of followupChecklistItems) {
-    followupChecklist[item.key] = false;
-  }
-  followupChecklistMemo.value = "";
-}
-
-function loadFollowupChecklist() {
-  resetFollowupChecklistState();
-  const key = followupChecklistStorageKey.value;
-  if (!Number.isFinite(accidentId.value) || accidentId.value <= 0) return;
-  const raw = window.localStorage.getItem(key);
-  if (!raw) return;
-  try {
-    const parsed = JSON.parse(raw) as {
-      checks?: Partial<Record<FollowupChecklistKey, boolean>>;
-      memo?: string;
-    };
-    for (const item of followupChecklistItems) {
-      followupChecklist[item.key] = Boolean(parsed?.checks?.[item.key]);
-    }
-    followupChecklistMemo.value = parsed.memo || "";
-  } catch {
-    resetFollowupChecklistState();
-  }
-}
-
-function toggleFollowupChecklist(key: FollowupChecklistKey, checked: boolean) {
-  followupChecklist[key] = checked;
-  persistFollowupChecklist();
-}
-
-function updateFollowupChecklistMemo(value: string) {
-  followupChecklistMemo.value = value;
-  persistFollowupChecklist();
-}
-
-function resetFollowupChecklist() {
-  resetFollowupChecklistState();
-  window.localStorage.removeItem(followupChecklistStorageKey.value);
-}
-
 function formatDt(value: string) {
   return formatDateTimeKst(value, value);
 }
@@ -354,6 +334,16 @@ function syncForm() {
   form.accident_place = detail.value.accident_place;
   form.work_content = detail.value.work_content;
   form.injured_person_name = detail.value.injured_person_name;
+  form.injured_person_birth_date = detail.value.injured_person_birth_date;
+  form.contractor_name = detail.value.contractor_name;
+  form.construction_team = detail.value.construction_team;
+  form.site_manager_name = detail.value.site_manager_name;
+  form.work_team = detail.value.work_team;
+  form.job_name = detail.value.job_name;
+  form.accident_type = detail.value.accident_type;
+  form.injury_severity = detail.value.injury_severity;
+  form.leave_period = detail.value.leave_period;
+  form.industrial_accident_status = detail.value.industrial_accident_status;
   form.accident_circumstance = detail.value.accident_circumstance;
   form.accident_reason = detail.value.accident_reason;
   form.injured_part = detail.value.injured_part;
@@ -362,6 +352,11 @@ function syncForm() {
   form.notes = detail.value.notes;
   form.initial_report_template =
     detail.value.initial_report_template || detail.value.composed_line || output.value?.composed_line || null;
+  form.industrial_accident_report_status = detail.value.industrial_accident_report_status;
+  form.industrial_accident_report_submitted_at = detail.value.industrial_accident_report_submitted_at;
+  form.medical_opinion_status = detail.value.medical_opinion_status;
+  form.medical_opinion_received_at = detail.value.medical_opinion_received_at;
+  form.medical_opinion_summary = detail.value.medical_opinion_summary;
   syncingForm.value = false;
 }
 
@@ -385,6 +380,8 @@ function applyLookups(lookupsRes: AccidentLookups, detailRes?: AccidentDetail | 
   lookups.statuses = lookupsRes.statuses;
   lookups.management_categories = lookupsRes.management_categories;
   lookups.site_names = [...lookupsRes.site_names];
+  lookups.industrial_accident_report_statuses = lookupsRes.industrial_accident_report_statuses ?? [];
+  lookups.medical_opinion_statuses = lookupsRes.medical_opinion_statuses ?? [];
   if (detailRes?.site_standard_name && !lookups.site_names.includes(detailRes.site_standard_name)) {
     lookups.site_names.unshift(detailRes.site_standard_name);
   }
@@ -516,14 +513,12 @@ function printReport() {
 }
 
 onMounted(() => {
-  loadFollowupChecklist();
   void loadAll();
 });
 
 watch(
   () => route.params.id,
   () => {
-    loadFollowupChecklist();
     void loadAll();
   },
 );

@@ -58,6 +58,8 @@ import CoupangMvpPage from "@/pages/site/CoupangMvpPage.vue";
 import ChangePasswordPage from "@/pages/auth/ChangePasswordPage.vue";
 import FeOnboardingPage from "@/pages/auth/FeOnboardingPage.vue";
 import HQHeatStressPage from "@/pages/hq/HQHeatStressPage.vue";
+import HQTeamSchedulePage from "@/pages/hq/HQTeamSchedulePage.vue";
+import HQImportantFilesPage from "@/pages/hq/HQImportantFilesPage.vue";
 import UserGuidePage from "@/pages/common/UserGuidePage.vue";
 import FunctionalEvalLayout from "@/layouts/FunctionalEvalLayout.vue";
 import SiteFunctionalEvalPage from "@/pages/functional-eval/SiteFunctionalEvalPage.vue";
@@ -90,6 +92,10 @@ const WELERAZER_REFERENCE_LOGIN_ID = "어드민";
 
 function canAccessHqSafeWorkspace(role: string | undefined) {
   return HQ_SAFE_WORKSPACE_ROLES.has(role ?? "") || role === "FUNCTIONAL_EVAL_VIEWER";
+}
+
+function canAccessPrivateAccidentManagement(loginId: string | undefined) {
+  return ["sijung", "안전보건-정상익"].includes((loginId || "").trim().toLowerCase());
 }
 
 function isFunctionalEvalViewer(role: string | undefined) {
@@ -157,6 +163,17 @@ const routes: RouteRecordRaw[] = [
       { path: "dashboard", name: "hq-safe-dashboard", component: HQSafeHomePage },
       { path: "operations-dashboard", name: "hq-safe-operations-dashboard", component: HQSafeDashboard },
       { path: "heat-stress", name: "hq-safe-heat-stress", component: HQHeatStressPage },
+      {
+        path: "team-schedule",
+        name: "hq-safe-team-schedule",
+        component: HQTeamSchedulePage,
+        meta: { requiresTeamSchedule: true },
+      },
+      {
+        path: "important-files",
+        name: "hq-safe-important-files",
+        component: HQImportantFilesPage,
+      },
       { path: "field-form-uploads", name: "hq-safe-field-form-uploads", component: FieldFormUploadPage },
       { path: "safety-ledgers", redirect: { name: "hq-safe-card-expenses" } },
       { path: "card-expenses", name: "hq-safe-card-expenses", component: SafetyLedgersPage, meta: { ledgerTab: "card" } },
@@ -182,31 +199,31 @@ const routes: RouteRecordRaw[] = [
         path: "accidents",
         name: "hq-safe-accidents",
         component: HQAccidentsListPage,
-        meta: { requiresAccidentAdmin: true, sealed: true },
+        meta: { requiresAccidentAdmin: true },
       },
       {
         path: "accidents/worklist",
         name: "hq-safe-accidents-worklist",
         component: HQAccidentWorklistPage,
-        meta: { requiresAccidentAdmin: true, sealed: true },
+        meta: { requiresAccidentAdmin: true },
       },
       {
         path: "accidents/new",
         name: "hq-safe-accidents-new",
         component: HQAccidentInitialRegisterPage,
-        meta: { requiresAccidentAdmin: true, sealed: true },
+        meta: { requiresAccidentAdmin: true },
       },
       {
         path: "accidents/:id",
         name: "hq-safe-accident-detail",
         component: HQAccidentDetailPage,
-        meta: { requiresAccidentAdmin: true, sealed: true },
+        meta: { requiresAccidentAdmin: true },
       },
       {
         path: "accidents/:id/report",
         name: "hq-safe-accident-report",
         component: HQAccidentReportPage,
-        meta: { requiresAccidentAdmin: true, sealed: true },
+        meta: { requiresAccidentAdmin: true },
       },
       {
         path: "pdf-signing",
@@ -454,6 +471,11 @@ router.beforeEach(async (to, _from, next) => {
     return;
   }
 
+  if (to.meta.requiresTeamSchedule && !auth.user?.can_team_schedule) {
+    next({ name: hqSafeHomeRouteName() });
+    return;
+  }
+
   const isFunctionalEvalUser = role === "SITE_FUNCTIONAL_EVAL";
   const goingFunctionalEval = to.path.startsWith("/site/functional-eval");
   const goingFunctionalEvalFieldForm = to.name === "site-functional-eval-field-form-uploads";
@@ -485,7 +507,7 @@ router.beforeEach(async (to, _from, next) => {
     else next({ name: "login" });
     return;
   }
-  if (to.meta.requiresAccidentAdmin && !canAccessHqSafeWorkspace(auth.user?.role)) {
+  if (to.meta.requiresAccidentAdmin && !canAccessPrivateAccidentManagement(auth.user?.login_id)) {
     if (auth.user?.ui_type === "HQ_SAFE") next({ name: hqSafeHomeRouteName() });
     else if (auth.user?.ui_type === "SITE") next({ name: siteMobileOrDesktopHomeName(auth.user?.login_id) });
     else if (auth.user?.ui_type === "HQ_OTHER") next({ name: "hq-other-heat-stress" });

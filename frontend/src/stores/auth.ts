@@ -17,6 +17,7 @@ export interface AuthUser {
   map_preference?: "NAVER" | "TMAP" | null;
   can_system_backup?: boolean;
   can_role_preview?: boolean;
+  can_team_schedule?: boolean;
 }
 
 export type TestPersona =

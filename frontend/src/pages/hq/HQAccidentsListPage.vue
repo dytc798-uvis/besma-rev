@@ -2,7 +2,7 @@
   <div class="card">
     <div class="head-row">
       <div>
-        <div class="card-title">사고관리</div>
+        <div class="card-title">사고관리현황</div>
         <p class="muted">
           기본은 등록일 최신순 최근 20건(미완료·검토 대상)입니다. 전체 보기에서 더 많은 사고를 확인할 수 있습니다.
         </p>
@@ -41,6 +41,8 @@
           <th>성명</th>
           <th>상태</th>
           <th>관리구분</th>
+          <th>산재표</th>
+          <th>의사소견서</th>
           <th>첨부</th>
           <th>NAS 링크</th>
         </tr>
@@ -53,13 +55,15 @@
           <td>{{ row.injured_person_name || "—" }}</td>
           <td>{{ row.status }}</td>
           <td>{{ row.management_category }}</td>
+          <td>{{ row.industrial_accident_report_status }}</td>
+          <td>{{ row.medical_opinion_status }}</td>
           <td>{{ row.has_attachments ? "Y" : "N" }}</td>
           <td>
             <button type="button" class="linkish" @click.stop="openNasLauncher(row.id)">탐색기</button>
           </td>
         </tr>
         <tr v-if="!loading && items.length === 0">
-          <td colspan="8" class="empty">표시할 사고가 없습니다.</td>
+          <td colspan="10" class="empty">표시할 사고가 없습니다.</td>
         </tr>
       </tbody>
     </table>
@@ -71,8 +75,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { RouterLink, useRouter } from "vue-router";
-import { api } from "@/services/api";
 import {
+  downloadAccidentMaster,
   downloadAccidentNasFolderLauncher,
   fetchAccidents,
   syncAccidents,
@@ -155,19 +159,19 @@ async function openNasLauncher(accidentPk: number) {
 }
 
 async function downloadExcel() {
+  const downloadPassword = window.prompt("비밀번호 8자리를 입력하시오.");
+  if (downloadPassword == null) return;
   try {
-    const res = await api.get("/accidents/export/master", { responseType: "blob" });
-    const blob = new Blob([res.data], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
+    const blob = await downloadAccidentMaster(downloadPassword);
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = "BESMA_사고MASTER_export.xlsx";
     a.click();
     window.URL.revokeObjectURL(url);
-  } catch {
-    window.alert("엑셀 다운로드에 실패했습니다.");
+  } catch (error: any) {
+    const status = error?.response?.status;
+    window.alert(status === 403 ? "다운로드 비밀번호가 올바르지 않습니다." : "엑셀 다운로드에 실패했습니다.");
   }
 }
 

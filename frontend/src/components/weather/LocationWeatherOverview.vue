@@ -8,12 +8,20 @@
       </div>
       <button type="button" @click="requestLocationPermission">위치 권한 다시 요청</button>
     </div>
-    <div class="weather-head">
-      <div>
-        <p class="eyebrow">현재 위치</p>
-        <h2>{{ overview?.location_name || "위치 확인 중" }}</h2>
-        <small v-if="overview">{{ overview.source_label }} · {{ overview.location_attribution }}</small>
-      </div>
+      <div class="weather-head">
+        <div>
+          <p class="eyebrow">현재 위치</p>
+          <h2>{{ overview?.location_name || "위치 확인 중" }}</h2>
+          <small v-if="overview">
+            {{ overview.current.observed_label || overview.source_label }} · {{ overview.location_attribution }}
+            <span v-if="overview.current.base_date && overview.current.base_time">
+              · {{ overview.current.base_date }} {{ overview.current.base_time }}
+            </span>
+          </small>
+          <p v-if="overview?.current?.is_stale" class="stale-note">
+            {{ overview.current.freshness_state }} · {{ overview.current.minutes_since_observation }}분 전 기준값
+          </p>
+        </div>
       <button class="secondary" type="button" :disabled="loading" @click="load">
         {{ loading ? "조회 중…" : "현재 위치 새로고침" }}
       </button>
@@ -53,7 +61,8 @@
         </article>
       </div>
       <p class="source-note">
-        {{ overview.kma_notice }} 현재 표시값은 현장 실측값을 대체하지 않으며 작업계획 참고용입니다.
+        {{ overview.current?.is_fallback ? "대체 기상자료(Open-Meteo) 사용 중입니다." : overview.kma_notice }}
+        현재 표시값은 현장 실측값을 대체하지 않으며 작업계획 참고용입니다.
       </p>
     </template>
   </section>
@@ -81,11 +90,21 @@ interface WeatherOverview {
   kma_notice: string;
   current: {
     weather_label: string;
+    observed_label: string | null;
+    is_fallback: boolean;
+    is_stale: boolean;
+    minutes_since_observation: number | null;
+    freshness_state: string;
     temperature_c: number | null;
     relative_humidity_pct: number | null;
     apparent_temperature_c: number | null;
     precipitation_mm: number | null;
     wind_speed_kmh: number | null;
+    base_date: string | null;
+    base_time: string | null;
+    pty_code: string | number | null;
+    fallback_reason: string | null;
+    source_label: string;
   };
   forecast_days: ForecastDay[];
 }
@@ -217,6 +236,7 @@ onMounted(async () => {
 <style scoped>
 .weather-panel{background:#fff;border:1px solid #bfdbfe;border-radius:18px;padding:22px;display:grid;gap:16px}.weather-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.weather-head h2{margin:3px 0}.eyebrow{margin:0;color:#0369a1;font-weight:900}.secondary{border:1px solid #cbd5e1;background:#fff;color:#334155}.current-card{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:24px;border-radius:16px;background:linear-gradient(135deg,#eff6ff,#ecfeff);padding:18px}.current-card>div{display:grid}.current-card>div strong{font-size:36px}.current-card dl{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0}.current-card dl div{background:rgba(255,255,255,.75);border-radius:10px;padding:9px}.current-card dt{font-size:12px;color:#64748b}.current-card dd{margin:3px 0 0;font-weight:900}.forecast-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}.forecast-grid article{border:1px solid #e2e8f0;border-radius:12px;padding:12px;display:grid;gap:5px}.forecast-grid b{font-size:13px}.risk-list{display:flex;flex-wrap:wrap;gap:4px}.risk-list span{border-radius:999px;background:#ffedd5;color:#9a3412;padding:3px 7px;font-size:11px;font-weight:900}.source-note{margin:0;color:#64748b;font-size:12px;line-height:1.55}.weather-error{color:#b91c1c;font-weight:800}button{border:0;border-radius:10px;background:#0369a1;color:#fff;padding:10px 13px;font-weight:800;cursor:pointer}button:disabled{opacity:.55}
 .permission-reminder{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px;border:1px solid #fb923c;border-radius:13px;background:#fff7ed;color:#9a3412}.permission-reminder>div{display:grid;gap:4px}.permission-reminder span,.permission-reminder small{line-height:1.45}.permission-reminder button{flex:0 0 auto;background:#c2410c}
+.stale-note{margin:6px 0 0;color:#b45309;font-weight:700;font-size:12px}
 @media(max-width:800px){.current-card{grid-template-columns:1fr}.current-card dl{grid-template-columns:repeat(2,1fr)}.forecast-grid{grid-template-columns:repeat(2,1fr)}.forecast-grid article:first-child{grid-column:1/-1}.weather-head{display:grid}}
 @media(max-width:800px){.permission-reminder{align-items:stretch;flex-direction:column}.permission-reminder button{width:100%}}
 </style>

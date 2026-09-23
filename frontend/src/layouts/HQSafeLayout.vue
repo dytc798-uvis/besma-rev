@@ -27,6 +27,27 @@
         <div class="hq-menu-group">
           <p class="hq-menu-section-label">주요업무</p>
           <RouterLink
+            v-if="canAccessAccidentManagement"
+            class="hq-field-form-menu-highlight"
+            to="/hq-safe/accidents?bypassWorklist=1"
+          >
+            사고관리현황
+          </RouterLink>
+          <RouterLink
+            v-if="auth.user?.can_team_schedule"
+            class="hq-field-form-menu-highlight"
+            to="/hq-safe/team-schedule"
+          >
+            팀 스케줄
+          </RouterLink>
+          <RouterLink
+            v-if="canAccessImportantFiles"
+            class="hq-important-files-link"
+            to="/hq-safe/important-files"
+          >
+            중요파일 모바일 열람
+          </RouterLink>
+          <RouterLink
             v-if="canAccessSafetyLedgers"
             class="hq-field-form-menu-highlight"
             to="/hq-safe/card-expenses"
@@ -253,6 +274,9 @@ const menuOrderSecondary = ref<Record<string, number>>({});
 const canAccessPdfSigning = computed(() =>
   ["HQ_SAFE", "HQ_SAFE_ADMIN", "SUPER_ADMIN", "ACCIDENT_ADMIN"].includes(auth.user?.role ?? ""),
 );
+const canAccessAccidentManagement = computed(() =>
+  ["sijung", "안전보건-정상익"].includes((auth.user?.login_id || "").trim().toLowerCase()),
+);
 const canAccessSafetyLedgers = computed(() =>
   ["정상익", "엄재복", "박영선", "조동문"].includes((auth.user?.name || "").trim()),
 );
@@ -262,6 +286,7 @@ const canAccessCoupangLab = computed(
 const isFeViewer = computed(() => auth.user?.role === "FUNCTIONAL_EVAL_VIEWER");
 const canSystemBackup = computed(() => userCanSystemBackup(auth.user));
 const feReviewPendingCount = ref(0);
+const canAccessImportantFiles = ref(false);
 
 const isFunctionalEvalRoute = computed(() => route.path.includes("/functional-eval"));
 const headerTitle = computed(() => {
@@ -293,6 +318,7 @@ onMounted(() => {
   void loadUnreadCommunications();
   loadDynamicMenus();
   void loadFunctionalEvalReviewCount();
+  void loadImportantFileCapability();
   window.addEventListener("besma-menu-order-updated", handleMenuOrderUpdated as EventListener);
   window.addEventListener("besma-hq-communication-read", handleCommunicationRead as EventListener);
   window.addEventListener("besma-fe-review-updated", loadFunctionalEvalReviewCount as EventListener);
@@ -351,6 +377,18 @@ async function loadFunctionalEvalReviewCount() {
     feReviewPendingCount.value = approvalCount + rewardCount + sanctionCount;
   } catch {
     feReviewPendingCount.value = 0;
+  }
+}
+
+async function loadImportantFileCapability() {
+  try {
+    const surface = isMobileViewport.value ? "MOBILE" : "PC";
+    const res = await api.get("/file-access/v1/important-files/capabilities", {
+      params: { surface },
+    });
+    canAccessImportantFiles.value = res.data?.can_read === true;
+  } catch {
+    canAccessImportantFiles.value = false;
   }
 }
 
@@ -548,6 +586,15 @@ function goPersonaSelect() {
   background: #fff7ed;
   color: #9a3412;
   border-left: 4px solid #f97316;
+  margin-left: 8px;
+  padding-left: 10px;
+}
+
+.hq-safe-shell .layout-menu a.hq-important-files-link:not(.router-link-active) {
+  font-weight: 700;
+  background: #eff6ff;
+  color: #1e40af;
+  border-left: 4px solid #2563eb;
   margin-left: 8px;
   padding-left: 10px;
 }
