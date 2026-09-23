@@ -48,3 +48,4 @@ Thumbs.db
 # Local generated artifacts
 storage/work_plans/
 storage/_test_copy.xlsx
+.env*

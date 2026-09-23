@@ -14,3 +14,7 @@ frontend/node_modules/
 *.db
 *.db.*
 .git/
+.env*
+**/.env*
+.secrets/
+frontend/dist/
