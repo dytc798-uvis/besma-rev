@@ -1941,6 +1941,8 @@ async def create_document(
     description: str | None = Form(None),
     file: UploadFile | None = File(None),
 ):
+    if current_user.role == Role.HQ_OTHER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ_OTHER is read-only")
     if current_user.role == Role.SITE:
         site_id = current_user.site_id
     if not site_id:

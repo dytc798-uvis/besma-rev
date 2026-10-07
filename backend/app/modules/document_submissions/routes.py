@@ -346,6 +346,8 @@ async def upload_document_for_instance(
     - append_only + instance_id: 이미 제출된 PDF 뒤에 사진만 추가(SUBMITTED/UNDER_REVIEW만, APPROVED 불가)
     """
     # 데모 혼선 방지를 위해 HQ 데모 계정(hq01~hq05)은 업로드를 읽기전용으로 강제한다.
+    if current_user.role == Role.HQ_OTHER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ_OTHER is read-only")
     if current_user.role == Role.HQ_SAFE and current_user.login_id in HQ_DEMO_READONLY_LOGIN_IDS:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ demo accounts are read-only")
 
@@ -716,6 +718,8 @@ async def replace_uploaded_document_file(
     - Document/Instance id는 유지하고 version_no + 이력만 증가한다.
     - APPROVED는 수정 불가, SITE는 자기 site만 허용.
     """
+    if current_user.role == Role.HQ_OTHER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ_OTHER is read-only")
     if current_user.role == Role.HQ_SAFE and current_user.login_id in HQ_DEMO_READONLY_LOGIN_IDS:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ demo accounts are read-only")
 
