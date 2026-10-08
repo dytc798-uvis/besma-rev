@@ -52,6 +52,11 @@ class ItemSetting(BaseModel):
     enabled:bool=True
     required:bool=True
     order:int=Field(default=0,ge=0,le=999)
+    @model_validator(mode='after')
+    def single_selection(self):
+        # Legacy priority remains an API alias, never a second selection switch.
+        self.priority=self.enabled
+        return self
     @field_validator('title','collection_folder')
     @classmethod
     def valid_name(cls,value):return segment(value)
@@ -93,7 +98,7 @@ def read_configuration(main):
         title=row['title'].removeprefix('관급 ')
         if not stored:title=PRIORITY_LABELS.get(code,title)
         category=GOV_CATEGORY.get(code)
-        items[code]={'code':code,'title':title,'frequency':row['frequency'],'group_id':group_for(row['frequency']),'collection_folder':metadata.get('collection_folder') or (CATEGORIES[category][1] if category else title),'priority':metadata.get('priority',code in PRIORITY_CODES),'enabled':bool(row['is_enabled']),'required':bool(row['is_required']),'order':metadata.get('order',row['display_order'])}
+        items[code]={'code':code,'title':title,'frequency':row['frequency'],'group_id':group_for(row['frequency']),'collection_folder':metadata.get('collection_folder') or (CATEGORIES[category][1] if category else title),'priority':bool(row['is_enabled']),'enabled':bool(row['is_enabled']),'required':bool(row['is_required']),'order':metadata.get('order',row['display_order'])}
     return {'revision':stored['revision'] if stored else 0,'groups':sorted(groups,key=lambda g:g['order']),'items':list(items.values())}
 
 def item_order(item,groups):
@@ -105,7 +110,7 @@ def save_configuration(db,payload,actor_id):
     with readonly(settings.sqlite_path) as main:before=read_configuration(main)
     if payload.revision!=before['revision']:raise HTTPException(409,'다른 사용자가 설정을 변경했습니다. 새로고침 후 저장하세요.')
     old_codes={i['code'] for i in before['items']};new_codes={i.code for i in payload.items if i.code}
-    if not old_codes<=new_codes:raise HTTPException(422,'기존 서류는 삭제 대신 사용 해제를 선택하세요.')
+    if not old_codes<=new_codes:raise HTTPException(422,'기존 서류는 삭제 대신 제외를 선택하세요.')
     if new_codes-old_codes:raise HTTPException(422,'기존 서류 식별자를 변경할 수 없습니다.')
     root=Path(settings.storage_root)/'collection-monitor/settings-backups';root.mkdir(parents=True,exist_ok=True,mode=0o750)
     backup=root/(datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')+'-'+uuid.uuid4().hex+'.sqlite3')

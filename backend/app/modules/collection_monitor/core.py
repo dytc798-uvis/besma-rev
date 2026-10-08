@@ -8,7 +8,7 @@ import sqlite3
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-VERSION = "collection-monitor-1.3.0-configurable-folders"
+VERSION = "collection-monitor-1.5.0-single-selection"
 PRIORITY_CODES = ('GOV_RISK_INITIAL','GOV_MANAGER_APPOINTMENT','GOV_SAFETY_MANAGER_APPOINTMENT','GOV_SUPERVISOR_DESIGNATION','GOV_RISK_MONTHLY','GOV_NONCONFORMITY_LEDGER','GOV_WORKER_OPINION_LEDGER')
 PRIORITY_LABELS = dict(zip(PRIORITY_CODES,('최초 위험성평가','안전보건관리책임자 지정서','안전관리자 선임계','관리감독자 지정서','위험성평가','부적합사항 관리대장','의견청취 관리대장')))
 from app.modules.document_explorer.government_access import GOVERNMENT_SITE_CODES
@@ -220,14 +220,14 @@ def overview(main_path, root, month):
             "groups":display_groups(config), "configuration_revision":config["revision"], "mirror_count": c.execute("SELECT COUNT(*) FROM mirrors").fetchone()[0]}
 
 
-def scoped_overview(main_path, root, month, scope='government', priority_only=True, team=None, site_ids=None, query='', document_code=None, only_missing=False):
+def scoped_overview(main_path, root, month, scope='government', priority_only=False, team=None, site_ids=None, query='', document_code=None, only_missing=False):
     payload=overview(main_path,root,month)
     rows=[s for s in payload['sites'] if s['active'] and (s['channel']=='BESMA')==(scope=='government')]
     if team:rows=[s for s in rows if s['team']==team]
     if site_ids is not None:rows=[s for s in rows if s['id'] in site_ids]
     if query:rows=[s for s in rows if query.lower() in (s['site_name']+' '+s['site_code']).lower()]
     for s in rows:
-        s['cells']=[c for c in s['cells'] if (scope!='government' or not priority_only or c.get('priority',c['code'] in PRIORITY_CODES)) and (not document_code or c['code']==document_code or 'CAT_'+c['category']==document_code)]
+        s['cells']=[c for c in s['cells'] if (not document_code or c['code']==document_code or 'CAT_'+c['category']==document_code)]
         s['cells'].sort(key=lambda c:c.get('order',(99,99,c['code'])))
         s['required']=sum(c['expected'] for c in s['cells']);s['received']=sum(c['received'] for c in s['cells'])
         s['rate']=round(100*s['received']/s['required'],1) if s['required'] and all(c['known'] for c in s['cells']) else None
@@ -239,7 +239,7 @@ def scoped_overview(main_path, root, month, scope='government', priority_only=Tr
         cs=[c for s in rows for c in s['cells'] if c['code']==d['code']];n=sum(c['expected'] for c in cs);done=sum(c['received'] for c in cs)
         d.update(required=n,received=done,rate=round(100*done/n,1) if n and all(c['known'] for c in cs) else None)
     from app.modules.documents.active_site_scope import today_kst
-    return {**payload,'sites':rows,'documents':definitions,'scope':scope,'priority_only':priority_only,'as_of_date':today_kst().isoformat()}
+    return {**payload,'sites':rows,'documents':definitions,'scope':scope,'priority_only':False,'as_of_date':today_kst().isoformat()}
 
 
 def ingest(main_path, root, manifest, blobs):

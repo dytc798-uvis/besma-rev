@@ -48,7 +48,7 @@ def site_configuration(user=Depends(government_actor)):
         site=main.execute('SELECT site_code FROM sites WHERE id=?',(user.site_id,)).fetchone()
         if not site or site['site_code'] not in GOV_CODES:raise HTTPException(403,'GOVERNMENT_SITE_ONLY')
         config=read_configuration(main)
-        return {'revision':config['revision'],'groups':display_groups(config),'items':[{k:i[k] for k in ('code','title','frequency','group_id','order','priority')} for i in config['items'] if i['enabled'] and i['required']]}
+        return {'revision':config['revision'],'groups':display_groups(config),'items':[{k:i[k] for k in ('code','title','frequency','group_id','order','enabled','priority')} for i in config['items'] if i['enabled'] and i['required']]}
 
 @router.get("/context")
 def context(user=Depends(government_actor)):
@@ -60,12 +60,12 @@ def context(user=Depends(government_actor)):
       "gov_site_codes":sorted(GOV_CODES),"artifact_menu_required":False}
 
 @router.get("/overview")
-def dashboard(month: str=Query(pattern=r"^20\d{2}-(0[1-9]|1[0-2])$"), scope:str=Query('government',pattern='^(government|other)$'), priority_only:bool=True,user=Depends(hq)):
+def dashboard(month: str=Query(pattern=r"^20\d{2}-(0[1-9]|1[0-2])$"), scope:str=Query('government',pattern='^(government|other)$'), priority_only:bool=False,user=Depends(hq)):
     return scoped_overview(*paths(),month,scope,priority_only)
 
 
 @router.get('/report.xlsx')
-def report(month:str=Query(pattern=r'^20\d{2}-(0[1-9]|1[0-2])$'),scope:str=Query('government',pattern='^(government|other)$'),priority_only:bool=True,team:str|None=None,q:str='',document_code:str|None=None,only_missing:bool=False,user=Depends(writer)):
+def report(month:str=Query(pattern=r'^20\d{2}-(0[1-9]|1[0-2])$'),scope:str=Query('government',pattern='^(government|other)$'),priority_only:bool=False,team:str|None=None,q:str='',document_code:str|None=None,only_missing:bool=False,user=Depends(writer)):
     payload=scoped_overview(*paths(),month,scope,priority_only,team=team,query=q,document_code=document_code,only_missing=only_missing)
     label='관급공사' if scope=='government' else '기타현장'
     return Response(make_report(payload),media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(f'{label}_문서취합현황_{month}.xlsx'),'Cache-Control':'no-store'})
