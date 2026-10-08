@@ -1,6 +1,7 @@
 """Prepare six reviewed copies without changing or disclosing internal originals."""
-import hashlib,json,os,shutil
+import hashlib,json,os,shutil,sys
 from pathlib import Path
+sys.path.insert(0,'/srv/besma/backend')
 from app.config.settings import settings
 from app.modules.document_explorer.government_access import PUBLIC_CANDIDATE_RELATIVE_PATHS
 root=Path(settings.document_explorer_base_dir)
