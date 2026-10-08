@@ -6,12 +6,19 @@ let session='',context=null,pending=false,settingsRoot=null,contactDialog=null,c
 let catalog=null,folders=[],filter='',visibility='ALL';
 async function api(path,options={}){
  const token=localStorage.getItem('besma_token');if(!token)throw Error('로그인이 필요합니다.');
+ const key=workspaceKey(),preview=previewSite();
+ if(preview){if(!['GET','HEAD','OPTIONS'].includes((options.method||'GET').toUpperCase()))throw Error('관점 전환에서는 조회만 가능합니다.');if(/^\/(government-contact|document-explorer|collection-monitor)\//.test(path))path+=(path.includes('?')?'&':'?')+'preview_site_id='+encodeURIComponent(preview);}
  const r=await fetch(API+path,{...options,headers:{Authorization:'Bearer '+token,...options.headers},cache:'no-store'});
- if(token!==localStorage.getItem('besma_token'))throw Error('로그인 계정이 변경됐습니다.');
+ if(token!==localStorage.getItem('besma_token')||key!==workspaceKey())throw Error('로그인 계정 또는 관점이 변경됐습니다.');
  if(!r.ok)throw Error(r.status===403?'이 작업의 권한이 없습니다.':'처리하지 못했습니다. ('+r.status+')');return r.json();
 }
 function modal(title){const d=node('dialog',undefined,'cm-dialog gov-dialog');d.append(node('h2',title),button('닫기',()=>d.close()));d.addEventListener('close',()=>{if(contactDialog===d){contactDialog=null;contactState=null;}d.remove();});document.body.append(d);d.showModal();return d;}
 const put=(url,payload)=>api(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+function previewSite(){return ['SITE_STAFF','SITE_MANAGER'].includes(localStorage.getItem('besma_test_persona'))?localStorage.getItem('besma_test_site_context_id')||'':'';}
+function workspaceKey(){return (localStorage.getItem('besma_token')||'')+'|'+(localStorage.getItem('besma_test_persona')||'')+'|'+previewSite();}
+// Keep the existing Vue document browser on the same public-only preview scope.
+const originalXhrOpen=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(method,url,...rest){const preview=previewSite();if(preview){const parsed=new URL(url,location.href);if(parsed.origin===API&&/^\/(document-explorer|government-contact|collection-monitor)\//.test(parsed.pathname)){parsed.searchParams.set('preview_site_id',preview);url=parsed.href;}}return originalXhrOpen.call(this,method,url,...rest);};
 async function loadSettings(){
  if(!settingsRoot)return;if(collectionDirty){renderSettings();drawCollectionSettings();return;}try{const result=await Promise.all([api('/document-explorer/government-document-catalog'),api('/document-explorer/government-folders')]);catalog=result[0];folders=result[1].folders;renderSettings();await loadCollectionSettings();}catch(e){settingsRoot.replaceChildren(node('h2','관급공사 공개 설정'),node('p',e.message),button('다시 시도',loadSettings));}
 }
@@ -60,8 +67,9 @@ async function openContact(selectedId=null){
   const selector=node('select');selector.setAttribute('aria-label','소통 현장');for(const site of sites){const o=node('option',site.site_name);o.value=String(site.site_id);selector.append(o);}if(selectedId&&sites.some(s=>s.site_id===Number(selectedId)))selector.value=String(selectedId);d.append(selector);
   const subject=node('select');subject.setAttribute('aria-label','소통 구분');d.append(subject);
   const history=node('div',undefined,'gov-message-list');history.setAttribute('aria-live','polite');d.append(history);const older=button('이전 대화',()=>loadMessages(true));older.hidden=true;d.append(older);
-  const text=node('textarea');text.rows=3;text.maxLength=4000;text.placeholder='문의 또는 답변을 입력하세요.';text.setAttribute('aria-label','전달 내용');d.append(text);
+  const text=node('textarea');text.rows=3;text.maxLength=4000;text.placeholder='문의 또는 답변을 입력하세요.';text.setAttribute('aria-label','전달 내용');if(!context.read_only)d.append(text);else d.append(node('p','관급 현장 관점 · 조회 전용'));
   const send=button('등록',async()=>{const state=contactState;if(!state||state.pending)return;send.disabled=true;try{if(!text.value.trim())throw Error('전달 내용을 입력하세요.');const selected=state.siteId;const category=state.category;await api('/government-contact/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({site_id:selected,body:text.value.trim(),document_code:category==='GENERAL'?null:category})});if(contactState!==state||state.siteId!==selected||state.category!==category)return;text.value='';await loadMessages();}catch(e){status.textContent=e.message;}finally{send.disabled=false;}});d.append(send,button('새로고침',()=>loadMessages()));
+  if(context.read_only){text.disabled=true;send.remove();}
   contactState={siteId:Number(selector.value),category:'GENERAL',items:[],history,status,older,subject,send,pending:false,generation:0};
   const changeSite=async()=>{const state=contactState;if(!state)return;state.siteId=Number(selector.value);state.items=[];state.category='GENERAL';state.generation++;send.disabled=true;try{const selected=state.siteId;const definitions=await api('/government-contact/subjects?site_id='+selected);if(contactState!==state||state.siteId!==selected)return;subject.replaceChildren();for(const item of definitions.items){const option=node('option',item.title);option.value=item.code||'GENERAL';subject.append(option);}subject.value='GENERAL';await loadMessages();}catch(e){status.textContent=e.message;}finally{send.disabled=false;}};
   selector.onchange=changeSite;subject.onchange=()=>{if(!contactState)return;contactState.category=subject.value;contactState.items=[];contactState.generation++;loadMessages();};await changeSite();
@@ -74,7 +82,7 @@ async function loadMessages(previous=false){
   state.items=previous?[...payload.items,...state.items]:payload.items;state.older.hidden=!payload.has_more;state.status.textContent=payload.site_name+' · '+state.subject.selectedOptions[0]?.textContent+' · '+state.items.length+'개 대화';state.history.replaceChildren();
   if(!state.items.length)state.history.append(node('p','아직 소통 내역이 없습니다.'));
   for(const m of state.items){const row=node('article',undefined,m.sender_side===context.side?'gov-message own':'gov-message');row.append(node('strong',(m.sender_side==='HQ'?'본사':'현장')+' · '+m.sender_name),node('small',m.document_title||'일반 소통 (문서 없음)'),node('p',m.body),node('small',new Date(m.created_at.endsWith('Z')?m.created_at:m.created_at+'Z').toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})+' · '+(m.read_at?'읽음':'미확인')));state.history.append(row);}
-  if(!previous&&state.items.length){state.history.scrollTop=state.history.scrollHeight;await api('/government-contact/read?site_id='+siteId+'&through_id='+state.items.at(-1).id+contactParams(state),{method:'POST'});}
+  if(!previous&&state.items.length){state.history.scrollTop=state.history.scrollHeight;if(!context.read_only)await api('/government-contact/read?site_id='+siteId+'&through_id='+state.items.at(-1).id+contactParams(state),{method:'POST'});}
  }catch(e){if(contactState===state&&state.generation===generation)state.status.textContent=e.message;}finally{if(state.generation===generation){state.pending=false;state.send.disabled=false;}}
 }
 let contactHub=null,hubTesting=false,hubBusy=false;
@@ -103,24 +111,27 @@ async function sitePriority(refresh=false){
  if(!panel){panel=node('section',undefined,'collection-monitor');panel.id='gov-site-priority';host.after(panel);panel.append(node('h2','우선 취합 서류'));}
  try{const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Seoul'}).format(new Date());const payload=await api('/documents/requirements/status?period=all&site_id='+context.site_id+'&date='+today);if(!panel.isConnected)return;
   const config=await api('/collection-monitor/site-configuration');
-  if(!panel.isConnected)return;panel.replaceChildren(node('h2','우선 취합 서류'),node('p','월간·주간 서류를 먼저 확인하고 제출합니다.'));
-  for(const group of config.groups.slice().sort((a,b)=>a.order-b.order)){const definitions=config.items.filter(i=>i.priority&&i.group_id===group.id).sort((a,b)=>a.order-b.order);if(!definitions.length)continue;panel.append(node('h3',group.label));for(const definition of definitions){const item=payload.items.find(i=>i.document_type_code===definition.code);if(!item)continue;const row=node('div',undefined,'gov-folder');const status=item.current_cycle_status||item.status;row.append(node('span',definition.title+' · '+({NOT_SUBMITTED:'미제출',SUBMITTED:'제출됨',UNDER_REVIEW:'검토중',IN_REVIEW:'검토중',APPROVED:'승인',REJECTED:'반려',NOT_REQUIRED:'대상 아님'}[status]||status)),button('업로드',()=>uploadPriority({...item,title:definition.title},today)));panel.append(row);}}
+  if(!panel.isConnected)return;panel.replaceChildren(node('h2','우선 취합 서류'),node('p',context.read_only?context.site_name+' · 관급 현장 관점 · 조회 전용':'월간·주간 서류를 먼저 확인하고 제출합니다.'));
+  for(const group of config.groups.slice().sort((a,b)=>a.order-b.order)){const definitions=config.items.filter(i=>i.priority&&i.group_id===group.id).sort((a,b)=>a.order-b.order);if(!definitions.length)continue;panel.append(node('h3',group.label));for(const definition of definitions){const item=payload.items.find(i=>i.document_type_code===definition.code);if(!item)continue;const row=node('div',undefined,'gov-folder');const status=item.current_cycle_status||item.status;row.append(node('span',definition.title+' · '+({NOT_SUBMITTED:'미제출',SUBMITTED:'제출됨',UNDER_REVIEW:'검토중',IN_REVIEW:'검토중',APPROVED:'승인',REJECTED:'반려',NOT_REQUIRED:'대상 아님'}[status]||status)));if(!context.read_only)row.append(button('업로드',()=>uploadPriority({...item,title:definition.title},today)));panel.append(row);}}
+  if(context.read_only){const original=[...document.querySelectorAll('.card-title')].find(e=>e.textContent.includes('현장 문서취합'))?.closest('.card');if(original)original.dataset.govLegacyHidden='true';const forms=await api('/document-explorer/list');if(!panel.isConnected)return;panel.append(node('h3','공개 양식'));for(const item of forms.items.filter(i=>i.relative_path.startsWith('base/관급 공개 양식/')))panel.append(node('p',item.name));if(!forms.items.some(i=>i.relative_path.startsWith('base/관급 공개 양식/')))panel.append(node('p','현재 공개된 양식이 없습니다.'));}
  }catch(e){panel.append(node('p',e.message));}
 }
 function uploadPriority(item,today){
  const d=modal(item.title);const date=node('input');date.type='date';date.value=today;date.setAttribute('aria-label','제출 기준일');const file=node('input');file.type='file';file.setAttribute('aria-label','제출서류');const note=node('p');d.append(date,file);const b=button('업로드',async()=>{b.disabled=true;try{if(!file.files[0])throw Error('서류를 선택하세요.');const f=new FormData();f.append('site_id',String(context.site_id));f.append('requirement_id',String(item.requirement_id));f.append('document_type_code',item.document_type_code);f.append('work_date',date.value);f.append('file',file.files[0]);await api('/document-submissions/upload',{method:'POST',body:f});d.close();document.querySelector('#gov-site-priority')?.remove();await sitePriority();window.dispatchEvent(new Event('besma-document-refresh'));}catch(e){note.textContent=e.message;b.disabled=false;}});d.append(b,note);
 }
 async function reconcile(){
- const token=localStorage.getItem('besma_token')||'';
- if(token!==session){session=token;context=null;contactHub?.remove();contactHub=null;hubTesting=false;collectionConfig=null;collectionDirty=false;settingsRoot?.remove();settingsRoot=null;document.querySelectorAll('[data-gov-legacy-hidden]').forEach(n=>delete n.dataset.govLegacyHidden);document.querySelectorAll('.gov-contact-menu,.gov-contact-page,#gov-site-priority,#gov-contact-hidden').forEach(n=>n.remove());contactDialog?.close();}
+ const token=localStorage.getItem('besma_token')||'',key=workspaceKey();
+ if(key!==session){session=key;context=null;contactHub?.remove();contactHub=null;hubTesting=false;collectionConfig=null;collectionDirty=false;settingsRoot?.remove();settingsRoot=null;document.querySelectorAll('[data-gov-legacy-hidden]').forEach(n=>delete n.dataset.govLegacyHidden);document.querySelectorAll('.gov-contact-menu,.gov-settings-menu,.gov-contact-page,#gov-site-priority,#gov-contact-hidden').forEach(n=>n.remove());contactDialog?.close();}
  if(!token)return;
  if(!context){if(pending)return;pending=true;try{context=await api('/government-contact/access');}catch{return;}finally{pending=false;}}
- hideLegacyContact();if(!context.allowed)return;reconcileContactPage();
+ hideLegacyContact();
  const menu=document.querySelector('.layout-menu');
- if(menu&&!document.querySelector('.gov-contact-menu')){const b=button(context.side==='HQ'?'관급공사 현장 소통':'본사 소통',()=>location.assign(context.side==='HQ'?'/hq-safe/communications':'/site/communications'));b.className='gov-contact-menu';b.style.order='6';menu.append(b);}
- if(context.side==='HQ'&&location.pathname==='/hq-safe/settings'){
+ if(menu&&context.can_manage_forms&&!localStorage.getItem('besma_test_persona')&&!document.querySelector('.gov-settings-menu')){const b=button('관급 양식 공개 설정',()=>location.assign('/hq-safe/settings#gov-settings'));b.className='gov-settings-menu gov-contact-menu';b.style.order='20';menu.append(b);}
+ if(context.can_manage_forms&&!localStorage.getItem('besma_test_persona')&&location.pathname==='/hq-safe/settings'){
   const host=document.querySelector('.doc-settings-page');if(host&&!host.querySelector('#gov-settings')){settingsRoot=node('section',undefined,'collection-monitor');settingsRoot.id='gov-settings';host.querySelector('header')?.after(settingsRoot);if(!settingsRoot.isConnected)host.prepend(settingsRoot);loadSettings();}
  }else if(settingsRoot){settingsRoot.remove();settingsRoot=null;}
+ if(!context.allowed)return;reconcileContactPage();
+ if(menu&&!document.querySelector('.gov-contact-menu:not(.gov-settings-menu)')){const b=button(context.side==='HQ'?'관급공사 현장 소통':'본사 소통',()=>location.assign(context.side==='HQ'?'/hq-safe/communications':'/site/communications'));b.className='gov-contact-menu';b.style.order='6';menu.append(b);}
  if(context.side==='SITE'&&location.pathname==='/site/documents')await sitePriority();
  const visibleHost=context.side==='HQ'?document.querySelector('#collection-monitor,#gov-settings'):document.querySelector('#gov-site-priority');
  if(visibleHost&&!visibleHost.querySelector('.gov-contact-page')){const b=button(context.side==='HQ'?'관급공사 현장 소통':'본사 소통',()=>openContact());b.className='gov-contact-page';visibleHost.prepend(b);}

@@ -20,7 +20,8 @@ from pydantic import BaseModel
 from app.config.settings import settings
 from app.core.auth import DbDep
 from app.core.enums import Role
-from app.core.permissions import HQ_SAFE_WORKSPACE_ROLES, CurrentUserDep, assert_document_file_access
+from app.core.permissions import HQ_SAFE_WORKSPACE_ROLES, assert_document_file_access
+from app.core.government_workspace_access import GovernmentUserDep as CurrentUserDep, can_manage_government
 from app.modules.document_generation.models import DocumentInstance
 from app.modules.sites.models import Site  # noqa: F401 - registers ORM relationship target
 from app.modules.documents.storage_paths import (
@@ -179,6 +180,11 @@ def _assert_document_explorer_base_upload(current_user) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="HQ demo accounts are read-only")
 
 
+def _assert_government_settings(current_user) -> None:
+    if not can_manage_government(current_user):
+        raise HTTPException(403, "Government forms management is not allowed")
+
+
 def _allowed_extensions_for_source(source: str) -> set[str] | None:
     if source == "base":
         return BASE_TEMPLATE_EXTENSIONS
@@ -307,7 +313,7 @@ class GovernmentFileVisibility(BaseModel):
 
 @router.get("/government-folders")
 def list_government_folders(current_user: CurrentUserDep):
-    _assert_document_explorer_base_upload(current_user)
+    _assert_government_settings(current_user)
     root = _document_explorer_base_dir() / GOVERNMENT_PUBLIC_PREFIX.rstrip("/")
     visible = read_visible_folders()
     if not root.is_dir():
@@ -322,7 +328,7 @@ def list_government_folders(current_user: CurrentUserDep):
 @router.get("/government-document-catalog")
 def government_document_catalog(current_user: CurrentUserDep):
     """Report every standard form and whether an approved public copy is actually visible."""
-    _assert_document_explorer_base_upload(current_user)
+    _assert_government_settings(current_user)
     entries = _scan_document_file_entries()
     internal_prefix = "base/일반 양식/"
     public_prefix = "base/" + GOVERNMENT_PUBLIC_PREFIX
@@ -363,13 +369,13 @@ def government_document_catalog(current_user: CurrentUserDep):
 
 @router.put("/government-folders")
 def update_government_folder_visibility(payload: GovernmentFolderVisibility, current_user: CurrentUserDep):
-    _assert_document_explorer_base_upload(current_user)
+    _assert_government_settings(current_user)
     return {"visible_folders": set_folder_visibility(payload.folder, payload.visible)}
 
 
 @router.put("/government-files")
 def update_government_file_visibility(payload: GovernmentFileVisibility, current_user: CurrentUserDep):
-    _assert_document_explorer_base_upload(current_user)
+    _assert_government_settings(current_user)
     return {"relative_path": payload.relative_path, "visible": set_file_visibility(payload.relative_path, payload.visible)}
 
 
@@ -489,11 +495,14 @@ async def upload_document_explorer_base_file(
     file: UploadFile = File(...),
 ):
     _assert_document_explorer_access(current_user)
-    _assert_document_explorer_base_upload(current_user)
 
     rel = (relative_path or "").replace("\\", "/").strip()
     if rel.startswith("base/"):
         rel = rel[len("base/") :]
+    if rel.startswith(GOVERNMENT_PUBLIC_PREFIX):
+        _assert_government_settings(current_user)
+    else:
+        _assert_document_explorer_base_upload(current_user)
     dest = _safe_relative_under_root(_document_explorer_base_dir(), rel)
     if not _explorer_file_allowed(dest):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File type not allowed")

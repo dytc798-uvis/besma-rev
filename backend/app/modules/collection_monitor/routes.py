@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from app.core.auth import get_current_user
+from app.core.government_workspace_access import government_actor, is_government_owner
 from app.config.settings import settings
 from .core import GOV_CODES, VERSION, readonly, state, scoped_overview, now, is_evidence
 from .report import make_report
@@ -18,13 +19,13 @@ WRITE_ROLES={"HQ_SAFE","HQ_SAFE_ADMIN","SUPER_ADMIN"}
 def paths():
     return Path(settings.sqlite_path), Path(settings.storage_root) / "collection-monitor"
 
-def hq(user=Depends(get_current_user)):
+def hq(user=Depends(government_actor)):
     if str(getattr(user.role,"value",user.role)) not in READ_ROLES:
         raise HTTPException(403,"HQ_ONLY")
     return user
 
 def writer(user=Depends(hq)):
-    if str(getattr(user.role,"value",user.role)) not in WRITE_ROLES:
+    if str(getattr(user.role,"value",user.role)) not in WRITE_ROLES and not is_government_owner(user):
         raise HTTPException(403,"READ_ONLY_ROLE")
     return user
 
@@ -40,7 +41,7 @@ def update_collection_settings(payload:CollectionSetting,db:DbDep,user=Depends(w
     return save_configuration(db,payload,user.id)
 
 @router.get('/site-configuration')
-def site_configuration(user=Depends(get_current_user)):
+def site_configuration(user=Depends(government_actor)):
     role=str(getattr(user.role,'value',user.role))
     if role not in {'SITE','SITE_FUNCTIONAL_EVAL'} or not user.site_id:raise HTTPException(403,'SITE_ONLY')
     with readonly(paths()[0]) as main:
@@ -50,12 +51,12 @@ def site_configuration(user=Depends(get_current_user)):
         return {'revision':config['revision'],'groups':display_groups(config),'items':[{k:i[k] for k in ('code','title','frequency','group_id','order','priority')} for i in config['items'] if i['enabled'] and i['required']]}
 
 @router.get("/context")
-def context(user=Depends(get_current_user)):
+def context(user=Depends(government_actor)):
     db,_ = paths()
     with readonly(db) as c:
         site = c.execute("SELECT site_code FROM sites WHERE id=?", (user.site_id,)).fetchone() if user.site_id else None
     role=str(getattr(user.role,"value",user.role))
-    return {"version":VERSION,"role":role,"can_read_monitor":role in READ_ROLES,"can_manage":role in WRITE_ROLES,"site_id":user.site_id,"channel":"BESMA" if site and site[0] in GOV_CODES else "NAVERWORKS",
+    return {"version":VERSION,"role":role,"can_read_monitor":role in READ_ROLES,"can_manage":role in WRITE_ROLES or is_government_owner(user),"site_id":user.site_id,"read_only":bool(getattr(user,'government_preview',False)),"channel":"BESMA" if site and site[0] in GOV_CODES else "NAVERWORKS",
       "gov_site_codes":sorted(GOV_CODES),"artifact_menu_required":False}
 
 @router.get("/overview")

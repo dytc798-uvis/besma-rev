@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from app.core.auth import DbDep
 from app.core.datetime_utils import utc_now
 from app.core.enums import Role
-from app.core.permissions import CurrentUserDep
+from app.core.government_workspace_access import GovernmentUserDep as CurrentUserDep, is_government_owner, can_manage_government
 from app.modules.document_explorer.government_access import is_government_site_record
 from app.modules.documents.active_site_scope import in_active_scope, today_kst
 from app.modules.government_contact.models import GovernmentContactMessage
@@ -52,7 +52,7 @@ def _filter(query,model,document_code,general_only):
 
 
 def _actor_side(user: User) -> str:
-    if user.role in HQ_ROLES:
+    if user.role in HQ_ROLES or is_government_owner(user):
         return "HQ"
     if user.role in SITE_ROLES:
         return "SITE"
@@ -85,15 +85,15 @@ def access(db: DbDep, current_user: CurrentUserDep):
     try:
         side = _actor_side(current_user)
     except HTTPException:
-        return {"allowed": False,"legacy_contact_hidden":legacy_hidden}
+        return {"allowed": False,"legacy_contact_hidden":legacy_hidden,"can_manage_forms":can_manage_government(current_user)}
     if side == "HQ":
-        return {"allowed": True, "side": "HQ","legacy_contact_hidden":True}
+        return {"allowed": True, "side": "HQ","legacy_contact_hidden":True,"can_manage_forms":can_manage_government(current_user)}
     if _test_user(db,current_user):return {'allowed':True,'side':'SITE','site_id':-1,'site_name':'관급 소통 검증','test_mode':True,'legacy_contact_hidden':True}
     try:
         site, _ = _authorized_site(db, current_user, None)
     except HTTPException:
         return {"allowed": False,"legacy_contact_hidden":legacy_hidden}
-    return {"allowed": True, "side": "SITE", "site_id": site.id, "site_name": site.site_name,"legacy_contact_hidden":True}
+    return {"allowed": True, "side": "SITE", "site_id": site.id, "site_name": site.site_name,"legacy_contact_hidden":True,"read_only":bool(getattr(current_user,'government_preview',False)),"can_manage_forms":False}
 
 
 @router.get('/test-sites')
