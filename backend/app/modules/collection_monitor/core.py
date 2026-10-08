@@ -8,11 +8,12 @@ import sqlite3
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-VERSION = "collection-monitor-1.2.0-site-matrix"
+VERSION = "collection-monitor-1.3.0-configurable-folders"
 PRIORITY_CODES = ('GOV_RISK_INITIAL','GOV_MANAGER_APPOINTMENT','GOV_SAFETY_MANAGER_APPOINTMENT','GOV_SUPERVISOR_DESIGNATION','GOV_RISK_MONTHLY','GOV_NONCONFORMITY_LEDGER','GOV_WORKER_OPINION_LEDGER')
 PRIORITY_LABELS = dict(zip(PRIORITY_CODES,('최초 위험성평가','안전보건관리책임자 지정서','안전관리자 선임계','관리감독자 지정서','위험성평가','부적합사항 관리대장','의견청취 관리대장')))
 from app.modules.document_explorer.government_access import GOVERNMENT_SITE_CODES
 GOV_CODES = GOVERNMENT_SITE_CODES
+from .configuration import read_configuration,item_order,display_groups
 CATEGORIES = {
     "inspection": ("안전 점검", "1. 안전 점검"),
     "legal-training": ("법적교육", "2. 법적교육(특별,정기 등)"),
@@ -112,6 +113,7 @@ def sites(main, month):
 
 def government_documents(main):
     codes = ",".join("?" for _ in GOV_CODES)
+    allowed_codes = {i['code'] for i in read_configuration(main)['items']}
     return [dict(r) for r in main.execute(f"""
       SELECT d.id,d.instance_id,d.site_id,s.site_code,s.site_name,d.version_no,d.current_status,
       d.file_name,d.file_size,d.file_path,d.original_file_path,d.period_start,d.period_end,
@@ -119,7 +121,7 @@ def government_documents(main):
       FROM documents d JOIN sites s ON s.id=d.site_id
       LEFT JOIN document_instances i ON i.id=d.instance_id
       WHERE s.site_code IN ({codes}) AND d.file_path IS NOT NULL
-      ORDER BY d.id""", sorted(GOV_CODES)) if r["code"] in GOV_CATEGORY]
+      ORDER BY d.id""", sorted(GOV_CODES)) if r["code"] in allowed_codes]
 
 
 def overview(main_path, root, month):
@@ -136,10 +138,12 @@ def overview(main_path, root, month):
                 source_contact = contacts[s['site_code']]
                 s.update({key: source_contact.get(key) for key in ('contact_name', 'contact_phone', 'contact_role', 'contact_phone_needs_confirmation', 'additional_contacts')})
         definitions = {"NAS_" + k: {"code": "NAS_" + k, "title": v[0], "frequency": "WEEKLY" if k == "nonconformity" else "MONTHLY", "channel": "NAVERWORKS", "category": k} for k,v in CATEGORIES.items()}
+        config=read_configuration(main);configured={i["code"]:i for i in config["items"]};groups={g["id"]:g for g in display_groups(config)}
         gov_reqs = {}
         for r in main.execute("SELECT site_id,code,title,frequency FROM document_requirements WHERE is_enabled=1 AND is_required=1 AND code LIKE 'GOV_%'"):
-            if r["code"] in GOV_CATEGORY:
-                definitions[r["code"]] = {"code": r["code"], "title": PRIORITY_LABELS.get(r['code'],r["title"].removeprefix("관급 ")), "frequency": r["frequency"], "channel": "BESMA", "category": GOV_CATEGORY[r["code"]]}
+            if r["code"] in configured:
+                item=configured[r["code"]];group=groups[item["group_id"]]
+                definitions[r["code"]] = {"code":r["code"],"title":item["title"],"frequency":r["frequency"],"channel":"BESMA","category":GOV_CATEGORY.get(r["code"],"custom"),"group_id":item["group_id"],"group_label":group["label"],"priority":item["priority"],"order":item_order(item,config["groups"])}
                 gov_reqs.setdefault(r["site_id"], []).append(r["code"])
         scan = c.execute("SELECT * FROM scans WHERE month=? ORDER BY id DESC LIMIT 1", (month,)).fetchone()
         scanned = json.loads(scan["categories_json"]) if scan else []
@@ -213,7 +217,7 @@ def overview(main_path, root, month):
         unmapped = [r for r in copies if r["site_id"] is None or not r["period"]]
         return {"version": VERSION, "month": month, "sites": rows, "documents": summaries,
             "unmapped_count": len(unmapped), "scan": dict(scan) if scan else None,
-            "mirror_count": c.execute("SELECT COUNT(*) FROM mirrors").fetchone()[0]}
+            "groups":display_groups(config), "configuration_revision":config["revision"], "mirror_count": c.execute("SELECT COUNT(*) FROM mirrors").fetchone()[0]}
 
 
 def scoped_overview(main_path, root, month, scope='government', priority_only=True, team=None, site_ids=None, query='', document_code=None, only_missing=False):
@@ -223,14 +227,14 @@ def scoped_overview(main_path, root, month, scope='government', priority_only=Tr
     if site_ids is not None:rows=[s for s in rows if s['id'] in site_ids]
     if query:rows=[s for s in rows if query.lower() in (s['site_name']+' '+s['site_code']).lower()]
     for s in rows:
-        s['cells']=[c for c in s['cells'] if (scope!='government' or not priority_only or c['code'] in PRIORITY_CODES) and (not document_code or c['code']==document_code or 'CAT_'+c['category']==document_code)]
-        s['cells'].sort(key=lambda c:PRIORITY_CODES.index(c['code']) if c['code'] in PRIORITY_CODES else 99)
+        s['cells']=[c for c in s['cells'] if (scope!='government' or not priority_only or c.get('priority',c['code'] in PRIORITY_CODES)) and (not document_code or c['code']==document_code or 'CAT_'+c['category']==document_code)]
+        s['cells'].sort(key=lambda c:c.get('order',(99,99,c['code'])))
         s['required']=sum(c['expected'] for c in s['cells']);s['received']=sum(c['received'] for c in s['cells'])
         s['rate']=round(100*s['received']/s['required'],1) if s['required'] and all(c['known'] for c in s['cells']) else None
     if only_missing:rows=[s for s in rows if any(c['expected']>c['received'] for c in s['cells'])]
     codes={c['code'] for s in rows for c in s['cells']}
     definitions=[d for d in payload['documents'] if d['code'] in codes]
-    definitions.sort(key=lambda d:PRIORITY_CODES.index(d['code']) if d['code'] in PRIORITY_CODES else 99)
+    definitions.sort(key=lambda d:d.get('order',(99,99,d['code'])))
     for d in definitions:
         cs=[c for s in rows for c in s['cells'] if c['code']==d['code']];n=sum(c['expected'] for c in cs);done=sum(c['received'] for c in cs)
         d.update(required=n,received=done,rate=round(100*done/n,1) if n and all(c['known'] for c in cs) else None)

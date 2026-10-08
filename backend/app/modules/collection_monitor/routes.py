@@ -28,6 +28,27 @@ def writer(user=Depends(hq)):
         raise HTTPException(403,"READ_ONLY_ROLE")
     return user
 
+from app.core.auth import DbDep
+from .configuration import CollectionSetting,read_configuration,save_configuration,display_groups
+
+@router.get('/settings')
+def collection_settings(user=Depends(writer)):
+    with readonly(paths()[0]) as main:return read_configuration(main)
+
+@router.put('/settings')
+def update_collection_settings(payload:CollectionSetting,db:DbDep,user=Depends(writer)):
+    return save_configuration(db,payload,user.id)
+
+@router.get('/site-configuration')
+def site_configuration(user=Depends(get_current_user)):
+    role=str(getattr(user.role,'value',user.role))
+    if role not in {'SITE','SITE_FUNCTIONAL_EVAL'} or not user.site_id:raise HTTPException(403,'SITE_ONLY')
+    with readonly(paths()[0]) as main:
+        site=main.execute('SELECT site_code FROM sites WHERE id=?',(user.site_id,)).fetchone()
+        if not site or site['site_code'] not in GOV_CODES:raise HTTPException(403,'GOVERNMENT_SITE_ONLY')
+        config=read_configuration(main)
+        return {'revision':config['revision'],'groups':display_groups(config),'items':[{k:i[k] for k in ('code','title','frequency','group_id','order','priority')} for i in config['items'] if i['enabled'] and i['required']]}
+
 @router.get("/context")
 def context(user=Depends(get_current_user)):
     db,_ = paths()

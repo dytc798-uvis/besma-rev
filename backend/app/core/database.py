@@ -47,6 +47,7 @@ def init_db() -> None:
     from app.modules.pdf_signing.service import ensure_schema as ensure_pdf_signing_schema
 
     from app.modules.government_contact import models as government_contact_models  # noqa: F401
+    from app.modules.collection_monitor import models as collection_monitor_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     ensure_safety_ledger_schema()

@@ -6,7 +6,8 @@ from pathlib import Path
 from fastapi import HTTPException
 from app.config.settings import settings
 from app.modules.documents.storage_paths import resolve_existing_storage_path
-from .core import CATEGORIES, GOV_CATEGORY, government_documents, readonly, period_key
+from .core import government_documents, readonly, period_key
+from .configuration import read_configuration,display_groups
 
 
 def safe_label(value, limit=90):
@@ -18,6 +19,7 @@ def export_items(month):
     storage=Path(settings.storage_root).resolve()
     result=[];seen=set();unavailable=0
     with readonly(settings.sqlite_path) as main:
+        config=read_configuration(main);configured={i['code']:i for i in config['items']};groups={g['id']:g for g in display_groups(config)}
         docs=government_documents(main)
         versions=[]
         for d in docs:
@@ -29,7 +31,7 @@ def export_items(month):
             day=d['period_start'] or str(d['uploaded_at'] or '')[:10]
             if not day:continue
             req=main.execute('SELECT title,frequency FROM document_requirements WHERE site_id=? AND code=? LIMIT 1',(d['site_id'],d['code'])).fetchone()
-            frequency=req['frequency'] if req else 'MONTHLY'
+            item=configured[d['code']];frequency=item['frequency']
             # Startup records stay available in every month's view.
             if frequency not in {'EVENT','ADHOC'} and day[:7]!=month:
                 if not (d['period_start'] and d['period_end'] and d['period_start'][:7]<=month<=d['period_end'][:7]):continue
@@ -40,12 +42,11 @@ def export_items(month):
             sha=hashlib.sha256(content).hexdigest();key=f"{d['id']}-{d['version_no']}-{sha}"
             if key in seen:continue
             seen.add(key)
-            cat=GOV_CATEGORY[d['code']]
-            label=safe_label((req['title'] if req else d['code']).removeprefix('관급 '))
+            label=item['title']
             site=safe_label(re.sub(r'^\[[^]]+\]\s*','',d['site_name']),65)
             source_month=day[:7];yy,mm=source_month.split('-');folder=f'{yy[2:]}.{mm}월'
-            parts=[CATEGORIES[cat][1],'관급',folder]
-            if cat=='nonconformity':parts.append(period_key('WEEKLY',d['period_end'] or day))
+            parts=[item['collection_folder'],'관급',groups[item['group_id']]['label'],folder]
+            if frequency=='WEEKLY':parts.append(period_key('WEEKLY',day))
             parts += [d['site_code']+' '+site,label]
             name=f"{d['site_code']}_문서{d['id']}_v{d['version_no']}_{sha[:10]}_"+safe_label(d['file_name'] or p.name,100)
             result.append({'key':key,'relative_path':'/'.join(parts+[name]),'sha256':sha,'size':len(content),'path':p})
