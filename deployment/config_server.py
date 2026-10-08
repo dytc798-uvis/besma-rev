@@ -18,6 +18,7 @@ def migrate():
 mode=sys.argv[1]
 if mode=='migrate':
     assert os.geteuid()!=0
+    os.environ['SQLITE_PATH']=str(DB)
     sys.path.insert(0,str(RELEASE/'backend'));os.chdir(RELEASE/'backend')
     from app.config.settings import settings
     assert Path(settings.sqlite_path).resolve()==DB.resolve()
