@@ -14,7 +14,7 @@ from app.core.enums import Role
 
 
 PUBLIC_PREFIX = "관급 공개 양식/"
-GOVERNMENT_SITE_CODES = frozenset({"24028", "25037", "25040", "25059", "25063", "26004", "26024", "26052"})
+GOVERNMENT_SITE_CODES = frozenset({"24028", "25037", "25040", "25059", "25063", "26052"})
 # Only inspected, blank site forms are candidates. A copy alone never grants access;
 # an HQ safety officer must still explicitly enable its public folder.
 PUBLIC_CANDIDATE_RELATIVE_PATHS = frozenset({
@@ -29,6 +29,8 @@ _lock = Lock()
 
 
 def is_government_site_record(site: object) -> bool:
+    if str(getattr(site, "site_code", "") or "").strip() in {"26004", "26024"}:
+        return False  # User-confirmed team 5 sites, outside government collection.
     if str(getattr(site, "site_code", "") or "").strip() in GOVERNMENT_SITE_CODES:
         return True
     contract_type = str(getattr(site, "contract_type", "") or "").strip()

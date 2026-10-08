@@ -8,10 +8,11 @@ import sqlite3
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-VERSION = "collection-monitor-1.1.0-manual-nas"
+VERSION = "collection-monitor-1.2.0-site-matrix"
 PRIORITY_CODES = ('GOV_RISK_INITIAL','GOV_MANAGER_APPOINTMENT','GOV_SAFETY_MANAGER_APPOINTMENT','GOV_SUPERVISOR_DESIGNATION','GOV_RISK_MONTHLY','GOV_NONCONFORMITY_LEDGER','GOV_WORKER_OPINION_LEDGER')
 PRIORITY_LABELS = dict(zip(PRIORITY_CODES,('최초 위험성평가','안전보건관리책임자 지정서','안전관리자 선임계','관리감독자 지정서','위험성평가','부적합사항 관리대장','의견청취 관리대장')))
-GOV_CODES = {"24028", "25037", "25040", "25059", "25063", "26004", "26024", "26052"}
+from app.modules.document_explorer.government_access import GOVERNMENT_SITE_CODES
+GOV_CODES = GOVERNMENT_SITE_CODES
 CATEGORIES = {
     "inspection": ("안전 점검", "1. 안전 점검"),
     "legal-training": ("법적교육", "2. 법적교육(특별,정기 등)"),
@@ -90,8 +91,11 @@ def period_key(frequency, day):
 def sites(main, month):
     start, end = parse_month(month)
     result = []
-    for row in main.execute("SELECT id,site_code,site_name,start_date,end_date,status FROM sites ORDER BY site_code"):
+    for row in main.execute("SELECT id,site_code,site_name,start_date,end_date,status,site_manager,manager_name,project_manager,phone_number FROM sites ORDER BY site_code"):
         s = dict(row)
+        s["contact_name"] = next((str(s[k]).strip() for k in ("site_manager", "manager_name", "project_manager") if s.get(k) and str(s[k]).strip()), None)
+        s["contact_phone"] = str(s["phone_number"]).strip() if s.get("phone_number") else None
+        for k in ("site_manager", "manager_name", "project_manager", "phone_number"):s.pop(k, None)
         match = re.match(r"^\[(?:준공-)?([1-6])\.", s["site_name"])
         gov = s["site_code"] in GOV_CODES
         from app.modules.documents.active_site_scope import active_site_codes, today_kst
@@ -122,6 +126,15 @@ def overview(main_path, root, month):
     start, end = parse_month(month)
     with readonly(main_path) as main, state(root) as c:
         all_sites = sites(main, month)
+        contact_file = Path(root) / 'site-contacts-20261008.json'
+        contact_data = json.loads(contact_file.read_text(encoding='utf8')) if contact_file.is_file() else {}
+        contacts = contact_data.get('sites', {}) if contact_data.get('schema') == 1 else {}
+        for s in all_sites:
+            if any(word in str(s.get('contact_name') or '') for word in ('관리용', '미등록', '테스트')):
+                s['contact_name'] = None
+            if s['site_code'] in contacts:
+                source_contact = contacts[s['site_code']]
+                s.update({key: source_contact.get(key) for key in ('contact_name', 'contact_phone', 'contact_role', 'contact_phone_needs_confirmation', 'additional_contacts')})
         definitions = {"NAS_" + k: {"code": "NAS_" + k, "title": v[0], "frequency": "WEEKLY" if k == "nonconformity" else "MONTHLY", "channel": "NAVERWORKS", "category": k} for k,v in CATEGORIES.items()}
         gov_reqs = {}
         for r in main.execute("SELECT site_id,code,title,frequency FROM document_requirements WHERE is_enabled=1 AND is_required=1 AND code LIKE 'GOV_%'"):
@@ -132,6 +145,7 @@ def overview(main_path, root, month):
         scanned = json.loads(scan["categories_json"]) if scan else []
         copies = [dict(r) for r in c.execute("SELECT * FROM copies WHERE month=? AND id IN (SELECT copy_id FROM scan_items WHERE scan_id=?)", (month,scan['id'] if scan else 0)) if is_evidence(r)]
         docs = government_documents(main)
+        instances = [dict(r) for r in main.execute("SELECT id,site_id,document_type_code,period_start,period_end,workflow_status FROM document_instances WHERE document_type_code LIKE 'GOV_%' ORDER BY id")]
         rows = []
         from app.modules.documents.active_site_scope import today_kst
         today = today_kst()
@@ -163,13 +177,26 @@ def overview(main_path, root, month):
                     received = {d["period"] for d in evidence};approved=set();rejected=set()
                     pending = [d for d in copies if d["category"] == definition["category"] and (d["site_id"] is None or not d["period"])]
                     known = definition["category"] in scanned and not pending
+                periods = []
+                if s["channel"] == "BESMA":
+                    for period in expected:
+                        candidates = [i for i in instances if i["site_id"] == s["id"] and i["document_type_code"] == key and
+                            (definition["frequency"] in {"EVENT", "ADHOC"} or
+                             (i["period_start"] <= end.isoformat() and i["period_end"] >= start.isoformat() and period_key(definition["frequency"], max(i["period_start"], start.isoformat())) == period))]
+                        instance = candidates[-1] if candidates else None
+                        matching = [d for d in evidence if
+                            (definition["frequency"] in {"EVENT", "ADHOC"} or period_key(definition["frequency"], d["period_start"] or d["uploaded_at"] or start) == period)]
+                        document = matching[-1] if matching else None
+                        status = instance["workflow_status"] if instance else document["current_status"] if document else "NOT_SUBMITTED"
+                        if not document and status in {"SUBMITTED", "UNDER_REVIEW", "RESUBMITTED", "APPROVED", "REJECTED"}:status="NOT_SUBMITTED"
+                        periods.append({"period":period,"status":status,"instance_id":document["instance_id"] if document and document["instance_id"] else instance["id"] if instance else None,"document_id":document["id"] if document else None,"file_name":document["file_name"] if document else None,"uploaded_at":document["uploaded_at"] if document else None})
                 count = len(set(expected) & received)
                 cells.append({**definition, "expected": len(expected) if s["active"] else 0,
                   "received": count if s["active"] else 0, "known": known,
                   "approved":len(set(expected)&approved) if s['active'] else 0,
                   "rejected":len(set(expected)&rejected) if s['active'] else 0,
                   "missing_periods": [p for p in expected if p not in received],
-                  "evidence_count": len(evidence), "latest_instance_id":evidence[-1].get("instance_id") if evidence else None,
+                  "periods": periods, "evidence_count": len(evidence), "latest_instance_id":evidence[-1].get("instance_id") if evidence else None,
                   "latest_document_id":evidence[-1].get("id") if evidence and s["channel"]=="BESMA" else None,
                   "status": "NOT_REQUIRED" if not s["active"] else "SUBMITTED" if count == len(expected) else "NOT_SUBMITTED" if known else "UNCONFIRMED"})
             target = sum(x["expected"] for x in cells)
