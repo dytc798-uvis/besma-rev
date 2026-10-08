@@ -5,7 +5,8 @@ R=Path(__file__).parent; RELEASE=R/'release'; LIVE=Path('/srv/besma/backend'); D
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def protected():
     with sqlite3.connect(DB.as_uri()+'?mode=ro',uri=True) as c:
-        return {t:{'count':len(rows),'sha256':hashlib.sha256(repr(rows).encode()).hexdigest()} for t in ('users','sites','documents','document_instances','document_upload_histories','document_review_histories','functional_eval_assessments','worker_attendances','government_contact_messages') if (rows:=c.execute('SELECT * FROM '+t+' ORDER BY id').fetchall()) is not None}
+        tables={r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        return {t:{'count':len(rows),'sha256':hashlib.sha256(repr(rows).encode()).hexdigest()} for t in ('users','sites','documents','document_instances','document_upload_histories','document_review_histories','functional_eval_assessments','worker_attendances','worker_attendance','attendances','government_contact_messages') if t in tables and (rows:=c.execute('SELECT * FROM '+t+' ORDER BY id').fetchall()) is not None}
 mode=sys.argv[1]
 if mode=='test':
     import operations
@@ -52,7 +53,8 @@ elif mode=='deploy':
         assert sha(RELEASE/'backend'/row['path'])==row['sha256']
     import pwd,grp
     uid=pwd.getpwnam('besma').pw_uid;gid=grp.getgrnam('besma').gr_gid
-    OUT.mkdir(mode=0o750);os.chown(OUT,uid,gid)
+    assert not (OUT/'deployment.json').exists(), 'ALREADY_DEPLOYED'
+    OUT.mkdir(mode=0o750,exist_ok=True);os.chown(OUT,uid,gid)
     before=protected();(OUT/'protected-before.json').write_text(json.dumps(before),encoding='utf8')
     src=sqlite3.connect(DB.as_uri()+'?mode=ro',uri=True);dst=sqlite3.connect(OUT/'database-before.sqlite3');src.backup(dst);src.close();dst.close();os.chown(OUT/'database-before.sqlite3',uid,gid);os.chmod(OUT/'database-before.sqlite3',0o640)
     for row in plan['files']:
