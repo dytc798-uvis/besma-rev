@@ -101,4 +101,3 @@ elif mode=='verify':
     for name,payload in [('verification.json',result),('overview.json',p),('other-overview.json',other)]: (OUT/name).write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf8')
     session.close();print(json.dumps(result))
 else:raise ValueError(mode)
-
