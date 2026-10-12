@@ -31,7 +31,7 @@ async function signup(){
   const suggestion=el('p','추천: '+p.suggested_login_id+' · 추천값을 자유롭게 수정하거나 새 아이디를 입력할 수 있습니다.','hint');form.append(suggestion);
   const aliases={'24028':'gangwon-tunnel','25037':'namyangju-wangsuk','25040':'gangjin-gwangju','25059':'gunpo-daeyami'};
   form.append(btn('추천 아이디 넣기',()=>{const prefix=email.value.trim().split('@')[0].toLowerCase();id.value=/^[a-z0-9][a-z0-9._-]{2,49}$/.test(prefix)?prefix:aliases[p.site_code];suggestion.textContent='추천 아이디도 직접 수정할 수 있습니다. 중복 여부는 저장할 때 확인합니다.';}));
-  const password=field(form,'비밀번호 · 8자 이상','password','','password'),confirm=field(form,'비밀번호 확인','password_confirm','','password');password.minLength=8;confirm.minLength=8;password.maxLength=128;confirm.maxLength=128;
+  const password=field(form,'비밀번호 · 4자 이상','password','','password'),confirm=field(form,'비밀번호 확인','password_confirm','','password');password.minLength=4;confirm.minLength=4;password.maxLength=128;confirm.maxLength=128;
   const submit=el('button','계정 설정 완료');submit.type='submit';form.append(submit);panel.append(form);root.insertBefore(panel,root.querySelector('details'));
   form.onsubmit=async e=>{e.preventDefault();submit.disabled=true;notice('계정 설정을 저장하고 있습니다.');try{const data=Object.fromEntries(new FormData(form));const result=await post('/site-invitations/accept',{token,...data},true);token='';password.value='';confirm.value='';panel.replaceChildren(el('h2','계정 설정 완료'),el('p',result.site_name),el('strong','아이디: '+result.login_id),el('p',result.message));const a=el('a','정한 아이디로 로그인');a.href='/site-workspace.html';panel.append(a);notice('');}catch(e){notice(e.message);}finally{submit.disabled=false;}};
  }catch(e){notice(e.message);}

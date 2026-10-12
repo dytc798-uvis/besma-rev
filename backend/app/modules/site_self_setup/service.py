@@ -14,6 +14,7 @@ from app.config.settings import settings
 from app.config.security import get_password_hash
 from app.core.datetime_utils import utc_now
 from app.core.enums import Role, UIType
+from app.core.password_policy import MIN_PASSWORD_LENGTH
 from app.modules.users.models import User
 from app.modules.sites.models import Site
 
@@ -109,7 +110,7 @@ def accept(db,payload):
   if name!=row['expected_name']:raise HTTPException(422,'초대받은 이름과 다릅니다. 관리자에게 확인해 주세요.')
   if not job or len(job)>60:raise HTTPException(422,'직책을 입력해 주세요.')
   if len(email)>254 or not re.fullmatch(r'[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+',email):raise HTTPException(422,'이메일 주소를 확인해 주세요.')
-  if len(password)<8 or len(password)>128 or password!=password.strip():raise HTTPException(422,'비밀번호는 앞뒤 공백 없이 8~128자로 입력해 주세요.')
+  if len(password)<MIN_PASSWORD_LENGTH or len(password)>128 or password!=password.strip():raise HTTPException(422,'비밀번호는 앞뒤 공백 없이 4~128자로 입력해 주세요.')
   if password!=payload['password_confirm']:raise HTTPException(422,'비밀번호 확인이 일치하지 않습니다.')
   user=db.get(User,row['target_user_id']) if row['target_user_id'] else None
   if user and (user.site_id!=site.id or user.name!=row['expected_name'] or not user.is_active or getattr(user.role,'value',user.role)!='SITE'):
