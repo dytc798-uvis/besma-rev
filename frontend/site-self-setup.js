@@ -81,5 +81,5 @@ async function workspace(){
   setInterval(()=>{if(activeThread)refreshThread();loadThreads();},15000);
  }catch(e){notice(e.message);}
 }
-window.addEventListener('hashchange',()=>{if(mode==='setup'&&location.hash.startsWith('#invite=')){location.reload();return;}const thread=location.hash.match(/^#thread-(\d+)$/);if(mode!=='setup'&&ctx&&thread&&Number(thread[1])!==activeThread)openThread(Number(thread[1]));});
+window.addEventListener('hashchange',()=>{if(mode==='setup'&&location.hash.startsWith('#invite=')){location.reload();return;}const site=sites.find(s=>location.hash==='#site-'+s[0]);if(ctx?.owner&&site&&site[1]!==selectedSite){selectedSite=site[1];document.querySelector('#owner-site').value=selectedSite;activeThread=0;threadGeneration++;conversation.replaceChildren();loadOwner();loadThreads();return;}const thread=location.hash.match(/^#thread-(\d+)$/);if(mode!=='setup'&&ctx&&thread&&Number(thread[1])!==activeThread)openThread(Number(thread[1]));});
 if(mode==='setup')signup();else workspace();
