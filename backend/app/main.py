@@ -88,6 +88,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    from app.modules.site_self_setup.routes import router as site_self_setup_router
+    from app.modules.site_self_setup import communication
+    app.include_router(site_self_setup_router)
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(sites_router)
