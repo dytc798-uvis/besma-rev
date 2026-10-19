@@ -13,7 +13,8 @@ function install() {
   if (checkedToken !== localStorage.getItem('besma_token') || !allowed) return;
   for (const next of document.querySelectorAll('a[href="/hq-safe/team-schedule"]')) {
     if (next.previousElementSibling?.dataset.photoShareNav) continue;
-    const link = document.createElement('a'); link.href = '/photo-share.html'; link.textContent = '사진공유'; link.className = next.className; link.dataset.photoShareNav = 'true';
+    const link = document.createElement('a'); link.href = '/photo-share.html'; link.textContent = '사진공유'; link.className = next.className.replace(/router-link-(exact-)?active/g, '').trim(); link.dataset.photoShareNav = 'true';
+    for (const attr of next.attributes) if (attr.name.startsWith('data-v-')) link.setAttribute(attr.name, attr.value);
     next.before(link);
   }
 }
