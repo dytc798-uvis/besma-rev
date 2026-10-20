@@ -20,6 +20,10 @@ def amounts(body):
  net=money_after(r'공\s*급\s*(?:가\s*액|금\s*액)',body)
  total=money_after(r'계\s*약\s*금\s*액',body) or money_after(r'도\s*급\s*금\s*액',body)
  tax=money_after(r'부\s*가\s*(?:가\s*치\s*)?세',body)
+ # Blank amount fields can be followed by six-digit registration/date codes.
+ # Small unverified values require review rather than becoming a contract amount.
+ if net is not None and net<1_000_000:net=None
+ if total is not None and total<1_000_000:total=None
  if net and (not total or net<=total):return net,'VAT 별도'
  if total and tax is not None and 0<=tax<total:return total-tax,'VAT 별도'
  if total and re.search(r'(?:VAT|부가세|부가가치세)\s*(?:별도|별\s*도)',body,re.I):return total,'VAT 별도'
