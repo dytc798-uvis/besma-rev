@@ -30,6 +30,7 @@ from app.modules.safety_features.routes import router as safety_features_router
 from app.modules.safety_features.team_schedule_routes import router as team_schedule_router
 from app.modules.team_photos import router as team_photos_router
 from app.modules.page_share import router as page_share_router
+from app.modules.site_directory import router as site_directory_router
 from app.modules.safety_features.team_personal_request_routes import router as team_personal_request_router
 from app.modules.accidents.routes import router as accidents_router
 from app.modules.functional_eval.routes import router as functional_eval_router
@@ -119,6 +120,7 @@ def create_app() -> FastAPI:
     app.include_router(team_schedule_router)
     app.include_router(team_photos_router)
     app.include_router(page_share_router)
+    app.include_router(site_directory_router)
     app.include_router(team_personal_request_router)
     app.include_router(accidents_router)
     app.include_router(functional_eval_router)
