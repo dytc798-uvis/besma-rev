@@ -35,7 +35,7 @@ def bootstrap(user=Depends(authorized)):
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
  role=getattr(user.role,'value',user.role);safe_ui=getattr(user,'ui_type','')=='HQ_SAFE'
- return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.10','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
+ return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.11','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
   'menus':[{'id':1,'title':'기능인인정제'},{'id':2,'title':'업무분장'},{'id':3,'title':'위험성평가 DB'},{'id':4,'title':'양식·법령 탐색'},
    {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'고객사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'},{'id':9,'title':'근로자의견청취'}]})
 
@@ -169,6 +169,13 @@ def contractor_page(item_id:int,page:int,user=Depends(authorized)):
  file=DATA.parent/'policy-previews'/f'{item_id}-{page}.jpg'
  if not file.is_file():raise HTTPException(404,'미리보기를 준비하고 있습니다.')
  return FileResponse(file,media_type='image/jpeg',headers={'Cache-Control':'private, no-store','Vary':'Authorization'})
+
+@router.get('/contractors/{item_id}/pages/{page}/guide')
+def contractor_page_guide(item_id:int,page:int,user=Depends(authorized)):
+ from app.modules.policy_guides import page_guide
+ if item_id<1 or page<1:raise HTTPException(404,'자료를 찾지 못했습니다.')
+ return result(page_guide(DATA,dataset(),item_id,page))
+
 
 def site_data(db,user):
  from app.modules.site_directory import catalog,favorites
