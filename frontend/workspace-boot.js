@@ -3,7 +3,7 @@
  const scripts=__BESMA_LEGACY_SCRIPTS__,nav=__BESMA_NAV_SCRIPT__;
  const root=document.documentElement,path=location.pathname;
  const hq=/^\/hq-(?:safe|other)(?:\/|$)/.test(path);
- const preserved=/^\/hq-safe\/(functional-eval(?:-monitoring|-rewards-sanctions|\/grade-report)?|documents(?:\/.*)?|document-explorer|document-instances\/.*|government-contact|communications|safety-policy-goals|user-guide)\/?$/;
+ const preserved=/^\/hq-safe\/(functional-eval(?:-monitoring|-rewards-sanctions|\/grade-report)?|documents(?:\/.*)?|document-explorer|document-instances\/.*|government-contact|communications|safety-policy-goals|user-guide|google-feedback|worker-voice)\/?$/;
  const ready=document.readyState==='loading'?new Promise(r=>document.addEventListener('DOMContentLoaded',r,{once:true})):Promise.resolve();
  function release(){root.classList.remove('besma-route-gate','besma-login-preparing');document.getElementById('besma-route-status')?.remove();}
  if(hq)root.classList.add('besma-route-gate');else if(path.startsWith('/login'))root.classList.add('besma-login-preparing');

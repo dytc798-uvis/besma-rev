@@ -34,12 +34,13 @@ def migrate(conn):
 def bootstrap(user=Depends(authorized)):
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
- return result({'permissions':{'manage_government_forms':can_manage_government(user)},'version':'2026.10.26.4','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
+ role=getattr(user.role,'value',user.role);safe_ui=getattr(user,'ui_type','')=='HQ_SAFE'
+ return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.7','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
   'menus':[{'id':1,'title':'기능인인정제'},{'id':2,'title':'업무분장'},{'id':3,'title':'위험성평가 DB'},{'id':4,'title':'양식·법령 탐색'},
-   {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'도급사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'}]})
+   {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'도급사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'},{'id':9,'title':'근로자의견청취'}]})
 
 @router.get('/duties')
-def duties(user=Depends(authorized)):return result({'items':dataset()['duties'],'source':dataset()['sources']['duties']})
+def duties(user=Depends(authorized)):return result({'items':dataset()['duties'],'source':dataset()['sources']['duties'],'site_assignments':[{'name':name,'teams':sorted(teams)} for name,teams in SAFETY_TEAMS.items()]})
 
 @router.get('/functional-overview')
 def functional_overview(db:DbDep,user=Depends(authorized)):
@@ -106,8 +107,8 @@ def site_data(db,user):
  for site in sites:
   contractor=next((d['value'] for d in site['details'] if d['key']=='contractor'),'')
   out.append({'code':site['code'],'name':site['name'],'address':site['address'],'latitude':site['latitude'],'longitude':site['longitude'],
-   'contacts':[{k:c.get(k,'') for k in ['name','role','rank','label','phone']} for c in site['contacts']],
-   'contractor':contractor,'favorite':site['code'] in stars,'default_favorite':site['code'] in defaults,
+   'contacts':[{k:c.get(k,'') for k in ['name','role','rank','label','phone','contact_id','rank_revision','rank_confirmed']} for c in site['contacts']],
+   'info_revision':site['info_revision'],'contractor':contractor,'favorite':site['code'] in stars,'default_favorite':site['code'] in defaults,
    'management':{'status':'미등록','note':'현장별 평가점수·제재 현황이 확인되면 표시합니다.'}})
  return out
 
@@ -138,3 +139,54 @@ def favorite(code:str,body:FavoriteBody,db:DbDep,user=Depends(authorized)):
  if code not in {s['code'] for s in site_data(db,user)}:raise HTTPException(404,'현장을 찾지 못했습니다.')
  db.execute(text('INSERT INTO workspace_site_preferences(user_id,site_code,is_favorite) VALUES(:uid,:code,:value) ON CONFLICT(user_id,site_code) DO UPDATE SET is_favorite=excluded.is_favorite,updated_at=CURRENT_TIMESTAMP'),{'uid':user.id,'code':code,'value':int(body.favorite)});db.commit()
  return result({'code':code,'favorite':body.favorite})
+
+
+from app.modules.site_directory import SiteInfoCompletion
+
+@router.put('/sites/{code}/missing-info')
+def complete_site_info(code:str,body:SiteInfoCompletion,db:DbDep,user=Depends(authorized)):
+ from app.modules.site_directory import complete_missing_info
+ return result(complete_missing_info(code,body,db,user))
+
+@router.get('/seoul-weather')
+def seoul_weather_forecast(user=Depends(authorized)):
+ from app.modules.workspace_home import seoul_weather
+ return result(seoul_weather())
+
+
+@router.get('/organization-chart/{kind}')
+def organization_chart(kind:str,user=Depends(authorized)):
+ files={'company':'company.png','safety':'safety.png'}
+ if kind not in files:raise HTTPException(404,'조직도를 찾지 못했습니다.')
+ file=DATA.parent/'organization'/files[kind]
+ if not file.is_file():raise HTTPException(404,'조직도를 확인하고 있습니다.')
+ with file.open('rb') as stream:
+  if stream.read(8)!=b'\x89PNG\r\n\x1a\n':raise HTTPException(503,'조직도를 확인하고 있습니다.')
+ return FileResponse(file,media_type='image/png',headers={'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff'})
+
+@router.get('/organization-chart/{kind}/people')
+def organization_chart_people(kind:str,user=Depends(authorized)):
+ import hashlib,math
+ if kind not in {'company','safety'}:raise HTTPException(404,'조직도를 찾지 못했습니다.')
+ folder=DATA.parent/'organization';file=folder/'people.json';image=folder/(kind+'.png')
+ if not file.is_file() or not image.is_file():raise HTTPException(404,'인물 정보를 확인하고 있습니다.')
+ try:
+  meta=json.loads(file.read_text(encoding='utf-8-sig'))
+  charts=[item for item in meta['charts'] if item.get('kind')==kind]
+  if len(charts)!=1:raise ValueError()
+  chart=charts[0];digest=hashlib.sha256(image.read_bytes()).hexdigest()
+  if digest!=chart['png_sha256']:raise ValueError()
+  data_bytes=DATA.read_bytes();rows=json.loads(data_bytes.decode('utf-8-sig'))['duties'];bound=hashlib.sha256(data_bytes).hexdigest()==meta['workspace_duties']['sha256'];out=[];seen=set()
+  for person in chart['people']:
+   box=person['hitbox'];values=[box[k] for k in ('x','y','w','h')]
+   if any(isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) for v in values):continue
+   x,y,w,h=values
+   if not (0<=x<1 and 0<=y<1 and w>0 and h>0 and x+w<=1.000001 and y+h<=1.000001):continue
+   ident=person['occurrence_id']
+   if not isinstance(ident,str) or not ident or ident in seen:continue
+   seen.add(ident);match=person.get('duty_match',{});key=match.get('match_key') or {};identity=(key.get('department'),key.get('rank'),key.get('name'))
+   indices=match.get('row_indices',[]);actual=[i for i,r in enumerate(rows) if (r['department'],r['rank'],r['name'])==identity]
+   matched=bound and match.get('status') in {'matched_provisional','matched_mixed','matched_confirmed'} and bool(actual) and indices==actual and identity==(person.get('department'),person.get('rank'),person.get('name'))
+   out.append({'id':ident,'name':person.get('name',''),'rank':person.get('rank',''),'department':person.get('department',''),'position':person.get('position',''),'site_name':person.get('site_name',''),'hitbox':dict(zip(('x','y','w','h'),values)),'match_key':key if matched else None})
+  return result({'kind':kind,'image_sha256':digest,'people':out})
+ except (KeyError,TypeError,ValueError,OSError):raise HTTPException(503,'인물 정보를 확인하고 있습니다.')

@@ -35,3 +35,5 @@
 .login-company-intro{box-sizing:border-box!important}
 .login-safety-preview{display:none}@media(max-width:900px){.landing-header{flex-direction:row!important;gap:15px!important}.login-company-intro{background:rgba(9,28,41,.77)!important;min-height:0!important;width:100%!important}.login-safety-preview{display:block;width:100%;height:175px;object-fit:cover;object-position:46% 62%;border-radius:8px;margin-top:16px;box-shadow:0 8px 22px #061a2a35}.login-company-intro h1{max-width:none!important}}
 .login-company-intro h1{font-size:clamp(27px,2.65vw,38px)!important}@media(max-width:900px){.login-company-intro h1{font-size:27px!important}}
+
+.login-company-intro .login-law-link{margin-left:20px;font-weight:650}

@@ -5,12 +5,13 @@ from fastapi import APIRouter,Depends,HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel,ConfigDict,StrictBool,StrictInt,Field,field_validator
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError,OperationalError
 from app.config.settings import settings
 from app.core.auth import DbDep,get_current_user
 
 router=APIRouter(prefix='/site-directory',tags=['site-directory'])
 DATA=Path(settings.storage_root)/'site-directory'/'directory.json'
-VERSION='2026.10.20.4'
+VERSION='2026.10.26.7'
 
 def migrate(connection):
  connection.execute(text('''CREATE TABLE IF NOT EXISTS site_directory_favorites (
@@ -19,6 +20,11 @@ def migrate(connection):
  connection.execute(text('''CREATE TABLE IF NOT EXISTS site_directory_contact_ranks (
  contact_id TEXT PRIMARY KEY,rank TEXT NOT NULL,revision INTEGER NOT NULL,
  updated_by INTEGER NOT NULL REFERENCES users(id),updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)'''))
+ connection.execute(text("""CREATE TABLE IF NOT EXISTS site_directory_info_completions (
+ site_code TEXT NOT NULL,field TEXT NOT NULL CHECK(field IN ('address','phone','rank')),contact_id TEXT NOT NULL,
+ value TEXT NOT NULL,before_value TEXT NOT NULL,revision INTEGER NOT NULL,
+ completed_by INTEGER NOT NULL REFERENCES users(id),completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ PRIMARY KEY(site_code,revision))"""))
 
 def contact_id(contact,site_code):
  identity=contact['name']+'\0'+(re.sub(r'\D','',contact['phone']) or site_code)
@@ -51,6 +57,10 @@ def detail(key,label,value,unit=''):
 def catalog(db):
  data=snapshot();aliases=data.get('aliases',{})
  ranks={r['contact_id']:dict(r) for r in db.execute(text('SELECT contact_id,rank,revision FROM site_directory_contact_ranks')).mappings()}
+ completed=[dict(r) for r in db.execute(text('SELECT site_code,field,contact_id,value,revision FROM site_directory_info_completions ORDER BY site_code,revision')).mappings()]
+ completions={(r['site_code'],r['field'],r['contact_id']):r['value'] for r in completed}
+ revisions={}
+ for r in completed:revisions[r['site_code']]=max(revisions.get(r['site_code'],0),r['revision'])
  rows={str(r['site_code']):dict(r) for r in db.execute(text('''SELECT id,site_code,site_name,address,latitude,longitude,project_amount,start_date,end_date,
  client_name,contractor_name,contract_type,contract_date,work_types,building_count,floor_underground,floor_ground,household_count,gross_area,gross_area_unit,main_usage FROM sites''')).mappings()}
  for alias,code in aliases.items():
@@ -76,8 +86,13 @@ def catalog(db):
    detail('usage','주용도',value('main_usage'))]
   if contract_info and not contract_info.get('complete'):
    fields.extend([detail('contract_status','계약금액 확인',contract_info.get('status')),detail('confirmed_subtotal','확인분 합계 (VAT 별도)',contract_info.get('confirmed_subtotal') or None,'원')])
-  result.append({'code':item['code'],'name':item['name'],'address':value('address',erp.get('address','')) or '',
-    'latitude':current.get('latitude'),'longitude':current.get('longitude'),'contacts':[ranked_contact(c,item['code'],ranks) for c in item['contacts']],
+  contacts=[ranked_contact(c,item['code'],ranks) for c in item['contacts']]
+  for contact in contacts:
+   if not str(contact.get('phone') or '').strip():contact['phone']=completions.get((item['code'],'phone',contact['contact_id']),'')
+  address=value('address',erp.get('address','')) or ''
+  if not str(address).strip():address=completions.get((item['code'],'address',''),'')
+  result.append({'code':item['code'],'name':item['name'],'address':address,'info_revision':revisions.get(item['code'],0),
+    'latitude':current.get('latitude'),'longitude':current.get('longitude'),'contacts':contacts,
     'contracts':[{'name':c['name'],'amount':c['amount'],'basis':c['basis'],'start':c.get('start',''),'end':c.get('end','')} for c in contracts],
     'contract_total_complete':contract_info.get('complete',False),'details':[f for f in fields if f is not None]})
  return data,result
@@ -137,3 +152,89 @@ def set_favorite(site_code:str,payload:FavoriteChange,db:DbDep,user=Depends(auth
   db.execute(text('DELETE FROM site_directory_favorites WHERE user_id=:uid AND site_code=:code'),{'uid':user.id,'code':code})
  db.commit()
  return response({'favorite_codes':favorites(db,user.id)})
+
+
+class ContactInfoCompletion(BaseModel):
+ model_config=ConfigDict(extra='forbid')
+ contact_id:str=Field(pattern=r'^[0-9a-f]{32}$')
+ phone:str|None=Field(default=None,min_length=1,max_length=40)
+ rank:str|None=Field(default=None,min_length=1,max_length=20)
+ expected_rank_revision:StrictInt=Field(default=0,ge=0)
+ @field_validator('phone')
+ @classmethod
+ def validate_phone(cls,value):
+  if value is None:return value
+  value=value.strip()
+  if not re.fullmatch(r'[+0-9() -]+',value) or not 4<=len(re.sub(r'\D','',value))<=20:raise ValueError('전화번호를 확인해 주세요.')
+  return value
+ @field_validator('rank')
+ @classmethod
+ def validate_rank(cls,value):
+  if value is None:return value
+  value=value.strip()
+  if not value or not re.fullmatch(r'[가-힣A-Za-z ]+',value):raise ValueError('직급을 확인해 주세요.')
+  return value
+
+class SiteInfoCompletion(BaseModel):
+ model_config=ConfigDict(extra='forbid')
+ expected_revision:StrictInt=Field(ge=0)
+ address:str|None=Field(default=None,min_length=1,max_length=400)
+ contacts:list[ContactInfoCompletion]=Field(default_factory=list,max_length=100)
+ @field_validator('address')
+ @classmethod
+ def validate_address(cls,value):
+  if value is None:return value
+  value=value.strip()
+  if not value or any(ord(c)<32 for c in value):raise ValueError('주소를 확인해 주세요.')
+  return value
+
+def missing_rank(contact):
+ return not str(contact.get('rank') or '').strip() and '소장' not in str(contact.get('role') or '').split('·')
+
+def complete_missing_info(site_code,payload,db,user):
+ # Called only by the existing authenticated headquarters workspace route.
+ data,sites=catalog(db);code=data.get('aliases',{}).get(site_code,site_code)
+ site=next((site for site in sites if site['code']==code),None)
+ if site is None:raise HTTPException(404,'현장을 찾지 못했습니다.')
+ conflict='다른 사용자가 먼저 수정했습니다. 목록을 새로고침한 뒤 확인해 주세요.'
+ if payload.expected_revision!=site['info_revision']:raise HTTPException(409,conflict)
+ contacts={contact['contact_id']:contact for contact in site['contacts']};changes=[]
+ if payload.address is not None:
+  if str(site['address'] or '').strip():raise HTTPException(409,'등록된 주소는 이 화면에서 덮어쓸 수 없습니다.')
+  changes.append(('address','',payload.address,str(site['address'] or '')))
+ keys=[change.contact_id for change in payload.contacts]
+ if len(keys)!=len(set(keys)):raise HTTPException(422,'같은 담당자가 중복되었습니다.')
+ for change in payload.contacts:
+  contact=contacts.get(change.contact_id)
+  if contact is None:raise HTTPException(404,'담당자를 찾지 못했습니다.')
+  if change.phone is not None:
+   if str(contact.get('phone') or '').strip():raise HTTPException(409,'등록된 전화번호는 이 화면에서 덮어쓸 수 없습니다.')
+   changes.append(('phone',change.contact_id,change.phone,str(contact.get('phone') or '')))
+  if change.rank is not None:
+   if not missing_rank(contact):raise HTTPException(409,'등록된 직급은 이 화면에서 덮어쓸 수 없습니다.')
+   if change.expected_rank_revision!=contact['rank_revision']:raise HTTPException(409,conflict)
+   changes.append(('rank',change.contact_id,change.rank,str(contact.get('rank') or '')))
+ if not changes:raise HTTPException(422,'보완할 정보를 입력해 주세요.')
+ try:
+  for index,(field,key,value,before) in enumerate(changes):
+   if field=='rank':
+    revision=contacts[key]['rank_revision']
+    changed=db.execute(text("""INSERT INTO site_directory_contact_ranks(contact_id,rank,revision,updated_by)
+     VALUES(:key,:rank,1,:uid) ON CONFLICT(contact_id) DO UPDATE SET rank=excluded.rank,
+     revision=site_directory_contact_ranks.revision+1,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP
+     WHERE site_directory_contact_ranks.revision=:revision"""),{'key':key,'rank':value,'uid':user.id,'revision':revision})
+    if changed.rowcount!=1:raise HTTPException(409,conflict)
+   expected=payload.expected_revision+index
+   added=db.execute(text("""INSERT INTO site_directory_info_completions(site_code,field,contact_id,value,before_value,revision,completed_by)
+    SELECT :code,:field,:key,:value,:before,:revision,:uid
+    WHERE COALESCE((SELECT MAX(revision) FROM site_directory_info_completions WHERE site_code=:code),0)=:expected"""),
+    {'code':code,'field':field,'key':key,'value':value,'before':before,'revision':expected+1,'uid':user.id,'expected':expected})
+   if added.rowcount!=1:raise HTTPException(409,conflict)
+  db.commit()
+ except (IntegrityError,OperationalError) as error:
+  db.rollback()
+  if getattr(error.orig,'sqlite_errorcode',None) in {5,6,262,517,1555,2067}:raise HTTPException(409,conflict) from error
+  raise
+ except Exception:
+  db.rollback();raise
+ return {'site_code':code,'saved':len(changes),'revision':payload.expected_revision+len(changes)}
