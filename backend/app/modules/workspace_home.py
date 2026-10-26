@@ -41,54 +41,10 @@ def verified_photo(code,photos):
     if not valid_url(value.get('url'),True) or not valid_url(value.get('source_url')):return None
     return {'site_code':code,'url':value['url'],'source_url':value['source_url'],'caption':str(value.get('caption') or '')[:200],'verified':True}
 
-def _weather_label(code):
-    if type(code) is not int:return '확인 중'
-    if code==0:return '맑음'
-    if code in {1,2}:return '구름 조금' if code==1 else '구름 많음'
-    if code==3:return '흐림'
-    if code in {45,48}:return '안개'
-    if code in {51,53,55,56,57}:return '이슬비'
-    if code in {61,63,65,66,67,80,81,82}:return '비'
-    if code in {71,73,75,77,85,86}:return '눈'
-    if code in {95,96,99}:return '뇌우'
-    return '확인 중'
-
-def _forecast_payload(value,today):
-    if not isinstance(value,dict) or value.get('timezone')!='Asia/Seoul':raise ValueError('FORECAST_TIMEZONE')
-    start=dt.date.fromisoformat(today);expected=[str(start+dt.timedelta(days=i)) for i in range(7)]
-    daily=value.get('daily',{});units=value.get('daily_units',{})
-    if daily.get('time')!=expected or any(len(daily.get(key,[]))!=7 for key in ('weather_code','temperature_2m_min','temperature_2m_max')):raise ValueError('FORECAST_DATES')
-    if any(units.get(key)!='°C' for key in ('temperature_2m_min','temperature_2m_max')):raise ValueError('FORECAST_UNITS')
-    def temperature(number):return float(number) if type(number) in {int,float} and math.isfinite(number) and -70<=number<=70 else None
-    days=[]
-    for i,date in enumerate(expected):
-        low=temperature(daily['temperature_2m_min'][i]);high=temperature(daily['temperature_2m_max'][i])
-        if low is not None and high is not None and low>high:raise ValueError('FORECAST_RANGE')
-        days.append({'date':date,'weather_label':_weather_label(daily['weather_code'][i]),'temperature_min':low,'temperature_max':high})
-    current=value.get('current',{});current_value=None
-    stamp=current.get('time','')
-    if isinstance(stamp,str) and stamp.startswith(today+'T') and value.get('current_units',{}).get('temperature_2m')=='°C':
-        try:measured=dt.datetime.fromisoformat(stamp)
-        except ValueError:measured=None
-        now=dt.datetime.now(dt.timezone(dt.timedelta(hours=9))).replace(tzinfo=None)
-        current_temp=temperature(current.get('temperature_2m'))
-        if measured is not None and measured.tzinfo is None and abs((now-measured).total_seconds())<=10800 and current_temp is not None:
-            current_value={'temperature':current_temp,'weather_label':_weather_label(current.get('weather_code')),'observed_at':stamp+'+09:00'}
-    return {'available':True,'location':'서울','timezone':'Asia/Seoul','source':'Open-Meteo','source_url':'https://open-meteo.com/','updated_at':dt.datetime.now(dt.timezone.utc).isoformat(),'current':current_value,'days':days}
-
-@lru_cache(maxsize=2)
-def _seoul_weather_cached(today,bucket):
-    from urllib.request import Request,urlopen
-    url='https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.9780&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_min,temperature_2m_max&timezone=Asia%2FSeoul&forecast_days=7'
-    try:
-        with urlopen(Request(url,headers={'User-Agent':'BESMA-Weather/1.0'}),timeout=6) as response:raw=response.read(256001)
-        if len(raw)>256000:raise ValueError('FORECAST_SIZE')
-        return _forecast_payload(json.loads(raw),today)
-    except Exception:
-        return {'available':False,'location':'서울','timezone':'Asia/Seoul','source':'Open-Meteo','source_url':'https://open-meteo.com/','updated_at':None,'current':None,'days':[],'status_text':'서울 날씨를 확인하고 있습니다.'}
-
 def seoul_weather():
-    return _seoul_weather_cached(str(kst_today()),int(time.time()//600))
+    from app.modules.seoul_forecast import seoul_forecast
+    return seoul_forecast(Path(settings.storage_root)/'weather_snapshots'/'seoul_forecast'/'met.json')
+
 
 def daily():
     path=ROOT/'daily-attendance/latest.json'

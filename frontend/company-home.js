@@ -163,25 +163,29 @@ function draw(){
   if(!sites.length)list.append(node('p','지도에 표시할 현장이 없습니다.'));
 }
 async function loadSeoulWeather(sequence){
-  const host=$('seoul-weather');host.replaceChildren(node('p','서울 날씨 확인 중','seoul-weather-state'));
+  const host=$('seoul-weather');host.replaceChildren(node('p','서울 예보 확인 중','seoul-weather-state'));
   try{
     const value=await api('/workspace/seoul-weather');
     if(sequence!==refreshSequence||!data||localStorage.getItem('besma_token')!==token)return;
-    host.replaceChildren();const heading=node('div',null,'seoul-weather-heading');heading.append(node('strong','서울 날씨'));
-    const current=value.current;
-    if(value.available&&current){const temp=typeof current.temperature==='number'&&Number.isFinite(current.temperature)?Math.round(current.temperature)+'℃':'확인 중';heading.append(node('span',[current.weather_label,temp].filter(Boolean).join(' · ')));}
-    host.append(heading);
-    if(!value.available||value.timezone!=='Asia/Seoul'||!Array.isArray(value.days)){host.append(node('p','예보를 확인하고 있습니다.','seoul-weather-state'));return;}
+    host.replaceChildren();const heading=node('div',null,'seoul-weather-heading');heading.append(node('strong','서울 날씨'),node('span','날짜별 예보 · 한국시간'));host.append(heading);
+    if(!value.available||value.forecast_kind!=='point_forecast'||value.timezone!=='Asia/Seoul'||!Array.isArray(value.days)){host.append(node('p','예보를 확인하고 있습니다.','seoul-weather-state'));return;}
     const first=new Date(data.date+'T00:00:00Z'),days=node('div',null,'seoul-forecast');
     for(let i=0;i<7;i++){
       const d=new Date(first);d.setUTCDate(first.getUTCDate()+i);const key=d.toISOString().slice(0,10),item=value.days.find(x=>x.date===key),card=node('div',null,'seoul-forecast-day'+(i===0?' today':''));card.dataset.date=key;
       card.append(node('small',(i===0?'오늘 ':new Intl.DateTimeFormat('ko-KR',{weekday:'short',timeZone:'UTC'}).format(d)+' ')+(d.getUTCMonth()+1)+'.'+d.getUTCDate()));
-      card.append(node('span',typeof item?.weather_label==='string'&&item.weather_label?item.weather_label:'확인 중'));
-      const low=typeof item?.temperature_min==='number'&&Number.isFinite(item.temperature_min)?Math.round(item.temperature_min):null,high=typeof item?.temperature_max==='number'&&Number.isFinite(item.temperature_max)?Math.round(item.temperature_max):null;
-      card.append(node('strong',low!==null&&high!==null?low+'~'+high+'℃':'기온 확인 중'));days.append(card);
+      const validTime=typeof item?.forecast_at==='string'&&item.forecast_at.startsWith(key+'T')&&item.forecast_at.endsWith('+09:00')&&/^([01]\d|2[0-3]):[0-5]\d$/.test(item.forecast_time||'')&&item.forecast_at.slice(11,16)===item.forecast_time;
+      const temperature=validTime&&typeof item?.temperature==='number'&&Number.isFinite(item.temperature)&&item.temperature>=-70&&item.temperature<=70?item.temperature:null;
+      card.append(node('small',validTime?item.forecast_time+' 예보':'시각 확인 중'));
+      card.append(node('span',validTime&&typeof item?.weather_label==='string'&&item.weather_label?item.weather_label:'확인 중'));
+      card.append(node('strong',temperature!==null?temperature+'℃':'기온 확인 중'));days.append(card);
     }
-    host.append(days,node('p',[value.source, value.updated_at?stamp(value.updated_at)+' 기준':''].filter(Boolean).join(' · '),'seoul-weather-source'));
-  }catch(e){if(sequence===refreshSequence)host.replaceChildren(node('strong','서울 날씨'),node('p','날씨를 확인하지 못했습니다.','seoul-weather-state'));}
+    const source=node('p',null,'seoul-weather-source'),provider=node('a','MET Norway'),license=node('a','CC BY 4.0');
+    provider.href='https://api.met.no/weatherapi/locationforecast/2.0/documentation';license.href='https://creativecommons.org/licenses/by/4.0/';
+    for(const link of [provider,license]){link.target='_blank';link.rel='noopener';}
+    source.append(provider,document.createTextNode(' · '),license,document.createTextNode(' · 제공 시점 선택'));
+    if(value.updated_at)source.append(document.createTextNode(' · '+stamp(value.updated_at)+' 발표'));
+    host.append(days,source);
+  }catch(e){if(sequence===refreshSequence)host.replaceChildren(node('strong','서울 날씨'),node('p','예보를 확인하지 못했습니다.','seoul-weather-state'));}
 }
 async function refresh(){const sequence=++refreshSequence;try{const value=await api('/workspace/home');shape??=await (await fetch('/workspace-assets/korea-admin1.geojson')).json();if(shape.type!=='FeatureCollection'||!Array.isArray(shape.features)||shape.features.length!==17)throw Error('지도 경계를 확인하지 못했습니다.');if(matchMedia('(max-width:740px)').matches&&!northShape){try{const north=await (await fetch('/workspace-assets/north-korea-outline.geojson')).json();if(north.type==='FeatureCollection'&&north.features?.length===1&&north.features[0].properties.ADM0_A3==='PRK')northShape=north;}catch{}}await viewOwnerReady;if(sequence!==refreshSequence||localStorage.getItem('besma_token')!==token)return;data=value;const resume=restoreHomeView();void loadSeoulWeather(sequence);$('attendance-value').textContent=value.attendance.current?value.attendance.people.toLocaleString('ko-KR'):'수집 대기';$('attendance-note').textContent=value.attendance.current?value.attendance.site_count+'개 현장 · '+stamp(value.attendance.captured_at)+' 수집':value.attendance.source_date?'최근 '+value.attendance.source_date+' · '+value.attendance.last_people+'명 (오늘 자료 대기)':'오늘 ERP 출역자료를 기다리고 있습니다.';$('home-date').textContent=value.date.replaceAll('-','.');const loginLink=document.querySelector('.company-header .login');loginLink.href='/workspace.html';loginLink.firstChild.textContent='업무공간으로 ';document.querySelector('.hero-button').href='/workspace.html';document.querySelector('.hero-button').firstChild.textContent='BESMA 업무공간으로 ';await notices();draw();if(resume?.expanded&&matchMedia('(max-width:740px)').matches)openMap();if(resume)requestAnimationFrame(()=>scrollTo({top:resume.scroll,behavior:'instant'}));}catch(e){clear(e.message);}}
 $('close-map').onclick=closeMap;$('map-dialog').addEventListener('close',()=>{$('home-map-slot').append($('site-map'));camera={x:0,y:0,scale:1};cameraRegion=null;selected='전체';focused=null;if(data){draw();$('open-map')?.focus();}});
