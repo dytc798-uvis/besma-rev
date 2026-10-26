@@ -125,7 +125,7 @@ async function reconcile(){
  if(!token)return;
  if(!context){if(pending)return;pending=true;try{context=await api('/government-contact/access');}catch{return;}finally{pending=false;}}
  hideLegacyContact();
- const menu=document.querySelector('.layout-menu');
+ const menu=document.querySelector('.workspace-owned-menu')?null:document.querySelector('.layout-menu');
  if(menu&&context.can_manage_forms&&!localStorage.getItem('besma_test_persona')&&!document.querySelector('.gov-settings-menu')){const b=button('관급 양식 공개 설정',()=>location.assign('/hq-safe/settings#gov-settings'));b.className='gov-settings-menu gov-contact-menu';b.style.order='20';menu.append(b);}
  if(context.can_manage_forms&&!localStorage.getItem('besma_test_persona')&&location.pathname==='/hq-safe/settings'){
   const host=document.querySelector('.doc-settings-page');if(host&&!host.querySelector('#gov-settings')){settingsRoot=node('section',undefined,'collection-monitor');settingsRoot.id='gov-settings';host.querySelector('header')?.after(settingsRoot);if(!settingsRoot.isConnected)host.prepend(settingsRoot);loadSettings();}

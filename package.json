@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node tools/build-workspace.mjs"
+    "build": "node tools/build-workspace.mjs",
+    "test:boot": "node tools/test-workspace-boot.cjs"
   },
   "devDependencies": {
-    "esbuild": "0.25.12"
+    "esbuild": "0.25.12",
+    "playwright": "1.62.1"
   }
 }
