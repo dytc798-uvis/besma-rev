@@ -35,7 +35,7 @@ def bootstrap(user=Depends(authorized)):
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
  role=getattr(user.role,'value',user.role);safe_ui=getattr(user,'ui_type','')=='HQ_SAFE'
- return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.12','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
+ return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.13','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
   'menus':[{'id':1,'title':'기능인인정제'},{'id':2,'title':'업무분장'},{'id':3,'title':'위험성평가 DB'},{'id':4,'title':'양식·법령 탐색'},
    {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'고객사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'},{'id':9,'title':'근로자의견청취'}]})
 
