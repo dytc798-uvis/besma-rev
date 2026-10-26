@@ -121,6 +121,8 @@ def create_app() -> FastAPI:
     app.include_router(team_photos_router)
     app.include_router(page_share_router)
     app.include_router(site_directory_router)
+    from app.modules.workspace import router as workspace_router
+    app.include_router(workspace_router)
     app.include_router(team_personal_request_router)
     app.include_router(accidents_router)
     app.include_router(functional_eval_router)

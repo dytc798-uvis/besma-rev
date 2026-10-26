@@ -1,0 +1,12 @@
+{
+  "name": "besma-hq-workspace-release",
+  "version": "2026.10.26",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build-workspace.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}
