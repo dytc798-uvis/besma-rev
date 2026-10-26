@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import text,bindparam
 from app.config.settings import settings
 from app.core.datetime_utils import kst_today
+from app.modules.home_fields import home_site_fields,home_site_scope,bound_location_region
 
 ROOT=Path(settings.storage_root)/'headquarters-workspace'
 REGIONS=('서울','경기','인천','강원권','충청권','호남권','영남권','제주권','주소 확인 중')
@@ -60,7 +61,7 @@ def location_records():
     path=ROOT/'site-locations.json'
     return json.loads(path.read_text(encoding='utf-8')).get('locations',{}) if path.is_file() else {}
 
-def active_sites(db,attendance):
+def active_sites(db,attendance,user=None):
     from app.modules.site_directory import catalog
     from app.modules.documents.active_site_scope import active_site_codes
     from app.modules.document_explorer.government_access import is_government_site_record
@@ -82,8 +83,10 @@ def active_sites(db,attendance):
         if precision=='unresolved' and point.get('address_sha256')==hashlib.sha256(address.encode()).hexdigest():lat,lon,precision=point.get('latitude'),point.get('longitude'),point.get('precision','unresolved')
         if lat is None or lon is None or not(33<=float(lat)<=39 and 124<=float(lon)<=132):lat,lon,precision=None,None,'unresolved'
         classification=is_government_site_record(SimpleNamespace(**{**row,'site_code':code})) if row else None
-        result.append({'code':code,'name':site['name'],'address':address,'region':region(address),'latitude':lat,'longitude':lon,'location_precision':precision,'today_people':counts.get(code,0) if current else None,
-                       'is_government':classification,'photo':verified_photo(code,photos),'map_visible':map_exclusion(site['name']) is None,'map_exclusion_reason':map_exclusion(site['name'])})
+        site_region=region(address)
+        if site_region=='주소 확인 중':site_region=bound_location_region(address,point,lat,lon) or site_region
+        result.append({'code':code,'name':site['name'],'address':address,'region':site_region,'latitude':lat,'longitude':lon,'location_precision':precision,'today_people':counts.get(code,0) if current else None,
+                       'is_government':classification,'photo':verified_photo(code,photos),'map_visible':map_exclusion(site['name']) is None,'map_exclusion_reason':map_exclusion(site['name']),**home_site_fields(site,user)})
     return result
 
 def readiness(db,attendance=None):
@@ -118,10 +121,10 @@ def readiness(db,attendance=None):
     if missing:blockers.append(f'{missing}개 현장의 소장·평가자 배정을 확인해야 합니다.')
     return {**base,'source_sha256':attendance['source_sha256'],'captured_at':attendance['captured_at'],'sites':sites,'site_count':len(sites),'prior_roster_people':len(known),'prior_grade_people':len(prior),'prior_functional_people':len(functional),'prior_safety_people':len(safety),'new_or_ungraded_people':attendance['people']-len(prior),'evaluator_check_sites':missing,'blockers':blockers}
 
-def home(db):
-    data=daily();today=str(kst_today());current=bool(data and data['date']==today);sites=active_sites(db,data)
+def home(db,user=None):
+    data=daily();today=str(kst_today());current=bool(data and data['date']==today);sites=active_sites(db,data,user)
     notices=[dict(r) for r in db.execute(text('SELECT id,title,created_at FROM notices ORDER BY created_at DESC,id DESC LIMIT 3')).mappings()]
-    return {'date':today,'attendance':{'current':current,'people':data['people'] if current else None,'source_date':data['date'] if data else None,'captured_at':data['captured_at'] if data else None,'last_people':data['people'] if data else None,'site_count':len(data['sites']) if current else None},'sites':sites,'regions':[{'name':name,'count':sum(s['region']==name for s in sites)} for name in REGIONS],'notices':notices,'location_source':'ERP 주소 · 현장검색 공통','map_attribution':'Natural Earth · © OpenStreetMap contributors'}
+    return {**home_site_scope(sites),'date':today,'attendance':{'current':current,'people':data['people'] if current else None,'source_date':data['date'] if data else None,'captured_at':data['captured_at'] if data else None,'last_people':data['people'] if data else None,'site_count':len(data['sites']) if current else None},'sites':sites,'regions':[{'name':name,'count':sum(s['region']==name for s in sites)} for name in REGIONS],'notices':notices,'location_source':'ERP 주소 · 현장검색 공통','map_attribution':'Natural Earth · © OpenStreetMap contributors'}
 
 def weather(db,code):
     from fastapi import HTTPException

@@ -35,9 +35,9 @@ def bootstrap(user=Depends(authorized)):
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
  role=getattr(user.role,'value',user.role);safe_ui=getattr(user,'ui_type','')=='HQ_SAFE'
- return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.9','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
+ return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.10','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
   'menus':[{'id':1,'title':'기능인인정제'},{'id':2,'title':'업무분장'},{'id':3,'title':'위험성평가 DB'},{'id':4,'title':'양식·법령 탐색'},
-   {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'도급사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'},{'id':9,'title':'근로자의견청취'}]})
+   {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'고객사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'},{'id':9,'title':'근로자의견청취'}]})
 
 @router.get('/duties')
 def duties(user=Depends(authorized)):return result({'items':dataset()['duties'],'source':dataset()['sources']['duties'],'site_assignments':[{'name':name,'teams':sorted(teams)} for name,teams in SAFETY_TEAMS.items()]})
@@ -186,7 +186,7 @@ def site_data(db,user):
   contractor=next((d['value'] for d in site['details'] if d['key']=='contractor'),'')
   out.append({'code':site['code'],'name':site['name'],'address':site['address'],'latitude':site['latitude'],'longitude':site['longitude'],
    'contacts':[{k:c.get(k,'') for k in ['name','role','rank','label','phone','contact_id','rank_revision','rank_confirmed']} for c in site['contacts']],
-   'info_revision':site['info_revision'],'contractor':contractor,'favorite':site['code'] in stars,'default_favorite':site['code'] in defaults,
+   'info_revision':site['info_revision'],'client':next((d['value'] for d in site['details'] if d['key']=='client'),''),'contractor':contractor,'favorite':site['code'] in stars,'default_favorite':site['code'] in defaults,
    'management':{'status':'미등록','note':'현장별 평가점수·제재 현황이 확인되면 표시합니다.'}})
  return out
 
@@ -196,7 +196,7 @@ def sites(db:DbDep,user=Depends(authorized)):return result({'items':site_data(db
 @router.get('/home')
 def home_dashboard(db:DbDep,user=Depends(authorized)):
  from app.modules.workspace_home import home
- return result(home(db))
+ return result(home(db,user))
 
 @router.get('/functional-readiness')
 def functional_readiness(db:DbDep,user=Depends(authorized)):

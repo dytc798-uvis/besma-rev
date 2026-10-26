@@ -1,8 +1,9 @@
+import {resolveCustomer,customerPolicyMatches,siteCustomerName} from '/assets/customer-policy.js';
 const API='https://api.besma.co.kr',token=localStorage.getItem('besma_token');
 const $=id=>document.getElementById(id),N=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 let generation=0,context=null,cache={},blobUrls=[],toastTimer;
-const names={functional:'기능인인정제',duties:'업무분장',risks:'위험성평가 DB',forms:'양식·법령 탐색',sites:'현장 정보 검색',contractors:'도급사 안전기준',government:'관급공사 현장 소통',guide:'사용설명서',voice:'근로자의견청취'};
-const descriptions={functional:'기능·안전 평가부터 검토·승인, 포상과 제재까지 한곳에서 확인합니다.',duties:'업무로 찾고, 담당자에게 바로 연결하세요.',risks:'표준작업별 위험요인과 감소대책, 신고가 확인된 사고사례를 함께 확인합니다.',forms:'필요한 업무 양식과 법령 자료를 찾아 확인합니다.',sites:'담당 현장을 먼저 확인하고, 지도와 전화로 바로 연결합니다.',contractors:'도급사별 평가 항목과 제재·지원 기준을 확인합니다.',government:'현재 운영 중인 관급 현장의 서류 취합과 현장 소통을 연결합니다.',guide:'화면을 보며 필요한 업무 순서를 확인하세요.',voice:'의견을 작성하고 접수·조치 상태를 확인합니다.'};
+const names={functional:'기능인인정제',duties:'업무분장',risks:'위험성평가 DB',forms:'양식·법령 탐색',sites:'현장 정보 검색',contractors:'고객사 안전기준',government:'관급공사 현장 소통',guide:'사용설명서',voice:'근로자의견청취'};
+const descriptions={functional:'기능·안전 평가부터 검토·승인, 포상과 제재까지 한곳에서 확인합니다.',duties:'업무로 찾고, 담당자에게 바로 연결하세요.',risks:'표준작업별 위험요인과 감소대책, 신고가 확인된 사고사례를 함께 확인합니다.',forms:'필요한 업무 양식과 법령 자료를 찾아 확인합니다.',sites:'담당 현장을 먼저 확인하고, 지도와 전화로 바로 연결합니다.',contractors:'고객사별 평가 항목과 제재·지원 기준을 확인합니다.',government:'현재 운영 중인 관급 현장의 서류 취합과 현장 소통을 연결합니다.',guide:'화면을 보며 필요한 업무 순서를 확인하세요.',voice:'의견을 작성하고 접수·조치 상태를 확인합니다.'};
 function tell(s){clearTimeout(toastTimer);$('toast').textContent=s;toastTimer=setTimeout(()=>$('toast').textContent='',4000);}
 function B(text,fn,cls=''){const b=N('button',text,cls);b.type='button';b.onclick=()=>Promise.resolve().then(fn).catch(e=>tell(e.message));return b;}
 function A(label,href,cls=''){const a=N('a',label,cls);a.href=href;return a;}
@@ -18,8 +19,8 @@ const stepData={
  duties:['업무명·이름·직급으로 검색하거나 부서를 선택합니다.','주업무를 먼저 확인하고 비상대비업무와 대체담당을 확인합니다.','사무실 직통번호를 누르면 휴대전화의 전화 앱으로 연결됩니다.'],
  risks:['작업명이나 위험요인을 입력하고 표준작업을 선택합니다.','위험요인과 표준 감소대책을 함께 확인합니다.','사고사례 번호를 펼쳐 신고가 확인된 사고내용과 재발방지대책을 봅니다.'],
  forms:['문서명이나 업무 키워드를 입력합니다.','등록된 양식·법령 목록을 검색합니다.','문서의 개정일과 적용 내용을 확인하고 본인 권한에 따라 열람합니다.'],
- sites:['즐겨찾기에서 담당 현장을 확인하거나 전체 현장을 검색합니다.','상세에서 주소·담당자·도급사를 확인합니다.','지도는 찾아가기, 전화번호는 전화 걸기, 별표는 개인 즐겨찾기를 설정합니다.','도급사 안전기준 바로가기로 해당 회사의 평가·제재 자료를 확인합니다.'],
- contractors:['도급사를 선택하거나 평가·제재·포상 키워드로 검색합니다.','자료 제목과 기준일을 확인하고 해당 원문을 펼칩니다.','현장별 실제 평가결과와 비교해 미흡 항목을 관리합니다.'],
+ sites:['즐겨찾기에서 담당 현장을 확인하거나 전체 현장을 검색합니다.','상세에서 주소·담당자·도급사를 확인합니다.','지도는 찾아가기, 전화번호는 전화 걸기, 별표는 개인 즐겨찾기를 설정합니다.','고객사 안전기준 바로가기로 해당 회사의 평가·제재 자료를 확인합니다.'],
+ contractors:['고객사를 선택하거나 평가·제재·포상 키워드로 검색합니다.','자료 제목과 기준일을 확인하고 해당 원문을 펼칩니다.','현장별 실제 평가결과와 비교해 미흡 항목을 관리합니다.'],
  voice:['의견 작성에서 Google 설문에 의견을 남깁니다.','접수·조치 조회에서 허용된 현장과 기간을 선택합니다.','기존 관리대장에서 접수·조치 및 검토 이력을 확인합니다.'],
  guide:['사용할 메뉴를 선택하면 화면 예시와 업무 순서를 확인할 수 있습니다.','각 업무 화면 오른쪽의 사용설명을 누르면 해당 메뉴 안내로 연결됩니다.','해당 업무로 이동을 누르면 업무 화면으로 돌아갑니다.'],
  government:['취합에서 현장별 제출·검토 현황을 확인합니다.','소통에서 해당 관급 현장을 선택해 요청과 답변을 확인합니다.','현장과 문서의 적용 범위를 확인한 뒤 기존 권한에 따라 처리합니다.']};
@@ -97,11 +98,17 @@ function policyImageDialog(host,item,url,page){
 }
 async function drawContractors(host,g){
  const data=cache.contractors??=await api('/workspace/contractors');if(g!==generation)return;
- const tools=N('div',null,'tools'),select=N('select');select.setAttribute('aria-label','도급사 선택');select.append(N('option','전체 도급사'));select.options[0].value='';for(const c of [...new Set(data.items.map(p=>p.contractor))].sort()){const o=N('option',c);o.value=c;select.append(o);}
- let q='',drawId=0,from=new URLSearchParams(location.hash.split('?')[1]||'').get('company');if(from){const key=policyKey(from),aliases={'hdc현대산업개발':'현대산업개발','에이치디씨현대산업개발':'현대산업개발','삼성물산':'삼성','삼성이앤에이':'삼성','삼성e&a':'삼성'},sourceKey=aliases[key]||key,matched=[...select.options].find(o=>o.value&&sourceKey===policyKey(o.value));if(matched)select.value=matched.value;}
- const list=N('div'),note=N('p',null,'top-note');tools.append(search('평가 · 제재 · 포상 기준 검색',v=>{q=v;draw();}),select);host.append(tools,note,list);select.onchange=draw;
+ const tools=N('div',null,'tools'),select=N('select');select.setAttribute('aria-label','고객사 선택');select.append(N('option','전체 고객사'));select.options[0].value='';for(const c of [...new Set(data.items.map(p=>p.contractor))].sort()){const o=N('option',c);o.value=c;select.append(o);}
+ const params=new URLSearchParams(location.hash.split('?')[1]||''),from=params.get('company')||'',client=params.get('client')||'',contractor=params.get('contractor')||'';
+ let q='',drawId=0,selection=from?resolveCustomer(from,data.items):null,unmatched=!!from&&!selection;
+ if(selection)select.value=selection.group;
+ if(unmatched){const option=N('option',from+' · 자료 미등록');option.value='__unmatched__';select.append(option);select.value=option.value;}
+ const context=N('div',null,'customer-context');if(from)context.append(N('p',from+' 안전기준','customer-name'));
+ for(const[label,value]of [['발주처',client],['원도급사',contractor]]){if(!value)continue;context.append(B(label+' '+value,()=>{location.hash='contractors?'+new URLSearchParams({company:value,client,contractor});}));}
+ if(from)host.append(context);
+ const list=N('div'),note=N('p',null,'top-note');tools.append(search('평가 · 제재 · 포상 기준 검색',v=>{q=v;draw();}),select);host.append(tools,note,list);select.onchange=()=>{unmatched=select.value==='__unmatched__';selection=select.value&&!unmatched?{group:select.value,scope:null}:null;const label=context.querySelector('p');if(label)label.textContent=(select.value==='__unmatched__'?from:select.value||'전체 고객사')+' 안전기준';draw();};
  function draw(){
-  const epoch=++drawId;list.replaceChildren();const matching=data.items.filter(x=>(!select.value||x.contractor===select.value)&&q.split(/\s+/).every(w=>(x.title+' '+x.text).includes(w))),visibleIds=new Set(matching.map(x=>x.id)),items=matching.filter(x=>!x.duplicate_of||!visibleIds.has(x.duplicate_of));note.textContent=items.length+'개 자료 · 원본 표·그림을 누르면 크게 볼 수 있습니다.';let opened=false;
+  const epoch=++drawId;list.replaceChildren();const matching=data.items.filter(x=>!unmatched&&(!select.value||customerPolicyMatches(x,selection))&&q.split(/\s+/).every(w=>(x.title+' '+x.text).includes(w))),visibleIds=new Set(matching.map(x=>x.id)),items=matching.filter(x=>!x.duplicate_of||!visibleIds.has(x.duplicate_of));note.textContent=items.length+'개 자료 · 원본 표·그림을 누르면 크게 볼 수 있습니다.';let opened=false;
   for(const item of items){
    const d=N('details',null,'policy-item'),summary=N('summary');summary.append(N('span',item.title),N('small',item.pages?'원문 '+item.pages+'쪽':'원문 형식 확인 중','policy-page-count'));d.append(summary,N('p',item.contractor+' · 자료 확인 '+item.updated,'small muted'));
    if(item.pages){
@@ -114,12 +121,12 @@ async function drawContractors(host,g){
      catch(error){if(g===generation&&epoch===drawId){status.textContent=error.message;status.append(B('다시 시도',()=>loadPage(target)));}}
      finally{busy=false;controls();}
     }
-    controls();d.addEventListener('toggle',()=>{if(d.open&&!loadedPage)void loadPage(1);});if(!opened){d.open=true;opened=true;}
+    controls();d.addEventListener('toggle',()=>{if(d.open&&!loadedPage)void loadPage(1);});if(!opened&&select.value&&!unmatched){d.open=true;opened=true;}
    }else d.append(N('p','이 형식은 원문 미리보기를 준비하고 있습니다.','muted'));
    if(item.text.trim()){const text=N('details',null,'policy-extracted');text.append(N('summary','본문 검색용 텍스트'),N('div',item.text,'policy-text'));d.append(text);}list.append(d);
   }
   if(select.value==='포스코'){const detail=N('details',null,'policy-item'),p=panel('안전활동 평가 · 40점 → 100점 환산');detail.append(N('summary','평가 항목 요약'));const wrap=N('div',null,'table-scroll'),table=N('table'),head=N('tr');for(const label of ['평가 항목','배점','확인 사항'])head.append(N('th',label));const thead=N('thead');thead.append(head);const body=N('tbody');for(const x of data.posco_criteria){const row=N('tr');for(const value of [x.item,x.points+'점',x.action])row.append(N('td',value));body.append(row);}table.append(thead,body);wrap.append(table);p.append(wrap);detail.append(p);list.append(detail);}
-  if(!items.length)list.append(N('p','검색 결과가 없습니다.','empty'));
+  if(!items.length)list.append(N('p',from&&!q?'선택한 고객사의 안전기준이 등록되어 있지 않습니다. 고객사를 선택해 다른 자료를 확인할 수 있습니다.':'검색 결과가 없습니다.','empty'));
  }
  draw();
 }
@@ -144,21 +151,21 @@ async function drawSites(host,g){
  let exact=params.getAll('site').length===1?params.get('site'):'',q=exact?(data.items.find(s=>s.code===exact)?.name||exact):(params.get('q')||''),only=!params.has('q')&&!exact;
  const expanded=new Set(exact?[exact]:[]),tools=N('div',null,'tools'),list=N('div',null,'site-list'),note=N('div',null,'results-note');
  async function refresh(){const current=await api('/workspace/sites');if(g!==generation)return;data.items=current.items;draw();}
- const input=search('현장명 · 주소 · 담당자 · 도급사 검색',v=>{q=v;exact='';draw();});input.value=q;
+ const input=search('현장명 · 주소 · 담당자 · 고객사 검색',v=>{q=v;exact='';draw();});input.value=q;
  const star=B('즐겨찾기',()=>{only=true;draw();}),all=B('전체 현장',()=>{only=false;draw();});
  tools.append(input,star,all,B('목록 새로고침',refresh));
  if(exact)host.append(A('현황판으로','/','button'));
  host.append(tools,note,list);
  function draw(){
   star.setAttribute('aria-pressed',String(only));all.setAttribute('aria-pressed',String(!only));
-  const rows=data.items.filter(s=>(!exact||s.code===exact)&&(!only||s.favorite||q)&&q.split(/\s+/).every(w=>(s.code+' '+s.name+' '+s.address+' '+s.contractor+' '+s.contacts.map(c=>c.name+' '+c.phone).join(' ')).includes(w)));
+  const rows=data.items.filter(s=>(!exact||s.code===exact)&&(!only||s.favorite||q)&&q.split(/\s+/).every(w=>(s.code+' '+s.name+' '+s.address+' '+s.contractor+' '+(s.client||'')+' '+s.contacts.map(c=>c.name+' '+c.phone).join(' ')).includes(w)));
   note.textContent=rows.length+'개 현장 · 안전보건실 담당 현장은 즐겨찾기에 기본 표시';list.replaceChildren();
   for(const s of rows){
    const a=N('article',null,'site-card'+(s.code===exact?' selected':''));a.dataset.siteCode=s.code;
    const head=N('header'),b=B(s.favorite?'★':'☆',async()=>{b.disabled=true;try{await api('/workspace/sites/'+encodeURIComponent(s.code)+'/favorite',{method:'PUT',body:JSON.stringify({favorite:!s.favorite})});s.favorite=!s.favorite;draw();}finally{b.disabled=false;}},'star');
    b.setAttribute('aria-label',s.name+' 즐겨찾기');b.setAttribute('aria-pressed',String(s.favorite));head.append(N('h2',s.name),b);a.append(head,N('p',s.address||'주소 미등록'));
    for(const c of s.contacts){const row=N('div',null,'contact-row');row.append(N('span',c.label||c.name),c.phone?A(c.phone,'tel:'+c.phone.replace(/\D/g,'')):N('span','번호 미등록'));a.append(row);}
-   const actions=N('div',null,'site-actions'),map=A('찾아가기','https://map.naver.com/p/search/'+encodeURIComponent(s.address||s.name),'button primary');map.target='_blank';map.rel='noopener';actions.append(map,A('도급사 안전기준','#contractors?company='+encodeURIComponent(s.contractor||s.name),'button'));a.append(actions);
+   const actions=N('div',null,'site-actions'),map=A('찾아가기','https://map.naver.com/p/search/'+encodeURIComponent(s.address||s.name),'button primary');map.target='_blank';map.rel='noopener';actions.append(map,A('고객사 안전기준','#contractors?'+new URLSearchParams({company:siteCustomerName(s),client:s.client||'',contractor:s.contractor||''}),'button'));a.append(actions);
    const detail=N('details');detail.open=expanded.has(s.code);detail.addEventListener('toggle',()=>{if(g===generation&&detail.isConnected){if(detail.open)expanded.add(s.code);else expanded.delete(s.code);}});
    detail.append(N('summary','현장 상세'),N('p','현장코드 '+s.code+' · '+(s.contractor||'도급사 확인 필요')),N('p','평가·제재 관리현황: '+s.management.status,'small'));
    const editor=missingInfoEditor(s,g,refresh);if(editor)detail.append(editor);a.append(detail);list.append(a);
