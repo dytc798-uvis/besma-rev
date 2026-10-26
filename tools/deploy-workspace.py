@@ -20,7 +20,7 @@ def main():
  before=(APP/'main.py').read_bytes();assert sha(before)==EXPECTED,'Operating main changed; stop'
  assert not (APP/'modules/workspace.py').exists() and not DATA.exists(),'New release already exists; inspect rather than overwrite'
  candidate=(R/'backend/main.py').read_bytes()
- stripped=candidate.decode().replace('    from app.modules.workspace import router as workspace_router\n    app.include_router(workspace_router)\n','')
+ stripped=candidate.decode().replace('\r\n','\n').replace('    from app.modules.workspace import router as workspace_router\n    app.include_router(workspace_router)\n','')
  assert stripped.splitlines()==before.decode().splitlines(),'Unexpected main changes'
  for file in [R/'backend/main.py',R/'backend/workspace.py']:compile(file.read_bytes(),str(file),'exec')
  data=json.loads((R/'private/workspace-data.json').read_text());assert len(data['risks'])==342 and len(data['cases'])==43 and len(data['duties'])==70
