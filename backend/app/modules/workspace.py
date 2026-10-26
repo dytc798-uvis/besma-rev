@@ -34,7 +34,7 @@ def migrate(conn):
 def bootstrap(user=Depends(authorized)):
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
- return result({'permissions':{'manage_government_forms':can_manage_government(user)},'version':'2026.10.26.3','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
+ return result({'permissions':{'manage_government_forms':can_manage_government(user)},'version':'2026.10.26.4','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
   'menus':[{'id':1,'title':'기능인인정제'},{'id':2,'title':'업무분장'},{'id':3,'title':'위험성평가 DB'},{'id':4,'title':'양식·법령 탐색'},
    {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'도급사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'}]})
 
@@ -113,6 +113,21 @@ def site_data(db,user):
 
 @router.get('/sites')
 def sites(db:DbDep,user=Depends(authorized)):return result({'items':site_data(db,user)})
+
+@router.get('/home')
+def home_dashboard(db:DbDep,user=Depends(authorized)):
+ from app.modules.workspace_home import home
+ return result(home(db))
+
+@router.get('/functional-readiness')
+def functional_readiness(db:DbDep,user=Depends(authorized)):
+ from app.modules.workspace_home import readiness
+ return result(readiness(db))
+
+@router.get('/site-weather/{code}')
+def site_weather(code:str,db:DbDep,user=Depends(authorized)):
+ from app.modules.workspace_home import weather
+ return result(weather(db,code))
 
 class FavoriteBody(BaseModel):
  model_config=ConfigDict(extra='forbid')
