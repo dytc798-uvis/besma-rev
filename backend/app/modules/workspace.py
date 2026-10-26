@@ -35,7 +35,7 @@ def bootstrap(user=Depends(authorized)):
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
  role=getattr(user.role,'value',user.role);safe_ui=getattr(user,'ui_type','')=='HQ_SAFE'
- return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.8','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
+ return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.9','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
   'menus':[{'id':1,'title':'기능인인정제'},{'id':2,'title':'업무분장'},{'id':3,'title':'위험성평가 DB'},{'id':4,'title':'양식·법령 탐색'},
    {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'도급사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'},{'id':9,'title':'근로자의견청취'}]})
 
@@ -80,12 +80,12 @@ def government_sites(db:DbDep,user=Depends(authorized)):
  sites=[{'code':s.site_code,'name':s.site_name} for s in db.query(Site).all() if is_government_site_record(s) and in_active_scope(s,today_kst(),'government')]
  return result({'items':sites})
 
-_POLICY_PREVIEW_PAGES={21:11,35:7,36:2}
+_POLICY_PREVIEW_PAGES={13: 2, 15: 151, 21: 11, 32: 5, 33: 1, 34: 4, 35: 7, 36: 2, 38: 2, 39: 2, 40: 2, 50: 2, 55: 151}
 
 def _policy_item_sha(item):
  return hashlib.sha256(json.dumps(item,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False).encode('utf-8')).hexdigest()
 
-def _policy_previews(data,only_id=None):
+def _policy_previews(data,only_id=None,keep_page=None,fingerprints=None):
  # A private derived catalog never changes the canonical workspace dataset.
  try:
   catalog=json.loads((DATA.parent/'policy-preview-catalog.json').read_text(encoding='utf-8'))
@@ -107,7 +107,7 @@ def _policy_previews(data,only_id=None):
    if _policy_item_sha(rows[0])!=entry['item_sha256'] or _policy_item_sha(fresh[0])!=entry['item_sha256']:continue
    pages=entry['pages']
    if not isinstance(pages,list) or len(pages)!=_POLICY_PREVIEW_PAGES[ident]:continue
-   payloads=[]
+   payloads=[];digests=[]
    for number,descriptor in enumerate(pages,1):
     size=descriptor['size'];digest=descriptor['sha256']
     if type(descriptor['page']) is not int or descriptor['page']!=number or type(size) is not int or not 5<=size<=8*1024*1024 or not isinstance(digest,str) or not re.fullmatch('[0-9a-f]{64}',digest):raise ValueError()
@@ -115,16 +115,46 @@ def _policy_previews(data,only_id=None):
     if file.is_symlink() or not file.is_file() or file.stat().st_size!=size:raise ValueError()
     with file.open('rb') as stream:payload=stream.read(size+1)
     if len(payload)!=size or not payload.startswith(b'\xff\xd8\xff') or not payload.endswith(b'\xff\xd9') or hashlib.sha256(payload).hexdigest()!=digest:raise ValueError()
-    payloads.append(payload)
+    payloads.append(payload if keep_page is None or keep_page==number else None);digests.append(digest)
    verified[ident]=payloads
+   if fingerprints is not None:fingerprints[ident]=tuple(digests)
   except (OSError,UnicodeError,ValueError,KeyError,TypeError,AttributeError):continue
  return verified
 
+def _policy_legacy_fingerprint(item):
+ try:
+  ident=item['id'];pages=item['pages']
+  if type(ident) is not int or type(pages) is not int or not 1<=pages<=151:return None
+  values=[]
+  for number in range(1,pages+1):
+   file=DATA.parent/'policy-previews'/f'{ident}-{number}.jpg'
+   if file.is_symlink() or not file.is_file():return None
+   with file.open('rb') as stream:payload=stream.read(8*1024*1024+1)
+   if len(payload)>8*1024*1024 or not payload.startswith(b'\xff\xd8\xff') or not payload.endswith(b'\xff\xd9'):return None
+   values.append(hashlib.sha256(payload).hexdigest())
+  return tuple(values)
+ except (OSError,KeyError,TypeError,ValueError):return None
+
+
 @router.get('/contractors')
 def contractors(user=Depends(authorized)):
- data=dataset();previews=_policy_previews(data);items=[dict(item) for item in data['policies']]
+ data=dataset();fingerprints={};previews=_policy_previews(data,keep_page=0,fingerprints=fingerprints);items=[dict(item) for item in data['policies']]
  for item in items:
-  if item['id'] in previews:item['pages']=len(previews[item['id']])
+  if item['id'] in previews:
+   item['pages']=len(previews[item['id']])
+   if item['id'] in {15,55} and item.get('contractor')=='기타' and str(item.get('folder','')).replace(chr(92),'/').rstrip('/').split('/')[-1]=='현대산업개발':
+    item['source_contractor']=item['contractor'];item['contractor']='현대산업개발'
+ by_id={item['id']:item for item in items}
+ # Source pairs were byte-identical; require the same current full preview sequence too.
+ for alias,primary in {24:5,42:6,43:7,44:8,45:9,47:10,48:11,49:12,50:13,51:14,55:15}.items():
+  if alias not in by_id or primary not in by_id:continue
+  if any(by_id[alias].get(key)!=by_id[primary].get(key) for key in ('contractor','source_file')):continue
+  for ident in (alias,primary):
+   if ident not in fingerprints and ident not in _POLICY_PREVIEW_PAGES:
+    value=_policy_legacy_fingerprint(by_id[ident])
+    if value:fingerprints[ident]=value
+  if alias in fingerprints and primary in fingerprints and fingerprints[alias]==fingerprints[primary]:
+   by_id[alias]['duplicate_of']=primary;by_id[primary].setdefault('duplicate_ids',[]).append(alias)
  return result({'items':items,'posco_criteria':data['posco_criteria']})
 
 @router.get('/contractors/{item_id}/pages/{page}')
@@ -132,7 +162,7 @@ def contractor_page(item_id:int,page:int,user=Depends(authorized)):
  data=dataset();item=next((p for p in data['policies'] if p['id']==item_id),None)
  if not item or page<1:raise HTTPException(404,'자료를 찾지 못했습니다.')
  if item_id in _POLICY_PREVIEW_PAGES and item.get('pages')==0:
-  payloads=_policy_previews(data,item_id).get(item_id,[])
+  payloads=_policy_previews(data,item_id,keep_page=page).get(item_id,[])
   if page>len(payloads):raise HTTPException(404,'미리보기를 준비하고 있습니다.')
   return Response(payloads[page-1],media_type='image/jpeg',headers={'Cache-Control':'private, no-store','Vary':'Authorization'})
  if page>item.get('pages',0):raise HTTPException(404,'자료를 찾지 못했습니다.')
