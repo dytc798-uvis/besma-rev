@@ -95,16 +95,16 @@ async function drawContactHub(){
  }catch(e){host.replaceChildren(node('p',e.message),button('다시 시도',drawContactHub));}finally{hubBusy=false;}
 }
 function reconcileContactPage(){
- const paths=context.side==='HQ'?['/hq-safe/communications']:['/site/communications','/site/mobile/communications'];const visible=paths.includes(location.pathname);
+ const paths=context.side==='HQ'?['/hq-safe/communications']:['/site/communications','/site/mobile/communications'];const visible=paths.includes(location.pathname)||(location.pathname==='/workspace.html'&&location.hash.startsWith('#government/communication'));
  if(!visible){contactHub?.remove();contactHub=null;return;}
- const legacy=document.querySelector('.comm-page,.mobile-wrap');const host=legacy?.parentElement||document.querySelector('.layout-main');if(!host)return;if(legacy)legacy.dataset.govLegacyHidden='true';
+ const legacy=document.querySelector('.comm-page,.mobile-wrap');const host=document.querySelector('#workspace-government-content')||legacy?.parentElement||document.querySelector('.layout-main');if(!host)return;if(legacy)legacy.dataset.govLegacyHidden='true';
  if(!contactHub?.isConnected){contactHub=node('section',undefined,'collection-monitor');contactHub.id='gov-contact-hub';if(legacy)legacy.after(contactHub);else host.append(contactHub);drawContactHub();}
 }
 function hideLegacyContact(){
  if(!context?.legacy_contact_hidden)return;
  for(const link of document.querySelectorAll('a[href="/hq-safe/communications"],a[href="/site/communications"],a[href="/site/mobile/communications"]'))link.dataset.govLegacyHidden='true';
  if(context.side!=='HQ')for(const card of document.querySelectorAll('.site-comm-card'))card.dataset.govLegacyHidden='true';
- if(!context.allowed&&['/hq-safe/communications','/site/communications','/site/mobile/communications'].includes(location.pathname)){const legacy=document.querySelector('.comm-page,.mobile-wrap');const host=legacy?.parentElement||document.querySelector('.layout-main');if(legacy)legacy.dataset.govLegacyHidden='true';if(host&&!document.querySelector('#gov-contact-hidden')){const note=node('p','관급공사 소통은 안전보건실과 해당 현장 계정으로 이용합니다.');note.id='gov-contact-hidden';if(legacy)legacy.after(note);else host.append(note);}}
+ if(!context.allowed&&['/hq-safe/communications','/site/communications','/site/mobile/communications'].includes(location.pathname)){const legacy=document.querySelector('.comm-page,.mobile-wrap');const host=document.querySelector('#workspace-government-content')||legacy?.parentElement||document.querySelector('.layout-main');if(legacy)legacy.dataset.govLegacyHidden='true';if(host&&!document.querySelector('#gov-contact-hidden')){const note=node('p','관급공사 소통은 안전보건실과 해당 현장 계정으로 이용합니다.');note.id='gov-contact-hidden';if(legacy)legacy.after(note);else host.append(note);}}
 }
 async function sitePriority(refresh=false){
  const host=document.querySelector('.cm-gov-info');let panel=document.querySelector('#gov-site-priority');if(!host||(panel&&!refresh))return;
@@ -127,7 +127,7 @@ async function reconcile(){
  hideLegacyContact();
  const menu=document.querySelector('.workspace-owned-menu')?null:document.querySelector('.layout-menu');
  if(menu&&context.can_manage_forms&&!localStorage.getItem('besma_test_persona')&&!document.querySelector('.gov-settings-menu')){const b=button('관급 양식 공개 설정',()=>location.assign('/hq-safe/settings#gov-settings'));b.className='gov-settings-menu gov-contact-menu';b.style.order='20';menu.append(b);}
- if(context.can_manage_forms&&!localStorage.getItem('besma_test_persona')&&location.pathname==='/hq-safe/settings'){
+ if(context.can_manage_forms&&!localStorage.getItem('besma_test_persona')&&(location.pathname==='/hq-safe/settings'||(location.pathname==='/workspace.html'&&location.hash.startsWith('#government/settings')))){
   const host=document.querySelector('.doc-settings-page');if(host&&!host.querySelector('#gov-settings')){settingsRoot=node('section',undefined,'collection-monitor');settingsRoot.id='gov-settings';host.querySelector('header')?.after(settingsRoot);if(!settingsRoot.isConnected)host.prepend(settingsRoot);loadSettings();}
  }else if(settingsRoot){settingsRoot.remove();settingsRoot=null;}
  if(!context.allowed)return;reconcileContactPage();
@@ -140,3 +140,14 @@ let scheduled=false;function schedule(){if(scheduled)return;scheduled=true;setTi
 new MutationObserver(schedule).observe(document.documentElement,{subtree:true,childList:true});addEventListener('storage',schedule);addEventListener('popstate',schedule);setInterval(schedule,3000);setInterval(()=>{if(context?.side==='SITE'&&location.pathname==='/site/documents'&&document.visibilityState==='visible')sitePriority(true);},30000);setInterval(()=>{if(document.visibilityState==='visible')loadMessages();},15000);schedule();
 
 addEventListener('besma-government-contact',event=>{if(context?.allowed)openContact(event.detail?.site_id);});
+
+export async function mountGovernmentWorkspace(host,mode){
+ const access=await api('/government-contact/access');
+ if(!access.allowed||access.side!=='HQ'||(mode==='settings'&&!access.can_manage_forms))throw Error('이 업무의 접근 권한이 없습니다.');
+ context=access;session=workspaceKey();
+ if(mode==='settings'){
+  settingsRoot=node('section',undefined,'collection-monitor');settingsRoot.id='gov-settings';host.append(settingsRoot);await loadSettings();
+ }else{
+  contactHub=node('section',undefined,'collection-monitor');contactHub.id='gov-contact-hub';host.append(contactHub);await drawContactHub();
+ }
+}

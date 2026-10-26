@@ -17,7 +17,7 @@ from app.modules.sites.models import Site
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/government-contact", tags=["government-contact"])
-HQ_ROLES = {Role.HQ_SAFE, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN}
+HQ_ROLES = {Role.HQ_SAFE, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN, Role.ACCIDENT_ADMIN, Role.HQ_OTHER, Role.FUNCTIONAL_EVAL_VIEWER, Role.HQ_BUDGET_ESTIMATE, Role.HQ_OUTSOURCING_PURCHASE}
 SITE_ROLES = {Role.SITE, Role.SITE_FUNCTIONAL_EVAL}
 
 

@@ -9,19 +9,16 @@ from app.core.role_preview_access import can_role_preview
 
 
 def is_government_owner(user):
-    # Existing account explicitly authorized by the owner; never a name-only grant.
-    return (user.id == 8 and user.login_id == "hq01" and user.name == "정상익"
-            and user.role == Role.ACCIDENT_ADMIN and user.ui_type == "HQ_SAFE"
-            and user.is_active)
+    role = getattr(user.role, "value", user.role)
+    owner = (getattr(user, "id", None), getattr(user, "login_id", None), role) in {
+        (8, "hq01", "ACCIDENT_ADMIN"),
+        (96, "안전보건-정상익", "HQ_SAFE"),
+    }
+    return owner and user.name == "정상익" and user.ui_type == "HQ_SAFE" and user.is_active
 
 
 def can_manage_government(user):
-    if getattr(user, "government_preview", False):
-        return False
-    return is_government_owner(user) or (
-        user.role in {Role.HQ_SAFE, Role.HQ_SAFE_ADMIN, Role.SUPER_ADMIN}
-        and not (user.role == Role.HQ_SAFE and user.login_id in {"hq01", "hq02", "hq03", "hq04", "hq05"})
-    )
+    return not getattr(user, "government_preview", False) and is_government_owner(user)
 
 
 def government_actor(request: Request, db: DbDep, user: CurrentUserDep):

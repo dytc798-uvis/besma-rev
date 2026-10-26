@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from app.core.auth import get_current_user
-from app.core.government_workspace_access import government_actor, is_government_owner
+from app.core.government_workspace_access import government_actor, is_government_owner, can_manage_government
 from app.config.settings import settings
 from .core import GOV_CODES, VERSION, readonly, state, scoped_overview, now, is_evidence
 from .report import make_report
@@ -32,12 +32,17 @@ def writer(user=Depends(hq)):
 from app.core.auth import DbDep
 from .configuration import CollectionSetting,read_configuration,save_configuration,display_groups
 
+def settings_owner(user=Depends(hq)):
+    if not can_manage_government(user):
+        raise HTTPException(403, 'GOVERNMENT_SETTINGS_OWNER_ONLY')
+    return user
+
 @router.get('/settings')
-def collection_settings(user=Depends(writer)):
+def collection_settings(user=Depends(settings_owner)):
     with readonly(paths()[0]) as main:return read_configuration(main)
 
 @router.put('/settings')
-def update_collection_settings(payload:CollectionSetting,db:DbDep,user=Depends(writer)):
+def update_collection_settings(payload:CollectionSetting,db:DbDep,user=Depends(settings_owner)):
     return save_configuration(db,payload,user.id)
 
 @router.get('/site-configuration')
