@@ -1,3 +1,4 @@
+import {workReturn} from '/assets/workspace-return.js';
 const API='https://api.besma.co.kr/workspace/document-signing',token=localStorage.getItem('besma_token')||'',publicToken=location.hash.slice(1),$=id=>document.getElementById(id),urls=new Set();let selected=null,pageIndex=0,region=null,drag=null,busy=false,epoch=0,doc=null,hasInk=false,drawing=null,lastSignature='';
 const notice=text=>$('notice').textContent=text;
 const valid=()=>!publicToken&&localStorage.getItem('besma_token')===token;
@@ -32,6 +33,7 @@ function done(){void showSignedPages();$('pad').hidden=true;document.body.classL
 $('submit-sign').onclick=async()=>{if(busy)return;if(!hasInk){$('pad-notice').textContent='서명을 그려 주세요.';return;}busy=true;for(const id of ['submit-sign','pad-close','erase'])$(id).disabled=true;$('pad-notice').textContent='서명을 보내고 있습니다.';lastSignature=canvas.toDataURL('image/png');try{doc=await(await publicCall('/sign',{signature:lastSignature,original_sha:doc.original_sha})).json();done();}catch(e){try{const actual=await(await publicCall('/view')).json();if(actual.signed_sha&&actual.original_sha===doc.original_sha){doc=actual;done();return;}}catch{}$('pad-notice').textContent=e.message+' 서명을 유지했으니 다시 눌러 주세요.';}finally{busy=false;for(const id of ['submit-sign','pad-close','erase'])$(id).disabled=false;}};
 $('public-download').onclick=()=>run(async()=>download(await publicCall('/pdf'),doc.name.replace(/\.pdf$/i,'')+'_서명.pdf'));
 addEventListener('storage',e=>{if(!publicToken&&(e.key==='besma_token'||e.key===null)){++epoch;selected=null;release();$('admin').hidden=true;$('requests').replaceChildren();$('preview').removeAttribute('src');$('share-link').value='';notice('로그인이 변경되었습니다. 다시 열어 주세요.');}});addEventListener('pagehide',release);
+$('workspace-back').href=workReturn(new URLSearchParams(location.search).get('return'));$('workspace-back').textContent='이전 업무로';
 run(async()=>{if(publicToken){$('workspace-back').hidden=true;$('menu-number').hidden=true;await recipient();}else{if(!token){notice('로그인 후 이용해 주세요.');const a=node('a','BESMA 로그인');a.href='/login?redirect=%2Fdocument-sign.html';$('notice').append(a);return;}await listing();$('admin').hidden=false;notice('PDF를 올리고 서명 위치를 선택해 주세요.');}});
 
 async function showSignedPages(){try{$('document-pages').replaceChildren();for(let i=0;i<doc.pages.length;i++){const im=node('img');im.alt='서명된 문서 '+(i+1)+'쪽';im.src=imageURL(await(await publicCall('/page/'+i)).blob());$('document-pages').append(im);}}catch{notice('서명이 완료되었습니다. PDF 받기로 확인해 주세요.');}}
