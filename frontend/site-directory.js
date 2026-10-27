@@ -1,3 +1,4 @@
+import {bindNaverDirections} from '/assets/naver-directions.js';
 const API='https://api.besma.co.kr';
 const token=localStorage.getItem('besma_token');
 const $=id=>document.getElementById(id);
@@ -36,12 +37,8 @@ async function copy(value,trigger,advance=false){
  if(advance){const next=trigger.closest('.site-card')?.nextElementSibling;if(next){let target=next.querySelector('.copy-phone');if(!target){next.tabIndex=-1;target=next;}target.focus({preventScroll:true});next.scrollIntoView({block:'nearest'});}}
  setTimeout(()=>{trigger.textContent=advance?'복사':'주소 복사';trigger.classList.remove('copied');},1600);
 }
-function directions(site){
- if(Number.isFinite(site.latitude)&&Number.isFinite(site.longitude)){
-  const p=new URLSearchParams({dlat:String(site.latitude),dlng:String(site.longitude),dname:site.address||site.name,appname:location.origin});
-  const uri='nmap://route/car?'+p.toString();if(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent))location.href=uri;else window.open(uri,'_blank','noopener');
- }else window.open('https://map.naver.com/v5/search/'+encodeURIComponent(site.address||site.name),'_blank','noopener');
-}
+function directions(site){const a=node('a');bindNaverDirections(a,site,tell);a.click();}
+
 async function toggle(site,star){
  if(pending.has(site.code))return;pending.add(site.code);star.disabled=true;
  try{const data=await api('/favorites/'+encodeURIComponent(site.code),{method:'PUT',body:JSON.stringify({favorite:!favorites.has(site.code)})});favorites=new Set(data.favorite_codes);tell(favorites.has(site.code)?'즐겨찾기에 저장했습니다.':'즐겨찾기에서 해제했습니다.');render();}

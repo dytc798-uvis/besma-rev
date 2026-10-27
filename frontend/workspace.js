@@ -1,3 +1,5 @@
+import {bindNaverDirections} from '/assets/naver-directions.js';
+import {mountSiteNotes} from '/assets/site-notes.js';
 import {signingEntry} from '/assets/workspace-return.js';
 import {createMissingInfoEditor} from '/assets/site-missing-info.js';
 import {resolveCustomer,customerPolicyMatches,siteCustomerName} from '/assets/customer-policy.js';
@@ -147,8 +149,13 @@ async function drawContractors(host,g){
 }
 function missingInfoEditor(site,g,onSaved){return createMissingInfoEditor({site,request:api,onSaved,onNotice:tell,isCurrent:()=>g===generation});}
 
+async function showSiteManagerPhoto(site,contact,row,g){
+ const photo=site?.manager_photo,path='/workspace/site-manager-photo/'+encodeURIComponent(site?.code||'');if(!photo||photo.verified!==true||photo.site_code!==site.code||photo.contact_id!==contact.contact_id||photo.name!==contact.name||photo.url!==path)return;
+ try{const r=await fetch(API+path,{headers:{Authorization:'Bearer '+token},cache:'no-store',credentials:'omit',redirect:'error'});if(!r.ok||r.headers.get('content-type')?.split(';')[0]!=='image/webp'||Number(r.headers.get('content-length')||0)>131072)return;const reader=r.body.getReader(),parts=[];let size=0;try{for(;;){const x=await reader.read();if(x.done)break;size+=x.value.length;if(size>131072)return;parts.push(x.value);}}finally{await reader.cancel();reader.releaseLock();}if(g!==generation||!row.isConnected||localStorage.getItem('besma_token')!==token)return;const url=URL.createObjectURL(new Blob(parts,{type:'image/webp'}));blobUrls.push(url);const image=N('img',null,'site-contact-portrait');image.src=url;image.alt='현장소장 사진';row.prepend(image);}catch{}
+}
+
 async function drawSites(host,g){
- const data=await api('/workspace/sites');if(g!==generation)return;
+ const data=await api('/workspace/sites');if(g!==generation)return;let homeSites=[];try{const home=await api('/workspace/home');if(g!==generation)return;homeSites=home.sites||[];}catch{}
  const params=new URLSearchParams(location.hash.split('?')[1]||'');
  const saved=readView('sites'),explicit=params.has('site')||params.has('q');let exact=params.getAll('site').length===1?params.get('site'):!explicit&&typeof saved.exact==='string'?saved.exact:'',q=exact?(data.items.find(s=>s.code===exact)?.name||exact):(params.get('q')||(!explicit&&typeof saved.q==='string'?saved.q.slice(0,100):'')),only=explicit?!params.has('q')&&!exact:typeof saved.only==='boolean'?saved.only:true;
  const expanded=new Set(exact?[exact]:Array.isArray(saved.expanded)?saved.expanded.filter(v=>data.items.some(s=>s.code===v)).slice(0,30):[]),tools=N('div',null,'tools'),list=N('div',null,'site-list'),note=N('div',null,'results-note');
@@ -167,10 +174,10 @@ async function drawSites(host,g){
    const a=N('article',null,'site-card'+(s.code===exact?' selected':''));a.dataset.siteCode=s.code;
    const head=N('header'),b=B(s.favorite?'★':'☆',async()=>{b.disabled=true;try{await api('/workspace/sites/'+encodeURIComponent(s.code)+'/favorite',{method:'PUT',body:JSON.stringify({favorite:!s.favorite})});s.favorite=!s.favorite;draw();}finally{b.disabled=false;}},'star');
    b.setAttribute('aria-label',s.name+' 즐겨찾기');b.setAttribute('aria-pressed',String(s.favorite));head.append(N('h2',s.name),b);a.append(head,N('p',s.address||'주소 미등록'));
-   for(const c of s.contacts){const row=N('div',null,'contact-row');row.append(N('span',c.label||c.name),c.phone?A(c.phone,'tel:'+c.phone.replace(/\D/g,'')):N('span','번호 미등록'));a.append(row);}
-   const actions=N('div',null,'site-actions'),map=A('찾아가기','https://map.naver.com/p/search/'+encodeURIComponent(s.address||s.name),'button primary');map.target='_blank';map.rel='noopener';actions.append(map,A('고객사 안전기준','#contractors?'+new URLSearchParams({company:siteCustomerName(s),client:s.client||'',contractor:s.contractor||''}),'button'));a.append(actions);
+   for(const c of s.contacts){const row=N('div',null,'contact-row');row.append(N('span',[c.role,c.rank,c.name].filter(Boolean).join(' ')||c.label),c.phone?A(c.phone,'tel:'+c.phone.replace(/\D/g,'')):N('span','번호 미등록'));a.append(row);void showSiteManagerPhoto(homeSites.find(x=>x.code===s.code),c,row,g);}
+   const actions=N('div',null,'site-actions'),map=A('길찾기','#','button primary');bindNaverDirections(map,homeSites.find(x=>x.code===s.code)||s,tell);actions.append(map,A('현장안전기준','#contractors?'+new URLSearchParams({company:siteCustomerName(s),client:s.client||'',contractor:s.contractor||'',site:s.code}),'button'));a.append(actions);
    const detail=N('details');detail.open=expanded.has(s.code);detail.addEventListener('toggle',()=>{if(g===generation&&detail.isConnected){if(detail.open)expanded.add(s.code);else expanded.delete(s.code);}});
-   detail.append(N('summary','현장 상세'),N('p','현장코드 '+s.code+' · '+(s.contractor||'도급사 확인 필요')),N('p','평가·제재 관리현황: '+s.management.status,'small'));
+   detail.append(N('summary','현장 상세'));const full=homeSites.find(x=>x.code===s.code),facts=N('dl',null,'site-detail-facts');const fact=(label,value)=>{const row=N('div');row.append(N('dt',label),N('dd',value==null||value===''?'확인 중':String(value)));facts.append(row);};fact('현장 코드',s.code);if(full){fact('출역',full.today_people==null?'오늘 출역 미확인':full.today_people+'명');fact('담당 팀',full.team?.label||'팀 확인 중');for(const x of full.details||[])if(x?.label&&x.value!=null&&typeof x.value!=='object'&&!['address','site_code','site_name','name'].includes(x.key))fact(x.label,String(x.value)+(x.unit?' '+x.unit:''));if(full.photo?.verified===true&&full.photo.site_code===s.code&&full.photo.url?.startsWith('/workspace-assets/')){const figure=N('figure',null,'site-detail-photo'),img=N('img');img.src=full.photo.url;img.alt=full.photo.caption||s.name+' 현장 사진';img.loading='lazy';figure.append(img,N('figcaption',full.photo.caption||'현장 사진'));if(full.photo.source_url){const source=A('사진 출처',full.photo.source_url);source.target='_blank';source.rel='noopener noreferrer';figure.append(source);}detail.append(figure);}if(full.contracts?.length)for(const c of full.contracts){fact('계약',c.name||'계약 정보');for(const [key,label]of [['amount','계약금액'],['basis','기준'],['start','착공'],['end','준공']])if(c[key]!=null&&c[key]!=='')fact(label,c[key]);}}else{fact('고객사',siteCustomerName(s));detail.append(N('p','추가 현장 정보를 확인하지 못했습니다. 새로고침 후 다시 확인해 주세요.'));}detail.append(facts);detail.append(mountSiteNotes({site:s,request:api,role:context?.user.role,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token}));
    detail.addEventListener('toggle',remember);const editor=missingInfoEditor(s,g,refresh);if(editor)detail.append(editor);a.append(detail);list.append(a);
   }
   if(!rows.length)list.append(N('p',exact?'요청한 현장을 찾지 못했습니다. 검색어를 바꾸어 확인하세요.':q?'검색 결과가 없습니다.':'즐겨찾기 현장이 없습니다. 전체 현장에서 별표를 눌러 추가하세요.','empty'));
