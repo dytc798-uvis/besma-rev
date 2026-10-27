@@ -35,7 +35,7 @@ def bootstrap(user=Depends(authorized)):
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
  role=getattr(user.role,'value',user.role);safe_ui=getattr(user,'ui_type','')=='HQ_SAFE'
- return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.27.5','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
+ return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.27.6','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
   'menus':[{'id':1,'title':'기능인인정제'},{'id':2,'title':'업무분장'},{'id':3,'title':'위험성평가 DB'},{'id':4,'title':'양식·법령 탐색'},
    {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'고객사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'},{'id':9,'title':'근로자의견청취'}]})
 
@@ -283,3 +283,10 @@ def organization_chart_people(kind:str,user=Depends(authorized)):
    out.append({'id':ident,'name':person.get('name',''),'rank':person.get('rank',''),'department':person.get('department',''),'position':person.get('position',''),'site_name':person.get('site_name',''),'hitbox':dict(zip(('x','y','w','h'),values)),'match_key':key if matched else None})
   return result({'kind':kind,'image_sha256':digest,'people':out})
  except (KeyError,TypeError,ValueError,OSError):raise HTTPException(503,'인물 정보를 확인하고 있습니다.')
+
+# New positioned signing does not mutate legacy /pdf-signing or evaluation records.
+from app.modules.workspace_signing import install as install_document_signing
+install_document_signing(router,authorized)
+
+from app.modules.workspace_inspections import install as install_inspection_publications
+install_inspection_publications(router,authorized,result)

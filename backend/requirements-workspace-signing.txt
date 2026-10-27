@@ -1,0 +1,4 @@
+# Additional workspace signing runtime; existing backend requirements remain authoritative.
+PyMuPDF==1.28.0
+Pillow==12.2.0
+python-multipart==0.0.17

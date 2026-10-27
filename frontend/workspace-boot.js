@@ -10,7 +10,7 @@
  ready.then(()=>{if(root.classList.contains('besma-route-gate')||root.classList.contains('besma-login-preparing')){const status=document.createElement('div');status.id='besma-route-status';status.setAttribute('role','status');status.textContent='BESMA 업무공간을 열고 있습니다.';document.body.append(status);}});
  let loaded=false;
  const add=src=>new Promise((resolve,reject)=>{const s=document.createElement('script');s.type='module';s.async=false;s.src=src;s.onload=resolve;s.onerror=reject;document.head.append(s);});
- async function legacy(){if(loaded)return;loaded=true;await ready;await add(nav);for(const src of scripts)await add(src);}
+ async function legacy(){if(loaded)return;loaded=true;await ready;await add(nav);if(/^\/site(?:\/|$)/.test(location.pathname))await add(__BESMA_SITE_INSPECTIONS__);for(const src of scripts)await add(src);}
  async function route(){
   const token=localStorage.getItem('besma_token')||'';
   if(!hq||!token){if(hq)release();return legacy();}

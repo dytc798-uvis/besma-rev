@@ -41,7 +41,11 @@ def verified_photo(code,photos):
         scheme_ok=uri.scheme=='https' or (not local and uri.scheme=='http' and uri.hostname in {'boohyun.kr','www.boohyun.kr'})
         return scheme_ok and bool(uri.hostname) and not uri.username and not uri.password
     if not valid_url(value.get('url'),True) or not valid_url(value.get('source_url')):return None
-    return {'site_code':code,'url':value['url'],'thumbnail_url':value.get('thumbnail_url') if valid_url(value.get('thumbnail_url'),True) else value['url'],'source_url':value['source_url'],'caption':str(value.get('caption') or '')[:200],'verified':True}
+    output={'site_code':code,'url':value['url'],'thumbnail_url':value.get('thumbnail_url') if valid_url(value.get('thumbnail_url'),True) else value['url'],'source_url':value['source_url'],'caption':str(value.get('caption') or '')[:200],'verified':True}
+    alternative=value.get('rendering')
+    if isinstance(alternative,dict) and alternative.get('verified') is True and alternative.get('site_code')==code and valid_url(alternative.get('url'),True) and valid_url(alternative.get('source_url')):
+        output['rendering']={k:alternative[k] for k in ['site_code','url','source_url','caption','verified']}
+    return output
 
 def seoul_weather():
     from app.modules.seoul_forecast import seoul_forecast

@@ -47,6 +47,22 @@
       "source_url": "https://www.seohee.co.kr/home/seohees/base/v2.seohee.sub02/v2.seohee.sub01.php",
       "caption": "평택화양센트럴 공식 조감도",
       "verified": true
+    },
+    "26048": {
+      "site_code": "26048",
+      "url": "/workspace-assets/site-photos/26048-construction-card-377b0c1dbb61.webp",
+      "thumbnail_url": "/workspace-assets/site-photos/26048-construction-thumb-037284f880b4.webp",
+      "source_url": "https://cityociel8.com/intro/index.asp",
+      "caption": "시티오씨엘 8단지 2026년 9월 공사 사진",
+      "verified": true,
+      "rendering": {
+        "site_code": "26048",
+        "url": "/workspace-assets/site-photos/26048-rendering-card-645ceaf230fc.webp",
+        "thumbnail_url": "/workspace-assets/site-photos/26048-rendering-thumb-cb7b50e3f742.webp",
+        "source_url": "https://cityociel8.com/intro/index.asp",
+        "caption": "시티오씨엘 8단지 공식 조감도",
+        "verified": true
+      }
     }
   }
 }
