@@ -11,6 +11,7 @@ for(const name of ['workspace.css','company.css','workspace-legacy.css','collect
 }
 for(const name of ['workspace.html','company.html']){let html=await fs.readFile(F+'/'+name,'utf8');for(const[k,v]of Object.entries(assets))html=html.replaceAll('/assets/'+k,'/'+v);await fs.writeFile(S+'/'+name,html);}
 await fs.cp(F+'/workspace-assets',S+'/workspace-assets',{recursive:true});
+for(const name of ['inspection-plan-nav.js','inspection-plan.html','inspection-plan.js','inspection-plan.css'])await fs.copyFile(F+'/team-inspection/'+name,S+'/'+name);
 let legacyScripts=[...original.matchAll(/<script\b[^>]*type="module"[^>]*src="([^"]+)"[^>]*><\/script>/g)].map(m=>m[1]);
 if(!legacyScripts.length)throw Error('No verified legacy scripts found');
 // Keep every original artifact intact, but seal HQ routes in a derived router bundle.
@@ -32,4 +33,4 @@ const boot=(await transform(bootSource,{loader:'js',target:'es2022',minify:true}
 const gate='<style>.besma-route-gate #app,.besma-login-preparing #app{visibility:hidden!important}#besma-route-status{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:12px;background:#173544;color:#fff;font:15px sans-serif;z-index:9999}</style>';
 const index=original.replace(/<script\b[^>]*type="module"[^>]*src="[^"]+"[^>]*><\/script>/g,'').replace('<head>',`<head>${gate}<script>${boot}</script><link rel="stylesheet" href="/${assets['workspace-legacy.css']}">`);await fs.writeFile(S+'/index.html',index);
 const config=JSON.parse(await fs.readFile(O+'/config.json','utf8'));config.routes=config.routes.filter(x=>x.src!=='/'&&x.src!=='/company.html');config.routes.unshift({src:'/',dest:'/company.html'});await fs.writeFile(O+'/config.json',JSON.stringify(config));
-await fs.writeFile(R+'/qa/frontend-build.json',JSON.stringify({assets,index_sha256:hash(index),route_guard_bundle:'assets/'+mainName,route_guard_sha256:hash(guarded),baseline_index_sha256:baseline['index.html'],preserved_files:Object.keys(baseline).length-1,version:'2026.10.27.3'},null,2));console.log('BESMA workspace build passed; existing assets preserved; sealed HQ routes cannot mount.');
+await fs.writeFile(R+'/qa/frontend-build.json',JSON.stringify({assets,index_sha256:hash(index),route_guard_bundle:'assets/'+mainName,route_guard_sha256:hash(guarded),baseline_index_sha256:baseline['index.html'],preserved_files:Object.keys(baseline).length-1,version:'2026.10.27.4'},null,2));console.log('BESMA workspace build passed; existing assets preserved; sealed HQ routes cannot mount.');

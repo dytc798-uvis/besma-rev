@@ -35,7 +35,7 @@ def bootstrap(user=Depends(authorized)):
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
  role=getattr(user.role,'value',user.role);safe_ui=getattr(user,'ui_type','')=='HQ_SAFE'
- return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.26.13','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
+ return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.27.4','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
   'menus':[{'id':1,'title':'기능인인정제'},{'id':2,'title':'업무분장'},{'id':3,'title':'위험성평가 DB'},{'id':4,'title':'양식·법령 탐색'},
    {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'고객사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'},{'id':9,'title':'근로자의견청취'}]})
 
@@ -182,10 +182,8 @@ def site_data(db,user):
  _,sites=catalog(db)
  role=getattr(user.role,'value',user.role)
  safety=role in {'HQ_SAFE','HQ_SAFE_ADMIN'} or (role=='ACCIDENT_ADMIN' and getattr(user,'login_id','') in {'sijung','안전보건-정상익','hq01'})
- defaults=set()
- if safety:
-  teams=SAFETY_TEAMS.get(user.name)
-  defaults={s['code'] for s in sites if teams is None or (m:=re.match(r'\[(\d+)\.',s['name'])) and int(m.group(1)) in teams}
+ from app.modules.workspace_favorites import default_favorite_codes
+ defaults=default_favorite_codes(DATA.parent/'workspace-default-favorites.json',user.name,{s['code'] for s in sites}) if safety else set()
  saved=set(favorites(db,user.id));prefs=dict(db.execute(text('SELECT site_code,is_favorite FROM workspace_site_preferences WHERE user_id=:uid'),{'uid':user.id}).all())
  stars=(defaults|saved|{k for k,v in prefs.items() if v})-{k for k,v in prefs.items() if not v}
  out=[]
