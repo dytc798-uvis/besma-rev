@@ -93,7 +93,7 @@ def active_sites(db,attendance,user=None):
         site_region=region(address)
         if site_region=='주소 확인 중':site_region=bound_location_region(address,point,lat,lon) or site_region
         portrait=verified_manager_photo(site,ROOT,managers) if getattr(getattr(user,'role',None),'value',getattr(user,'role',None))=='HQ_SAFE' else None
-        result.append({'code':code,'name':site['name'],'address':address,'region':site_region,'latitude':lat,'longitude':lon,'location_precision':precision,'manager_photo':portrait['metadata'] if portrait else None,'today_people':counts.get(code,0) if current else None,
+        result.append({'code':code,'name':site['name'],'address':address,'region':site_region,'latitude':lat,'longitude':lon,'location_precision':precision,'manager_photo':portrait['metadata'] if portrait else None,'today_people':counts.get(code) if current else None,
                        'is_government':classification,'photo':verified_photo(code,photos),'map_visible':map_exclusion(site['name']) is None,'map_exclusion_reason':map_exclusion(site['name']),**home_site_fields(site,user)})
     return result
 
