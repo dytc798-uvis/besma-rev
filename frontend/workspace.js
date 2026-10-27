@@ -1,3 +1,4 @@
+import {createMissingInfoEditor} from '/assets/site-missing-info.js';
 import {resolveCustomer,customerPolicyMatches,siteCustomerName} from '/assets/customer-policy.js';
 const API='https://api.besma.co.kr',token=localStorage.getItem('besma_token');
 const $=id=>document.getElementById(id),N=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
@@ -132,21 +133,8 @@ async function drawContractors(host,g){
  }
  draw();
 }
-function missingInfoEditor(site,g,onSaved){
- const fields=[],box=N('div',null,'panel');box.hidden=true;
- function field(label,key,maxLength,contact=null){const row=N('label'),input=N('input');input.type=key==='phone'?'tel':'text';input.maxLength=maxLength;input.autocomplete='off';input.setAttribute('aria-label',label);row.append(N('span',label),input);box.append(row);fields.push({key,input,contact});}
- if(!String(site.address||'').trim())field('주소','address',400);
- for(const contact of site.contacts){if(!contact.contact_id)continue;const person=contact.name||contact.role||'담당자';if(!String(contact.phone||'').trim())field(person+' 전화번호','phone',40,contact);if(!String(contact.rank||'').trim()&&!String(contact.role||'').split('·').includes('소장'))field(person+' 직급','rank',20,contact);}
- if(!fields.length)return null;
- const section=N('section'),edit=B('누락 정보 보완',()=>{box.hidden=!box.hidden;edit.setAttribute('aria-expanded',String(!box.hidden));if(!box.hidden)fields[0].input.focus();});edit.setAttribute('aria-expanded','false');
- box.prepend(N('p','빈 항목을 입력한 뒤 저장하세요.','small'));
- const save=B('저장',async()=>{if(g!==generation)return;const body={expected_revision:site.info_revision,contacts:[]},contacts=new Map();let entered=0;
-  for(const field of fields){const value=field.input.value.trim();if(!value)continue;if(field.key==='phone'&&(!/^[+0-9() -]+$/.test(value)||value.replace(/\D/g,'').length<4||value.replace(/\D/g,'').length>20)){tell('전화번호를 확인해 주세요.');return;}if(field.key==='rank'&&!/^[가-힣A-Za-z ]+$/.test(value)){tell('직급을 확인해 주세요.');return;}entered++;if(field.key==='address')body.address=value;else{const key=field.contact.contact_id;if(!contacts.has(key))contacts.set(key,{contact_id:key,expected_rank_revision:field.contact.rank_revision});contacts.get(key)[field.key]=value;}}
-  if(!entered){tell('보완할 정보를 입력해 주세요.');return;}body.contacts=Array.from(contacts.values());save.disabled=true;
-  try{await api('/workspace/sites/'+encodeURIComponent(site.code)+'/missing-info',{method:'PUT',body:JSON.stringify(body)});if(g!==generation)return;await onSaved();if(g===generation)tell('누락 정보를 저장했습니다.');}catch(error){if(g===generation)tell(error.message);}finally{save.disabled=false;}
- });
- const cancel=B('취소',()=>{for(const field of fields)field.input.value='';box.hidden=true;edit.setAttribute('aria-expanded','false');edit.focus();});const actions=N('div',null,'site-actions');actions.append(save,cancel);box.append(actions);section.append(edit,box);return section;
-}
+function missingInfoEditor(site,g,onSaved){return createMissingInfoEditor({site,request:api,onSaved,onNotice:tell,isCurrent:()=>g===generation});}
+
 async function drawSites(host,g){
  const data=await api('/workspace/sites');if(g!==generation)return;
  const params=new URLSearchParams(location.hash.split('?')[1]||'');
