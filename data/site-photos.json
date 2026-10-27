@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "photos": {
+    "26071": {
+      "site_code": "26071",
+      "url": "/workspace-assets/company-project-1.jpg",
+      "source_url": "http://www.boohyun.kr/bbs/board.php?bo_table=result_3&wr_id=50",
+      "caption": "송도 G5블록 11BL 공식 프로젝트 이미지(조감도)",
+      "verified": true
+    },
+    "26063": {
+      "site_code": "26063",
+      "url": "/workspace-assets/site-photos/26063-card-4c196310c2a1.webp",
+      "thumbnail_url": "/workspace-assets/site-photos/26063-thumb-4fee5d43b45c.webp",
+      "source_url": "http://www.boohyun.kr/bbs/board.php?bo_table=result_3&wr_id=49",
+      "caption": "평택 P5 초순수 공식 사업 이미지",
+      "verified": true
+    },
+    "25035": {
+      "site_code": "25035",
+      "url": "/workspace-assets/site-photos/25035-card-6c4ba2b7f0df.webp",
+      "thumbnail_url": "/workspace-assets/site-photos/25035-thumb-2adee6d06b8d.webp",
+      "source_url": "http://www.boohyun.kr/bbs/board.php?bo_table=result_3&wr_id=31",
+      "caption": "강화2 공식 조감도",
+      "verified": true
+    },
+    "24025": {
+      "site_code": "24025",
+      "url": "/workspace-assets/site-photos/24025-card-92f33b34d3ce.webp",
+      "thumbnail_url": "/workspace-assets/site-photos/24025-thumb-5a10c41c0ac9.webp",
+      "source_url": "https://www.prugio.com/ht/2024/starselah49/",
+      "caption": "청라 C18 공식 투시도",
+      "verified": true
+    },
+    "24044": {
+      "site_code": "24044",
+      "url": "/workspace-assets/site-photos/24044-card-bee0c1be0452.webp",
+      "thumbnail_url": "/workspace-assets/site-photos/24044-thumb-3248d1559826.webp",
+      "source_url": "https://m.lottecastle.co.kr/APT/AT00418/15948/constrt/view.do",
+      "caption": "효성 공3블럭 · 2026.09 공사사진",
+      "verified": true
+    },
+    "24046": {
+      "site_code": "24046",
+      "url": "/workspace-assets/site-photos/24046-card-b3bc5986f238.webp",
+      "thumbnail_url": "/workspace-assets/site-photos/24046-thumb-0077aea4a35d.webp",
+      "source_url": "https://www.seohee.co.kr/home/seohees/base/v2.seohee.sub02/v2.seohee.sub01.php",
+      "caption": "평택화양센트럴 공식 조감도",
+      "verified": true
+    }
+  }
+}

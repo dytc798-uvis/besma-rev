@@ -8,6 +8,7 @@ from sqlalchemy import text,bindparam
 from app.config.settings import settings
 from app.core.datetime_utils import kst_today
 from app.modules.home_fields import home_site_fields,home_site_scope,bound_location_region
+from app.modules.workspace_manager_photos import manager_registry,verified_manager_photo
 
 ROOT=Path(settings.storage_root)/'headquarters-workspace'
 REGIONS=('서울','경기','인천','강원권','충청권','호남권','영남권','제주권','주소 확인 중')
@@ -40,7 +41,7 @@ def verified_photo(code,photos):
         scheme_ok=uri.scheme=='https' or (not local and uri.scheme=='http' and uri.hostname in {'boohyun.kr','www.boohyun.kr'})
         return scheme_ok and bool(uri.hostname) and not uri.username and not uri.password
     if not valid_url(value.get('url'),True) or not valid_url(value.get('source_url')):return None
-    return {'site_code':code,'url':value['url'],'source_url':value['source_url'],'caption':str(value.get('caption') or '')[:200],'verified':True}
+    return {'site_code':code,'url':value['url'],'thumbnail_url':value.get('thumbnail_url') if valid_url(value.get('thumbnail_url'),True) else value['url'],'source_url':value['source_url'],'caption':str(value.get('caption') or '')[:200],'verified':True}
 
 def seoul_weather():
     from app.modules.seoul_forecast import seoul_forecast
@@ -72,7 +73,7 @@ def active_sites(db,attendance,user=None):
         if code not in rows and alias in rows:rows[code]=rows[alias]
     today=str(kst_today());current=attendance if attendance and attendance['date']==today else None
     counts={s['code']:s['people'] for s in current['sites'] if s.get('code')} if current else {}
-    loc=location_records();photos=photo_records();result=[]
+    loc=location_records();photos=photo_records();managers=manager_registry(ROOT);result=[]
     for site in items:
         code=site['code'];row=rows.get(code,{})
         current_active=(code in active or str(row.get('status') or '').upper()=='ACTIVE') and not(row.get('end_date') and str(row['end_date'])<today) and '준공' not in site['name'] and str(row.get('status') or '').upper() not in {'COMPLETED','CLOSED','INACTIVE'}
@@ -85,7 +86,8 @@ def active_sites(db,attendance,user=None):
         classification=is_government_site_record(SimpleNamespace(**{**row,'site_code':code})) if row else None
         site_region=region(address)
         if site_region=='주소 확인 중':site_region=bound_location_region(address,point,lat,lon) or site_region
-        result.append({'code':code,'name':site['name'],'address':address,'region':site_region,'latitude':lat,'longitude':lon,'location_precision':precision,'today_people':counts.get(code,0) if current else None,
+        portrait=verified_manager_photo(site,ROOT,managers) if getattr(getattr(user,'role',None),'value',getattr(user,'role',None))=='HQ_SAFE' else None
+        result.append({'code':code,'name':site['name'],'address':address,'region':site_region,'latitude':lat,'longitude':lon,'location_precision':precision,'manager_photo':portrait['metadata'] if portrait else None,'today_people':counts.get(code,0) if current else None,
                        'is_government':classification,'photo':verified_photo(code,photos),'map_visible':map_exclusion(site['name']) is None,'map_exclusion_reason':map_exclusion(site['name']),**home_site_fields(site,user)})
     return result
 
