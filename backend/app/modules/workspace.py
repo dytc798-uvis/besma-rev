@@ -35,7 +35,7 @@ def bootstrap(user=Depends(authorized)):
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
  role=getattr(user.role,'value',user.role);safe_ui=getattr(user,'ui_type','')=='HQ_SAFE'
- return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.27.7','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
+ return result({'permissions':{'manage_government_forms':can_manage_government(user),'worker_voice_read':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN','FUNCTIONAL_EVAL_VIEWER'},'worker_voice_ledger':safe_ui and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}},'version':'2026.10.27.8','user':{'name':user.name,'role':getattr(user.role,'value',user.role)},'sources':data['sources'],
   'menus':[{'id':1,'title':'기능인인정제'},{'id':2,'title':'업무분장'},{'id':3,'title':'위험성평가 DB'},{'id':4,'title':'양식·법령 탐색'},
    {'id':5,'title':'현장 정보 검색'},{'id':6,'title':'고객사 안전기준'},{'id':7,'title':'관급공사 현장 소통'},{'id':8,'title':'사용설명서'},{'id':9,'title':'근로자의견청취'}]})
 
@@ -74,10 +74,11 @@ def forms(q:str=Query('',max_length=120),user=Depends(authorized)):
 
 @router.get('/government-sites')
 def government_sites(db:DbDep,user=Depends(authorized)):
+ from app.modules.workspace_site_scope import annual_unit_contract
  from app.modules.sites.models import Site
  from app.modules.document_explorer.government_access import is_government_site_record
  from app.modules.documents.active_site_scope import in_active_scope,today_kst
- sites=[{'code':s.site_code,'name':s.site_name} for s in db.query(Site).all() if is_government_site_record(s) and in_active_scope(s,today_kst(),'government')]
+ sites=[{'code':s.site_code,'name':s.site_name} for s in db.query(Site).all() if is_government_site_record(s) and in_active_scope(s,today_kst(),'government') and not annual_unit_contract({'site_name':s.site_name,'contract_type':s.contract_type})]
  return result({'items':sites})
 
 _POLICY_PREVIEW_PAGES={13: 2, 15: 151, 21: 11, 32: 5, 33: 1, 34: 4, 35: 7, 36: 2, 38: 2, 39: 2, 40: 2, 50: 2, 55: 151}
@@ -179,7 +180,9 @@ def contractor_page_guide(item_id:int,page:int,user=Depends(authorized)):
 
 def site_data(db,user):
  from app.modules.site_directory import catalog,favorites
+ from app.modules.workspace_site_scope import annual_unit_contract
  _,sites=catalog(db)
+ sites=[s for s in sites if not annual_unit_contract(s)]
  role=getattr(user.role,'value',user.role)
  safety=role in {'HQ_SAFE','HQ_SAFE_ADMIN'} or (role=='ACCIDENT_ADMIN' and getattr(user,'login_id','') in {'sijung','안전보건-정상익','hq01'})
  from app.modules.workspace_favorites import default_favorite_codes

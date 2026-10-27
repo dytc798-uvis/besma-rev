@@ -9,6 +9,7 @@ from app.config.settings import settings
 from app.core.datetime_utils import kst_today
 from app.modules.home_fields import home_site_fields,home_site_scope,bound_location_region
 from app.modules.workspace_manager_photos import manager_registry,verified_manager_photo
+from app.modules.workspace_site_scope import annual_unit_contract
 
 ROOT=Path(settings.storage_root)/'headquarters-workspace'
 REGIONS=('서울','경기','인천','강원권','충청권','호남권','영남권','제주권','주소 확인 중')
@@ -79,6 +80,7 @@ def active_sites(db,attendance,user=None):
     counts={s['code']:s['people'] for s in current['sites'] if s.get('code')} if current else {}
     loc=location_records();photos=photo_records();managers=manager_registry(ROOT);result=[]
     for site in items:
+        if annual_unit_contract(site):continue
         code=site['code'];row=rows.get(code,{})
         current_active=(code in active or str(row.get('status') or '').upper()=='ACTIVE') and not(row.get('end_date') and str(row['end_date'])<today) and '준공' not in site['name'] and str(row.get('status') or '').upper() not in {'COMPLETED','CLOSED','INACTIVE'}
         if not(current_active or counts.get(code,0)>0):continue

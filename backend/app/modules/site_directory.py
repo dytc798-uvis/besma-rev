@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError,OperationalError
 from app.config.settings import settings
 from app.core.auth import DbDep,get_current_user
+from app.modules.workspace_site_scope import annual_unit_contract
 
 router=APIRouter(prefix='/site-directory',tags=['site-directory'])
 DATA=Path(settings.storage_root)/'site-directory'/'directory.json'
@@ -100,7 +101,8 @@ def catalog(db):
 @router.get('')
 def listing(db:DbDep,user=Depends(authorized)):
  data,sites=catalog(db)
- return response({'sites':sites,'favorite_codes':favorites(db,user.id),'source':data.get('source',{}),'version':data.get('version',VERSION)})
+ sites=[s for s in sites if not annual_unit_contract(s)];visible={s['code'] for s in sites}
+ return response({'sites':sites,'favorite_codes':[c for c in favorites(db,user.id) if c in visible],'source':data.get('source',{}),'version':data.get('version',VERSION)})
 
 class ContactRankChange(BaseModel):
  model_config=ConfigDict(extra='forbid')
