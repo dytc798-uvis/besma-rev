@@ -1,6 +1,6 @@
 const N=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 const labels={PENDING:'접수 대기',RECEIVED:'접수됨·조치 중',DONE:'조치 완료'};
-const dateText=value=>{if(!value)return '확인되지 않음';const d=new Date(value);return Number.isNaN(d.valueOf())?'확인되지 않음':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});};
+const dateText=value=>{if(!value)return '확인되지 않음';if(!/(Z|[+-]\d{2}:\d{2})$/.test(value))return value.replace('T',' ')+' (시각 기준 확인 필요)';const d=new Date(value);return Number.isNaN(d.valueOf())?'확인되지 않음':d.toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});};
 export function mountWorkerOpinions(host,{api,isCurrent,canRefresh=false,initialScope={},onScope=()=>{}}){
  let stopped=false,epoch=0,selected=null,filter='total',snapshot=null,refreshState=null;
  const current=()=>!stopped&&isCurrent(),root=N('section',null,'worker-opinions'),form=N('form',null,'voice-filters'),site=N('select'),from=N('input'),to=N('input'),submit=N('button','조회'),error=N('p',null,'voice-error'),fresh=N('p',null,'voice-freshness'),cards=N('div',null,'voice-counts'),columns=N('div',null,'voice-columns'),list=N('div',null,'voice-list'),detail=N('article',null,'voice-detail');

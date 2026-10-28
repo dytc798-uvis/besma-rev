@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.28.3",
+  "version": "2026.10.28.4",
   "backend": {
     "passed": true,
     "receipt": "/srv/besma/backups/voice98-20261028-110336",
@@ -31,5 +31,12 @@
       "modules/worker_feedback/refresh.py": "ccd7db6cab83a9cf25df28033c85b4a3027f4c608bd9a2ffe3d702862714dfbc"
     }
   },
-  "data_policy": "기존 기록 변경 없이 HQ_LAB1개/사용자 테스트 의견1건 추가. 자동 수신60초. 동일명+승인전화 해시 매칭은 실험실 라우팅 전용, 계정 권한과 무관."
+  "data_policy": "기존 기록 변경 없이 HQ_LAB1개/사용자 테스트 의견1건 추가. 자동 수신60초. 동일명+승인전화 해시 매칭은 실험실 라우팅 전용, 계정 권한과 무관.",
+  "receipt_timezone_fix": {
+    "passed": true,
+    "receipt": "/srv/besma/backups/voice98-time-20261028-110929",
+    "submitted_timezone_restored_from_original_receipt": true,
+    "business_data_changed": false,
+    "sha256": "a30384399cfc09bd1a8a0c6857b1be347e720d18a1557f30feb2455383dac597"
+  }
 }

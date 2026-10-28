@@ -40,6 +40,16 @@ def _desktop_canonical_sites(db: DbDep, current_user: Any, site_code: str | None
     return result
 
 
+def _submitted_at_value(row):
+    if row.submitted_at is None:return None
+    # SQLite drops the offset. Restore it only when the original receipt proves it.
+    try:
+        source=datetime.fromisoformat((row.submitted_at_raw or "").strip().replace("Z","+00:00"))
+        if source.utcoffset() is not None and source.replace(tzinfo=None)==row.submitted_at.replace(tzinfo=None):return source.isoformat()
+    except (ValueError,TypeError):pass
+    return row.submitted_at.isoformat()
+
+
 @router.get("/desktop-responses")
 def list_desktop_worker_feedback_responses(
     db: DbDep,
@@ -83,7 +93,7 @@ def list_desktop_worker_feedback_responses(
     items = []
     for row in rows:
         canonical = by_code.get(row.matched_site_code)
-        items.append({"id": row.id, "source": "GOOGLE_FORMS", "submitted_at": row.submitted_at.isoformat() if row.submitted_at else None,
+        items.append({"id": row.id, "source": "GOOGLE_FORMS", "submitted_at": _submitted_at_value(row),
             "worker_name": row.worker_name, "opinion_type": row.opinion_type, "content": row.content,
             "matched_site_code": row.matched_site_code,
             "matched_site_name": canonical["site_name"] if canonical else None,
