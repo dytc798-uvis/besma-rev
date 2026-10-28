@@ -17,6 +17,7 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
  let newConversation=initialDraft.newConversation===true&&!validId(target),items=[],summaryCursor=null,turnCursor=null,rendered='',handledTarget=false;
  let requestKey=/^[a-zA-Z0-9_-]{8,80}$/.test(initialDraft.requestKey||'')?initialDraft.requestKey:crypto.randomUUID(),submittedContent=null;
  let nasSelection=initialDraft.nasSelection&&typeof initialDraft.nasSelection.nas_file_id==='string'?initialDraft.nasSelection:null;
+ let achievementDecision=null;
  const sourceKinds=['NAS','SOURCE_QUESTION','EDIT'],editable=item=>item&&['.txt','.docx'].includes(item.extension);
  const chat=node('section',null,'request-chat'),heading=node('div',null,'request-chat-heading'),caption=node('h2','베스마채팅'),fresh=node('button','새 대화'),refresh=node('button','새로고침'),headingActions=node('div');
  fresh.type=refresh.type='button';headingActions.append(fresh,refresh);
@@ -36,12 +37,20 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
  const nasBox=node('section',null,'request-nas'),queryLabel=node('label','NAS 파일명 또는 폴더명'),query=node('input'),find=node('button','자료 찾기'),found=node('div',null,'request-nas-results'),selected=node('p',null,'request-source');
  query.id='work-request-nas-query';query.maxLength=100;queryLabel.htmlFor=query.id;query.placeholder='예: 점검표 /지난자료';find.type='button';nasBox.append(queryLabel,query,find,found,node('small','문구 수정 사본은 TXT·DOCX를 지원합니다.'));
  fields.append(kindLabel,kind,formatLabel,format,nasBox);options.append(optionsTitle,fields);
+ const channelLabel=node('label','입력 종류'),channel=node('select'),workDateLabel=node('label','실적 날짜'),workDate=node('input'),shared=node('small','실적은 본사 직원들에게 공유됩니다.');
+ channel.id='work-request-channel';channel.setAttribute('aria-label','입력 종류');channelLabel.htmlFor=channel.id;channel.append(new Option('채팅','CHAT'),new Option('실적','WORK'));channel.value=initialDraft.channel==='WORK'?'WORK':'CHAT';
+ workDate.type='date';workDate.id='work-request-date';workDateLabel.htmlFor=workDate.id;const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Seoul'});workDate.max=today;workDate.value=/^\d{4}-\d{2}-\d{2}$/.test(initialDraft.workDate||'')?initialDraft.workDate:today;workDateLabel.append(workDate);
+ const channelTools=node('div',null,'request-channel');channelTools.append(channelLabel,channel,workDateLabel,shared);form.append(channelTools);
+ const workConfirm=node('section',null,'request-work-confirm'),yes=node('button','예'),no=node('button','아니오');workConfirm.hidden=true;yes.type=no.type='button';workConfirm.setAttribute('aria-label','실적 등록 확인');workConfirm.append(node('strong','실적인가요?'),node('small','실적은 본사 직원들에게 공유됩니다.'),yes,no);form.append(workConfirm);
+ yes.onclick=()=>{achievementDecision={text:body.value.trim(),work:true};workConfirm.hidden=true;form.requestSubmit();};no.onclick=()=>{achievementDecision={text:body.value.trim(),work:false};workConfirm.hidden=true;form.requestSubmit();};
+ function channelState(){const work=channel.value==='WORK';workDateLabel.hidden=shared.hidden=!work;options.hidden=work;body.maxLength=work?2000:6000;submit.textContent=work?'실적 등록':'보내기';if(work){kind.value='QUESTION';nasSelection=null;selected.hidden=true;body.placeholder='이번 주 한 일을 적어 주세요. 예: 총신대 안전관리계획 지원 - 5팀';}else selectionText();achievementDecision=null;workConfirm.hidden=true;save();}
+ channel.onchange=channelState;workDate.oninput=()=>save();body.addEventListener('input',()=>{achievementDecision=null;workConfirm.hidden=true;});
  status.setAttribute('role','status');submit.type='submit';const bottom=node('div',null,'request-composer-actions');bottom.append(options,submit);form.append(selected,bodyLabel,body,bottom,status);
  chat.append(heading,log,form);host.append(chat);
  const discoveryChoices=node('section',null,'request-discovery');discoveryChoices.hidden=true;form.insertBefore(discoveryChoices,bodyLabel);
  const historyButton=node('button','이력'),historyPanel=node('section',null,'request-history'),historyList=node('div',null,'request-history-list'),historyMore=node('button','이력 더 보기');historyButton.type=historyMore.type='button';historyPanel.id='request-history';historyPanel.hidden=true;historyButton.setAttribute('aria-controls',historyPanel.id);historyButton.setAttribute('aria-expanded','false');historyMore.hidden=true;historyPanel.append(historyList,historyMore);host.append(historyButton,historyPanel);
- const save=()=>onDraft({title:'',body:body.value,kind:kind.value,fileFormat:format.value,requestKey,nasSelection,conversationId,newConversation});
- const draftKey=()=>JSON.stringify([kind.value,body.value,format.value,nasSelection?.nas_file_id,conversationId]);
+ const save=()=>onDraft({channel:channel.value,workDate:workDate.value,title:'',body:body.value,kind:kind.value,fileFormat:format.value,requestKey,nasSelection,conversationId,newConversation});
+ const draftKey=()=>JSON.stringify([channel.value,workDate.value,kind.value,body.value,format.value,nasSelection?.nas_file_id,conversationId]);
  for(const input of [kind,body,format])input.addEventListener('input',()=>{if(submittedContent!==null&&submittedContent!==draftKey()){requestKey=crypto.randomUUID();submittedContent=null;}save();});
  function selectionText(){if(kind.value==='EDIT'&&!editable(nasSelection))nasSelection=null;nasBox.hidden=!sourceKinds.includes(kind.value);formatLabel.hidden=format.hidden=kind.value!=='FILE';body.required=kind.value!=='NAS';body.maxLength=kind.value==='FILE'&&format.value==='PDF'?5988:6000;selected.hidden=!sourceKinds.includes(kind.value);selected.textContent=nasSelection?'선택한 자료 · '+nasSelection.relative_path:'자료·요청 종류를 열어 파일을 선택해 주세요.';body.placeholder=kind.value==='EDIT'?'바꿀 문구와 새 문구를 적어 주세요.':kind.value==='NAS'?'파일과 함께 보낼 내용을 적을 수 있습니다.':'메시지를 입력하세요. Enter로 보내고 Shift+Enter로 줄을 바꿉니다.';}
  selectionText();if(sourceKinds.includes(kind.value))options.open=true;kind.onchange=()=>{selectionText();save();};format.onchange=()=>{selectionText();save();};
@@ -60,7 +69,7 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
    user.append(node('strong','나'),node('p',item.body,'request-body'),node('small',stamp(item.created_at),'request-time'));turn.append(user);
    const state=item.review_phase==='DENIED'?'제공 안 함':labels[item.status]||'상태 확인 중';answer.append(node('strong','답변'),node('span',state,'request-badge'));
    if(item.reply)answer.append(node('p',item.reply,'request-body'));
-   else if(item.status==='RUNNING')answer.append(node('p',item.processing_phase==='LARGE'?'자세히 검토하고 있습니다. 잠시 기다려 주세요.':item.processing_phase==='DOCUMENT_BUILDING'?'파일을 만들고 있습니다.':item.processing_phase==='SOURCE_READING'?'자료 내용을 확인하고 있습니다.':'답변을 준비하고 있습니다.','request-progress'));
+   else if(item.status==='RUNNING')answer.append(node('p',item.processing_phase==='ERP_RECEIPT_CHECK'?'ERP 수신자료를 확인하고 있습니다.':item.processing_phase==='LARGE'?'자세히 검토하고 있습니다. 잠시 기다려 주세요.':item.processing_phase==='DOCUMENT_BUILDING'?'파일을 만들고 있습니다.':item.processing_phase==='SOURCE_READING'?'자료 내용을 확인하고 있습니다.':'답변을 준비하고 있습니다.','request-progress'));
    if(item.source&&item.source_access!==false)answer.append(node('p','출처 · '+item.source.label+' / '+item.source.relative_path,'request-source'));
    for(const file of item.files||[]){const get=node('button','파일 받기 · '+file.filename,'request-file');get.title=file.filename;get.type='button';get.onclick=async()=>{get.disabled=true;try{await download(item.id,file);if(current())status.textContent='파일을 받았습니다.';}catch(e){if(current())status.textContent=e.message;}finally{if(current())get.disabled=false;}};answer.append(get);}
    if(['QUEUED','RUNNING','INTERRUPTED','AWAITING_REVIEW','AWAITING_RELEASE'].includes(item.status)){const cancel=node('button','요청 취소');cancel.type='button';cancel.onclick=async()=>{cancel.disabled=true;try{await api('/work-requests/'+item.id+'/cancel',{method:'POST'});await reload();}catch(e){if(current())status.textContent=e.message;}finally{if(current())cancel.disabled=false;}};answer.append(cancel);}
@@ -90,8 +99,17 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
   }catch(e){if(current())notice.textContent=e.message;}finally{loading=false;if(current()){refresh.disabled=false;if(ownerDetails?.open)await ownerRefresh();if(reloadAgain){reloadAgain=false;queueMicrotask(reload);}else timer=setTimeout(reload,10000);}}}
  refresh.onclick=()=>reload();
  form.onsubmit=async event=>{event.preventDefault();if(sending||!current())return;const text=body.value.trim()||(kind.value==='NAS'?'선택한 NAS 원본 자료를 보내 주세요.':'');if(!text)return;
-  sending=true;submit.disabled=true;for(const input of[kind,body,format])input.disabled=true;submittedContent=draftKey();status.textContent='메시지를 보내고 있습니다.';save();
+  const isWork=channel.value==='WORK'||achievementDecision?.text===text&&achievementDecision.work===true;
+  if(channel.value==='CHAT'&&kind.value==='QUESTION'&&achievementDecision?.text!==text&&!/[?？]|해\s*(?:줘|주세요)|찾아|알려|보내|부탁|가능|어떻게|언제|무엇|무슨|왜|몇|뭐|문의|요청/.test(text)&&/지원|완료|실시|작성|검토|협의|방문|교육|제출|참석|조치|회의|평가|점검|정리/.test(text)&&text.length<=500){workConfirm.hidden=false;status.textContent='실적이면 예, 질문이나 요청이면 아니오를 눌러 주세요.';yes.focus();return;}
+  sending=true;submit.disabled=true;for(const input of[channel,workDate,kind,body,format])input.disabled=true;submittedContent=draftKey();status.textContent='메시지를 보내고 있습니다.';save();
   try{
+   if(isWork){
+    if(text.length>2000)throw Error('실적은 2,000자 이내로 적어 주세요.');
+    status.textContent='실적을 등록하고 있습니다.';
+    const parent=items.at(-1)?.id;const receipt=await api('/weekly-work',{method:'POST',body:JSON.stringify({request_key:requestKey,text,work_date:workDate.value,...(parent?{parent_request_id:parent}:{})})});if(!current())return;
+    body.value='';nasSelection=null;kind.value='QUESTION';selectionText();if(channel.value==='WORK'){selected.hidden=true;body.maxLength=2000;body.placeholder='이번 주 한 일을 적어 주세요.';}requestKey=crypto.randomUUID();submittedContent=null;achievementDecision=null;workConfirm.hidden=true;
+    if(receipt.chat_id){conversationId=receipt.chat_id;newConversation=false;forceLatest=true;}save();status.textContent='주간회의록에 등록했습니다. '+receipt.copy_text;await reload();return;
+   }
    if(kind.value==='QUESTION'&&/찾아\s*(?:줘|주세요|주라|주십시오)|검색\s*해\s*(?:줘|주세요)|검색해|찾아봐/.test(text)&&/파일|자료|문서|기준|양식|절차서|지침서|보고서|점검표/.test(text)){
     if(!availability.nas_files)throw Error('자료 검색 연결을 준비하고 있습니다.');
     status.textContent='자료를 찾고 있습니다.';const value=await api('/work-requests/nas/discover',{method:'POST',body:JSON.stringify({text})});if(!current())return;
@@ -109,8 +127,8 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
    const title=(items[0]?.title||nasSelection?.file_name||text.split('\n')[0]).slice(0,100),parent=items.at(-1)?.id;
    const created=await api('/work-requests',{method:'POST',body:JSON.stringify({request_key:requestKey,kind:kind.value==='NAS'?'FILE':kind.value==='SOURCE_QUESTION'?'QUESTION':kind.value,title,body:content,...(sourceKinds.includes(kind.value)?{nas_file_id:nasSelection.nas_file_id}:{}),...(parent?{parent_request_id:parent}:{})})});
    if(!current())return;body.value='';nasSelection=null;kind.value='QUESTION';selectionText();options.open=false;discoveryChoices.hidden=true;requestKey=crypto.randomUUID();submittedContent=null;++viewEpoch;conversationId=created.conversation_id||created.id;newConversation=false;forceLatest=true;save();status.textContent='메시지를 보냈습니다.';await reload();
-  }catch(e){if(current())status.textContent=e.message+' 입력 내용은 남아 있습니다.';}finally{sending=false;if(current()){submit.disabled=false;for(const input of[kind,body,format])input.disabled=false;body.focus();}}};
- await reload();return cleanup;
+  }catch(e){if(current())status.textContent=e.message+' 입력 내용은 남아 있습니다.';}finally{sending=false;if(current()){submit.disabled=false;for(const input of[channel,workDate,kind,body,format])input.disabled=false;body.focus();}}};
+ channelState();await reload();return cleanup;
 }
 
 function createOwnerInbox(panel,{api,download,current}){

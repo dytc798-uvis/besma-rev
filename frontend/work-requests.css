@@ -44,3 +44,5 @@ body[data-section="requests"] #content>.heading{padding:14px 20px;margin-bottom:
 
 .work-requests:has(.request-chat)>.request-return{display:none}.request-return{padding:10px 15px;min-height:44px;color:#edf5f8}
 @media(max-width:740px){body[data-section="requests"] .work-requests{height:var(--chat-viewport-height,100dvh);padding-bottom:env(safe-area-inset-bottom)}}
+
+.request-channel{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.request-channel>label{font-size:13px}.request-channel select{width:auto;min-width:90px;background:#fff;color:#172f3b;border:1px solid #829cab}.request-channel input{width:150px;background:#fff;color:#172f3b}.request-channel>small{color:#f1d7b3}.request-channel [hidden],.request-work-confirm[hidden]{display:none!important}.request-work-confirm{border:1px solid #dcad63;border-radius:8px;padding:10px;background:#334d5c;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.request-work-confirm small{flex:1;min-width:160px}.request-work-confirm button{min-width:60px}.request-chat-composer .request-channel{flex:0 0 auto}
