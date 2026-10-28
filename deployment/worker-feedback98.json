@@ -1,0 +1,35 @@
+{
+  "version": "2026.10.28.3",
+  "backend": {
+    "passed": true,
+    "receipt": "/srv/besma/backups/voice98-20261028-110336",
+    "health": "ok",
+    "service_user": "besma",
+    "checks": [
+      "anonymous denied /worker-feedback/desktop-responses",
+      "anonymous denied /worker-feedback/refresh-status",
+      "New test response imported once without rewriting existing records",
+      "Repeated import idempotent",
+      "HQ stored read includes all four opinions",
+      "Requested test belongs only to HQ lab",
+      "Actual SITE JWT only own data and cannot import or read lab",
+      "HQ_OTHER denied",
+      "WORKER denied",
+      "Installed one-minute timer and service successfully executed as besma",
+      "All prior sites users opinions unchanged byte-for-value"
+    ],
+    "stored_opinions": 4,
+    "new_opinions": 1,
+    "new_lab_sites": 1,
+    "old_opinions_preserved": 3,
+    "HQ_account_changed": false,
+    "auto_interval_seconds": 60,
+    "backend_files": {
+      "main.py": "1f23840d7c44183bd945739d9f0348d0c35c5a586823687de66fc176f3ed785e",
+      "modules/worker_feedback/routes.py": "ff2d967fb0461d04b477d7129fd362f23ab28716442c412acd0b3ac5f89dfb2d",
+      "modules/worker_feedback/desktop_read.py": "bae62d41e67da5e940deaff76b234dd70584c0759cb6a50472c0b8e97ea2b105",
+      "modules/worker_feedback/refresh.py": "ccd7db6cab83a9cf25df28033c85b4a3027f4c608bd9a2ffe3d702862714dfbc"
+    }
+  },
+  "data_policy": "기존 기록 변경 없이 HQ_LAB1개/사용자 테스트 의견1건 추가. 자동 수신60초. 동일명+승인전화 해시 매칭은 실험실 라우팅 전용, 계정 권한과 무관."
+}
