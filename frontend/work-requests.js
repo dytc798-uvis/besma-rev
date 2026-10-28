@@ -1,10 +1,11 @@
+import {createNasSearchStatus} from '/assets/nas-search-status.js';
 const labels={QUEUED:'접수 대기',RUNNING:'처리 중',AWAITING_REVIEW:'자료 확인 대기',AWAITING_RELEASE:'제공 확인 대기',COMPLETED:'답변 완료',DECLINED:'처리 안내',NEEDS_INFO:'추가 확인 필요',FAILED:'처리 오류',INTERRUPTED:'처리 중단',CANCELLED:'취소',ACCESS_REVOKED:'이용 권한 확인 필요'};
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 
 export async function mountWorkRequests(host,{api,download,isCurrent,initialDraft={},onDraft=()=>{}}){
- let alive=true,timer=null,loading=false,loadingHistory=false,sending=false,forceLatest=true,viewEpoch=0,reloadAgain=false;
+ let alive=true,timer=null,loading=false,loadingHistory=false,sending=false,forceLatest=true,viewEpoch=0,reloadAgain=false,nasIndex=null;
  const viewport=window.visualViewport,fit=()=>host.style.setProperty('--chat-viewport-height',(viewport?.height||innerHeight)+'px');fit();viewport?.addEventListener('resize',fit);
- const current=()=>alive&&host.isConnected&&isCurrent(),cleanup=()=>{alive=false;clearTimeout(timer);viewport?.removeEventListener('resize',fit);};
+ const current=()=>alive&&host.isConnected&&isCurrent(),cleanup=()=>{alive=false;clearTimeout(timer);nasIndex?.dispose();viewport?.removeEventListener('resize',fit);};
  host.classList.add('work-requests');
  const notice=node('p','이용 상태를 확인하고 있습니다.','request-notice');notice.setAttribute('role','status');const returnHome=node('a','← 대시보드','request-return');returnHome.href='/company.html';host.append(returnHome,notice);
  let availability;
@@ -47,15 +48,16 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
  channel.onchange=channelState;workDate.oninput=()=>save();body.addEventListener('input',()=>{achievementDecision=null;workConfirm.hidden=true;});
  status.setAttribute('role','status');submit.type='submit';const bottom=node('div',null,'request-composer-actions');bottom.append(options,submit);form.append(selected,bodyLabel,body,bottom,status);
  chat.append(heading,log,form);host.append(chat);
+ if(availability.nas_files){nasIndex=createNasSearchStatus({api,isCurrent:current});nasIndex.element.hidden=true;form.insertBefore(nasIndex.element,selected);}
  const discoveryChoices=node('section',null,'request-discovery');discoveryChoices.hidden=true;form.insertBefore(discoveryChoices,bodyLabel);
  const historyButton=node('button','이력'),historyPanel=node('section',null,'request-history'),historyList=node('div',null,'request-history-list'),historyMore=node('button','이력 더 보기');historyButton.type=historyMore.type='button';historyPanel.id='request-history';historyPanel.hidden=true;historyButton.setAttribute('aria-controls',historyPanel.id);historyButton.setAttribute('aria-expanded','false');historyMore.hidden=true;historyPanel.append(historyList,historyMore);host.append(historyButton,historyPanel);
  const save=()=>onDraft({channel:channel.value,workDate:workDate.value,title:'',body:body.value,kind:kind.value,fileFormat:format.value,requestKey,nasSelection,conversationId,newConversation});
  const draftKey=()=>JSON.stringify([channel.value,workDate.value,kind.value,body.value,format.value,nasSelection?.nas_file_id,conversationId]);
  for(const input of [kind,body,format])input.addEventListener('input',()=>{if(submittedContent!==null&&submittedContent!==draftKey()){requestKey=crypto.randomUUID();submittedContent=null;}save();});
- function selectionText(){if(kind.value==='EDIT'&&!editable(nasSelection))nasSelection=null;nasBox.hidden=!sourceKinds.includes(kind.value);formatLabel.hidden=format.hidden=kind.value!=='FILE';body.required=kind.value!=='NAS';body.maxLength=kind.value==='FILE'&&format.value==='PDF'?5988:6000;selected.hidden=!sourceKinds.includes(kind.value);selected.textContent=nasSelection?'선택한 자료 · '+nasSelection.relative_path:'자료·요청 종류를 열어 파일을 선택해 주세요.';body.placeholder=kind.value==='EDIT'?'바꿀 문구와 새 문구를 적어 주세요.':kind.value==='NAS'?'파일과 함께 보낼 내용을 적을 수 있습니다.':'메시지를 입력하세요. Enter로 보내고 Shift+Enter로 줄을 바꿉니다.';}
+ function selectionText(){if(nasIndex){nasIndex.element.hidden=!sourceKinds.includes(kind.value);if(!nasIndex.element.hidden)void nasIndex.refresh();}if(kind.value==='EDIT'&&!editable(nasSelection))nasSelection=null;nasBox.hidden=!sourceKinds.includes(kind.value);formatLabel.hidden=format.hidden=kind.value!=='FILE';body.required=kind.value!=='NAS';body.maxLength=kind.value==='FILE'&&format.value==='PDF'?5988:6000;selected.hidden=!sourceKinds.includes(kind.value);selected.textContent=nasSelection?'선택한 자료 · '+nasSelection.relative_path:'자료·요청 종류를 열어 파일을 선택해 주세요.';body.placeholder=kind.value==='EDIT'?'바꿀 문구와 새 문구를 적어 주세요.':kind.value==='NAS'?'파일과 함께 보낼 내용을 적을 수 있습니다.':'메시지를 입력하세요. Enter로 보내고 Shift+Enter로 줄을 바꿉니다.';}
  selectionText();if(sourceKinds.includes(kind.value))options.open=true;kind.onchange=()=>{selectionText();save();};format.onchange=()=>{selectionText();save();};
  async function searchNas(){if(find.disabled||sending||!current())return;find.disabled=true;found.replaceChildren(node('p','자료를 찾고 있습니다.'));
-  try{const value=await api('/work-requests/nas/search',{method:'POST',body:JSON.stringify({q:query.value})});if(!current())return;const rows=value.items.filter(item=>kind.value!=='EDIT'||editable(item));found.replaceChildren();if(!rows.length)found.append(node('p','전송 가능한 자료가 없습니다. 검색어를 바꿔 확인해 주세요.'));
+  try{const index=await nasIndex?.refresh();if(!current())return;if(index?.phase==='missing'){found.replaceChildren(node('p',nasIndex.emptyMessage('')));return;}const value=await api('/work-requests/nas/search',{method:'POST',body:JSON.stringify({q:query.value})});if(!current())return;const rows=value.items.filter(item=>kind.value!=='EDIT'||editable(item));found.replaceChildren();if(!rows.length)found.append(node('p',nasIndex?.emptyMessage('조건에 맞는 자료를 찾지 못했습니다. 검색어를 바꿔 확인해 주세요.')||'조건에 맞는 자료를 찾지 못했습니다.'));
    for(const item of rows){const row=node('div',null,'request-nas-result'),choose=node('button','이 자료 선택 · '+item.file_name);choose.type='button';choose.title=item.file_name;choose.onclick=()=>{if(sending||!current())return;nasSelection=item;requestKey=crypto.randomUUID();submittedContent=null;selectionText();save();options.open=false;body.focus();};row.append(choose,node('small',item.relative_path));found.append(row);}
   }catch(e){if(current())found.replaceChildren(node('p',e.message));}finally{if(current())find.disabled=false;}}
  find.onclick=searchNas;query.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();void searchNas();}};
@@ -112,9 +114,9 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
    }
    if(kind.value==='QUESTION'&&/찾아\s*(?:줘|주세요|주라|주십시오)|검색\s*해\s*(?:줘|주세요)|검색해|찾아봐/.test(text)&&/파일|자료|문서|기준|양식|절차서|지침서|보고서|점검표/.test(text)){
     if(!availability.nas_files)throw Error('자료 검색 연결을 준비하고 있습니다.');
-    status.textContent='자료를 찾고 있습니다.';const value=await api('/work-requests/nas/discover',{method:'POST',body:JSON.stringify({text})});if(!current())return;
+    status.textContent='자료를 찾고 있습니다.';if(nasIndex){nasIndex.element.hidden=false;const index=await nasIndex.refresh();if(!current())return;if(index.phase==='missing')throw Error(nasIndex.emptyMessage(''));}const value=await api('/work-requests/nas/discover',{method:'POST',body:JSON.stringify({text})});if(!current())return;
     if(value.handled){
-     if(!value.items.length){status.textContent='조건에 맞는 자료를 찾지 못했습니다. 파일명이나 고객사명을 조금 바꿔 주세요.';return;}
+     if(!value.items.length){status.textContent=nasIndex?.emptyMessage('조건에 맞는 자료를 찾지 못했습니다. 파일명이나 고객사명을 조금 바꿔 주세요.')||'조건에 맞는 자료를 찾지 못했습니다.';return;}
      if(value.auto_select&&value.items.length===1){nasSelection=value.items[0];kind.value='NAS';selectionText();discoveryChoices.hidden=true;save();}
      else{discoveryChoices.replaceChildren(node('strong','찾은 자료를 선택해 주세요.'));discoveryChoices.hidden=false;
       for(const item of value.items){const choose=node('button',item.file_name),path=node('small',item.relative_path);choose.type='button';choose.title=item.file_name;choose.onclick=()=>{if(sending||!current()||body.value.trim()!==text)return;nasSelection=item;kind.value='NAS';selectionText();requestKey=crypto.randomUUID();submittedContent=null;discoveryChoices.hidden=true;save();form.requestSubmit();};discoveryChoices.append(choose,path);}
