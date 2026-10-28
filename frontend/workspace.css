@@ -44,3 +44,10 @@
 .site-shared-notes{margin:16px 0;padding:12px;border:1px solid #7a98a555;border-radius:10px;background:#ffffff08}.site-shared-notes h4{margin:0 0 8px}.site-note-list{max-height:260px;overflow:auto}.site-note-list article{border-bottom:1px solid #879ba433;padding:8px 0}.site-note-list p{white-space:pre-wrap;overflow-wrap:anywhere;margin:5px 0}.site-note-list small{opacity:.75}.site-shared-notes form{display:flex;gap:8px;align-items:end}.site-shared-notes textarea{min-width:0;flex:1;width:100%;box-sizing:border-box;padding:10px;border:1px solid #80a6b8;border-radius:7px;font:inherit;background:#e8f3f7;color:#182e3b}.site-shared-notes button{padding:10px;border:0;border-radius:7px;background:#d47a37;color:white;cursor:pointer;white-space:nowrap}.site-shared-notes button:disabled{opacity:.5}.site-detail-facts>div{display:grid;grid-template-columns:100px 1fr;gap:12px;padding:6px}.site-detail-facts dd{margin:0;overflow-wrap:anywhere}.site-detail-photo{margin:10px 0}.site-detail-photo img{width:100%;max-height:320px;object-fit:contain;border-radius:8px}.home-site-links{gap:8px!important;flex-wrap:wrap}.home-site-links a{padding:9px 12px!important}.site-shared-notes [role=status]{font-size:13px}.site-shared-notes textarea:focus{outline:2px solid #dc8e49}@media(max-width:440px){.site-shared-notes form{align-items:stretch;flex-direction:column}.home-site-links a{font-size:13px!important}}
 
 .site-contact-portrait{width:48px;height:58px;object-fit:cover;border-radius:6px;flex-shrink:0}
+
+/* Keep only duty search available while the heading and department filter scroll. */
+.duty-workspace{position:relative;display:flow-root}
+.duty-workspace>.duty-search-sticky{position:sticky;top:12px;z-index:24;width:calc(100% - 200px)}
+.duty-workspace>.duty-department-filter{position:absolute;right:0;top:0;width:190px}
+.duty-department-filter select{width:100%}
+@media(max-width:740px){.duty-workspace>.duty-search-sticky{top:76px;width:100%}.duty-workspace>.duty-department-filter{position:static;width:100%;margin:0 0 20px}}
