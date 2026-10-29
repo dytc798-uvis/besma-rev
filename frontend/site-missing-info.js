@@ -18,7 +18,7 @@ export function createMissingInfoEditor({site,request,onSaved,onNotice,isCurrent
    entered++;if(f.key==='address')body.address=value;else{let c=contacts.get(f.contact.contact_id);if(!c){c={contact_id:f.contact.contact_id,expected_rank_revision:f.contact.rank_revision||0};contacts.set(c.contact_id,c);}c[f.key]=value;}
   }
   if(!entered){onNotice('보완할 정보를 입력해 주세요.');return;}body.contacts=[...contacts.values()];busy=true;section.dataset.busy='true';for(const f of fields)f.input.disabled=true;save.disabled=cancel.disabled=edit.disabled=true;
-  try{await request('/workspace/sites/'+encodeURIComponent(site.code)+'/missing-info',{method:'PUT',body:JSON.stringify(body)});if(!isCurrent())return;section.dataset.dirty='false';await onSaved();if(isCurrent())onNotice('누락 정보를 저장했습니다.');}
+  try{await request('/workspace/sites/'+encodeURIComponent(site.code)+'/missing-info',{method:'PUT',body:JSON.stringify(body)});if(!isCurrent())return;section.dataset.dirty='false';section.dataset.busy='false';await onSaved();if(isCurrent())onNotice('누락 정보를 저장했습니다.');}
   catch(error){if(isCurrent())onNotice(error.message);}
   finally{busy=false;section.dataset.busy='false';for(const f of fields)f.input.disabled=false;save.disabled=cancel.disabled=edit.disabled=false;}
  };
