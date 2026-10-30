@@ -586,6 +586,11 @@ def reconcile_sites(root,nas=NAS,sites=None):
    from publish_server import publish as publish_metadata
    server=publish_metadata()
   result={'state':'SITE_BINDINGS_UPDATED','at':now().isoformat(),'bound_files':len(changes),'changes':changes,'user_changed_or_missing_files_preserved':skipped,'files':len(dashboard['items']),'review_count':dashboard['review_count'],'workbook':book,'server':server,'opinions_or_scores_updated':False}
+  try:
+   from search_refresh import request as request_search_refresh
+   result['search_refresh']=request_search_refresh([book],root,nas)
+  except Exception as error:
+   result['search_refresh']={'state':'RETRY_PENDING','error_type':type(error).__name__}
   atomic(root/'receipts'/('site-bindings-'+now().strftime('%Y%m%d_%H%M%S%f')+'.json'),result)
   if(root/'status.json').exists():
    status=read(root/'status.json');status['review_count']=dashboard['review_count'];status['site_binding_update']={'at':result['at'],'bound_files':len(changes),'workbook':book};status['message']=f"NAS 저장·평가 반영자료 준비 완료 · 확인할 항목 {dashboard['review_count']}건";atomic(root/'status.json',status)
