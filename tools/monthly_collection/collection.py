@@ -484,7 +484,14 @@ def publish(root,nas=NAS):
    from publish_server import publish as publish_metadata
    server=publish_metadata()
   optimized=optimization_summary(c);extra=f" · 그림 축소 {optimized['files']}개" if optimization_enabled(root) else ''
-  result={'state':'PUBLISHED','server':server,'review_count':dashboard['review_count'],'at':now().isoformat(),'message':f"NAS 저장·평가 반영자료 준비 완료{extra} · 확인할 항목 {dashboard['review_count']}건",'workbooks':results,'optimization':optimized};atomic(root/'status.json',result);return result
+  result={'state':'PUBLISHED','server':server,'review_count':dashboard['review_count'],'at':now().isoformat(),'message':f"NAS 저장·평가 반영자료 준비 완료{extra} · 확인할 항목 {dashboard['review_count']}건",'workbooks':results,'optimization':optimized}
+  # File receipt/publication and searchable metadata are separate states.
+  try:
+   from search_refresh import request as request_search_refresh
+   result['search_refresh']=request_search_refresh(results,root,nas)
+  except Exception as error:
+   result['search_refresh']={'state':'RETRY_PENDING','error':type(error).__name__,'received_files_preserved':True}
+  atomic(root/'status.json',result);return result
  except Exception:
   c.rollback();atomic(root/'status.json',{'state':'NOT_COMPLETE','at':now().isoformat(),'message':'대장 반영 미완료 · 기존 자료를 보존하고 재시도합니다.'});raise
  finally:c.close()
