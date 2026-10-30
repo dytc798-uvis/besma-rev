@@ -204,6 +204,14 @@ def ingest(root,manifest,nas=NAS,sites=None):
     result['server']=publish_metadata()
    except Exception as error:
     result['server']={'state':'NOT_PUBLISHED','error':type(error).__name__};atomic(root/'failures'/('metadata-'+now().strftime('%Y%m%d_%H%M%S%f')+'.json'),result['server'])
+   if result.get('state')=='NAS_SAVED':
+    # A later profile/download can fail. Already receipted originals should
+    # still enter the existing search refresh, independently of workbook finish.
+    try:
+     from search_refresh import request as request_search_refresh
+     result['search_refresh']=request_search_refresh([],root,nas)
+    except Exception as error:
+     result['search_refresh']={'state':'RETRY_PENDING','error':type(error).__name__,'received_files_preserved':True}
   return result
  finally:c.close()
 def _ingest(c,root,manifest,nas,sites):
