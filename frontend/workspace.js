@@ -1,3 +1,4 @@
+import {receiveVerifiedFile} from '/assets/request-file-download.js';
 import {siteChatLink} from '/assets/chat-context.js';
 import {mountWorkerOpinions} from '/assets/worker-opinions.js';
 import {bindNaverDirections} from '/assets/naver-directions.js';
@@ -209,8 +210,8 @@ async function render(){if(siteWorkspace)return siteWorkspace.render();requestCl
  else if(key==='requests'){
  const mod=await import('/assets/work-requests.js');if(g!==generation)return;
  const cleanup=await mod.mountWorkRequests(host,{api,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token,initialDraft:readView('requests'),onDraft:value=>saveView('requests',value),download:async(rid,file)=>{
- guard();if(!/^[a-f0-9]{32}$/.test(rid)||!/^[a-f0-9]{32}$/.test(file.id)||!Number.isInteger(file.bytes)||file.bytes<1||file.bytes>16*1024*1024)throw Error('파일 정보를 확인해 주세요.');
- const r=await fetch(API+'/work-requests/'+rid+(file.input?'/inputs/':'/files/')+file.id,{headers:{Authorization:'Bearer '+token},credentials:'omit',redirect:'error',cache:'no-store'});if(!r.ok)throw Error('파일을 받지 못했습니다. 다시 확인해 주세요.');const bytes=await r.arrayBuffer();guard();if(g!==generation)return;const sha=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');if(bytes.byteLength!==file.bytes||sha!==file.sha256)throw Error('파일 내용을 확인하지 못했습니다. 다시 받아 주세요.');
+ guard();if(!/^[a-f0-9]{32}$/.test(rid)||!/^[a-f0-9]{32}$/.test(file.id)||!Number.isInteger(file.bytes)||file.bytes<1||file.bytes>(file.input?16:32)*1024*1024)throw Error('파일 정보를 확인해 주세요.');
+ const r=await fetch(API+'/work-requests/'+rid+(file.input?'/inputs/':'/files/')+file.id,{headers:{Authorization:'Bearer '+token},credentials:'omit',redirect:'error',cache:'no-store'});if(!r.ok)throw Error('파일을 받지 못했습니다. 다시 확인해 주세요.');const progress=host.querySelector('.request-send-status');const bytes=await receiveVerifiedFile(r,file,{guard:()=>{guard();if(g!==generation)throw Error('다른 화면으로 이동해 파일 받기를 중단했습니다.');},onProgress:value=>{if(g===generation&&progress)progress.textContent=value.phase==='VERIFYING'?'받은 파일을 확인하고 있습니다.':'파일 받는 중 '+Math.floor(value.loaded/value.total*100)+'% · '+(value.loaded/1048576).toFixed(1)+' / '+(value.total/1048576).toFixed(1)+'MB';}});guard();if(g!==generation)return;
  const url=URL.createObjectURL(new Blob([bytes],{type:file.input&&['image/jpeg','image/png','image/webp'].includes(file.media_type)?file.media_type:'application/octet-stream'}));blobUrls.push(url);if(file.input&&file.preview)return url;const a=N('a');a.href=url;a.download=file.filename;document.body.append(a);a.click();a.remove();
  }});if(g!==generation)cleanup?.();else requestCleanup=cleanup;
  }

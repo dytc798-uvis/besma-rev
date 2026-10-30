@@ -1,3 +1,5 @@
+from starlette.responses import StreamingResponse
+from starlette.background import BackgroundTask
 """BESMA-authenticated private request API; no remote shell or model tools."""
 from dataclasses import dataclass
 from typing import Literal
@@ -6,7 +8,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
-from .store import Conflict, MAX_BYTES
+from .store import Conflict, MAX_BYTES, MAX_ORIGINAL_BYTES
 from .access import headquarters_user
 
 
@@ -150,7 +152,7 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             if error.status_code==404:return result({'enabled':False})
             raise
         from .input_images import available
-        return result({'enabled':True,'question_retry':True,'owner_result_followup':bool(identity['owner']and config().source_lookup_enabled and config().owner_result_followup_enabled),'owner_source_choices':bool(identity['owner']and config().source_lookup_enabled),'owner_choices_allowed_sources':['NAS','PC']if config().nas_files_enabled else['PC'],'scope_exempt':identity['owner'],'nas_files':bool(config().nas_files_enabled and nas and nas.available(user)),'source_edit':bool(config().nas_files_enabled and nas and nas.available(user)),'workbook_edit':bool(config().workbook_edit_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_choices':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_lookup':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_generation':bool(config().source_generation_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'image_source_comparison':bool(config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'input_images':available(store_provider()),'naver_delivery':bool(config().naver_delivery_enabled and identity['owner'])})
+        return result({'enabled':True,'original_max_bytes':MAX_ORIGINAL_BYTES,'analysis_max_bytes':MAX_BYTES,'question_retry':True,'owner_result_followup':bool(identity['owner']and config().source_lookup_enabled and config().owner_result_followup_enabled),'owner_source_choices':bool(identity['owner']and config().source_lookup_enabled),'owner_choices_allowed_sources':['NAS','PC']if config().nas_files_enabled else['PC'],'scope_exempt':identity['owner'],'nas_files':bool(config().nas_files_enabled and nas and nas.available(user)),'source_edit':bool(config().nas_files_enabled and nas and nas.available(user)),'workbook_edit':bool(config().workbook_edit_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_choices':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_lookup':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_generation':bool(config().source_generation_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'image_source_comparison':bool(config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'input_images':available(store_provider()),'naver_delivery':bool(config().naver_delivery_enabled and identity['owner'])})
 
     @router.post('/input-attachments',status_code=201)
     async def upload_input(file:UploadFile=File(...),request_key:str=Form(...,min_length=8,max_length=80),user=Depends(actor),db=Depends(store)):
@@ -182,8 +184,9 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
     def nas_search(body:NasQuery,user=Depends(auth),db=Depends(store)):
         identity=actor(user)
         if not config().nas_files_enabled or nas is None:raise HTTPException(404,'NAS 자료 요청을 준비하고 있습니다.')
-        sources=call(nas.search,user,body.q)
-        return result({'items':[{**source,'nas_file_id':call(db.register_selection,identity,source)}for source in sources]})
+        state=call(nas.search_state,user,body.q)
+        return result({'items':[{**source,'nas_file_id':call(db.register_selection,identity,source)}for source in state['items']],
+            'unavailable_count':state.get('unavailable_count',0),'original_max_bytes':MAX_ORIGINAL_BYTES})
 
     @router.post('/nas/discover')
     def discover_files(body:DiscoveryQuery,user=Depends(auth),db=Depends(store)):
@@ -328,8 +331,8 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             reply:str=Form(...,min_length=1,max_length=12000),business_allowed:bool=Form(...),
             delivery_mode:Literal['RESULT','OWNER_PREVIEW']=Form('RESULT'),
             file:UploadFile|None=File(None),user=Depends(worker),db=Depends(store)):
-        content=await file.read(MAX_BYTES+1) if file else None
-        if file and len(content)>MAX_BYTES:raise HTTPException(413,'결과 파일은 16MB까지 보낼 수 있습니다.')
+        content=await file.read(MAX_ORIGINAL_BYTES+1) if file else None
+        if file and len(content)>MAX_ORIGINAL_BYTES:raise HTTPException(413,'원본 자료는 32MB까지 보낼 수 있습니다.')
         return result(call(db.finish,rid,lease,status,reply,business_allowed,eligible_provider(),file.filename if file else None,content,source_valid,delivery_mode,user))
 
     @router.get('/{rid}')
@@ -344,10 +347,14 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
     def download(rid:str,fid:str,user=Depends(actor),db=Depends(store)):
         item=call(db.get,user,rid)
         if not file_access(item,user):raise HTTPException(404,'원본 자료와 이용 권한을 확인해 주세요.')
-        name,body=call(db.download,user,rid,fid)
-        return Response(body,media_type='application/octet-stream',headers={
+        name,stream,size=call(db.download_stream,user,rid,fid)
+        def chunks():
+            try:
+                while chunk:=stream.read(1024*1024):yield chunk
+            finally:stream.close()
+        return StreamingResponse(chunks(),background=BackgroundTask(stream.close),media_type='application/octet-stream',headers={
             'Content-Disposition':"attachment; filename*=UTF-8''"+quote(name,safe=''),
-            'Content-Length':str(len(body)),'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff'})
+            'Content-Length':str(size),'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff'})
 
     from .naver_delivery import install as install_naver_delivery
     install_naver_delivery(router,actor,worker,store,config,eligible_provider,result,call)

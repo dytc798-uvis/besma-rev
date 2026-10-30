@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 from fastapi import Depends,HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel,ConfigDict,Field
-from .store import Conflict
+from .store import Conflict,MAX_ORIGINAL_BYTES
 PREFIX='OWNER_RESULT_FOLLOWUP_V1:'
 CAP='OWNER_SOURCE_CHOICES_V2'
 EXTENSIONS={'.txt','.pdf','.docx','.xlsx','.pptx','.hwp','.hwpx','.csv'}
@@ -29,7 +29,7 @@ def candidate(db,actor,row):
  if len(files)!=1:return None
  file=files[0]
  from .nas_sources import accident_source
- if not 0<file['bytes']<=16*1024*1024 or PurePosixPath(file['filename']).suffix.casefold()not in EXTENSIONS or accident_source(file['filename']):return None
+ if not 0<file['bytes']<=MAX_ORIGINAL_BYTES or PurePosixPath(file['filename']).suffix.casefold()not in EXTENSIONS or accident_source(file['filename']):return None
  origin='RESULT';anchor=parent['id']
  if parent['source_json']:origin='NAS'
  else:

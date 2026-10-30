@@ -4,7 +4,7 @@ from app.modules.file_search.access import require_file_search_member, require_s
 from app.modules.file_search.important_files import IMPORTANT_FILE_MEDIA_TYPES, _active_index_entry
 from app.modules.file_search.index_database import IndexDatabase
 from app.modules.file_search.schemas import IndexEntry, FolderSelector, FileSearchScope, SearchRequest, TEAM_SAFETY_NAS_DENIED_RELATIVE_PREFIXES
-from .store import MAX_BYTES, Conflict
+from .store import MAX_BYTES, MAX_ORIGINAL_BYTES, Conflict
 
 # Original download formats; mobile publication and content analysis keep their own limits.
 NAS_ORIGINAL_EXTENSIONS = frozenset(IMPORTANT_FILE_MEDIA_TYPES) | {".zip", ".xls"}
@@ -58,7 +58,7 @@ class NasSources:
         entry=IndexEntry.model_validate({key:row[key]for key in ['relative_path','file_name','extension','size','modified_at','is_directory']})
         compact=lambda value:''.join(value.casefold().split())
         compact_path=compact(entry.relative_path)
-        if (accident_source(entry.relative_path) or entry.is_directory or entry.extension not in NAS_ORIGINAL_EXTENSIONS or not 0<entry.size<=MAX_BYTES
+        if (accident_source(entry.relative_path) or entry.is_directory or entry.extension not in NAS_ORIGINAL_EXTENSIONS or not 0<entry.size<=MAX_ORIGINAL_BYTES
                 or entry.modified_at is None or IndexDatabase._team_path_is_denied(entry.relative_path)
                 or any(compact_path==compact(prefix)or compact_path.startswith(compact(prefix)+'/')for prefix in TEAM_SAFETY_NAS_DENIED_RELATIVE_PREFIXES)):
             raise HTTPException(404,'전송할 수 있는 공용 자료를 선택해 주세요.')
@@ -118,14 +118,17 @@ class NasSources:
         from app.modules.file_search.routes import search
         context=self.context(user)
         found=search(SearchRequest(q=q,scopes=['TEAM_SAFETY_NAS'],extensions=sorted(NAS_ORIGINAL_EXTENSIONS),limit=20),context)
-        sources=[]
+        sources=[];unavailable=0
         for item in found['items']:
+            if item['is_directory'] or accident_source(item['relative_path']) or IndexDatabase._team_path_is_denied(item['relative_path']):continue
+            if item['size']>MAX_ORIGINAL_BYTES:
+                unavailable+=1;continue
             try:
                 selector=FolderSelector(scope=item['scope'],logical_root_id=item['logical_root_id'],installation_id=item['installation_id'],relative_path=item['relative_path'])
                 sources.append(self.resolve(context,selector))
             except HTTPException as error:
                 if error.status_code!=404:raise
-        return {'items':sources,'total_count':found['total_count'],'complete':found['total_count']==len(found['items'])}
+        return {'items':sources,'total_count':found['total_count'],'complete':found['total_count']==len(found['items']),'unavailable_count':unavailable,'original_max_bytes':MAX_ORIGINAL_BYTES}
 
     def validate(self,actor,source):
         user=self.load_user(actor);context=self.context(user)

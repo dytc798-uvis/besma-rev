@@ -47,7 +47,7 @@ def install(router,worker,store,config,eligible,nas,result,call):
    item={k:source[k]for k in ['file_name','relative_path','extension','size','modified_at']}
    if register:item.update(selection_id=db.register_selection(actor,source),source_sha256=db.source_digest(source))
    items.append(item)
-  return {'source':'NAS','items':items,'complete':state['complete']}
+  return {'source':'NAS','items':items,'complete':state['complete'],'unavailable_count':state.get('unavailable_count',0)}
  def state_of(db,rid):
   with db.connection()as connection:
    row=connection.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone()

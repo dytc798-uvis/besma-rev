@@ -49,16 +49,16 @@ def discover(user,text,search,*,source_workflow=False,source_choices_workflow=Fa
     if owner_sources and source_workflow and query:return {'handled':False,'items':[],'auto_select':False,'queued_source_work':True}
     if source_choices_workflow and query and query['action']=='QUESTION':return {'handled':False,'items':[],'auto_select':False,'queued_source_work':True}
     if query is None:return {'handled':False,'items':[],'auto_select':False}
-    found={};searched=[];complete=True
+    found={};searched=[];complete=True;unavailable=0
     for q in query['queries']:
         value=search(user,q)
         if not isinstance(value,dict)or not isinstance(value.get('items'),list)or type(value.get('complete'))is not bool:raise ValueError('EXACT_SEARCH_STATE_REQUIRED')
-        searched.append(q);complete=complete and value['complete']
+        searched.append(q);complete=complete and value['complete'];unavailable=max(unavailable,value.get('unavailable_count',0))
         for item in value['items']:found[(item['logical_root_id'],item['relative_path'])]=item
         if any(rank(item,query)==2 for item in found.values()):break
     rows=sorted(found.values(),key=lambda item:(-rank(item,query),item['relative_path']))
     strong=[item for item in rows if rank(item,query)==2]
-    if not rows and source_workflow and source_choices_workflow:
+    if not rows and not unavailable and source_workflow and source_choices_workflow:
         return {'handled':False,'items':[],'auto_select':False,'queued_source_work':True}
     auto=bool(complete and len(strong)==1 and query['specific']and not query['requires_revision'])
-    return {'handled':True,'queries':searched,'items':strong or rows[:20],'auto_select':auto,'complete':complete,'revision_verified':False,'action':query['action']}
+    return {'handled':True,'queries':searched,'items':strong or rows[:20],'auto_select':auto,'complete':complete,'revision_verified':False,'action':query['action'],'unavailable_count':unavailable}

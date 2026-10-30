@@ -13,6 +13,7 @@ from . import source_generation
 
 FINAL = {'COMPLETED', 'DECLINED', 'FAILED', 'NEEDS_INFO'}
 MAX_BYTES = 16 * 1024 * 1024
+MAX_ORIGINAL_BYTES = 32 * 1024 * 1024
 
 
 class Conflict(Exception):
@@ -669,7 +670,7 @@ class RequestStore:
             if (not isinstance(filename,str) or not filename or len(filename)>255 or filename in {'.','..'}
                     or re.search(r'[\\/:*?"<>|\x00-\x1f]',filename)
                     or Path(filename).suffix.lower() not in {'.pdf','.docx','.xlsx','.pptx','.txt','.csv','.zip','.png','.jpg','.jpeg','.webp','.hwp','.hwpx','.xls'}
-                    or not isinstance(content,bytes) or not 0<len(content)<=MAX_BYTES or status!='COMPLETED'):
+                    or not isinstance(content,bytes) or not 0<len(content)<=MAX_ORIGINAL_BYTES or status!='COMPLETED'):
                 raise ValueError('INVALID_RESULT_FILE')
             attachment={'id':uuid4().hex,'filename':filename,'bytes':len(content),'sha256':hashlib.sha256(content).hexdigest()}
         if delivery_mode not in {'RESULT','OWNER_PREVIEW'}:raise ValueError('INVALID_DELIVERY_MODE')
@@ -689,6 +690,11 @@ class RequestStore:
                 raise Conflict('BUSINESS_SCOPE_REQUIRED')
             if current[pair] and status=='DECLINED' and not business_allowed:
                 raise Conflict('OWNER_SCOPE_EXEMPT')
+            original_delivery=bool(row['source_json'] and row['kind']=='FILE' and not source_generation.requested(db,row))
+            if attachment and len(content)>(MAX_ORIGINAL_BYTES if original_delivery else MAX_BYTES):raise ValueError('RESULT_SIZE_LIMIT')
+            if attachment and len(content)>MAX_BYTES:
+                import shutil
+                if shutil.disk_usage(self.root).free<512*1024*1024:raise Conflict('RESULT_STORAGE_NOT_READY')
             if row['source_json']:
                 source=json.loads(row['source_json'])
                 if source_validator is None or worker_actor is None or not source_validator({'id':pair[0],'login_id':pair[1]},source)or not source_validator(worker_actor,source):raise Conflict('NAS_SOURCE_NO_LONGER_AVAILABLE')
@@ -729,6 +735,26 @@ class RequestStore:
             self._event(db,rid,status)
             db.execute('UPDATE worker_state SET seen_at=? WHERE id=1',(self.clock(),))
             return self._public(db,db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone(),True)
+
+    def download_stream(self,actor,rid,fid):
+        self.get(actor,rid)
+        if not re.fullmatch(r'[0-9a-f]{32}',fid):raise KeyError('NOT_FOUND')
+        with self.connection()as db:
+            row=db.execute("SELECT * FROM files WHERE id=? AND request_id=? AND (audience='REQUESTER'OR ?)",(fid,rid,int(actor['owner']))).fetchone()
+            if not row:raise KeyError('NOT_FOUND')
+        if not 0<row['bytes']<=MAX_ORIGINAL_BYTES:raise Conflict('RESULT_SIZE_LIMIT')
+        stream=safe_path(self.root/'results'/fid).open('rb')
+        try:
+            before=os.fstat(stream.fileno());digest=hashlib.sha256();size=0
+            while chunk:=stream.read(1024*1024):
+                size+=len(chunk)
+                if size>row['bytes']:raise Conflict('RESULT_INTEGRITY_FAILED')
+                digest.update(chunk)
+            after=os.fstat(stream.fileno())
+            if size!=row['bytes']or digest.hexdigest()!=row['sha256']or(before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):raise Conflict('RESULT_INTEGRITY_FAILED')
+            stream.seek(0);return row['filename'],stream,row['bytes']
+        except BaseException:
+            stream.close();raise
 
     def download(self, actor, rid, fid):
         self.get(actor,rid)
