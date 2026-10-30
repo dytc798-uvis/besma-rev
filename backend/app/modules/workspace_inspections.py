@@ -23,11 +23,9 @@ def enabled():
     except (OSError,ValueError):raise HTTPException(503,'점검계획 설정을 확인해 주세요.')
 
 def binding(db,row):
-    match=re.fullmatch(r'inspection:\d{6}:site-(\d+)',row.client_item_key or '')
-    # The reviewed joint visit names Seonghwan sewage works, canonical site code 25062.
-    sid=int(match[1]) if match else None
-    site=db.get(Site,sid) if sid else db.query(Site).filter(Site.site_code=='25062').one_or_none() if row.client_item_key=='inspection:202611:joint-cheonan' else None
-    if row.source!=INSPECTION_SOURCE or not site:raise HTTPException(409,'점검계획의 현장 연결을 확인해 주세요.')
+    from app.modules.inspection_reports.site_identity import resolve
+    site=resolve(db,row)
+    if site is None:raise HTTPException(409,'점검계획의 원문 현장명과 현장 코드를 확인해 주세요.')
     return site
 
 def records(db,site_id=None):
