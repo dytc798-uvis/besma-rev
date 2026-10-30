@@ -26,7 +26,7 @@ def nearest_result(db,actor,row):
  for _ in range(12):
   if not parent_id or parent_id in seen:return None
   seen.add(parent_id);parent=db.execute('SELECT * FROM requests WHERE id=?',(parent_id,)).fetchone()
-  if parent is None or(parent['user_id'],parent['login_id'])!=(actor['id'],actor['login_id'])or not parent['scope_exempt']or parent['conversation_id']!=row['conversation_id']or parent['review_phase']not in {'NONE','OWN','SHARED','RELEASED'}or parent['status']not in {'COMPLETED','NEEDS_INFO'}:return None
+  if parent is None or(parent['user_id'],parent['login_id'])!=(actor['id'],actor['login_id'])or not parent['scope_exempt']or parent['conversation_id']!=row['conversation_id']or parent['review_phase']not in {'NONE','OWN','SHARED','RELEASED'}or parent['status']not in {'COMPLETED','NEEDS_INFO','ACCESS_REVOKED'}:return None
   chain.append({'id':parent['id'],'updated_at':parent['updated_at'],'body':parent['body']})
   all_files=db.execute('SELECT * FROM files WHERE request_id=?',(parent['id'],)).fetchall();files=[f for f in all_files if f['audience']=='REQUESTER']
   if files:
@@ -65,7 +65,7 @@ def bind(db,queue,actor,rid):
  row=db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone();value=candidate(db,actor,row)
  if value:queue._event(db,rid,PREFIX+json.dumps(value,ensure_ascii=False,separators=(',',':')))
 
-def validate(db,queue,user,row,cfg,eligible,source_valid):
+def validate(db,queue,user,row,cfg,eligible,source_valid,*,retained_access=None):
  if not cfg.enabled or not cfg.source_lookup_enabled or not cfg.owner_result_followup_enabled or not user['owner']or(user['id'],user['login_id'])!=cfg.owner:raise Conflict('RESULT_FOLLOWUP_DISABLED')
  if not any((p['id'],p['login_id'])==(user['id'],user['login_id'])and p['owner']for p in eligible):raise Conflict('OWNER_ACCESS_REVOKED')
  value=requested(db,row['id']);now=candidate(db,user,row)
@@ -73,16 +73,22 @@ def validate(db,queue,user,row,cfg,eligible,source_valid):
  if value['origin']=='NAS'and not cfg.nas_files_enabled:raise Conflict('NAS_FILES_DISABLED')
  anchor=db.execute('SELECT * FROM requests WHERE id=?',(value['origin_request_id'],)).fetchone()
  if anchor is None or anchor['status']!='COMPLETED'or anchor['conversation_id']!=row['conversation_id']or(anchor['user_id'],anchor['login_id'])!=(user['id'],user['login_id']):raise Conflict('RESULT_ORIGIN_REVOKED')
- if anchor['source_json']and not source_valid(user,json.loads(anchor['source_json'])):raise Conflict('SOURCE_ACCESS_REVOKED')
+ if anchor['source_json']:
+  from .nas_sources import accident_source
+  if accident_source(json.loads(anchor['source_json']).get('relative_path','')):raise Conflict('SOURCE_ACCESS_REVOKED')
+  # This is an already delivered, hash-pinned private result, not a new NAS read.
+  # Reuse the same access gate as its existing download endpoint.
+  allowed=retained_access(user,anchor)if retained_access is not None else source_valid(user,json.loads(anchor['source_json']))
+  if not allowed:raise Conflict('SOURCE_ACCESS_REVOKED')
  return {k:v for k,v in value.items()if k not in {'origin','origin_request_id'}}
 
-def install(router,worker,store,config,eligible,source_valid,call):
+def install(router,worker,store,config,eligible,source_valid,call,*,retained_access=None):
  @router.post('/worker/{rid}/input-result')
  def read_result(rid:str,body:ReadResult,user=Depends(worker),queue=Depends(store)):
   def checked():
    with queue.connection()as db:
     row=queue._lease(db,rid,body.lease)
-    value=validate(db,queue,user,row,config(),eligible(),source_valid)
+    value=validate(db,queue,user,row,config(),eligible(),source_valid,retained_access=retained_access)
     if value['file_id']!=body.file_id:raise Conflict('EXACT_RESULT_REQUIRED')
     return value
   value=call(checked);name,data=call(queue.download,user,value['request_id'],value['file_id'])

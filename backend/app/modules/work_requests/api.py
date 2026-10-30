@@ -1,6 +1,7 @@
 from starlette.responses import StreamingResponse
 from starlette.background import BackgroundTask
 """BESMA-authenticated private request API; no remote shell or model tools."""
+import json
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import quote
@@ -130,6 +131,10 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
         if user['owner']or item['status']=='COMPLETED'and item.get('review_phase')in {'RELEASED','OWN'}:
             return getattr(nas,'member_valid',lambda actor:nas.valid(actor,source))(user)
         return source_valid(user,source)
+
+    def retained_result_access(user,anchor):
+        return file_access({'source':json.loads(anchor['source_json']),
+                            'status':anchor['status'],'review_phase':anchor['review_phase']},user)
 
     def visible(item,user):
         source=item.get('source')
@@ -277,7 +282,7 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
         if not config().owner_result_followup_enabled:capabilities=[c for c in capabilities if c!='OWNER_SOURCE_CHOICES_V2']
         if not (config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled):capabilities=[c for c in capabilities if c!='UPLOADED_IMAGE_SOURCE_V1']
         from . import result_followup
-        def result_validator(connection,row,who):return result_followup.validate(connection,db,who,row,config(),eligible_provider(),source_valid)
+        def result_validator(connection,row,who):return result_followup.validate(connection,db,who,row,config(),eligible_provider(),source_valid,retained_access=retained_result_access)
         item=call(db.claim,eligible_provider(),source_valid,capabilities,user,result_validator,image_comparison_enabled=config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled)
         if item is not None:
             if config().image_source_comparison_enabled and 'UPLOADED_IMAGE_SOURCE_V1'in capabilities:
@@ -368,5 +373,5 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
     install_owner_source_choices(router,actor,worker,store,config,eligible_provider,result,call)
 
     from .result_followup import install as install_result_followup
-    install_result_followup(router,worker,store,config,eligible_provider,source_valid,call)
+    install_result_followup(router,worker,store,config,eligible_provider,source_valid,call,retained_access=retained_result_access)
     return router
