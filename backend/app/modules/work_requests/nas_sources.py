@@ -6,6 +6,9 @@ from app.modules.file_search.index_database import IndexDatabase
 from app.modules.file_search.schemas import IndexEntry, FolderSelector, FileSearchScope, SearchRequest, TEAM_SAFETY_NAS_DENIED_RELATIVE_PREFIXES
 from .store import MAX_BYTES, Conflict
 
+# Original download formats; mobile publication and content analysis keep their own limits.
+NAS_ORIGINAL_EXTENSIONS = frozenset(IMPORTANT_FILE_MEDIA_TYPES) | {".zip", ".xls"}
+
 
 import re,unicodedata
 ACCIDENT_SOURCE=re.compile('사고(?=$|[/\\\\\\s_.()\\[\\]0-9-]|관리|조사|보고|접수|기록|이력|현황|대장|통계|경위|발생|사진|사례|자료|대응|처리|분석|원인|후속)|(?:^|[/\\\\\\s_.()\\[\\]0-9-])(?:accidents?|incidents?)(?=$|[/\\\\\\s_.()\\[\\]0-9-])',re.I)
@@ -55,7 +58,7 @@ class NasSources:
         entry=IndexEntry.model_validate({key:row[key]for key in ['relative_path','file_name','extension','size','modified_at','is_directory']})
         compact=lambda value:''.join(value.casefold().split())
         compact_path=compact(entry.relative_path)
-        if (accident_source(entry.relative_path) or entry.is_directory or entry.extension not in IMPORTANT_FILE_MEDIA_TYPES or not 0<entry.size<=MAX_BYTES
+        if (accident_source(entry.relative_path) or entry.is_directory or entry.extension not in NAS_ORIGINAL_EXTENSIONS or not 0<entry.size<=MAX_BYTES
                 or entry.modified_at is None or IndexDatabase._team_path_is_denied(entry.relative_path)
                 or any(compact_path==compact(prefix)or compact_path.startswith(compact(prefix)+'/')for prefix in TEAM_SAFETY_NAS_DENIED_RELATIVE_PREFIXES)):
             raise HTTPException(404,'전송할 수 있는 공용 자료를 선택해 주세요.')
@@ -114,7 +117,7 @@ class NasSources:
         # Reuse the original query semantics, limiter, audit and visibility predicates.
         from app.modules.file_search.routes import search
         context=self.context(user)
-        found=search(SearchRequest(q=q,scopes=['TEAM_SAFETY_NAS'],extensions=list(IMPORTANT_FILE_MEDIA_TYPES),limit=20),context)
+        found=search(SearchRequest(q=q,scopes=['TEAM_SAFETY_NAS'],extensions=sorted(NAS_ORIGINAL_EXTENSIONS),limit=20),context)
         sources=[]
         for item in found['items']:
             try:

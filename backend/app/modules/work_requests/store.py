@@ -668,7 +668,7 @@ class RequestStore:
         if filename is not None or content is not None:
             if (not isinstance(filename,str) or not filename or len(filename)>255 or filename in {'.','..'}
                     or re.search(r'[\\/:*?"<>|\x00-\x1f]',filename)
-                    or Path(filename).suffix.lower() not in {'.pdf','.docx','.xlsx','.pptx','.txt','.csv','.zip','.png','.jpg','.jpeg','.webp','.hwp','.hwpx'}
+                    or Path(filename).suffix.lower() not in {'.pdf','.docx','.xlsx','.pptx','.txt','.csv','.zip','.png','.jpg','.jpeg','.webp','.hwp','.hwpx','.xls'}
                     or not isinstance(content,bytes) or not 0<len(content)<=MAX_BYTES or status!='COMPLETED'):
                 raise ValueError('INVALID_RESULT_FILE')
             attachment={'id':uuid4().hex,'filename':filename,'bytes':len(content),'sha256':hashlib.sha256(content).hexdigest()}
