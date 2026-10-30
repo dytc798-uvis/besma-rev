@@ -33,7 +33,11 @@ def migrate(conn):
  conn.execute(text('CREATE TABLE IF NOT EXISTS workspace_site_preferences (user_id INTEGER NOT NULL REFERENCES users(id),site_code TEXT NOT NULL,is_favorite INTEGER NOT NULL,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,site_code))'))
 
 @router.get('/bootstrap')
-def bootstrap(user=Depends(authorized)):
+def bootstrap(db:DbDep,user=Depends(get_current_user)):
+ if getattr(user.role,'value',user.role)=='SITE':
+  from app.modules.workspace_site import bootstrap as site_bootstrap
+  return site_bootstrap(db,user)
+ authorized(user)
  data=dataset()
  from app.core.government_workspace_access import can_manage_government
  role=getattr(user.role,'value',user.role);safe_ui=getattr(user,'ui_type','')=='HQ_SAFE'
@@ -141,6 +145,9 @@ def _policy_legacy_fingerprint(item):
 
 @router.get('/contractors')
 def contractors(user=Depends(authorized)):
+ return result(contractor_catalog())
+
+def contractor_catalog():
  data=dataset();fingerprints={};previews=_policy_previews(data,keep_page=0,fingerprints=fingerprints);items=[dict(item) for item in data['policies']]
  for item in items:
   if item['id'] in previews:
@@ -158,7 +165,7 @@ def contractors(user=Depends(authorized)):
     if value:fingerprints[ident]=value
   if alias in fingerprints and primary in fingerprints and fingerprints[alias]==fingerprints[primary]:
    by_id[alias]['duplicate_of']=primary;by_id[primary].setdefault('duplicate_ids',[]).append(alias)
- return result({'items':items,'posco_criteria':data['posco_criteria']})
+ return {'items':items,'posco_criteria':data['posco_criteria']}
 
 @router.get('/contractors/{item_id}/pages/{page}')
 def contractor_page(item_id:int,page:int,user=Depends(authorized)):
@@ -196,7 +203,7 @@ def site_data(db,user):
   contractor=next((d['value'] for d in site['details'] if d['key']=='contractor'),'')
   out.append({'code':site['code'],'name':site['name'],'address':site['address'],'latitude':site['latitude'],'longitude':site['longitude'],
    'contacts':[{k:c.get(k,'') for k in ['name','role','rank','label','phone','contact_id','rank_revision','rank_confirmed']} for c in site['contacts']],
-   'info_revision':site['info_revision'],'client':next((d['value'] for d in site['details'] if d['key']=='client'),''),'contractor':contractor,'favorite':site['code'] in stars,'default_favorite':site['code'] in defaults,
+   'info_revision':site['info_revision'],'description':site.get('description',''),'edit_revision':site.get('edit_revision',0),'client':next((d['value'] for d in site['details'] if d['key']=='client'),''),'contractor':contractor,'favorite':site['code'] in stars,'default_favorite':site['code'] in defaults,
    'management':{'status':'미등록','note':'현장별 평가점수·제재 현황이 확인되면 표시합니다.'}})
  return out
 
@@ -298,3 +305,10 @@ install_inspection_publications(router,authorized,result)
 
 from app.modules.workspace_site_notes import install as install_site_notes
 install_site_notes(router,result)
+
+from app.modules.workspace_site_info import install as install_site_info
+install_site_info(router,result)
+
+
+from app.modules.workspace_site import router as site_workspace_router
+router.include_router(site_workspace_router)

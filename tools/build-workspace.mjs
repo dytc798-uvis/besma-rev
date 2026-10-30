@@ -5,7 +5,7 @@ const hash=b=>crypto.createHash('sha256').update(b).digest('hex'),baseline=JSON.
 const original=await fs.readFile(baselineRoot+'/index.html','utf8');
 for(const[name,h]of Object.entries(baseline))if(name!=='index.html'&&hash(await fs.readFile(S+'/'+name))!==h)throw Error('Preserved file changed: '+name);
 const assets={};
-for(const name of ['naver-directions.js','site-notes.js','customer-policy.js','workspace-return.js','site-inspection-notice.js','document-sign.css','document-sign.js','workspace.css','company.css','workspace-legacy.css','collection-monitor.css','government-workspace.css','government-workspace.js','map-teams.js','attendance-summary.js','site-missing-info.js','company-map-region.js','company-map-photos.js','company-map.js','company-home.js','workspace.js','workspace-nav.js']){
+for(const name of ['naver-directions.js','site-notes.js','customer-policy.js','workspace-return.js','site-inspection-notice.js','document-sign.css','document-sign.js','workspace.css','company.css','workspace-legacy.css','collection-monitor.css','government-workspace.css','government-workspace.js','map-teams.js','attendance-summary.js','site-missing-info.js','company-map-region.js','company-map-photos.js','company-map.js','company-home.js','site-workspace.js','site-workspace.css','workspace.js','workspace-nav.js']){
  let source=await fs.readFile(F+'/'+name,'utf8');for(const[k,v]of Object.entries(assets))source=source.replaceAll('/assets/'+k,'/'+v);
  const result=await transform(source,{loader:name.endsWith('css')?'css':'js',target:'es2022',minify:true});const target='assets/'+name.replace(/\.(js|css)$/,'-'+hash(result.code).slice(0,12)+'.$1');await fs.writeFile(S+'/'+target,result.code);assets[name]=target;
 }
