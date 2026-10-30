@@ -200,7 +200,7 @@ async function render(){if(siteWorkspace)return siteWorkspace.render();requestCl
  }
  else if(key==='collection'){
  if(!['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'].includes(context.user.role))throw Error('안전보건실 계정에서 이용할 수 있습니다.');
- const mod=await import('/assets/monthly-collection.js');if(g!==generation)return;const cleanup=await mod.mountMonthlyCollection(host,{api,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token});if(g!==generation)cleanup?.();else requestCleanup=cleanup;
+ const mod=await import('/assets/monthly-collection.js');if(g!==generation)return;const cleanup=await mod.mountMonthlyCollection(host,{api,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token,initialScope:readView('collection'),onScope:value=>saveView('collection',value),onRequest:value=>{guard();if(g!==generation)return;saveView('requests',{...readView('requests'),monthlyHandoff:value});location.hash='#requests';}});if(g!==generation)cleanup?.();else requestCleanup=cleanup;
  }
  else if(key==='weekly'){
  if(context.user.site_id!=null||context.user.role==='SITE')throw Error('주간회의록은 본사 계정에서 이용할 수 있습니다.');
