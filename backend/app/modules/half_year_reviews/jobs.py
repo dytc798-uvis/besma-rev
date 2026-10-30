@@ -24,6 +24,7 @@ def queue(c,key,data,actor,name,body,meta,period,stamp):
     baseline=copy.deepcopy(data['assessments'].get(form+':'+subject,{}).get('draft',{}))
     payload={**body,**meta,'context_site':key.split('|')[0],'period':period,'subject_name':target,'baseline':baseline,'source_sha256':file['sha256'],'requester_name':name}
     for row in c.execute('SELECT * FROM paper_jobs WHERE context_id=? AND status IN ("QUEUED","RUNNING","READY","NEEDS_REVIEW")',(key,)):
+        if row['error']:continue
         old=json.loads(row['payload'])
         if all(old.get(k)==payload.get(k)for k in ['form','subject_id','file_id','baseline']):return visible(row)
     jid=uuid.uuid4().hex;c.execute('INSERT INTO paper_jobs(id,context_id,requester_id,status,payload,at,updated_at)VALUES(?,?,?,"QUEUED",?,?,?)',(jid,key,actor,encoded(payload),stamp,stamp));return visible(c.execute('SELECT * FROM paper_jobs WHERE id=?',(jid,)).fetchone())
@@ -44,7 +45,7 @@ def claim(store,allowed):
         ensure(c);c.execute('BEGIN IMMEDIATE');c.execute('INSERT INTO paper_worker VALUES(1,?)ON CONFLICT(id)DO UPDATE SET at=excluded.at',(now,))
         c.execute('UPDATE paper_jobs SET status="QUEUED",lease=NULL WHERE status="RUNNING"AND lease_until<? AND attempts<3',(now,))
         c.execute('UPDATE paper_jobs SET status="NEEDS_REVIEW",error="PROCESSING_INTERRUPTED",updated_at=? WHERE status="RUNNING"AND lease_until<? AND attempts>=3',(stamp,now))
-        for row in c.execute('SELECT * FROM paper_jobs WHERE status="QUEUED" ORDER BY at LIMIT 50').fetchall():
+        for row in c.execute('SELECT * FROM paper_jobs WHERE status="QUEUED" AND lease_until<=? ORDER BY at LIMIT 50',(now,)).fetchall():
             job=json.loads(row['payload'])
             if not allowed(row['requester_id'],job):
                 c.execute('UPDATE paper_jobs SET status="NEEDS_REVIEW",error="ACCESS_CHANGED",updated_at=? WHERE id=?',(stamp,row['id']));continue
@@ -64,7 +65,9 @@ def finish(store,jid,lease,value,pages,source_sha,error,allowed):
         if not allowed(row['requester_id'],job):error='ACCESS_CHANGED'
         if error:
             if error not in {'ACCESS_CHANGED','MODEL_UNAVAILABLE','PDF_UNREADABLE','PROCESSING_FAILED'}:error='PROCESSING_FAILED'
-            c.execute('UPDATE paper_jobs SET status="NEEDS_REVIEW",error=?,updated_at=? WHERE id=?',(error,stamp,jid));c.commit();return visible(c.execute('SELECT * FROM paper_jobs WHERE id=?',(jid,)).fetchone())
+            retry=error in {'MODEL_UNAVAILABLE','PROCESSING_FAILED'}and row['attempts']<3
+            state='QUEUED'if retry else'NEEDS_REVIEW';next_at=time.time()+60*(2**(row['attempts']-1))if retry else 0
+            c.execute('UPDATE paper_jobs SET status=?,lease_until=?,error=?,updated_at=? WHERE id=?',(state,next_at,error,stamp,jid));c.commit();return visible(c.execute('SELECT * FROM paper_jobs WHERE id=?',(jid,)).fetchone())
         if source_sha!=job['source_sha256']or type(pages)is not int or not 1<=pages<=12:raise ValueError('PARSE_SOURCE_CHANGED')
         transcription=paper.validate(value,job['form'],set(range(1,pages+1)))
         current=c.execute('SELECT * FROM contexts WHERE id=?',(row['context_id'],)).fetchone();data=json.loads(current['data']);answers,check=paper.merge(transcription,job,data)
