@@ -17,8 +17,10 @@ def text(node,value):
     if not runs:
         paragraph=node.find('.//a:p',NS)
         if paragraph is None:raise ValueError('TEMPLATE_TEXT_SLOT_MISSING')
-        run=E.SubElement(paragraph,q('a','r'))
+        run=E.Element(q('a','r'))
         ending=paragraph.find('a:endParaRPr',NS)
+        if ending is None:paragraph.append(run)
+        else:paragraph.insert(list(paragraph).index(ending),run)
         if ending is not None:
             style=deepcopy(ending);style.tag=q('a','rPr');run.append(style)
         runs=[E.SubElement(run,q('a','t'))]

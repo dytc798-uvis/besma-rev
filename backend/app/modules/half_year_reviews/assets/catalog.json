@@ -1,0 +1,1231 @@
+{
+  "version": 1,
+  "order": [
+    "report",
+    "law",
+    "manager",
+    "supervisor"
+  ],
+  "evidence": [
+    {
+      "id": "policy",
+      "label": "안전보건방침·목표 및 전파 기록"
+    },
+    {
+      "id": "organization",
+      "label": "현장조직도·업무분장표"
+    },
+    {
+      "id": "manager_appointment",
+      "label": "안전보건관리책임자 선임계"
+    },
+    {
+      "id": "manager_training",
+      "label": "안전보건관리책임자 직무교육 이수증"
+    },
+    {
+      "id": "manager_employment",
+      "label": "안전보건관리책임자 재직증명서"
+    },
+    {
+      "id": "safety_appointment",
+      "label": "안전관리자 선임계"
+    },
+    {
+      "id": "safety_qualification",
+      "label": "안전관리자 자격증·직무교육·재직증명서"
+    },
+    {
+      "id": "supervisor_appointment",
+      "label": "관리감독자 지정서"
+    },
+    {
+      "id": "risk_initial",
+      "label": "최초 위험성평가표"
+    },
+    {
+      "id": "risk_regular",
+      "label": "정기 위험성평가표"
+    },
+    {
+      "id": "risk_minutes",
+      "label": "위험성평가 회의록"
+    },
+    {
+      "id": "risk_actions",
+      "label": "위험성평가 개선조치·결과 전달 기록"
+    },
+    {
+      "id": "daily_inspection",
+      "label": "현장소장·관리감독자 안전점검표"
+    },
+    {
+      "id": "worker_channel",
+      "label": "근로자 의견청취 창구 게시"
+    },
+    {
+      "id": "worker_ledger",
+      "label": "근로자 의견청취 관리대장·개선 기록"
+    },
+    {
+      "id": "emergency_plan",
+      "label": "현장 비상사태 대응계획"
+    },
+    {
+      "id": "emergency_roles",
+      "label": "비상 업무분장표·연락망"
+    },
+    {
+      "id": "emergency_drill",
+      "label": "비상훈련보고서·교육일지"
+    },
+    {
+      "id": "report_flow",
+      "label": "사고보고 절차도·보고체계"
+    },
+    {
+      "id": "education_plan",
+      "label": "안전보건교육계획"
+    },
+    {
+      "id": "tbm",
+      "label": "TBM·일일 안전회의 기록"
+    },
+    {
+      "id": "education_regular",
+      "label": "정기안전보건교육일지"
+    },
+    {
+      "id": "education_special",
+      "label": "특별안전교육일지"
+    },
+    {
+      "id": "msds",
+      "label": "MSDS 게시·교육 기록"
+    },
+    {
+      "id": "supervisor_training",
+      "label": "관리감독자 교육 이수증"
+    },
+    {
+      "id": "health",
+      "label": "건강진단 결과표·사후관리 기록"
+    },
+    {
+      "id": "environment",
+      "label": "작업환경측정·결과 교육 기록"
+    },
+    {
+      "id": "budget",
+      "label": "산업안전보건관리비 계상·사용 명세서"
+    },
+    {
+      "id": "work_plan",
+      "label": "작업계획서·사전조사 기록"
+    },
+    {
+      "id": "rules",
+      "label": "안전보건관리규정·법령요지 게시"
+    },
+    {
+      "id": "accident_report",
+      "label": "사고보고서·산업재해조사표"
+    },
+    {
+      "id": "accident_actions",
+      "label": "재발방지대책·이행 기록"
+    },
+    {
+      "id": "protective_cert",
+      "label": "보호구·장비 인증서·검사합격증"
+    },
+    {
+      "id": "protective_use",
+      "label": "보호구 지급·점검·착용교육 기록"
+    },
+    {
+      "id": "equipment",
+      "label": "기계·기구·안전시설 점검 기록"
+    },
+    {
+      "id": "authority_order",
+      "label": "행정기관 개선·시정 명령 이행자료"
+    },
+    {
+      "id": "council",
+      "label": "안전보건협의체 회의·참석 기록"
+    },
+    {
+      "id": "rest",
+      "label": "휴게시설 설치·점검 기록"
+    },
+    {
+      "id": "construction_plan",
+      "label": "건설기술진흥법 안전관리계획·교육"
+    },
+    {
+      "id": "fire",
+      "label": "현장·사무실 소방시설 자체점검"
+    },
+    {
+      "id": "site_photos",
+      "label": "현장 점검사진"
+    }
+  ],
+  "forms": {
+    "report": {
+      "title": "반기평가",
+      "format": "pptx",
+      "scoring": "THREE_LEVEL",
+      "criteria": [
+        {
+          "id": "p01",
+          "group": "위험성평가",
+          "title": "최초 위험성평가",
+          "description": "‘26/6/1 이전 : 착공 후 한달 내\n‘26/6/1 이후 : 첫 작업 시작 전까지",
+          "max_score": 10,
+          "evidence": [
+            "risk_initial"
+          ],
+          "row": 1
+        },
+        {
+          "id": "p02",
+          "group": "위험성평가",
+          "title": "정기 위험성평가",
+          "description": "최초평가 다음 연도부터 매년 1회",
+          "max_score": 5,
+          "evidence": [
+            "risk_regular"
+          ],
+          "row": 2
+        },
+        {
+          "id": "p03",
+          "group": "위험성평가",
+          "title": "위험성평가 회의록",
+          "description": "위험성평가 회의록",
+          "max_score": 5,
+          "evidence": [
+            "risk_minutes"
+          ],
+          "row": 3
+        },
+        {
+          "id": "p04",
+          "group": "위험성평가",
+          "title": "유해·위험 요인 개선",
+          "description": "현장소장 점검표, 관리감독자 점검표",
+          "max_score": 5,
+          "evidence": [
+            "daily_inspection",
+            "risk_actions"
+          ],
+          "row": 4
+        },
+        {
+          "id": "p05",
+          "group": "현장 안전조직",
+          "title": "현장조직도",
+          "description": "현장조직도, 업무분장표",
+          "max_score": 5,
+          "evidence": [
+            "organization"
+          ],
+          "row": 5
+        },
+        {
+          "id": "p06",
+          "group": "현장 안전조직",
+          "title": "안전보건관리책임자\n선임계",
+          "description": "선임계, 직무교육 이수증, 재직증명서",
+          "max_score": 5,
+          "evidence": [
+            "manager_appointment",
+            "manager_training",
+            "manager_employment"
+          ],
+          "row": 6
+        },
+        {
+          "id": "p07",
+          "group": "현장 안전조직",
+          "title": "안전관리자 선임계",
+          "description": "선임계, 자격증, 직무교육 이수증, 재직증명서",
+          "max_score": 5,
+          "evidence": [
+            "safety_appointment",
+            "safety_qualification"
+          ],
+          "row": 7
+        },
+        {
+          "id": "p08",
+          "group": "현장 안전조직",
+          "title": "관리감독자 지정서",
+          "description": "관리감독자 지정서",
+          "max_score": 5,
+          "evidence": [
+            "supervisor_appointment"
+          ],
+          "row": 8
+        },
+        {
+          "id": "p09",
+          "group": "종사자의견청취",
+          "title": "종사자 의견청취\n채널 설치",
+          "description": "의견청취 창구 게시(소통함, QR 등)",
+          "max_score": 5,
+          "evidence": [
+            "worker_channel"
+          ],
+          "row": 9
+        },
+        {
+          "id": "p10",
+          "group": "종사자의견청취",
+          "title": "유해·위험 요인 개선",
+          "description": "근로자 의견청취 관리대장",
+          "max_score": 5,
+          "evidence": [
+            "worker_ledger"
+          ],
+          "row": 10
+        },
+        {
+          "id": "p11",
+          "group": "비상대응체계",
+          "title": "현장 비상사태대응매뉴얼",
+          "description": "비상사태 대비계획",
+          "max_score": 5,
+          "evidence": [
+            "emergency_plan"
+          ],
+          "row": 11
+        },
+        {
+          "id": "p12",
+          "group": "비상대응체계",
+          "title": "비상시 업무분장\n및 비상연락망",
+          "description": "비상 업무분장표, 비상연락망",
+          "max_score": 5,
+          "evidence": [
+            "emergency_roles"
+          ],
+          "row": 12
+        },
+        {
+          "id": "p13",
+          "group": "비상대응체계",
+          "title": "비상사태훈련보고서\n및 교육일지",
+          "description": "비상훈련보고서, 교육일지(반기 1회)",
+          "max_score": 7,
+          "evidence": [
+            "emergency_drill"
+          ],
+          "row": 13
+        },
+        {
+          "id": "p14",
+          "group": "비상대응체계",
+          "title": "비상시 대응요령",
+          "description": "사고보고 절차도 게시",
+          "max_score": 5,
+          "evidence": [
+            "report_flow"
+          ],
+          "row": 14
+        },
+        {
+          "id": "p15",
+          "group": "안전교육",
+          "title": "정기안전교육",
+          "description": "정기안전보건교육일지",
+          "max_score": 5,
+          "evidence": [
+            "education_regular"
+          ],
+          "row": 15
+        },
+        {
+          "id": "p16",
+          "group": "안전교육",
+          "title": "특별안전교육",
+          "description": "특별안전교육일지, MSDS 교육일지",
+          "max_score": 10,
+          "evidence": [
+            "education_special",
+            "msds"
+          ],
+          "row": 16
+        },
+        {
+          "id": "p17",
+          "group": "안전교육",
+          "title": "관리감독자교육",
+          "description": "관리감독자 교육 이수증",
+          "max_score": 5,
+          "evidence": [
+            "supervisor_training"
+          ],
+          "row": 17
+        },
+        {
+          "id": "p18",
+          "group": "건강검진",
+          "title": "배치전, 특수건강검진",
+          "description": "배치전·특수 건강진단 결과표",
+          "max_score": 3,
+          "evidence": [
+            "health"
+          ],
+          "row": 18
+        }
+      ]
+    },
+    "manager": {
+      "title": "안전보건관리책임자 평가",
+      "format": "xlsx",
+      "scoring": "POINTS",
+      "criteria": [
+        {
+          "id": "m05",
+          "group": "1. 산업재해 예방 계획의 수립\n   (안전보건관리 체계 구축)",
+          "title": "안전보건방침 및 목표",
+          "description": "▣ 안전보건방침 및 목표\n- 안전보건방침 및 목표 게시 : 3점\n- 교육 및 전파 활동 증빙자료 : 2점",
+          "max_score": 5,
+          "row": 5,
+          "evidence": [
+            "policy"
+          ]
+        },
+        {
+          "id": "m06",
+          "group": "1. 산업재해 예방 계획의 수립\n   (안전보건관리 체계 구축)",
+          "title": "안전관리조직 및 책임과 역할",
+          "description": "▣ 안전관리조직 및 책임과 역할\n- 안전관리조직도 및 업무분장 작성, 게시 : 2점\n- 안전보건 관련인원의 선임 및 자격확인 : 1점\n- 법정 선임기준 이상의 안전관리인력 채용 : 3점",
+          "max_score": 6,
+          "row": 6,
+          "evidence": [
+            "organization",
+            "manager_appointment",
+            "safety_appointment",
+            "supervisor_appointment"
+          ]
+        },
+        {
+          "id": "m07",
+          "group": "1. 산업재해 예방 계획의 수립\n   (안전보건관리 체계 구축)",
+          "title": "유해위험요인 관리 체계 구축 및 이행확인",
+          "description": "▣ 유해위험요인 관리 체계 구축 및 이행확인\n- 관리자(TBM리더, 공사) 일일 안전회의 시행 : 5점\n- 근로자의 작업중지권 안내 및 공유 : 2점\n- 중점위험작업 및 사고사례 대책을 위험성평가에 반영 : 2점",
+          "max_score": 9,
+          "row": 7,
+          "evidence": [
+            "tbm",
+            "risk_actions"
+          ]
+        },
+        {
+          "id": "m08",
+          "group": "1. 산업재해 예방 계획의 수립\n   (안전보건관리 체계 구축)",
+          "title": "안전예산 등(안전관리비 관리)",
+          "description": "▣ 안전예산 등(안전관리비 관리)\n- 공정률     ~50% : 50%↑(6점), 40%↑(3점), 20%↑(1점)\n- 공정률 51~80% : 60%↑(6점), 50%↑(3점), 40%↑(1점) \n- 공정률 81%↑~  : 80%↑(6점), 70%↑(3점), 60%↑(1점)",
+          "max_score": 6,
+          "row": 8,
+          "evidence": [
+            "budget"
+          ]
+        },
+        {
+          "id": "m09",
+          "group": "1. 산업재해 예방 계획의 수립\n   (안전보건관리 체계 구축)",
+          "title": "비상시 대비 대응계획 및 이행",
+          "description": "▣ 비상시 대비 대응계획 및 이행\n- 비상시 대비 대응 계획 및 업무분장 : 2점\n- 비상사태 시나리오 구축 : 2점\n- 정기적인 교육훈련 실적 : 1점",
+          "max_score": 5,
+          "row": 9,
+          "evidence": [
+            "emergency_plan",
+            "emergency_roles",
+            "emergency_drill"
+          ]
+        },
+        {
+          "id": "m10",
+          "group": "1. 산업재해 예방 계획의 수립\n   (안전보건관리 체계 구축)",
+          "title": "일일 안전점검 및 법규준수 평가",
+          "description": "▣ 일일 안전점검 및 법규준수 평가\n- 일일 안전점검 및 개선조치 : 3점\n- 법규이행점검 및 개선 : 매월 (2점), 반기별(1점)\n- 도급사 안전점검 결과에 따른 개선조치 : 2점",
+          "max_score": 7,
+          "row": 10,
+          "evidence": [
+            "daily_inspection",
+            "rules"
+          ]
+        },
+        {
+          "id": "m11",
+          "group": "1. 산업재해 예방 계획의 수립\n   (안전보건관리 체계 구축)",
+          "title": "작업계획서 작성 및 이행",
+          "description": "▣ 작업계획서 작성 및 이행\n- 작업계획서 작성여부 : 3점\n- 현장내 안전관리 상태점검 : 2점",
+          "max_score": 5,
+          "row": 11,
+          "evidence": [
+            "work_plan",
+            "daily_inspection"
+          ]
+        },
+        {
+          "id": "m12",
+          "group": "2. 안전보건관리규정의 작성 \n   및 변경",
+          "title": "안전보건관리규정의 작성 및 변경",
+          "description": "▣ 안전보건관리규정의 작성 및 변경\n- 안전보건관리규정 작성 및 비치 : 4점\n- 안전보건관리규정의 제개정시 반영 : 1점",
+          "max_score": 5,
+          "row": 12,
+          "evidence": [
+            "rules"
+          ]
+        },
+        {
+          "id": "m13",
+          "group": "3. 안전보건교육",
+          "title": "안전교육계획 수립 및 이행",
+          "description": "▣ 안전교육계획 수립 및 이행\n- 안전교육계획 수립 여부 : 1점\n- 안전교육계획에 따른 시행 및 결과보고서 (각2점)\n  : TBM(2점), 정기교육(2점), 특별교육(2점)",
+          "max_score": 7,
+          "row": 13,
+          "evidence": [
+            "education_plan",
+            "tbm",
+            "education_regular",
+            "education_special"
+          ]
+        },
+        {
+          "id": "m14",
+          "group": "4. 작업환경측정 등 작업환경의 \n   점검 및 개선",
+          "title": "작업환경측정 및 결과 공유",
+          "description": "▣ 작업환경측정 및 결과 공유\n- 작업환경측정 실시 여부 확인 : 3점\n- 작업환경측정 결과 근로자 교육 : 3점",
+          "max_score": 6,
+          "row": 14,
+          "evidence": [
+            "environment"
+          ]
+        },
+        {
+          "id": "m15",
+          "group": "5. 근로자의 건강진단 등 \n   건강관리",
+          "title": "일반/특수 건강검진 등 건강진단 및 유소견자 관리",
+          "description": "▣ 일반/특수 건강검진 등 건강진단 및 유소견자 관리\n- 근로자 건강검진 실시 : 2점\n- 유소견자에 대한 면담 등 추적관리 : 2점",
+          "max_score": 4,
+          "row": 15,
+          "evidence": [
+            "health"
+          ]
+        },
+        {
+          "id": "m16",
+          "group": "6. 산업재해의 원인 조사 및 \n   재발 방지대책 수립",
+          "title": "재해 조사(아차사고 포함) 및 재발대책 시행(발생시)",
+          "description": "▣ 재해 조사(아차사고 포함) 및 재발대책 시행(발생시)\n- 원인조사 및 재발대책의 적절성 : 3점\n- 재발방지대책에 따른 개선 추진 : 3점\n- 지속적인 이행상태 모니터링 : 3점",
+          "max_score": 9,
+          "row": 16,
+          "evidence": [
+            "accident_report",
+            "accident_actions"
+          ]
+        },
+        {
+          "id": "m17",
+          "group": "7. 산업재해에 관한 통계의 \n   기록 및 유지",
+          "title": "기록의 보관 및 관리(발생시)",
+          "description": "▣ 기록의 보관 및 관리(발생시)\n- 사고보고서, 산업재해조사표 등 관리 : 2점\n- 수시 위험성 평가 및 교육 반영 : 2점",
+          "max_score": 4,
+          "row": 17,
+          "evidence": [
+            "accident_report",
+            "risk_actions",
+            "education_regular"
+          ]
+        },
+        {
+          "id": "m18",
+          "group": "8. 안전장치 및 보호구 구입 시 \n   적격품 여부 확인",
+          "title": "안전장치 및 보호구 안전인증 여부 확인에 관한 사항",
+          "description": "▣ 안전장치 및 보호구 안전인증 여부 확인에 관한 사항\n- 안전장치 및 보호구 인증서 검토 및 승인 : 5점",
+          "max_score": 5,
+          "row": 18,
+          "evidence": [
+            "protective_cert"
+          ]
+        },
+        {
+          "id": "m19",
+          "group": "9. 위험성평가의 실시",
+          "title": "사업장 위험성평가 절차 및 이행관리",
+          "description": "▣ 사업장 위험성평가 절차 및 이행관리\n- 위험성평가 절차서 게시 : 1점\n- 위험성평가표(최초, 정기,상시) 작성 및 승인 : 2점\n- 위험성평가 개선조치 시행 : 2점\n- 위험성 평가 결과 및 조치사항 전달 : 2점",
+          "max_score": 7,
+          "row": 19,
+          "evidence": [
+            "risk_initial",
+            "risk_regular",
+            "risk_minutes",
+            "risk_actions"
+          ]
+        },
+        {
+          "id": "m20",
+          "group": "9. 위험성평가의 실시",
+          "title": "위험요인 발굴 근로자 참여 독려에 관한 사항",
+          "description": "▣ 위험요인 발굴 근로자 참여 독려에 관한 사항\n- 위험요인 발굴제도 근로자 참여 독려 여부 : 5점",
+          "max_score": 5,
+          "row": 20,
+          "evidence": [
+            "risk_minutes",
+            "worker_ledger"
+          ]
+        },
+        {
+          "id": "m21",
+          "group": "9. 위험성평가의 실시",
+          "title": "근로자 의견 청취 및 개선",
+          "description": "▣ 근로자 의견 청취 및 개선\n- 근로자 의견청취 홍보 및 기록관리 : 3점\n- 위험성 평가 반영 등 현장개선 활동 : 2점",
+          "max_score": 5,
+          "row": 21,
+          "evidence": [
+            "worker_channel",
+            "worker_ledger"
+          ]
+        }
+      ],
+      "template": "4. 안전보건관리책임자 평가표.xlsx",
+      "summary_cell": "A29",
+      "total_cell": "X22",
+      "needs_subject": true
+    },
+    "supervisor": {
+      "title": "관리감독자 평가",
+      "format": "xlsx",
+      "scoring": "POINTS",
+      "criteria": [
+        {
+          "id": "s05",
+          "group": "1. 사업장 내 지휘·감독하는 작업과 관련된\n   기계·기구 또는 설비의 안전·보건 점검 및\n    이상 유무의 확인",
+          "title": "관리감독자 점검활동에 관한 사항",
+          "description": "▣ 관리감독자 점검활동에 관한 사항\n- 작업시작 전 기계 및 기구에 대한 방호장치 점검\n- 유해·위험 방지 업무에 관한 조치사항\n  고소작업대/크레인/지게차 방호장치, 이상 유무\n  절단기계, 전동공구 방호장치, 이상 유무\n  안전난간, 추락방지망, 생명줄 등 안전시설물 이상 유무\n  (산업안전보건에 관한 규칙 제35조에 의거한 내용)",
+          "max_score": 10,
+          "row": 5,
+          "evidence": [
+            "daily_inspection",
+            "equipment",
+            "protective_cert"
+          ]
+        },
+        {
+          "id": "s06",
+          "group": "2. 근로자의 작업복·보호구 및 방호장치의 \n   점검과 그 착용·사용에 관한 교육·지도",
+          "title": "보호구의 점검과 착용·사용에 관한 교육·지도",
+          "description": "▣ 보호구의 점검과 착용·사용에 관한 교육·지도\n- 보호구 착용에 대한 근로자 교육 실시",
+          "max_score": 5,
+          "row": 6,
+          "evidence": [
+            "protective_use",
+            "education_regular"
+          ]
+        },
+        {
+          "id": "s07",
+          "group": "2. 근로자의 작업복·보호구 및 방호장치의 \n   점검과 그 착용·사용에 관한 교육·지도",
+          "title": "보호구 이상 유무 및 착용 상태 점검",
+          "description": "▣ 보호구 이상 유무 및 착용 상태 점검\n- 위 사항에 대한 점검활동(증빙서류) 여부",
+          "max_score": 5,
+          "row": 7,
+          "evidence": [
+            "protective_use",
+            "daily_inspection"
+          ]
+        },
+        {
+          "id": "s08",
+          "group": "3. 해당작업에서 발생한 산업재해에 관한\n   보고 및 이에 대한 응급조치",
+          "title": "발주처, 도급사, 사내 사고보고체계 숙지",
+          "description": "▣ 발주처, 도급사, 사내 사고보고체계 숙지\n- 사고보고체계 및 처리 절차 숙지 여부 ",
+          "max_score": 10,
+          "row": 8,
+          "evidence": [
+            "report_flow",
+            "accident_report"
+          ]
+        },
+        {
+          "id": "s09",
+          "group": "3. 해당작업에서 발생한 산업재해에 관한\n   보고 및 이에 대한 응급조치",
+          "title": "비상상황 발생 시 응급조치·사고처리 절차 숙지",
+          "description": "▣ 비상상황 발생 시 응급조치·사고처리 절차 숙지\n- 응급조치 교육 이수 여부 및 본인의 업무분장 파악 정도",
+          "max_score": 5,
+          "row": 9,
+          "evidence": [
+            "emergency_plan",
+            "emergency_roles",
+            "emergency_drill"
+          ]
+        },
+        {
+          "id": "s10",
+          "group": "4. 해당작업의 작업장 정리·정돈 및 \n   통로 확보에 대한 확인·감독",
+          "title": "작업구역·가공장 정리·정돈 상태 점검 여부",
+          "description": "▣ 작업구역·가공장 정리·정돈 상태 점검 여부\n- 관련 증빙서류 확인",
+          "max_score": 5,
+          "row": 10,
+          "evidence": [
+            "daily_inspection"
+          ]
+        },
+        {
+          "id": "s11",
+          "group": "4. 해당작업의 작업장 정리·정돈 및 \n   통로 확보에 대한 확인·감독",
+          "title": "자재이동 시 동선 파악여부(장애물, 현장특성 등)",
+          "description": "▣ 자재이동 시 동선 파악여부(장애물, 현장특성 등)\n- 작업구역 내 근로자 이동동선 확보 상태 점검\n  (장애물, 경사로 등)",
+          "max_score": 10,
+          "row": 11,
+          "evidence": [
+            "daily_inspection"
+          ]
+        },
+        {
+          "id": "s12",
+          "group": "5. 안전관리자의 지도·조언에 대한 협조",
+          "title": "산업안전보건법 제20조(안전관리자 등의 지도·조언)",
+          "description": "▣ 산업안전보건법 제20조(안전관리자 등의 지도·조언)\n   에 따른 지도·조언 협조 및 개선조치 이행 여부\n- 산업재해 발생 시 원인조사 참여",
+          "max_score": 5,
+          "row": 12,
+          "evidence": [
+            "accident_report",
+            "accident_actions"
+          ]
+        },
+        {
+          "id": "s13",
+          "group": "5. 안전관리자의 지도·조언에 대한 협조",
+          "title": "안전관리자 지도·조언에 관한 협조사항",
+          "description": "▣ 안전관리자 지도·조언에 관한 협조사항\n- 작업중지 및 개선조치에 대한 협조\n- 기타 안전관리자 요청 사항에 대한 수행 여부",
+          "max_score": 5,
+          "row": 13,
+          "evidence": [
+            "daily_inspection",
+            "risk_actions"
+          ]
+        },
+        {
+          "id": "s14",
+          "group": "6. 유해위험방지를 위한 업무",
+          "title": "작업시작전 안전점검 및 이상발견시 즉시 개선조치",
+          "description": "▣ 작업시작전 안전점검 및 이상발견시 즉시 개선조치\n- TBM 시 작업에 관한 유해·위험요인 및 안전대책 교육",
+          "max_score": 10,
+          "row": 14,
+          "evidence": [
+            "tbm",
+            "daily_inspection"
+          ]
+        },
+        {
+          "id": "s15",
+          "group": "7. 위험성평가에 관한 업무",
+          "title": "단위작업에 대한 유해·위험요인 파악에 관한 업무",
+          "description": "▣ 단위작업에 대한 유해·위험요인 파악에 관한 업무\n- 유해위험요인 도출 의견 제시",
+          "max_score": 10,
+          "row": 15,
+          "evidence": [
+            "risk_initial",
+            "risk_regular",
+            "risk_minutes"
+          ]
+        },
+        {
+          "id": "s16",
+          "group": "7. 위험성평가에 관한 업무",
+          "title": "위험성 감소대책 수립에 관한 업무",
+          "description": "▣ 위험성 감소대책 수립에 관한 업무\n- 유해위험요인에 따른 개선대책 의견 제시\n- 위험성평가 개선계획의 참여 정도",
+          "max_score": 10,
+          "row": 16,
+          "evidence": [
+            "risk_minutes",
+            "risk_actions"
+          ]
+        },
+        {
+          "id": "s17",
+          "group": "7. 위험성평가에 관한 업무",
+          "title": "위험성평가 결과로 선정된 안전대책을 근로자에게",
+          "description": "▣ 위험성평가 결과로 선정된 안전대책을 근로자에게\n   교육을 하였는지에 관한 내용\n- 안전대책 이행여부 점검",
+          "max_score": 10,
+          "row": 17,
+          "evidence": [
+            "risk_actions",
+            "tbm",
+            "education_regular"
+          ]
+        }
+      ],
+      "template": "5. 관리감독자 평가표.xlsx",
+      "summary_cell": "A25",
+      "total_cell": "X18",
+      "needs_subject": true
+    },
+    "law": {
+      "title": "법령점검표",
+      "format": "hwpx",
+      "scoring": "COMPLIANCE",
+      "criteria": [
+        {
+          "id": "l01",
+          "group": "중대재해\n처벌법",
+          "title": "안전보건관리체계의 구축 및 이행",
+          "description": "1) 안전보건방침 및 목표 수립.\n2) 게시용 액자 제작 및 전현장 배포\n3) 현장안전관리계획서 작성 시 포함하여 작성",
+          "reference": "영 제4조 1호",
+          "table": 1,
+          "row": 2,
+          "evidence": [
+            "policy",
+            "construction_plan"
+          ]
+        },
+        {
+          "id": "l02",
+          "group": "중대재해\n처벌법",
+          "title": "사업장의 유해 위험의 확인개선",
+          "description": "1) 위험성 평가 절차서 제정\n2) 종사자 의견 반영 명문화",
+          "reference": "영 제4조 3호",
+          "table": 1,
+          "row": 3,
+          "evidence": [
+            "risk_initial",
+            "risk_regular",
+            "worker_ledger"
+          ]
+        },
+        {
+          "id": "l03",
+          "group": "중대재해\n처벌법",
+          "title": "안전보건관리책임자   책임과 권한",
+          "description": "1) 권한과 업무 및 평가관리 명문화 \n2) 업무분장표 게시",
+          "reference": "영 제4조 5호",
+          "table": 1,
+          "row": 4,
+          "evidence": [
+            "organization",
+            "manager_appointment"
+          ]
+        },
+        {
+          "id": "l04",
+          "group": "중대재해\n처벌법",
+          "title": "종사자 의견청취 절차 ",
+          "description": "1) 종사자 의견 청취 절차서 제정 (QR코드 게시, 기타 채널 유무)\n2) 현장별 “청취관련 안을 반영하도록 예정\n3) 안전보건에 관한 의견 반영여부 확인",
+          "reference": "영 제4조 7호",
+          "table": 1,
+          "row": 5,
+          "evidence": [
+            "worker_channel",
+            "worker_ledger"
+          ]
+        },
+        {
+          "id": "l05",
+          "group": "중대재해\n처벌법",
+          "title": "비상사태 대비 매뉴얼",
+          "description": "2) 반기 1회 이상 실시 여부",
+          "reference": "영 제4조 8호",
+          "table": 1,
+          "row": 6,
+          "evidence": [
+            "emergency_plan",
+            "emergency_drill"
+          ]
+        },
+        {
+          "id": "l06",
+          "group": "중대재해\n처벌법",
+          "title": "재발방지 대책수립 및 그 이행에 관한 조치",
+          "description": "1) 재해사고처리 및 재발방지 수립, 이행에 관한 절차서 제정\n  - 경미한 사고도 포함하여 재발방지대책 수립",
+          "reference": "법 제4조 2호 ",
+          "table": 1,
+          "row": 7,
+          "evidence": [
+            "accident_report",
+            "accident_actions"
+          ]
+        },
+        {
+          "id": "l07",
+          "group": "중대재해\n처벌법",
+          "title": "중앙행정기관, 지방자치단체 시정 조치",
+          "description": "1) 개선, 시정 등을 명한 사항의 이행 여부",
+          "reference": "법 제4조 3호",
+          "table": 1,
+          "row": 8,
+          "evidence": [
+            "authority_order"
+          ]
+        },
+        {
+          "id": "l08",
+          "group": "중대재해\n처벌법",
+          "title": "안전보건관계법령에 따른 의무이행에 필요한 관리상의 조치",
+          "description": "1) 안전보건관계법규 등록부 및 준수평가 작성관리\n2) 의무이행에 필요한 인력 및 예산 추가 \n3) 안전보건관계 법령에 따른 안전보건교육 실시 여부",
+          "reference": "법 제4조 4호\n영 제5조 2항 1호, 3호",
+          "table": 1,
+          "row": 9,
+          "evidence": [
+            "rules",
+            "organization",
+            "budget",
+            "education_plan"
+          ]
+        },
+        {
+          "id": "l09",
+          "group": "산업안전\n보건법",
+          "title": "안전보건관리책임자",
+          "description": "총공사금액 20억(VAT포함) 이상의 공사를 시행하는 건설업에서는 안전업무를 총괄하기 위하여 안전보건관리책임자를 선임하여야 한다. 직무 교육 이수 여부 확인\n※ 선임기준 : 실착공 시점부터 선임하여 업무를 수행\n※ 직무교육 : 선임일 기준 3개월 이내(신규교육 이수 후 매 2년 되는 날\n             전후 6개월 이내 보수교육 실시)",
+          "reference": "법 제15조",
+          "table": 2,
+          "row": 2,
+          "evidence": [
+            "manager_appointment",
+            "manager_training"
+          ]
+        },
+        {
+          "id": "l10",
+          "group": "산업안전\n보건법",
+          "title": "관리감독자",
+          "description": "사업주는 관리감독자에게 산업안전 및 보건에 관한 업무로서 대통령령으로 정하는 관리감독자 임명장 작성 및 비치 여부",
+          "reference": "법 제16조",
+          "table": 2,
+          "row": 3,
+          "evidence": [
+            "supervisor_appointment"
+          ]
+        },
+        {
+          "id": "l11",
+          "group": "산업안전\n보건법",
+          "title": "안전관리자",
+          "description": "공사금액 120억 이상의 안전관리자는 해당 사업장에서 시행령 제18조제1항 각 호에 따른 업무만 전담해야 한다.\n※ 공사금액 50억원 이상(관계수급인은 100억원 이상)~120억원 미만\n※ 선임기준 : 선임 후 14일 이내 관할 지방고용노동관서 신고 확인\n※ 직무교육 : 선임일 기준 3개월 이내(신규교육 이수 후 매 2년 되는 날\n             전후 6개월 이내 보수교육 실시)",
+          "reference": "법 제17조",
+          "table": 2,
+          "row": 4,
+          "evidence": [
+            "safety_appointment",
+            "safety_qualification"
+          ]
+        },
+        {
+          "id": "l12",
+          "group": "산업안전\n보건법",
+          "title": "산업안전보건법 요지의 게시 비치",
+          "description": "사업주는 산안법과 이 법에 따른 명령의 요지 및 안전보건관리규정을 각 사업장의 근로자가 쉽게 볼 수 있는 장소에 게시",
+          "reference": "법 제34조",
+          "table": 2,
+          "row": 5,
+          "evidence": [
+            "rules"
+          ]
+        },
+        {
+          "id": "l13",
+          "group": "산업안전\n보건법",
+          "title": "물질안전보건자료의 게시 및 교육",
+          "description": "물질안전보건자료대상물질을 취급하려는 사업주는 물질안전보건자료대상물질을 취급하는 작업장 내에 이를 취급하는 근로자가 쉽게 볼 수 있는 장소에 게시",
+          "reference": "법 제114조",
+          "table": 2,
+          "row": 6,
+          "evidence": [
+            "msds"
+          ]
+        },
+        {
+          "id": "l14",
+          "group": "산업안전\n보건법",
+          "title": "안전보건교육",
+          "description": "법적 교육일지(신규, 정기, 특별, 관리감독자 등) 작성, 관리여부\n확인 하여야 한다. 작성 및 비치 여부 확인\n※ 신규교육 – 일용 ~ 1주일 이하 : 1시간 이상 / 1주일 초과 ~ 1개월 이하 : 8시간 이상 / 그 밖 : 8시간)\n※ 특별교육 – 일용 ~ 1주일 이하 : 2시간 이상 / 1주일 초과 ~ 1개월 이하 : 8시간 이상 / 그 밖 : 16시간)\n※ 교육 – 일용 ~ 1주일 이하 : 1시간 이상 / 1주일 초과 ~ 1개월 이하 : 8시간 이상 / 그 밖 : 8시간)",
+          "reference": "법29~32조\n중대재해 처벌법 시행령 제4조 6호",
+          "table": 2,
+          "row": 7,
+          "evidence": [
+            "education_plan",
+            "education_regular",
+            "education_special",
+            "supervisor_training",
+            "tbm"
+          ]
+        },
+        {
+          "id": "l15",
+          "group": "산업안전\n보건법",
+          "title": "유해∙위험한 기계기구 등의 방호조치",
+          "description": "다음의 기계, 기구에는 유해위험방지를 위한 방호조치\n - 원심기 : 회전체 접촉예방장치\n - 금속절단기 : 날접촉 예방장치 ",
+          "reference": "법 제80조",
+          "table": 2,
+          "row": 8,
+          "evidence": [
+            "equipment"
+          ]
+        },
+        {
+          "id": "l16",
+          "group": "산업안전\n보건법",
+          "title": "위험성평가  실시 및 관리",
+          "description": "1) 유해·위험 요인을 찾아내어 부상 및 질병으로 이어질 수 있는 \n   위험성의 크기가 허용 가능한 범위인지 평가",
+          "reference": "법 제36조",
+          "table": 2,
+          "row": 9,
+          "evidence": [
+            "risk_initial",
+            "risk_regular",
+            "risk_minutes",
+            "risk_actions"
+          ]
+        },
+        {
+          "id": "l17",
+          "group": "산업안전\n보건법",
+          "title": "산업재해 발생 은폐 금지 및 보고 등",
+          "description": "1) 산업재해 발생 원인 기록, 보존\n2) 산업재해조사표 제출(3일 이상 휴업 필요 시 1개월 이내 제출)",
+          "reference": "법 제57조\n시행규칙 제73조",
+          "table": 2,
+          "row": 10,
+          "evidence": [
+            "accident_report"
+          ]
+        },
+        {
+          "id": "l18",
+          "group": "산업안전\n보건법",
+          "title": "특수형태근로종사자에 대한 안전보건조치 등",
+          "description": "특수형태근로종사자(건설기계 조종사 등)에 대한 안전·보건 조치 여부\n- 조종사 면허증, 교육증, 작업계획서 등",
+          "reference": "법 제77조\n시행령 제67조, 68조\n시행규칙 제95조",
+          "table": 2,
+          "row": 11,
+          "evidence": [
+            "work_plan",
+            "equipment"
+          ]
+        },
+        {
+          "id": "l19",
+          "group": "산업안전\n보건법",
+          "title": "안전상의 조치",
+          "description": "1) 기계·기구 작동부, 폭발·인화성 물질, 전기·열 에너지 작업 시 방호조치(방호덮개, 접지, 누전차단기 등) 실시 확인\n2) 굴착·하역·운반·해체·중량물 취급 작업 전 작업계획서 작성 및 계획에 따른 작업 시행 확인\n3) 추락·붕괴·낙하·비래 위험장소 안전시설(안전난간, 방망, 방호선반 등) 설치, 천재지변 시 작업중지 확인",
+          "reference": "법 제38조",
+          "table": 3,
+          "row": 2,
+          "evidence": [
+            "equipment",
+            "work_plan"
+          ]
+        },
+        {
+          "id": "l20",
+          "group": "산업안전\n보건기준에 관한 규칙",
+          "title": "사전조사 및 작업계획서의 작성 등",
+          "description": "대상 작업에 대해 사전조사 후 작업계획서를 작성 여부\n- 타워크레인 설치·해체, 차량계 하역운반기계, 차량계 건설기계, 굴착 2m 이상, 터널, 해체, 중량물 취급",
+          "reference": "안전보건규칙 제38조",
+          "table": 3,
+          "row": 3,
+          "evidence": [
+            "work_plan"
+          ]
+        },
+        {
+          "id": "l21",
+          "group": "산업안전\n보건기준에 관한 규칙",
+          "title": "안전대 부착설비",
+          "description": "1) 추락위험이 있는 높이 2m이상의 장소에서 안전대를 착용\n2) 안전대 및 부속설비의 이상유무 작업 전 점검",
+          "reference": "안전보건규칙\n제44조",
+          "table": 3,
+          "row": 4,
+          "evidence": [
+            "equipment",
+            "protective_use"
+          ]
+        },
+        {
+          "id": "l22",
+          "group": "산업안전\n보건기준에 관한 규칙",
+          "title": "전기기계∙기구의 접지",
+          "description": "1) 전기 기계ㆍ기구의 금속제 외함, 금속제 외피 및 철대\n2) 고정배선에 접속된 전기기계ㆍ기구의 노출된 비충전 금속체     중 충전될 우려가 있는 비충전 금속체",
+          "reference": "안전보건규칙\n제302조",
+          "table": 3,
+          "row": 5,
+          "evidence": [
+            "equipment"
+          ]
+        },
+        {
+          "id": "l23",
+          "group": "산업안전\n보건기준에 관한 규칙",
+          "title": "고소작업대 설치 등의 조치",
+          "description": "1) 작업대 끼임·충돌 등 재해를 예방하기 위한 가드 또는 \n   과상승방지장치를 설치할 것\n2) 작업대를 올린 상태에서 작업자를 태우고 이동하지 말 것 ",
+          "reference": "안전보건규칙\n제186조",
+          "table": 3,
+          "row": 6,
+          "evidence": [
+            "equipment",
+            "daily_inspection"
+          ]
+        },
+        {
+          "id": "l24",
+          "group": "산업안전\n보건기준에 관한 규칙",
+          "title": "안전한 작업통로의 설치 기준",
+          "description": "1) 작업장으로 통하는 장소에 안전한 통로 설치 및 유지\n2) 통로 주요부분 통로표시, 장애물이 없도록 할 것",
+          "reference": "안전보건규칙\n제22조",
+          "table": 3,
+          "row": 7,
+          "evidence": [
+            "daily_inspection"
+          ]
+        },
+        {
+          "id": "l25",
+          "group": "산업안전\n보건기준에 관한 규칙",
+          "title": "보호구의 지급  및 관리 기준",
+          "description": "1) 사업주는 작업조건에 맞는 보호구를 작업하는 근로자 수 \n   이상으로 지급하고 착용하도록 할 것",
+          "reference": "안전보건규칙\n제302조",
+          "table": 3,
+          "row": 8,
+          "evidence": [
+            "protective_use"
+          ]
+        },
+        {
+          "id": "l26",
+          "group": "산업안전\n보건기준에 관한 규칙",
+          "title": "근로자의 추락위험방지",
+          "description": "1) 안전모, 안전대의 지급 및 착용 여부 확인\n2) 작업발판 및 추락방호망 설치 상태 확인\n3)추락위험이 있는 장소에 안전난간 또는 덮개 설치 및 고정 확인\n4) 안전대 부착설비 설치 상태 확인(생명줄 등)\n5) 하부 구획 설정 상태 확인\n6) 근로자의 안전고리 체결 상태 확인 등",
+          "reference": "안전보건규칙\n제42조",
+          "table": 3,
+          "row": 9,
+          "evidence": [
+            "equipment",
+            "protective_use"
+          ]
+        },
+        {
+          "id": "l27",
+          "group": "산업안전\n보건기준에 관한 규칙",
+          "title": "낙하물의 방지",
+          "description": "1) 작업장 내 낙하물이 근로자에게 위험을 칠 우려가 있는 경우 필요한 조치 여부 확인\n2) 방호선반 설치, 출입금지구역 설정, 보호구 착용 등 조치 확인\n3)　수공구 이탈방지끈 체결 상태 확인 등",
+          "reference": "안전보건규칙\n제14조",
+          "table": 3,
+          "row": 10,
+          "evidence": [
+            "equipment",
+            "daily_inspection"
+          ]
+        },
+        {
+          "id": "l28",
+          "group": "산업안전\n보건기준에 관한 규칙",
+          "title": "자상의 방지조치",
+          "description": "1) 근로자 개인 보호구 착용 상태 확인(자상방지장갑 등)",
+          "reference": "안전보건규칙\n제32조",
+          "table": 3,
+          "row": 11,
+          "evidence": [
+            "protective_use"
+          ]
+        },
+        {
+          "id": "l29",
+          "group": "기타",
+          "title": "산업안전보건관리비",
+          "description": "1) 산업안전보건관리비 계상내역 및 사용 명세서 작성 여부\n2) 산업재해 예방의 목적을 둔 사용 용도의 적절성 확인\n3) 건설공사 진척도에 따른 사용 비율 준수\n4) 안전인증서 보관 여부 확인 등",
+          "reference": "건설공사 등의 산업안전보건관리비 계상 등",
+          "table": 4,
+          "row": 2,
+          "evidence": [
+            "budget",
+            "protective_cert"
+          ]
+        },
+        {
+          "id": "l30",
+          "group": "기타",
+          "title": "안전보건협의체",
+          "description": "1) 도급 : 공사금액 120억원 이상 협의체 회의 진행 확인\n2)　하도급 : 원청사에서 진행하는 안전보건협의체 참석 여부\n　-사용자 위원, 근로자 위원의 동수 참석 여부 확인(도급)",
+          "reference": "안전 및 보건에 관한 협의체 등의 구성 및 운영에 관한 특례",
+          "table": 4,
+          "row": 3,
+          "evidence": [
+            "council"
+          ]
+        },
+        {
+          "id": "l31",
+          "group": "기타",
+          "title": "휴게시설의 설치",
+          "description": "도급시\n관계수급인 공사금액 포함한 총 20억 이상인 사업장 내 설치여부 확인\n휴게 공간 설치 기준의 준수 여부 확인",
+          "reference": "휴게시설의 설치유무",
+          "table": 4,
+          "row": 4,
+          "evidence": [
+            "rest"
+          ]
+        },
+        {
+          "id": "l32",
+          "group": "건설기술\n진흥법",
+          "title": "건기법에 따른 안전관리 이행 확인",
+          "description": "안전관리계획서 작성 유무 확인\n안전조직의 적정성 내용 확인\n건설공사 안전교육 실시 유무 확인 등",
+          "reference": "건설기술진흥법",
+          "table": 4,
+          "row": 5,
+          "evidence": [
+            "construction_plan"
+          ]
+        },
+        {
+          "id": "l33",
+          "group": "소방시설\n자체점검",
+          "title": "현장 및 사무실 소방시설 자체점검",
+          "description": "현장 및 사무실에 관리 주체가 되는 소방시설에 대한\n자체점검의 진행 여부 확인 등",
+          "reference": "소방시설법",
+          "table": 4,
+          "row": 6,
+          "evidence": [
+            "fire"
+          ]
+        }
+      ],
+      "template": "law.hwpx"
+    }
+  },
+  "sources": [
+    {
+      "name": "반기평가표.pptx",
+      "bytes": 121757,
+      "sha256": "34d870f4bb9b33c63c6c3c05b0bb67410126066ed2b7aa866801829d7521482d"
+    },
+    {
+      "name": "★안전보건관계법령점검표_rev5_현장.hwp",
+      "bytes": 73216,
+      "sha256": "bbaaa3a66907adda7ef23d9f87435f9e3fde2d0bbcbf6a2d01cd176f83c7e6d2"
+    },
+    {
+      "name": "4. 안전보건관리책임자 평가표.xlsx",
+      "bytes": 38920,
+      "sha256": "febf1a5e3949f440042d165641ecc15a890ad0d5cddf943165aca79251c3b80f"
+    },
+    {
+      "name": "5. 관리감독자 평가표.xlsx",
+      "bytes": 37161,
+      "sha256": "c93bbee61b47001977976037b280b54db76253510a8b240938b41c634ff851d2"
+    }
+  ],
+  "template_hashes": {
+    "4. 안전보건관리책임자 평가표.xlsx": "febf1a5e3949f440042d165641ecc15a890ad0d5cddf943165aca79251c3b80f",
+    "5. 관리감독자 평가표.xlsx": "c93bbee61b47001977976037b280b54db76253510a8b240938b41c634ff851d2",
+    "law.hwpx": "7347fc8525539e49d768091e49455ee97dcafd7b36affc374dfa1a0834684fc6",
+    "반기평가표.pptx": "34d870f4bb9b33c63c6c3c05b0bb67410126066ed2b7aa866801829d7521482d"
+  }
+}

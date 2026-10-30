@@ -120,6 +120,8 @@ def create_app() -> FastAPI:
     from app.modules.inspection_reports.routes import router as inspection_reports_router
     app.include_router(team_schedule_router)
     app.include_router(inspection_reports_router)
+    from app.modules.half_year_reviews.routes import router as half_year_reviews_router
+    app.include_router(half_year_reviews_router)
     app.include_router(team_photos_router)
     app.include_router(page_share_router)
     app.include_router(site_directory_router)
