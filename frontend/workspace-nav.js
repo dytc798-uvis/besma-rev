@@ -3,7 +3,7 @@ import {signingEntry} from '/assets/workspace-return.js';
 const API='https://api.besma.co.kr';let currentToken='',profile=null,inflight=false,lastPath='';
 const items=[['기능인인정제','functional'],['업무분장','duties'],['위험성평가 DB','risks'],['양식·법령 탐색','forms'],['현장 정보 검색','sites'],['고객사 안전기준','contractors'],['관급공사 현장 소통','government'],['사용설명서','guide'],['근로자의견청취','voice']];
 const preserved=/^\/hq-safe\/(functional-eval(?:-monitoring|-rewards-sanctions|\/grade-report)?|documents(?:\/.*)?|document-explorer|document-instances\/.*|government-contact|communications|safety-policy-goals|user-guide|google-feedback|worker-voice|settings|contractor-document-settings)\/?$/;
-function key(){const p=location.pathname;if(p.includes('google-feedback')||p.includes('worker-voice'))return 'voice';return p.includes('functional-eval')||p.includes('user-guide')?'functional':p.includes('document-explorer')||p.includes('safety-policy-goals')?'forms':p.includes('documents')||(p.includes('government-contact')||p.includes('communications'))?'government':'functional';}
+function key(){const p=location.pathname;if(p.includes('google-feedback')||p.includes('worker-voice'))return 'voice';return p.includes('functional-eval')||p.includes('user-guide')?'functional':p.includes('document-explorer')||p.includes('safety-policy-goals')?'forms':p.includes('documents')||p.includes('document-instances')||(p.includes('government-contact')||p.includes('communications'))?'government':'functional';}
 // This accepts only the same internal return paths as the existing Vue login.
 function loginReturnPath(value){
  if(typeof value!=='string'||!value.startsWith('/')||value.startsWith('//')||/[\u0000-\u001f\u007f\\]/.test(value))return '';
