@@ -10,6 +10,14 @@ def label(value):
     # Department numbering is presentation; retain customer and full project.
     return normalized(re.sub(r'^\[\s*\d+\s*\.\s*','[',value or''))
 
+def trade_label(value):
+    """Recognize only a terminal explicit electrical/fire/communications list."""
+    match=re.search(r'\(\s*((?:전기|소방|통신)(?:\s*,\s*(?:전기|소방|통신))*)\s*\)\s*$',value or'')
+    if not match:return label(value),None
+    parts=tuple(part.strip()for part in match[1].split(','))
+    if len(parts)!=len(set(parts)):return label(value),None
+    return label(value[:match.start()]),frozenset(parts)
+
 def resolve(db,row):
     if row.source!=INSPECTION_SOURCE:return None
     # This joint visit was explicitly reviewed before this resolver existed.
@@ -21,4 +29,11 @@ def resolve(db,row):
     if not name:return None
     rows=db.query(Site).all()
     equal=[s for s in rows if label(s.site_name)==label(name)]
-    return equal[0]if len(equal)==1 else None
+    if equal:return equal[0]if len(equal)==1 else None
+    # Imported plans add their combined trades to an otherwise unchanged full
+    # ERP project name. A separate contract/unit or legacy duplicate vetoes this
+    # fallback. Never remove project-number or temporary-power descriptors.
+    base,trades=trade_label(name)
+    if trades is None:return None
+    equal=[s for s in rows if trade_label(s.site_name)[0]==base]
+    return equal[0]if len(equal)==1 and trade_label(equal[0].site_name)[1]is None else None
