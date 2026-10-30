@@ -5,7 +5,7 @@ const hash=b=>crypto.createHash('sha256').update(b).digest('hex'),baseline=JSON.
 const original=await fs.readFile(baselineRoot+'/index.html','utf8');
 for(const[name,h]of Object.entries(baseline))if(name!=='index.html'&&hash(await fs.readFile(S+'/'+name))!==h)throw Error('Preserved file changed: '+name);
 const assets={};
-for(const name of ['naver-directions.js','site-notes.js','customer-policy.js','workspace-return.js','site-inspection-notice.js','document-sign.css','document-sign.js','workspace.css','company.css','workspace-legacy.css','collection-monitor.css','government-workspace.css','government-workspace.js','government-document-status.js','document-task-view.js','collection-work-entry.js','home-document-tasks.js','document-task-view.css','collection-monitor.js','map-teams.js','attendance-summary.js','site-missing-info.js','company-map-region.js','company-map-photos.js','company-map.js','company-home.js','site-workspace.js','site-workspace.css','workspace.js','workspace-nav.js']){
+for(const name of ['naver-directions.js','site-notes.js','customer-policy.js','workspace-return.js','site-inspection-notice.js','document-sign.css','document-sign.js','workspace.css','company.css','workspace-legacy.css','collection-monitor.css','government-workspace.css','government-workspace.js','government-document-status.js','document-task-view.js','collection-work-entry.js','home-document-tasks.js','home-evaluation-tasks.js','evaluation-entry.js','document-task-view.css','collection-monitor.js','map-teams.js','attendance-summary.js','site-missing-info.js','company-map-region.js','company-map-photos.js','company-map.js','company-home.js','site-workspace.js','site-workspace.css','workspace.js','workspace-nav.js']){
  let source=await fs.readFile(F+'/'+name,'utf8');for(const[k,v]of Object.entries(assets))source=source.replaceAll('/assets/'+k,'/'+v);
  const result=await transform(source,{loader:name.endsWith('css')?'css':'js',target:'es2022',minify:true});const target='assets/'+name.replace(/\.(js|css)$/,'-'+hash(result.code).slice(0,12)+'.$1');await fs.writeFile(S+'/'+target,result.code);assets[name]=target;
 }
@@ -29,6 +29,7 @@ for(const name of ['LawRegisterPage-S5I_OeWG.js','ServiceEntryPage-D6PI_M8c.js']
 }
 await fs.writeFile(S+'/assets/'+mainName,guarded);legacyScripts=legacyScripts.map(src=>src===originalMain?'/assets/'+mainName:src==='/assets/government-workspace-644ea612d669.js'?'/'+assets['government-workspace.js']:src);
 legacyScripts=legacyScripts.map(src=>/^\/assets\/collection-monitor-[a-f0-9]+\.js$/.test(src)?'/'+assets['collection-monitor.js']:src);
+legacyScripts.unshift('/'+assets['evaluation-entry.js']);
 const bootSource=(await fs.readFile(F+'/workspace-boot.js','utf8')).replace('__BESMA_LEGACY_SCRIPTS__',JSON.stringify(legacyScripts)).replace('__BESMA_NAV_SCRIPT__',JSON.stringify('/'+assets['workspace-nav.js'])).replace('__BESMA_SITE_INSPECTIONS__',JSON.stringify('/'+assets['site-inspection-notice.js']));
 const boot=(await transform(bootSource,{loader:'js',target:'es2022',minify:true})).code;
 const gate='<style>.besma-route-gate #app,.besma-login-preparing #app{visibility:hidden!important}#besma-route-status{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:12px;background:#173544;color:#fff;font:15px sans-serif;z-index:9999}</style>';

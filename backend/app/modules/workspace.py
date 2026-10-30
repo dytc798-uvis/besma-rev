@@ -312,3 +312,9 @@ install_site_info(router,result)
 
 from app.modules.workspace_site import router as site_workspace_router
 router.include_router(site_workspace_router)
+
+
+@router.get('/evaluation-status')
+def evaluation_status(db:DbDep,user=Depends(authorized)):
+ from app.modules.workspace_evaluation import evaluation_status as project
+ return result(project(db,user))
