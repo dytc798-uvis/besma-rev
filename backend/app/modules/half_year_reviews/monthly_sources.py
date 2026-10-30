@@ -18,8 +18,9 @@ def sources(snapshot,site,period):
     if site is None:return {'state':'SITE_UNCONFIRMED','items':[],'count':None,'unverified_count':None}
     if not snapshot.get('generated_at')or snapshot.get('collection_state')=='NOT_RECEIVED':return {'state':'NOT_RECEIVED','items':[],'count':None,'unverified_count':None}
     lo=period[:4]+('-01'if period.endswith('H1')else'-07');hi=period[:4]+('-06'if period.endswith('H1')else'-12')
-    found=[];seen=set();unverified=0
+    found=[];seen=set();unverified=0;unassigned=0
     for row in snapshot['items']:
+        if lo<=row.get('month','')<=hi and not row.get('site_code'):unassigned+=1
         if row.get('site_code')!=site['code']or not lo<=row.get('month','')<=hi:continue
         if row.get('state')!='SAVED':unverified+=1;continue
         if not re.fullmatch(r'[a-f0-9]{64}',row.get('id',''))or row['id']in seen or row.get('category')not in monthly.LABELS or not re.fullmatch(r'20\d{2}-(0[1-9]|1[0-2])',row.get('month',''))or not re.fullmatch(r'[a-f0-9]{64}',row.get('sha256',''))or type(row.get('size'))is not int or row['size']<=0:raise HTTPException(503,'취합자료 수신기록을 확인해야 합니다.')
@@ -30,7 +31,8 @@ def sources(snapshot,site,period):
         canonical=json.dumps(identity,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()
         source['source_version']=hashlib.sha256(canonical).hexdigest();found.append(source)
     found.sort(key=lambda r:(r['month'],r['filename'],r['id']),reverse=True)
-    return {'state':'AVAILABLE','items':found,'count':len(found),'unverified_count':unverified,'generated_at':snapshot['generated_at'],'site_name':site['name'],'period':period}
+    incomplete=bool(unverified or unassigned)
+    return {'state':'SOURCE_REVIEW_REQUIRED'if not found and incomplete else'AVAILABLE','items':found,'count':None if not found and incomplete else len(found),'unverified_count':unverified,'unassigned_count':unassigned,'scope_complete':not incomplete,'generated_at':snapshot['generated_at'],'site_name':site['name'],'period':period}
 
 def resolve(db,row,period,body):
     if set(body)!={'evidence_id','source_id','source_version'}or body['evidence_id']not in EVIDENCE:raise ValueError('MONTHLY_SOURCE_INVALID')
