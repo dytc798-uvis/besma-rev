@@ -12,7 +12,7 @@ from app.modules.users.models import User
 from app.modules.inspection_reports.routes import plan,actor
 from .catalog import CATALOG,context_key,period_value,Conflict
 from .store import ReviewStore
-from . import jobs,exports
+from . import jobs,exports,monthly_sources
 from .catalog import FORMS
 router=APIRouter(prefix='/safety-features/half-year-reviews',tags=['half-year-reviews'])
 Current=Annotated[User,Depends(get_current_user)]
@@ -21,7 +21,7 @@ class Change(BaseModel):
     request_key:str=Field(pattern=r'^[A-Za-z0-9_-]{8,80}$')
     revision:int=Field(ge=0)
     period:str=Field(pattern=r'^20\d{2}-H[12]$')
-    action:str=Field(pattern=r'^(evidence|subject|assessment|caption|parse|apply_parse)$')
+    action:str=Field(pattern=r'^(evidence|subject|assessment|caption|parse|apply_parse|monthly-link|monthly-unlink)$')
     data:dict
 def enabled(db,user):
     if os.environ.get('BESMA_HALF_YEAR_REVIEWS_ENABLED','').casefold()not in {'1','true'}:raise HTTPException(404,'반기평가를 준비하고 있습니다.')
@@ -32,7 +32,7 @@ def selected(db,user,public_id,period):
 def fail(error):
     if isinstance(error,Conflict):raise HTTPException(409,'다른 화면에서 자료가 변경되었습니다. 입력 내용을 보존했으니 새로 확인해 주세요.')
     if isinstance(error,KeyError):raise HTTPException(404,'이 현장·반기의 자료를 찾을 수 없습니다.')
-    messages={'UNREVIEWED_ITEMS_REMAIN':'미평가 항목과 점검사진을 확인해 주세요.','COMPLETE_FIRST':'평가 항목을 입력하고 완료 저장한 뒤 받을 수 있습니다.','SUBJECT_REQUIRED':'평가대상자를 먼저 추가해 주세요.','SUBJECT_EXISTS':'이미 등록된 평가대상자입니다.','NOTE_TOO_LONG':'비고는 두 줄 이내로 짧게 입력해 주세요.','VERDICT_INVALID':'해당없음 사유와 적합 여부를 확인해 주세요.','SCORE_INVALID':'평가표의 배점 범위 안에서 점수를 입력해 주세요.','TEMPLATE_CHANGED':'평가표 원본이 변경되어 확인이 필요합니다.','DATE_PERIOD_MISMATCH':'점검일이 선택한 반기와 다릅니다.','PDF_REQUIRED':'평가한 PDF 파일을 선택해 주세요.','PARSE_REVIEW_REQUIRED':'현장·대상자·점검일·합계와 판독 내용을 확인해 주세요.'}
+    messages={'MONTHLY_SOURCE_INVALID':'이 현장·반기의 취합자료를 다시 선택해 주세요.','MONTHLY_SOURCE_LIMIT':'연결할 수 있는 취합자료 수를 넘었습니다.','UNREVIEWED_ITEMS_REMAIN':'미평가 항목과 점검사진을 확인해 주세요.','COMPLETE_FIRST':'평가 항목을 입력하고 완료 저장한 뒤 받을 수 있습니다.','SUBJECT_REQUIRED':'평가대상자를 먼저 추가해 주세요.','SUBJECT_EXISTS':'이미 등록된 평가대상자입니다.','NOTE_TOO_LONG':'비고는 두 줄 이내로 짧게 입력해 주세요.','VERDICT_INVALID':'해당없음 사유와 적합 여부를 확인해 주세요.','SCORE_INVALID':'평가표의 배점 범위 안에서 점수를 입력해 주세요.','TEMPLATE_CHANGED':'평가표 원본이 변경되어 확인이 필요합니다.','DATE_PERIOD_MISMATCH':'점검일이 선택한 반기와 다릅니다.','PDF_REQUIRED':'평가한 PDF 파일을 선택해 주세요.','PARSE_REVIEW_REQUIRED':'현장·대상자·점검일·합계와 판독 내용을 확인해 주세요.'}
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
@@ -42,10 +42,18 @@ def read(public_id:str,period:str,db:DbDep,user:Current):
     try:
         row,key=selected(db,user,public_id,period);return {**store().load(key),'paper_jobs':jobs.listing(store(),key),'site_name':row.title.removeprefix('[점검] ').strip(),'period':period,'plan_revision':row.revision}
     except(ValueError,KeyError,OSError)as e:fail(e)
+@router.get('/plans/{public_id}/monthly-sources')
+def monthly_candidates(public_id:str,period:str,db:DbDep,user:Current,response:Response):
+    try:
+        row,key=selected(db,user,public_id,period);response.headers['Cache-Control']='no-store'
+        return monthly_sources.sources(monthly_sources.monthly.load(),monthly_sources.site_for_plan(db,row),period)
+    except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
 @router.post('/plans/{public_id}/changes')
 def change(public_id:str,body:Change,db:DbDep,user:Current):
     try:
-        row,key=selected(db,user,public_id,body.period);return store().mutate(key,user.id,user.name,body.model_dump(),context_meta={'public_id':public_id,'site_name':row.title.removeprefix('[점검] ').strip()})
+        row,key=selected(db,user,public_id,body.period);request=body.model_dump()
+        if body.action=='monthly-link':request['data']=monthly_sources.resolve(db,row,body.period,body.data)
+        return store().mutate(key,user.id,user.name,request,context_meta={'public_id':public_id,'site_name':row.title.removeprefix('[점검] ').strip()})
     except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
 @router.get('/plans/{public_id}/receipts/{request_key}')
 def receipt(public_id:str,period:str,request_key:str,db:DbDep,user:Current):

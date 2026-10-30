@@ -1,5 +1,12 @@
 import fs from 'node:fs/promises';import path from 'node:path';import crypto from 'node:crypto';
-import{transform}from 'esbuild';
+import{transform,build}from 'esbuild';
+async function buildHalfYearMonthly(F,S){
+ const result=await build({entryPoints:[path.join(F,'monthly-evidence.js')],bundle:true,format:'esm',target:'es2022',minify:true,write:false});
+ const code=result.outputFiles[0].contents,hash=crypto.createHash('sha256').update(code).digest('hex').slice(0,12),asset='assets/monthly-evidence-'+hash+'.js';await fs.mkdir(path.join(S,'assets'),{recursive:true});await fs.writeFile(path.join(S,asset),code);
+ for(const name of ['half-year-editor.js','half-year-editor.css']){let raw=await fs.readFile(path.join(F,'team-inspection',name),'utf8');if(name.endsWith('.js'))raw=raw.replaceAll('/assets/monthly-evidence.js','/'+asset);await fs.writeFile(path.join(S,name),raw);}
+ return {asset,files:['half-year-editor.js','half-year-editor.css']};
+}
+if(process.argv[2]==='--half-year'){console.log(JSON.stringify(await buildHalfYearMonthly(process.argv[3],process.argv[4])));process.exit(0);}
 const [R,baselineRoot]=process.argv.slice(2);if(!R||!baselineRoot)throw Error('Usage: npm run build -- <task-root> <verified-baseline-static>');const F=R+'/release/frontend',O=R+'/frontend-release/.vercel/output',S=O+'/static';
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex'),baseline=JSON.parse(await fs.readFile(R+'/qa/frontend-baseline.json','utf8'));
 const original=await fs.readFile(baselineRoot+'/index.html','utf8');
@@ -12,6 +19,7 @@ for(const name of ['naver-directions.js','site-notes.js','customer-policy.js','w
 for(const name of ['workspace.html','company.html','document-sign.html']){let html=await fs.readFile(F+'/'+name,'utf8');for(const[k,v]of Object.entries(assets))html=html.replaceAll('/assets/'+k,'/'+v);await fs.writeFile(S+'/'+name,html);}
 await fs.cp(F+'/workspace-assets',S+'/workspace-assets',{recursive:true});
 for(const name of ['inspection-plan-nav.js','inspection-plan.html','inspection-plan.js','inspection-plan.css'])await fs.copyFile(F+'/team-inspection/'+name,S+'/'+name);
+await buildHalfYearMonthly(F,S);
 let legacyScripts=[...original.matchAll(/<script\b[^>]*type="module"[^>]*src="([^"]+)"[^>]*><\/script>/g)].map(m=>m[1]);
 if(!legacyScripts.length)throw Error('No verified legacy scripts found');
 // Keep every original artifact intact, but seal HQ routes in a derived router bundle.

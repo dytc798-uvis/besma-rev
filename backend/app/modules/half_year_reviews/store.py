@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3,json,hashlib,uuid,re,io,zipfile,os
 from .catalog import CATALOG,FORMS,EVIDENCE,blank,cleaned,validate_assessment,Conflict
 from app.modules.inspection_reports.pptx_report import normalize_photo
-from . import exports,jobs
+from . import exports,jobs,monthly_sources
 digest=lambda value:hashlib.sha256(value).hexdigest()
 encoded=lambda value:json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 class ReviewStore:
@@ -41,6 +41,10 @@ class ReviewStore:
             if action=='evidence':
                 if set(body)!={'id','checked','note'}or body['id']not in EVIDENCE or type(body['checked'])is not bool:raise ValueError('EVIDENCE_INVALID')
                 data['evidence'][body['id']]={'checked':body['checked'],'note':cleaned(body['note'],160),'by':name,'at':stamp}
+            elif action=='monthly-link':
+                result['monthly_source']=monthly_sources.link(data,key,request['period'],body,actor,name,stamp)
+            elif action=='monthly-unlink':
+                result['monthly_source']=monthly_sources.unlink(data,body,name,stamp)
             elif action=='subject':
                 if set(body)!={'form','name'}or body['form']not in {'manager','supervisor'}:raise ValueError('SUBJECT_INVALID')
                 target=cleaned(body['name'],40)
@@ -57,7 +61,7 @@ class ReviewStore:
                 assessment=data['assessments'].setdefault(form+':'+subject,{})
                 draft={'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};assessment['draft']=draft
                 if body['complete']:
-                    complete={**draft,'id':uuid.uuid4().hex,'revision':revision+1,'evidence':data['evidence'].copy(),'photo_metadata':[{**f,'caption':answers['photo_captions'].get(f['id'],f['caption'])}for f in data['files']if f['id']in answers['photo_ids']]};assessment['completed']=complete;result['completed_id']=complete['id']
+                    complete={**draft,'id':uuid.uuid4().hex,'revision':revision+1,'evidence':data['evidence'].copy(),'monthly_sources':[dict(r)for r in data.get('monthly_sources',[])if r['active']],'photo_metadata':[{**f,'caption':answers['photo_captions'].get(f['id'],f['caption'])}for f in data['files']if f['id']in answers['photo_ids']]};assessment['completed']=complete;result['completed_id']=complete['id']
                 result['assessment']=assessment
             elif action=='parse':
                 result['parse_job']=jobs.queue(c,key,data,actor,name,body,context_meta,request['period'],stamp)
