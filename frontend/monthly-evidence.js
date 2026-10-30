@@ -41,8 +41,10 @@ export function createMonthlyEvidence({host,evidenceId,refs,api,loadSources,onLi
  }
  find.onclick=async()=>{if(!here()||loading)return;loading=true;find.disabled=true;note.textContent='이 현장·반기의 취합자료를 확인하고 있습니다.';try{
   const result=await loadSources();if(!here())return;choices.replaceChildren();
-  if(result.state!=='AVAILABLE'){note.textContent=result.state==='SITE_UNCONFIRMED'?'점검계획의 현장 연결을 먼저 확인해 주세요.':'아직 이 범위의 자료 수신을 확인하지 못했습니다.';return;}
+  const registrationNote=result.site_registry_confirmed===false?' 점검계획의 현장 반영은 현장 정보 확인 후 가능합니다.':'';
+  if(result.state!=='AVAILABLE'){note.textContent=result.state==='SITE_UNCONFIRMED'?'점검계획의 현장 연결을 먼저 확인해 주세요.':'아직 이 범위의 자료 수신을 확인하지 못했습니다.';note.textContent+=registrationNote;return;}
   note.textContent=result.count?'이 현장·반기의 수신자료 '+result.count+'개입니다. 확인할 항목에 연결해 주세요.':'이 현장·반기에 수신이 확인된 자료가 없습니다.';
+  note.textContent+=registrationNote;
   const filter=N('input');filter.type='search';filter.placeholder='파일명·자료월 찾기';filter.setAttribute('aria-label','취합자료 검색');choices.append(filter);
   const rows=[];for(const item of result.items){const line=N('div'),pick=N('button','이 항목에 연결');pick.type='button';line.className='hyr-monthly-choice';line.append(N('span',item.filename),N('small',item.month+' · '+categoryNames[item.category]+' · '+item.team),pick);pick.disabled=linked.some(r=>r.source_id===item.id&&r.source_version===item.source_version);pick.onclick=()=>Promise.resolve().then(()=>here()&&onLink(item)).catch(e=>{if(here())note.textContent=e.message;});choices.append(line);rows.push({line,text:(item.filename+' '+item.month+' '+categoryNames[item.category]).normalize('NFC')});}
   filter.oninput=()=>{const words=filter.value.normalize('NFC').trim().split(/\s+/).filter(Boolean);for(const x of rows)x.line.hidden=!words.every(w=>x.text.includes(w));};

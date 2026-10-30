@@ -6,12 +6,12 @@ from app.modules.monthly_collection import routes as monthly
 
 FIELDS=('id','category','month','team','site','filename','first_seen','last_seen','state','size')
 def site_for_plan(db,row):
-    from app.modules.inspection_reports.site_identity import resolve
-    site=resolve(db,row)
+    from app.modules.inspection_reports.site_identity import resolve_source
+    site=resolve_source(db,row)
     if site is None or not site.site_code:return None
     match=re.fullmatch(r'inspection:\d{6}:site-(\d{1,6})(?::[A-Za-z0-9_-]+)?',row.client_item_key or'')
     context='site-'+match[1]if match else'plan-'+row.public_id
-    return {'id':int(match[1])if match else None,'context_id':context,'code':site.site_code,'name':site.site_name}
+    return {'id':int(match[1])if match else None,'context_id':context,'code':site.site_code,'name':site.site_name,'registry_confirmed':site.id is not None}
 
 def sources(snapshot,site,period):
     period_value(period)
@@ -32,7 +32,7 @@ def sources(snapshot,site,period):
         source['source_version']=hashlib.sha256(canonical).hexdigest();found.append(source)
     found.sort(key=lambda r:(r['month'],r['filename'],r['id']),reverse=True)
     incomplete=bool(unverified or unassigned)
-    return {'state':'SOURCE_REVIEW_REQUIRED'if not found and incomplete else'AVAILABLE','items':found,'count':None if not found and incomplete else len(found),'unverified_count':unverified,'unassigned_count':unassigned,'scope_complete':not incomplete,'generated_at':snapshot['generated_at'],'site_name':site['name'],'period':period}
+    return {'state':'SOURCE_REVIEW_REQUIRED'if not found and incomplete else'AVAILABLE','items':found,'count':None if not found and incomplete else len(found),'unverified_count':unverified,'unassigned_count':unassigned,'scope_complete':not incomplete,'generated_at':snapshot['generated_at'],'site_name':site['name'],'period':period,'site_registry_confirmed':site.get('registry_confirmed',True)}
 
 def resolve(db,row,period,body):
     if set(body)!={'evidence_id','source_id','source_version'}or body['evidence_id']not in EVIDENCE:raise ValueError('MONTHLY_SOURCE_INVALID')
