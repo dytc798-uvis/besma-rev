@@ -1,5 +1,5 @@
 """Explicit owner-self follow-up to one immutable result in the same conversation."""
-import json,re
+import hashlib,json,re
 from pathlib import PurePosixPath
 from fastapi import Depends,HTTPException
 from fastapi.responses import Response
@@ -18,15 +18,31 @@ def requested(db,rid):
  row=db.execute('SELECT status FROM events WHERE request_id=? AND status LIKE ? ORDER BY id DESC LIMIT 1',(rid,PREFIX+'%')).fetchone()
  return json.loads(row['status'][len(PREFIX):])if row else None
 
+def nearest_result(db,actor,row):
+ from .input_images import for_request as image
+ from .naver_delivery import for_request as delivery
+ from .owner_source_choices import state
+ parent_id=row['parent_request_id'];seen={row['id']};chain=[]
+ for _ in range(12):
+  if not parent_id or parent_id in seen:return None
+  seen.add(parent_id);parent=db.execute('SELECT * FROM requests WHERE id=?',(parent_id,)).fetchone()
+  if parent is None or(parent['user_id'],parent['login_id'])!=(actor['id'],actor['login_id'])or not parent['scope_exempt']or parent['conversation_id']!=row['conversation_id']or parent['review_phase']not in {'NONE','OWN','SHARED','RELEASED'}or parent['status']not in {'COMPLETED','NEEDS_INFO'}:return None
+  chain.append({'id':parent['id'],'updated_at':parent['updated_at'],'body':parent['body']})
+  all_files=db.execute('SELECT * FROM files WHERE request_id=?',(parent['id'],)).fetchall();files=[f for f in all_files if f['audience']=='REQUESTER']
+  if files:
+   return(parent,files,chain)if parent['status']=='COMPLETED'and len(files)==1 else None
+  if all_files or parent['kind']!='QUESTION'or parent['source_json']or image(db,parent['id'])or delivery(db,parent['id'])is not None or state(db,parent['id'])[0]:return None
+  parent_id=parent['parent_request_id']
+ return None
+
 def candidate(db,actor,row):
  if not actor['owner']or not row['scope_exempt']or row['kind']!='QUESTION'or not row['parent_request_id']or row['source_json']or not REFERENCE.search(row['body']):return None
  from .input_images import for_request as image
  from .naver_delivery import for_request as delivery
  if image(db,row['id'])or delivery(db,row['id'])is not None:return None
- parent=db.execute('SELECT * FROM requests WHERE id=?',(row['parent_request_id'],)).fetchone()
- if parent is None or parent['status']!='COMPLETED'or(parent['user_id'],parent['login_id'])!=(actor['id'],actor['login_id'])or not parent['scope_exempt']or parent['conversation_id']!=row['conversation_id']or parent['review_phase']not in {'NONE','OWN','SHARED','RELEASED'}:return None
- files=db.execute("SELECT * FROM files WHERE request_id=? AND audience='REQUESTER'",(parent['id'],)).fetchall()
- if len(files)!=1:return None
+ resolved=nearest_result(db,actor,row)
+ if resolved is None:return None
+ parent,files,chain=resolved
  file=files[0]
  from .nas_sources import accident_source
  if not 0<file['bytes']<=MAX_ORIGINAL_BYTES or PurePosixPath(file['filename']).suffix.casefold()not in EXTENSIONS or accident_source(file['filename']):return None
@@ -41,7 +57,9 @@ def candidate(db,actor,row):
    origin=matches[0]['source']
   inherited=requested(db,parent['id'])
   if inherited:origin=inherited['origin'];anchor=inherited['origin_request_id']
- return {'request_id':parent['id'],'file_id':file['id'],'file_name':file['filename'],'bytes':file['bytes'],'sha256':file['sha256'],'origin':origin,'origin_request_id':anchor}
+ value={'request_id':parent['id'],'file_id':file['id'],'file_name':file['filename'],'bytes':file['bytes'],'sha256':file['sha256'],'origin':origin,'origin_request_id':anchor}
+ if len(chain)>1:value['context_sha256']=hashlib.sha256(json.dumps(chain,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+ return value
 
 def bind(db,queue,actor,rid):
  row=db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone();value=candidate(db,actor,row)
