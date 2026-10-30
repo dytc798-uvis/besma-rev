@@ -99,11 +99,11 @@ def active_sites(db,attendance,user=None):
 
 def readiness(db,attendance=None):
     attendance=attendance if attendance is not None else daily();today=str(kst_today())
-    base={'target_start':'2026-11-02','deadline':'2026-11-20','state':'PREPARING','can_evaluate':False,'source_date':attendance['date'] if attendance else None,'source_current':bool(attendance and attendance['date']==today),'today_people':attendance['people'] if attendance and attendance['date']==today else None}
+    base={'target_start':'2026-12-20','deadline':None,'attendance_population':'DAILY_ATTENDANCE','full_worker_population_confirmed':False,'state':'PREPARING','can_evaluate':False,'source_date':attendance['date'] if attendance else None,'source_current':bool(attendance and attendance['date']==today),'today_people':attendance['people'] if attendance and attendance['date']==today else None}
     periods=[dict(r) for r in db.execute(text('SELECT id,title,deadline_date,is_active FROM functional_eval_periods ORDER BY id DESC')).mappings()]
     base['previous_periods']=periods
     if not base['source_current']:
-        return {**base,'sites':[],'blockers':['오늘 ERP 출역자료 수집이 필요합니다.','11월 2일 시작 가능·11월 20일 마감으로 하반기 평가를 준비합니다.']}
+        return {**base,'sites':[],'blockers':['오늘 ERP 출역자료 수집이 필요합니다.','12월 20일 평가 예정으로 준비합니다. 실시일과 마감일은 평가 회차에서 확인합니다.']}
     hashes=[x['rrn_hash'] for x in attendance.get('identities',[]) if x.get('rrn_hash')]
     known=set();prior=set();functional=set();safety=set()
     # Bind the hashes; never log identities or mix old assessment rows with current criteria.
@@ -125,7 +125,7 @@ def readiness(db,attendance=None):
         code=site.get('code');reg=registry.get(code,{})
         sites.append({'code':code,'name':site['name'],'people':site['people'],'prior_grade_people':site_people.get(code,{}).get('prior',0),'new_or_ungraded_people':site_people.get(code,{}).get('new',0),'evaluator_registered':bool(reg.get('manager_login_id') in active_evaluators)})
     missing=sum(not s['evaluator_registered'] for s in sites)
-    blockers=['11월 2일 시작 가능·11월 20일 마감의 하반기 평가기간을 별도로 등록해야 합니다.','시작일의 실제 출역명부로 하반기 평가대상을 등록해야 합니다.']
+    blockers=['12월 20일 평가 예정에 맞춰 평가 회차의 실시일과 마감일을 확인해야 합니다.','당일 출역과 전 근로자 명부를 구분해 평가대상을 확인해야 합니다.']
     if missing:blockers.append(f'{missing}개 현장의 소장·평가자 배정을 확인해야 합니다.')
     return {**base,'source_sha256':attendance['source_sha256'],'captured_at':attendance['captured_at'],'sites':sites,'site_count':len(sites),'prior_roster_people':len(known),'prior_grade_people':len(prior),'prior_functional_people':len(functional),'prior_safety_people':len(safety),'new_or_ungraded_people':attendance['people']-len(prior),'evaluator_check_sites':missing,'blockers':blockers}
 

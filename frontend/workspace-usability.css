@@ -1,0 +1,4 @@
+@media(max-width:650px){
+ #content select,#content input:not([type=checkbox]):not([type=radio]),#content button{min-height:44px;padding:9px 11px;font-size:16px;box-sizing:border-box}
+ #content label:has(input[type=checkbox]){min-height:44px;display:inline-flex;align-items:center;gap:8px;box-sizing:border-box}
+}
