@@ -8,7 +8,8 @@ def current_text(body):
 
 def file_name_question(text):
     return bool(len(text) <= 160 and re.search(r'방금|직전|앞서|아까|그\s*(?:파일|자료|문서)|이\s*(?:파일|자료|문서)', text)
-                and re.search(r'파일명|(?:파일|자료|문서).*이름', text)
+                and re.search(r'파일명|(?:파일|자료|문서)(?:\s*(?:의|은|는|이|가))?\s*(?:(?:무슨|어떤|정확한)\s*)?(?:이름|명칭)', text)
+                and not re.search(r'(?:파일|자료|문서)\s*(?:에|안|속|내부|본문)|적힌|적혀|기재|수록', text)
                 and not re.search(r'내용|요약|분석|수정|바꿔|변경|삭제|만들|생성|작성|보내\s*(?:줘|주세요|라)|첨부\s*해|다운로드\s*해|열어', text))
 
 
