@@ -13,13 +13,36 @@ def file_name_question(text):
                 and not re.search(r'내용|요약|분석|수정|바꿔|변경|삭제|만들|생성|작성|보내\s*(?:줘|주세요|라)|첨부\s*해|다운로드\s*해|열어', text))
 
 
+def recent_request(text):
+    """Recognize a bounded metadata question, retaining its document terms.
+
+    Everything outside this grammar goes through the existing source planner.
+    A request to change/send/read a document must not become a global file list.
+    """
+    if not isinstance(text,str) or len(text)>200:
+        return None
+    counts=list(re.finditer(r'(?<!\d)(\d+)\s*개(?:의)?',text))
+    if len(counts)>1 or counts and not 1<=int(counts[0][1])<=10:
+        return None
+    limit=int(counts[0][1]) if counts else 3
+    value=text[:counts[0].start()]+text[counts[0].end():] if counts else text
+    prefix=r'(?:(?:나스|NAS|안전보건관리실|안전보건실)(?:\s*NAS)?\s*(?:에서|에|의)?\s*)?'
+    recent=r'(?:(?:가장\s*)?최근(?:에)?\s*(?:수정(?:된|한)?|변경된|저장된)?|마지막(?:으로)?\s*수정(?:된|한)?|수정일\s*순(?:으로)?)'
+    ending=r'(?:들(?:의)?|의)?\s*(?:파일명|이름|제목|명칭|목록)?(?:은|는|이|가|을|를)?\s*(?:(?:뭐|무엇)(?:야|지|죠|인가요|이야)?|알려\s*(?:줘|주세요)|보여\s*(?:줘|주세요)|찾아\s*(?:줘|주세요)|조회(?:해\s*(?:줘|주세요))?)?\s*[?.!]*'
+    match=re.fullmatch(r'\s*'+prefix+recent+r'\s*(?P<query>[가-힣A-Za-z0-9_. -]*?)\s*(?:파일명|파일|자료|문서)\s*'+ending,value,re.I)
+    if not match:
+        return None
+    query=' '.join(match['query'].split())
+    if query and (len(query)>100 or len(query.split())>8 or any(not re.fullmatch(r'[가-힣A-Za-z0-9_.-]+',word) or word in {'.','..'} for word in query.split())):
+        return None
+    if re.search(r'출역|인원|공수|수치|내용|조항|적용|보내|첨부|비교|삭제|수정해|바꿔|만들|생성|작성',query):
+        return None
+    return {'limit':limit,'query':query}
+
+
 def recent_limit(text):
-    if (re.search(r'최근|마지막|수정일', text) and re.search(r'파일|자료|문서', text)
-            and not re.search(r'내용|조항|적용|출역|인원|공수|수치', text)
-            and not re.search(r'수정해|바꿔|삭제|만들|생성', text)):
-        match = re.search(r'(\d{1,2})\s*개', text)
-        return min(10, max(1, int(match.group(1)))) if match else 3
-    return None
+    value=recent_request(text)
+    return value['limit'] if value and not value['query'] else None
 
 
 def answer(item, nas_answer, file_names=None, features=None):
@@ -42,9 +65,9 @@ def answer(item, nas_answer, file_names=None, features=None):
             # it cannot supply a path, credentials, grant or executable action.
             prior_questions = re.findall(r'(?:^|\n)사용자: (.*?)\n답변:', history, re.S)
             for prior in reversed(prior_questions):
-                limit = recent_limit(prior)
-                if limit is not None:
-                    return nas_answer('recent', limit)
+                recent = recent_request(prior)
+                if recent is not None:
+                    return nas_answer('recent', recent['limit'], recent['query']) if recent['query'] else nas_answer('recent', recent['limit'])
         if features().get('photos') is True:
             reply = '사진은 입력창 왼쪽 사진 아이콘으로 첨부할 수 있습니다.'
             if nas_answer('scope', 0).get('status') == 'COMPLETED':
@@ -60,7 +83,7 @@ def answer(item, nas_answer, file_names=None, features=None):
         if chat_question and value.get('status') == 'COMPLETED' and features is not None and features().get('photos') is True:
             value = {**value, 'reply': value['reply'] + '\n사진은 입력창 왼쪽 사진 아이콘으로 첨부할 수 있습니다.'}
         return value
-    limit = recent_limit(text)
-    if limit is not None:
-        return nas_answer('recent', limit)
+    recent = recent_request(text)
+    if recent is not None:
+        return nas_answer('recent', recent['limit'], recent['query']) if recent['query'] else nas_answer('recent', recent['limit'])
     return None

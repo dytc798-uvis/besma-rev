@@ -300,15 +300,15 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
                     item['input_attachments']=photos;item['image_source_comparison_available']=True
                     if not item.get('source')and needs_source(row['body']):item['source_lookup_available']=True;item['source_choices_available']=True
             from .grounding import answer, current_text, file_name_question
-            def nas_answer_full(operation,limit):
+            def nas_answer_full(operation,limit,query=''):
                 if not config().nas_files_enabled or nas is None:
                     return {'status':'NEEDS_INFO','reply':'NAS 검색 연결을 확인하지 못했습니다. 파일 목록을 다시 보내실 필요는 없습니다.'}
                 try:
-                    return nas.context_answer(item['_requester'],operation,limit)
+                    return nas.context_answer(item['_requester'],operation,limit,query=query) if query else nas.context_answer(item['_requester'],operation,limit)
                 except Exception:
                     return {'status':'NEEDS_INFO','reply':'현재 계정의 NAS 검색 연결과 이용 권한을 확인해야 합니다. 파일 목록을 다시 보내실 필요는 없습니다.'}
-            def nas_answer(operation,limit):
-                value=nas_answer_full(operation,limit)
+            def nas_answer(operation,limit,query=''):
+                value=nas_answer_full(operation,limit,query)
                 return {'status':value['status'],'reply':value['reply']}
             requester={**item['_requester'],'owner':bool(item['scope_exempt'])}
             def file_names():
