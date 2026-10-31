@@ -41,6 +41,9 @@ class CreateRequest(BaseModel):
 class NasQuery(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
     q: str=Field(min_length=1,max_length=100)
+    offset: int=Field(default=0,ge=0,le=1_000_000)
+    sort: Literal['relevance','newest','name']='relevance'
+    snapshot: str|None=Field(default=None,pattern=r'^[0-9a-f]{64}$')
 
 class DiscoveryQuery(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
@@ -189,9 +192,10 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
     def nas_search(body:NasQuery,user=Depends(auth),db=Depends(store)):
         identity=actor(user)
         if not config().nas_files_enabled or nas is None:raise HTTPException(404,'NAS 자료 요청을 준비하고 있습니다.')
-        state=call(nas.search_state,user,body.q)
+        state=call(nas.search_state,user,body.q,offset=body.offset,sort=body.sort,snapshot=body.snapshot) if body.offset or body.sort!='relevance' or body.snapshot else call(nas.search_state,user,body.q)
         return result({'items':[{**source,'nas_file_id':call(db.register_selection,identity,source)}for source in state['items']],
-            'unavailable_count':state.get('unavailable_count',0),'original_max_bytes':MAX_ORIGINAL_BYTES})
+            'unavailable_count':state.get('unavailable_count',0),'original_max_bytes':MAX_ORIGINAL_BYTES,
+            **{key:state.get(key)for key in ['total_count','complete','offset','next_offset','scanned_count','excluded_count','snapshot','sort']}})
 
     @router.post('/nas/discover')
     def discover_files(body:DiscoveryQuery,user=Depends(auth),db=Depends(store)):

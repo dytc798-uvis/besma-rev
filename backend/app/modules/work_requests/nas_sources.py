@@ -10,7 +10,7 @@ from .store import MAX_BYTES, MAX_ORIGINAL_BYTES, Conflict
 NAS_ORIGINAL_EXTENSIONS = frozenset(IMPORTANT_FILE_MEDIA_TYPES) | {".zip", ".xls"}
 
 
-import re,unicodedata
+import hashlib,json,re,unicodedata
 ACCIDENT_SOURCE=re.compile('사고(?=$|[/\\\\\\s_.()\\[\\]0-9-]|관리|조사|보고|접수|기록|이력|현황|대장|통계|경위|발생|사진|사례|자료|대응|처리|분석|원인|후속)|(?:^|[/\\\\\\s_.()\\[\\]0-9-])(?:accidents?|incidents?)(?=$|[/\\\\\\s_.()\\[\\]0-9-])',re.I)
 def accident_source(value):return bool(ACCIDENT_SOURCE.search(unicodedata.normalize('NFC',value)))
 
@@ -113,14 +113,22 @@ class NasSources:
         reply+=f'\n검색자료 갱신: {stamp(generated)}. 수정일 순서이며 최신 승인본이라는 뜻은 아닙니다.'
         return {'status':'COMPLETED','reply':reply,'_file_names':[x['file_name'] for x in rows]}
 
-    def search_state(self,user,q):
+    def search_state(self,user,q,*,offset=0,sort='relevance',snapshot=None):
         # Reuse the original query semantics, limiter, audit and visibility predicates.
         from app.modules.file_search.routes import search
         context=self.context(user)
-        found=search(SearchRequest(q=q,scopes=['TEAM_SAFETY_NAS'],extensions=sorted(NAS_ORIGINAL_EXTENSIONS),limit=20),context)
-        sources=[];unavailable=0
+        def revision():
+            rows=context.database.state(context.actor_user_id)
+            generations=sorted((row['logical_root_id'],row['installation_id'],row['session_id'],row['sha256'])for row in rows if row['scope']=='TEAM_SAFETY_NAS')
+            return hashlib.sha256(json.dumps([context.actor_user_id,unicodedata.normalize('NFC',q),sort,generations],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
+        current=revision()
+        if (offset and not snapshot)or(snapshot is not None and snapshot!=current):
+            raise HTTPException(409,'검색 자료가 갱신됐습니다. 처음부터 다시 찾아 주세요.')
+        found=search(SearchRequest(q=q,scopes=['TEAM_SAFETY_NAS'],extensions=sorted(NAS_ORIGINAL_EXTENSIONS),limit=20,offset=offset,sort=sort),context)
+        if offset>found['total_count']:raise HTTPException(409,'검색 범위가 달라졌습니다. 처음부터 다시 찾아 주세요.')
+        sources=[];unavailable=0;excluded=0
         for item in found['items']:
-            if item['is_directory'] or accident_source(item['relative_path']) or IndexDatabase._team_path_is_denied(item['relative_path']):continue
+            if item['is_directory'] or accident_source(item['relative_path']) or IndexDatabase._team_path_is_denied(item['relative_path']):excluded+=1;continue
             if item['size']>MAX_ORIGINAL_BYTES:
                 unavailable+=1;continue
             try:
@@ -128,7 +136,10 @@ class NasSources:
                 sources.append(self.resolve(context,selector))
             except HTTPException as error:
                 if error.status_code!=404:raise
-        return {'items':sources,'total_count':found['total_count'],'complete':found['total_count']==len(found['items']),'unavailable_count':unavailable,'original_max_bytes':MAX_ORIGINAL_BYTES}
+                excluded+=1
+        if revision()!=current:raise HTTPException(409,'검색 자료가 갱신됐습니다. 처음부터 다시 찾아 주세요.')
+        scanned=offset+len(found['items']);next_offset=scanned if scanned<found['total_count'] else None
+        return {'items':sources,'total_count':found['total_count'],'complete':next_offset is None,'unavailable_count':unavailable,'original_max_bytes':MAX_ORIGINAL_BYTES,'offset':offset,'next_offset':next_offset,'scanned_count':scanned,'excluded_count':excluded,'snapshot':current,'sort':sort}
 
     def validate(self,actor,source):
         user=self.load_user(actor);context=self.context(user)

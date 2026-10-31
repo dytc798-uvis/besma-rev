@@ -10,6 +10,7 @@
 
 .request-selected{border:2px solid #ffb574;scroll-margin-top:22px;outline:none}.request-time,.request-history-count{font-size:13px;color:#d2e1e8}.request-read-done{display:block;font-size:13px;color:#bdd9c7}.request-read{background:#ffe0bc;color:#233942}
 .work-requests button[hidden]{display:none}
+.request-nas-summary{margin:0;color:#edf5f8;line-height:1.55;overflow-wrap:anywhere}.request-nas-summary:empty{display:none}.request-nas>button{min-height:44px}
 
 .work-requests .request-form[hidden]{display:none}.work-requests .request-compose{margin:0 0 14px;padding:9px 15px;min-height:40px}.work-requests .request-history-count{color:#203e4b;background:#edf2f1;border-radius:5px;padding:6px 10px;width:fit-content}
 
