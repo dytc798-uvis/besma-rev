@@ -45,6 +45,36 @@ def recent_limit(text):
     return value['limit'] if value and not value['query'] else None
 
 
+def source_scope_question(text):
+    if not isinstance(text,str) or len(text)>200:
+        return False
+    # A document's application scope or a request to change a file is content
+    # work. It must keep its existing source/creation route.
+    if re.search(r'내용|조항|적용|본문|적힌|기재|항목|문구|삭제|수정|변경|바꿔|작성|만들|생성|보내|첨부|다운로드|열어|늘려|확장|권한',text):
+        return False
+    search=bool(re.search(r'검색|탐색',text))
+    if re.search(r'절차서|지침서|규정|계획서|평가표|점검표|보고서|매뉴얼',text) and not search:
+        return False
+    source=bool(re.search(r'나스|NAS|파일|자료|PC|컴퓨터|드라이브',text,re.I))
+    generic_ability=re.fullmatch(r'\s*(?:(?:이\s*)?(?:PC|컴퓨터|나스|NAS)(?:에서|도|는|의)?\s*)?(?:파일|자료)?\s*(?:검색|탐색)(?:이|을|할)?\s*(?:가능(?:해|한가|한지|하다며|합니까)?|할\s*수\s*있(?:어|나요|는지)?|돼|되나)[?.!\s]*',text,re.I)
+    return source and bool(re.search(r'범위|어디까지',text) or generic_ability)
+
+
+def source_scope_answer(nas_answer,features=None,*,pc_question=False):
+    if features is None:
+        return nas_answer('scope',0)
+    state=features()
+    # This flag comes from the authenticated requester and existing enabled
+    # owner workflow at claim time. Text/history never supplies this permission.
+    pc='업무툴이 실행 중인 PC의 고객사 평가기준·위험성평가·안전업무 문서와 양식 등 연결된 안전업무 폴더를 검색할 수 있습니다. PC 전체 드라이브를 검색하는 것은 아니며 사고자료·인증정보는 제외합니다.'
+    if pc_question:
+        return {'status':'COMPLETED','reply':pc} if state.get('owner_pc_lookup') is True else {'status':'NEEDS_INFO','reply':'현재 계정의 PC 자료 검색은 연결되어 있지 않습니다.'}
+    value=nas_answer('scope',0)
+    if state.get('owner_pc_lookup') is True:
+        return {**value,'reply':value['reply']+'\n'+pc}
+    return value
+
+
 def answer(item, nas_answer, file_names=None, features=None):
     if item.get('kind') != 'QUESTION' or item.get('source'):
         return None
@@ -76,10 +106,10 @@ def answer(item, nas_answer, file_names=None, features=None):
         return {'status': 'NEEDS_INFO', 'reply': '현재 사진 첨부 연결을 확인하지 못했습니다. NAS 파일 목록을 복사해 보내실 필요는 없습니다.'}
     if re.search(r'질문|대화|채팅|히스토리|이력', text) and re.search(r'저장|쌓이|남아|남는|누적|기록|이어', text):
         return {'status': 'COMPLETED', 'reply': '질문과 답변은 본인 계정의 대화 이력에 저장됩니다. 같은 대화에서 이어서 질문할 수 있고, 아래 이력 버튼에서 이전 대화를 다시 열 수 있습니다.'}
-    scope_question=(re.search(r'나스|NAS|파일|자료',text,re.I) and re.search(r'범위|어디까지|탐색할|탐색이',text))
+    scope_question=source_scope_question(text)
     chat_question=(re.search(r'대화창|베스마채팅|BESMA',text,re.I) and re.search(r'뭘\s*할|무엇을|할\s*수',text))
     if (scope_question or chat_question) and not re.search(r'삭제|수정해|바꿔',text):
-        value = nas_answer('scope', 0)
+        value = source_scope_answer(nas_answer,features,pc_question=bool(re.search(r'PC|컴퓨터|드라이브',text,re.I))and not re.search(r'NAS|나스',text,re.I))
         if chat_question and value.get('status') == 'COMPLETED' and features is not None and features().get('photos') is True:
             value = {**value, 'reply': value['reply'] + '\n사진은 입력창 왼쪽 사진 아이콘으로 첨부할 수 있습니다.'}
         return value

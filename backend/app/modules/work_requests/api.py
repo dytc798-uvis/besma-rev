@@ -321,7 +321,7 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
                 return call(db.conversation_file_names,requester,item['id'],visible,nas_answer_full)
             def ui_features():
                 from .input_images import available
-                return {'photos':available(db)}
+                return {'photos':available(db),'owner_pc_lookup':bool(item['scope_exempt']and config().source_lookup_enabled and {'OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2'}&set(capabilities))}
             with db.connection()as connection:selected_result=result_followup.requested(connection,item['id'])
             selected_name_question=bool(selected_result and selected_result.get('selected_file_id')and file_name_question('이 파일의 '+current_text(item['body'])))
             grounded_item={**item,'body':'이 파일의 '+current_text(item['body'])}if selected_name_question else item
