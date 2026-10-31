@@ -3,6 +3,7 @@ import hashlib,json,re,uuid
 from fastapi import HTTPException
 from .catalog import EVIDENCE,Conflict,period_value
 from app.modules.monthly_collection import routes as monthly
+from app.modules.monthly_collection.source_quality import notes_by_id
 
 FIELDS=('id','category','month','team','site','filename','first_seen','last_seen','state','size')
 def site_for_plan(db,row):
@@ -24,7 +25,7 @@ def sources(snapshot,site,period):
     lo=period[:4]+('-01'if period.endswith('H1')else'-07');hi=period[:4]+('-06'if period.endswith('H1')else'-12')
     contracts=site.get('contracts',[{'code':site['code'],'name':site['name']}]);codes=sorted(c['code']for c in contracts);by_code={c['code']:c for c in contracts}
     if not 1<=len(codes)<=8 or len(set(codes))!=len(codes)or any(not isinstance(c,str)or not re.fullmatch(r'[A-Za-z0-9_-]{1,40}',c)for c in codes):raise HTTPException(503,'점검계획의 계약 연결을 확인해야 합니다.')
-    found=[];seen=set();unverified=0;unassigned=0
+    found=[];seen=set();unverified=0;unassigned=0;quality=notes_by_id(snapshot)
     for row in snapshot['items']:
         if lo<=row.get('month','')<=hi and not row.get('site_code'):unassigned+=1
         if row.get('site_code')not in by_code or not lo<=row.get('month','')<=hi:continue
@@ -37,10 +38,11 @@ def sources(snapshot,site,period):
         if len(contracts)>1:
             source.update(context_site_codes=codes,site_name=by_code[row['site_code']]['name']);identity.update(context_site_codes=codes,site_name=source['site_name'])
         canonical=json.dumps(identity,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()
-        source['source_version']=hashlib.sha256(canonical).hexdigest();found.append(source)
+        source['source_version']=hashlib.sha256(canonical).hexdigest();source['quality_notes']=quality.get(row['id'],[]);found.append(source)
     found.sort(key=lambda r:(r['month'],r['filename'],r['id']),reverse=True)
-    incomplete=bool(unverified or unassigned)
-    result={'state':'SOURCE_REVIEW_REQUIRED'if not found and incomplete else'AVAILABLE','items':found,'count':None if not found and incomplete else len(found),'unverified_count':unverified,'unassigned_count':unassigned,'scope_complete':not incomplete,'generated_at':snapshot['generated_at'],'site_name':site['name'],'period':period,'site_registry_confirmed':site.get('registry_confirmed',True)}
+    quality_count=sum(bool(row['quality_notes'])for row in found)
+    incomplete=bool(unverified or unassigned or quality_count)
+    result={'state':'SOURCE_REVIEW_REQUIRED'if not found and incomplete else'AVAILABLE','items':found,'count':None if not found and incomplete else len(found),'unverified_count':unverified,'unassigned_count':unassigned,'scope_complete':not incomplete,'quality_review_count':quality_count,'generated_at':snapshot['generated_at'],'site_name':site['name'],'period':period,'site_registry_confirmed':site.get('registry_confirmed',True)}
     if len(contracts)>1:result.update(contracts=contracts,publication_site_confirmed=False)
     return result
 
