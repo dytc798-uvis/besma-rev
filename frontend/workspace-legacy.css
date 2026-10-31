@@ -37,3 +37,22 @@
 .login-company-intro h1{font-size:clamp(27px,2.65vw,38px)!important}@media(max-width:900px){.login-company-intro h1{font-size:27px!important}}
 
 .login-company-intro .login-law-link{margin-left:20px;font-weight:650}
+
+/* Keep evaluation instructions on an opaque reading surface. */
+.functional-eval-shell .page-head-text{box-sizing:border-box;min-width:0;padding:12px;border:1px solid #d8e1e7;border-radius:10px;background:#fff;color:#173544}
+.functional-eval-shell .page-head-text .page-sub,.functional-eval-shell .page-head-text .evaluator-hint{color:#334155}
+.functional-eval-shell .page-head-text .attendance-warn{color:#854d0e}
+.functional-eval-shell .page-head-text .load-error{color:#9f1239}
+@media(max-width:900px){
+ .functional-eval-shell.site-mobile-layout .layout-header-fe{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:6px;row-gap:2px;padding:6px 10px;min-height:44px}
+ .functional-eval-shell.site-mobile-layout .header-left{min-width:0}
+ .functional-eval-shell.site-mobile-layout .header-left:has(.header-title-block--mobile){display:contents}
+ .functional-eval-shell.site-mobile-layout .header-left>.sidebar-toggle-btn{grid-column:1;grid-row:1}
+ .functional-eval-shell.site-mobile-layout .header-title-block--mobile{grid-column:1/-1;grid-row:2;min-width:0;max-width:100%;justify-self:start}
+ .functional-eval-shell.site-mobile-layout .header-sub--user{display:block;font-size:12px;line-height:1.4;color:#475569;white-space:normal;overflow-wrap:anywhere;margin:0}
+ .functional-eval-shell.site-mobile-layout .layout-header-brand-center{position:static;transform:none;grid-column:2;grid-row:1;justify-self:center;width:100%;max-width:144px;min-width:0}
+ .functional-eval-shell.site-mobile-layout .layout-header-brand-center .app-full-logo-wrap{width:100%;min-width:0}
+ .functional-eval-shell.site-mobile-layout .layout-header-brand-center img{max-width:100%;object-fit:contain}
+ .functional-eval-shell.site-mobile-layout .header-right{grid-column:3;grid-row:1;min-width:0}
+ .functional-eval-shell.site-mobile-layout.mobile-drawer-open .layout-header-fe{position:sticky;top:0;z-index:301}
+}
