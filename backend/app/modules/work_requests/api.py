@@ -36,6 +36,7 @@ class CreateRequest(BaseModel):
     nas_file_id: str|None = Field(default=None,pattern=r'^[0-9a-f]{64}$')
     parent_request_id: str|None = Field(default=None,pattern=r'^[0-9a-f]{32}$')
     input_attachment_id: str|None = Field(default=None,pattern=r'^[0-9a-f]{32}$')
+    result_file_id: str|None = Field(default=None,pattern=r'^[0-9a-f]{32}$')
 
 
 class NasQuery(BaseModel):
@@ -115,7 +116,9 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
     def call(fn,*args,**kwargs):
         try:return fn(*args,**kwargs)
         except KeyError:raise HTTPException(404,'요청한 항목을 찾을 수 없습니다.') from None
-        except Conflict:raise HTTPException(409,'처리 상태가 바뀌었습니다. 목록을 다시 확인해 주세요.') from None
+        except Conflict as error:
+            if str(error)=='RESULT_SELECTION_UNAVAILABLE':raise HTTPException(409,'질문할 파일의 연결을 다시 확인해 주세요. 최근 결과에서 파일을 선택할 수 있습니다.') from None
+            raise HTTPException(409,'처리 상태가 바뀌었습니다. 목록을 다시 확인해 주세요.') from None
         except ValueError:raise HTTPException(422,'입력 내용과 파일을 확인해 주세요.') from None
         except (OSError,RuntimeError):raise HTTPException(503,'처리하지 못했습니다. 잠시 후 다시 확인해 주세요.') from None
 
@@ -237,14 +240,14 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
         source=None
         if body.nas_file_id:
             if body.kind not in {'FILE','QUESTION','EDIT'}:raise HTTPException(422,'자료 요청 내용을 확인해 주세요.')
-            replay=call(db.replay,user,body.request_key,body.kind,body.title,body.body,body.nas_file_id,body.parent_request_id)
+            replay=call(db.replay,user,body.request_key,body.kind,body.title,body.body,body.nas_file_id,body.parent_request_id,result_file_id=body.result_file_id)
             if replay is not None:
                 response=result(visible(replay,user));response.status_code=201;return response
             source=call(db.selection,user,body.nas_file_id)
             if not source_valid(user,source):raise HTTPException(409,'자료를 다시 찾아 선택해 주세요.')
         if body.kind=='EDIT'and source and source.get('extension')=='.xlsx'and not config().workbook_edit_enabled:raise HTTPException(404,'엑셀 문구 수정 사본을 준비하고 있습니다.')
         if body.kind=='EDIT'and(not source or source.get('extension')not in {'.txt','.docx','.xlsx'}):raise HTTPException(422,'수정할 TXT·DOCX·XLSX 원본을 선택해 주세요.')
-        response=result(visible(call(db.create,user,body.request_key,body.kind,body.title,body.body,source,body.nas_file_id,body.parent_request_id,input_attachment_id=body.input_attachment_id,result_followup_enabled=config().owner_result_followup_enabled and config().source_lookup_enabled and user['owner'],image_comparison_enabled=config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled),user));response.status_code=201;return response
+        response=result(visible(call(db.create,user,body.request_key,body.kind,body.title,body.body,source,body.nas_file_id,body.parent_request_id,input_attachment_id=body.input_attachment_id,result_file_id=body.result_file_id,result_followup_enabled=config().owner_result_followup_enabled and config().source_lookup_enabled and user['owner'],image_comparison_enabled=config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled),user));response.status_code=201;return response
 
     @router.get('/owner/inbox')
     def inbox(user=Depends(worker),db=Depends(store)):
@@ -309,11 +312,20 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
                 return {'status':value['status'],'reply':value['reply']}
             requester={**item['_requester'],'owner':bool(item['scope_exempt'])}
             def file_names():
+                with db.connection()as connection:
+                    bound=result_followup.requested(connection,item['id'])
+                    if bound and bound.get('selected_file_id'):
+                        row=connection.execute('SELECT * FROM requests WHERE id=?',(item['id'],)).fetchone()
+                        value=result_validator(connection,row,user)
+                        return [value['file_name']]
                 return call(db.conversation_file_names,requester,item['id'],visible,nas_answer_full)
             def ui_features():
                 from .input_images import available
                 return {'photos':available(db)}
-            grounded=answer(item,nas_answer,file_names,ui_features)if not item.get('input_attachments')else None
+            with db.connection()as connection:selected_result=result_followup.requested(connection,item['id'])
+            selected_name_question=bool(selected_result and selected_result.get('selected_file_id')and file_name_question('이 파일의 '+current_text(item['body'])))
+            grounded_item={**item,'body':'이 파일의 '+current_text(item['body'])}if selected_name_question else item
+            grounded=answer(grounded_item,nas_answer,file_names,ui_features)if not item.get('input_attachments')else None
             if grounded is not None:item['grounded_reply']=grounded
             if config().source_lookup_enabled and config().nas_files_enabled and 'REQUEST_SOURCE_LOOKUP_V1'in capabilities and item['kind']=='QUESTION'and not item.get('source')and not item.get('input_attachments')and grounded is None:item['source_lookup_available']=True;item['source_choices_available']=True
         if item is not None and item['scope_exempt']and {'OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2'}&set(capabilities):
@@ -322,7 +334,7 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             if selected:item['owner_source_choice_id']=selected;item.pop('grounded_reply',None)
         if item is not None and 'OWNER_SOURCE_CHOICES_V2'in capabilities:
             with db.connection()as connection:
-                if result_followup.requested(connection,item['id']) and not (grounded is not None and file_name_question(current_text(item['body']))):
+                if result_followup.requested(connection,item['id']) and not (grounded is not None and (selected_name_question or file_name_question(current_text(item['body'])))):
                     row=connection.execute('SELECT * FROM requests WHERE id=?',(item['id'],)).fetchone();item['result_source']=result_validator(connection,row,user);item.pop('grounded_reply',None)
         return result({'item':item})
 

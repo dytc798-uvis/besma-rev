@@ -287,22 +287,23 @@ class RequestStore:
         return json.loads(row['source_json'])
 
     @staticmethod
-    def payload_digest(kind,title,body,selection_id=None,parent_request_id=None,input_attachment_id=None):
+    def payload_digest(kind,title,body,selection_id=None,parent_request_id=None,input_attachment_id=None,result_file_id=None):
         values=[kind,plain(title,100),plain(body,6000)]
         if selection_id is not None:values.append(selection_id)
         if parent_request_id is not None:values.append({'parent_request_id':parent_request_id})
         if input_attachment_id is not None:values.append({'input_attachment_id':input_attachment_id})
+        if result_file_id is not None:values.append({'result_file_id':result_file_id})
         return hashlib.sha256(json.dumps(values,ensure_ascii=False).encode()).hexdigest()
 
-    def replay(self,actor,request_key,kind,title,body,selection_id=None,parent_request_id=None):
+    def replay(self,actor,request_key,kind,title,body,selection_id=None,parent_request_id=None,*,result_file_id=None):
         with self.connection() as db:
             old=db.execute('SELECT * FROM requests WHERE user_id=? AND request_key=?',(actor['id'],request_key)).fetchone()
             if old:
-                if old['payload_sha256']!=self.payload_digest(kind,title,body,selection_id,parent_request_id)or old['login_id']!=actor['login_id']:raise Conflict('REQUEST_KEY_CONFLICT')
+                if old['payload_sha256']!=self.payload_digest(kind,title,body,selection_id,parent_request_id,result_file_id=result_file_id)or old['login_id']!=actor['login_id']:raise Conflict('REQUEST_KEY_CONFLICT')
                 return self._public(db,old)
         return None
 
-    def create(self, actor, request_key, kind, title, body, source=None, selection_id=None,parent_request_id=None,*,completed_reply=None,input_attachment_id=None,delivery=None,result_followup_enabled=False,image_comparison_enabled=False):
+    def create(self, actor, request_key, kind, title, body, source=None, selection_id=None,parent_request_id=None,*,completed_reply=None,input_attachment_id=None,delivery=None,result_followup_enabled=False,image_comparison_enabled=False,result_file_id=None):
         request_key=plain(request_key,80)
         if not re.fullmatch(r'[a-zA-Z0-9_-]{8,80}',request_key) or kind not in {'QUESTION','FILE','EDIT'}:
             raise ValueError('INVALID_REQUEST')
@@ -312,7 +313,10 @@ class RequestStore:
         if input_attachment_id is not None and(kind!='QUESTION'or source is not None or completed_reply is not None):raise ValueError('사진은 채팅 질문과 함께 보내 주세요.')
         from .naver_delivery import validate as validate_delivery
         validate_delivery(actor,delivery,kind,source,input_attachment_id,completed_reply)
-        digest=self.payload_digest(kind,title,body,selection_id,parent_request_id,input_attachment_id)
+        if result_file_id is not None:
+            if not isinstance(result_file_id,str)or not re.fullmatch(r'[0-9a-f]{32}',result_file_id):raise ValueError('INVALID_RESULT_FILE')
+            if not result_followup_enabled or not actor['owner']or kind!='QUESTION'or source is not None or selection_id is not None or input_attachment_id is not None or delivery is not None or completed_reply is not None:raise Conflict('RESULT_SELECTION_UNAVAILABLE')
+        digest=self.payload_digest(kind,title,body,selection_id,parent_request_id,input_attachment_id,result_file_id)
         if delivery is not None:digest=hashlib.sha256((digest+'\0naver-delivery\0'+json.dumps(delivery,sort_keys=True)).encode()).hexdigest()
         if completed_reply is not None:
             if kind!='QUESTION' or source is not None:raise ValueError('INVALID_WEEKLY_NOTE')
@@ -349,8 +353,8 @@ class RequestStore:
             if result_followup_enabled:
                 from .result_followup import bind as bind_result
                 from .grounding import file_name_question, current_text
-                if not (kind=='QUESTION' and file_name_question(current_text(body))):
-                    bind_result(db,self,actor,rid)
+                if result_file_id is not None or not (kind=='QUESTION' and file_name_question(current_text(body))):
+                    bind_result(db,self,actor,rid,result_file_id)
             if image_comparison_enabled and kind=='QUESTION':
                 from .image_comparison import inputs,needs_source
                 from .result_followup import requested

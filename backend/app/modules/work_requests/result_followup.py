@@ -18,7 +18,7 @@ def requested(db,rid):
  row=db.execute('SELECT status FROM events WHERE request_id=? AND status LIKE ? ORDER BY id DESC LIMIT 1',(rid,PREFIX+'%')).fetchone()
  return json.loads(row['status'][len(PREFIX):])if row else None
 
-def nearest_result(db,actor,row):
+def nearest_result(db,actor,row,selected_file_id=None):
  from .input_images import for_request as image
  from .naver_delivery import for_request as delivery
  from .owner_source_choices import state
@@ -30,17 +30,20 @@ def nearest_result(db,actor,row):
   chain.append({'id':parent['id'],'updated_at':parent['updated_at'],'body':parent['body']})
   all_files=db.execute('SELECT * FROM files WHERE request_id=?',(parent['id'],)).fetchall();files=[f for f in all_files if f['audience']=='REQUESTER']
   if files:
+   if selected_file_id is not None:files=[f for f in files if f['id']==selected_file_id]
    return(parent,files,chain)if parent['status']=='COMPLETED'and len(files)==1 else None
   if all_files or parent['kind']!='QUESTION'or parent['source_json']or image(db,parent['id'])or delivery(db,parent['id'])is not None or state(db,parent['id'])[0]:return None
   parent_id=parent['parent_request_id']
  return None
 
-def candidate(db,actor,row):
- if not actor['owner']or not row['scope_exempt']or row['kind']!='QUESTION'or not row['parent_request_id']or row['source_json']or not REFERENCE.search(row['body']):return None
+def candidate(db,actor,row,selected_file_id=None):
+ if selected_file_id is None:
+  bound=requested(db,row['id']);selected_file_id=bound.get('selected_file_id')if bound else None
+ if not actor['owner']or not row['scope_exempt']or row['kind']!='QUESTION'or not row['parent_request_id']or row['source_json']or(selected_file_id is None and not REFERENCE.search(row['body'])):return None
  from .input_images import for_request as image
  from .naver_delivery import for_request as delivery
  if image(db,row['id'])or delivery(db,row['id'])is not None:return None
- resolved=nearest_result(db,actor,row)
+ resolved=nearest_result(db,actor,row,selected_file_id)
  if resolved is None:return None
  parent,files,chain=resolved
  file=files[0]
@@ -58,11 +61,13 @@ def candidate(db,actor,row):
   inherited=requested(db,parent['id'])
   if inherited:origin=inherited['origin'];anchor=inherited['origin_request_id']
  value={'request_id':parent['id'],'file_id':file['id'],'file_name':file['filename'],'bytes':file['bytes'],'sha256':file['sha256'],'origin':origin,'origin_request_id':anchor}
+ if selected_file_id is not None:value['selected_file_id']=selected_file_id
  if len(chain)>1:value['context_sha256']=hashlib.sha256(json.dumps(chain,sort_keys=True,separators=(',',':')).encode()).hexdigest()
  return value
 
-def bind(db,queue,actor,rid):
- row=db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone();value=candidate(db,actor,row)
+def bind(db,queue,actor,rid,selected_file_id=None):
+ row=db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone();value=candidate(db,actor,row,selected_file_id)
+ if selected_file_id is not None and value is None:raise Conflict('RESULT_SELECTION_UNAVAILABLE')
  if value:queue._event(db,rid,PREFIX+json.dumps(value,ensure_ascii=False,separators=(',',':')))
 
 def validate(db,queue,user,row,cfg,eligible,source_valid,*,retained_access=None):
@@ -80,7 +85,7 @@ def validate(db,queue,user,row,cfg,eligible,source_valid,*,retained_access=None)
   # Reuse the same access gate as its existing download endpoint.
   allowed=retained_access(user,anchor)if retained_access is not None else source_valid(user,json.loads(anchor['source_json']))
   if not allowed:raise Conflict('SOURCE_ACCESS_REVOKED')
- return {k:v for k,v in value.items()if k not in {'origin','origin_request_id'}}
+ return {k:v for k,v in value.items()if k not in {'origin','origin_request_id','selected_file_id'}}
 
 def install(router,worker,store,config,eligible,source_valid,call,*,retained_access=None):
  @router.post('/worker/{rid}/input-result')
