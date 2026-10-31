@@ -1748,3 +1748,7 @@ def _workbench_read_period(db, user, period_id):
     if period is None:
         raise HTTPException(status_code=404, detail="평가기간을 찾을 수 없습니다.")
     return period
+
+
+from .workbench_context import router as workbench_context_router
+router.include_router(workbench_context_router)
