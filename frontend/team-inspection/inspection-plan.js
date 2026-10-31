@@ -1,6 +1,6 @@
 import {inspectionEntry,inspectionMonth,inspectionPlanId} from '/assets/inspection-work-entry.js';
 import {workReturn} from '/assets/workspace-return.js';
-import {mountHalfYearReview} from '/half-year-editor.js?v=20261031.9';
+import {mountHalfYearReview} from '/half-year-editor.js?v=20261031.10';
 
 
 import {mountInspectionReport} from '/inspection-report-editor.js?v=20261030.1';
