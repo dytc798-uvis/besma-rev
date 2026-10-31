@@ -9,6 +9,13 @@ from app.modules.safety_features.inspection_plan import INSPECTION_SOURCE
 REVIEWED_SOURCE_BINDINGS = {'inspection:202611:site-12': ('[점검] 두산 부개4구역', '[1.두산건설] 인천 부개4주택 재개발 현장', '26039', '[1.두산건설] 부개4구역 주택재개발 정비사업 신축전기공사 2공구'), 'inspection:202611:site-77': ('[점검] CJ 미래원 대수선', '[5.CJ대한통운] 미래원 대수선 및 증축공사(가설,전기,소방)', '25056', '[5.CJ대한통운] 미래원 증축 및 대수선 공사')}
 
 
+# One visit, two original contracts. Singular publication identity stays unresolved.
+REVIEWED_CONTRACT_SETS = {'inspection:202611:site-13': (
+    '[점검] 두산 강화2지역', '[1.두산건설] 강화2지역 주택조합 전기공사(전기,소방)', (
+        ('25035', '[1.두산건설] [전기] 강화2지역 주택조합 전기공사'),
+        ('25043', '[1.두산건설] [소방] 강화2지역 주택조합 소방공사'),
+    ))}
+
 def normalized(value):
     return ''.join(unicodedata.normalize('NFC',value or'').casefold().split())
 
@@ -91,6 +98,7 @@ def directory_rows(data):
 
 def resolve(db,row):
     if row.source!=INSPECTION_SOURCE:return None
+    if row.client_item_key in REVIEWED_CONTRACT_SETS:return None
     if row.client_item_key in REVIEWED_SOURCE_BINDINGS:return reviewed_match(db.query(Site).all(),row)[0]
     # This joint visit was explicitly reviewed before this resolver existed.
     if row.client_item_key=='inspection:202611:joint-cheonan':
@@ -106,6 +114,7 @@ def resolve_source(db,row):
     only. This never creates an account, grants SITE access, or rekeys a review.
     """
     if row.source!=INSPECTION_SOURCE:return None
+    if row.client_item_key in REVIEWED_CONTRACT_SETS:return None
     if row.client_item_key in REVIEWED_SOURCE_BINDINGS:
         selected,blocked=reviewed_match(db.query(Site).all(),row)
         if blocked:return selected
@@ -121,3 +130,29 @@ def resolve_source(db,row):
     if exact or trades is not None and any(trade_label(s.site_name)[0]==base for s in rows):return None
     data=directory_snapshot();rows=directory_rows(data)
     return matching(rows,name,data)if rows is not None else None
+
+
+def resolve_sources(db,row):
+    """Evidence contracts only; never pick one as the visit's publication site."""
+    if row.source!=INSPECTION_SOURCE:return []
+    expected=REVIEWED_CONTRACT_SETS.get(row.client_item_key)
+    if expected is None:
+        site=resolve_source(db,row)
+        return [site] if site is not None else []
+    title,name,contracts=expected
+    if normalized(row.title)!=normalized(title)or normalized(name_for(row))!=normalized(name):return []
+    data=directory_snapshot()
+    if not isinstance(data,dict)or not isinstance(data.get('aliases',{}),dict):return []
+    registered=db.query(Site).all();directory=None;result=[]
+    for code,site_name in contracts:
+        if canonical(code,data.get('aliases',{}))!=code:return []
+        related=[r for r in registered if r.site_code==code or label(r.site_name)==label(site_name)]
+        if related:
+            found=choose(related,data)
+        else:
+            if directory is None:directory=directory_rows(data)
+            if directory is None:return []
+            found=choose([r for r in directory if r.site_code==code or label(r.site_name)==label(site_name)],data)
+        if found is None or found.site_code!=code or label(found.site_name)!=label(site_name):return []
+        result.append(found)
+    return result if len({r.site_code for r in result})==len(contracts) else []

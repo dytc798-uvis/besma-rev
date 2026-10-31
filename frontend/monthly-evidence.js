@@ -2,11 +2,11 @@ import {monthlyCandidates,monthlyQuery,monthlyHandoff,monthlyRequestBody} from '
 import {receiveVerifiedFile} from './request-file-download.js';
 const N=(tag,text)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;return e;};
 const categoryNames={theme:'테마점검',risk:'위험성평가','legal-training':'법정교육',opinions:'근로자 의견청취','safety-cost':'산업안전보건관리비'};
-export function createMonthlyEvidence({host,evidenceId,refs,api,loadSources,onLink,onUnlink,current,pending}){
+export function createMonthlyEvidence({host,evidenceId,refs,api,loadSources,onLink,onUnlink,current,pending,viewState={}}){
  const wrap=N('section'),note=N('p'),list=N('div'),find=N('button','취합자료 찾기'),choices=N('div');wrap.className='hyr-monthly';find.type='button';find.className='hyr-monthly-find';note.setAttribute('role','status');
  let alive=true,loading=false;const here=()=>alive&&host.isConnected&&current();
  const linked=refs.filter(r=>r.active&&r.evidence_id===evidenceId);
- for(const ref of linked){const line=N('div'),name=N('span',ref.filename),meta=N('small',ref.month+' · '+categoryNames[ref.category]+' · '+ref.team),download=N('button','원본 받기'),remove=N('button','연결 해제');line.className='hyr-monthly-reference';name.title=ref.filename;download.type=remove.type='button';remove.className='hyr-monthly-unlink';download.onclick=()=>receive(ref,download);remove.onclick=()=>Promise.resolve().then(()=>here()&&onUnlink(ref)).catch(e=>{if(here())note.textContent=e.message;});line.append(name,meta,download,remove);list.append(line);}
+ for(const ref of linked){const line=N('div'),name=N('span',ref.filename),meta=N('small',ref.month+' · '+categoryNames[ref.category]+' · '+ref.team+(ref.site_name?' · '+ref.site_name:'')),download=N('button','원본 받기'),remove=N('button','연결 해제');line.className='hyr-monthly-reference';name.title=ref.filename;download.type=remove.type='button';remove.className='hyr-monthly-unlink';download.onclick=()=>receive(ref,download);remove.onclick=()=>Promise.resolve().then(()=>here()&&onUnlink(ref)).catch(e=>{if(here())note.textContent=e.message;});line.append(name,meta,download,remove);list.append(line);}
  async function receive(ref,button){
   if(loading||!here())return;loading=true;button.disabled=true;note.textContent='원본을 확인하고 있습니다.';
   try{
@@ -40,14 +40,15 @@ export function createMonthlyEvidence({host,evidenceId,refs,api,loadSources,onLi
   }catch(e){if(here())note.textContent=e.message||'원본을 받지 못했습니다.';}finally{loading=false;if(here())button.disabled=false;}
  }
  find.onclick=async()=>{if(!here()||loading)return;loading=true;find.disabled=true;note.textContent='이 현장·반기의 취합자료를 확인하고 있습니다.';try{
-  const result=await loadSources();if(!here())return;choices.replaceChildren();
-  const registrationNote=result.site_registry_confirmed===false?' 점검계획의 현장 반영은 현장 정보 확인 후 가능합니다.':'';
+  viewState.loaded=true;const result=await loadSources();if(!here())return;choices.replaceChildren();
+  const registrationNote=result.publication_site_confirmed===false?' 계약별 자료는 함께 확인할 수 있습니다. 현장별 점검일정 반영은 별도 확인이 필요합니다.':result.site_registry_confirmed===false?' 점검계획의 현장 반영은 현장 정보 확인 후 가능합니다.':'';
+  const contracts=Array.isArray(result.contracts)?result.contracts:[],contractSelect=contracts.length>1?N('select'):null;
+  if(contractSelect){const label=N('label','계약 범위');label.className='hyr-monthly-contract';contractSelect.setAttribute('aria-label','계약 범위');contractSelect.append(new Option('전체 계약',''));for(const c of contracts)contractSelect.append(new Option(c.name,c.code));label.append(contractSelect);contractSelect.value=contracts.some(c=>c.code===viewState.contract)?viewState.contract:'';contractSelect.onchange=()=>{viewState.contract=contractSelect.value;};choices.append(label);}
   if(result.state!=='AVAILABLE'){note.textContent=result.state==='SITE_UNCONFIRMED'?'점검계획의 현장 연결을 먼저 확인해 주세요.':'아직 이 범위의 자료 수신을 확인하지 못했습니다.';note.textContent+=registrationNote;return;}
-  note.textContent=result.count?'이 현장·반기의 수신자료 '+result.count+'개입니다. 확인할 항목에 연결해 주세요.':'이 현장·반기에 수신이 확인된 자료가 없습니다.';
-  note.textContent+=registrationNote;
-  const filter=N('input');filter.type='search';filter.placeholder='파일명·자료월 찾기';filter.setAttribute('aria-label','취합자료 검색');choices.append(filter);
-  const rows=[];for(const item of result.items){const line=N('div'),pick=N('button','이 항목에 연결');pick.type='button';line.className='hyr-monthly-choice';line.append(N('span',item.filename),N('small',item.month+' · '+categoryNames[item.category]+' · '+item.team),pick);pick.disabled=linked.some(r=>r.source_id===item.id&&r.source_version===item.source_version);pick.onclick=()=>Promise.resolve().then(()=>here()&&onLink(item)).catch(e=>{if(here())note.textContent=e.message;});choices.append(line);rows.push({line,text:(item.filename+' '+item.month+' '+categoryNames[item.category]).normalize('NFC')});}
-  filter.oninput=()=>{const words=filter.value.normalize('NFC').trim().split(/\s+/).filter(Boolean);for(const x of rows)x.line.hidden=!words.every(w=>x.text.includes(w));};
+  const filter=N('input');filter.type='search';filter.placeholder='파일명·자료월·계약명 찾기';filter.setAttribute('aria-label','취합자료 검색');filter.value=viewState.query||'';choices.append(filter);
+  const rows=[];for(const item of result.items){const line=N('div'),pick=N('button','이 항목에 연결');pick.type='button';line.className='hyr-monthly-choice';line.append(N('span',item.filename),N('small',item.month+' · '+categoryNames[item.category]+' · '+item.team+(item.site_name?' · '+item.site_name:'')),pick);pick.disabled=linked.some(r=>r.source_id===item.id&&r.source_version===item.source_version);pick.onclick=()=>Promise.resolve().then(()=>here()&&onLink(item)).catch(e=>{if(here())note.textContent=e.message;});choices.append(line);rows.push({line,code:item.site_code,text:(item.filename+' '+item.month+' '+categoryNames[item.category]+' '+(item.site_name||'')).normalize('NFC')});}
+  function filterRows(){const code=contractSelect?.value||'';viewState.contract=code;viewState.query=filter.value;const words=filter.value.normalize('NFC').trim().split(/\s+/).filter(Boolean);let visible=0;for(const x of rows){x.line.hidden=!!(code&&x.code!==code)||!words.every(w=>x.text.includes(w));if(!x.line.hidden)visible++;}note.textContent=visible?'확인된 수신자료 '+visible+'개입니다. 내용을 확인한 뒤 필요한 항목에 연결해 주세요.':result.scope_complete===false?'아직 이 범위의 자료 수신을 확인하지 못했습니다.':'조건에 맞는 수신자료가 없습니다.';note.textContent+=registrationNote;}
+  filter.oninput=filterRows;if(contractSelect)contractSelect.onchange=filterRows;filterRows();
  }catch(e){if(here())note.textContent=e.message||'취합자료를 확인하지 못했습니다.';}finally{loading=false;if(here())find.disabled=false;}};
- wrap.append(list,find,note,choices);host.append(wrap);return()=>{alive=false;};
+ wrap.append(list,find,note,choices);host.append(wrap);if(viewState.loaded)queueMicrotask(()=>{if(here())find.click();});return()=>{alive=false;};
 }
