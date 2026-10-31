@@ -60,9 +60,8 @@ def read_context(db):
             if not hasattr(Worker, "evaluation_batch"):
                 raise _invalid()
 
-        attended = exists(select(Attendance.id).where(Attendance.period_id == period_id,
-                                                       Attendance.rrn_hash == Worker.rrn_hash))
-        assessed = exists(select(Assessment.id).where(Assessment.worker_id == Worker.id))
+        attended = Worker.rrn_hash.in_(select(Attendance.rrn_hash).where(Attendance.period_id == period_id))
+        assessed = Worker.id.in_(select(Assessment.worker_id))
         eligible = [attended, assessed]
         if enrollment is not None:
             eligible.append(exists(select(enrollment.c.worker_id).where(
