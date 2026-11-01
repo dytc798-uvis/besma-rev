@@ -6,6 +6,32 @@ def current_text(body):
     return body.rsplit('\n\n현재 요청:\n', 1)[-1]
 
 
+def untargeted_consent(text):
+    """Classify a short consent utterance, never an authorization grant.
+
+    Named documents, content questions, edits and explicit source workflows
+    keep their existing routes. A claimed name supplies no account identity.
+    """
+    if not isinstance(text, str) or len(text) > 400:
+        return False
+    value = re.sub(r'^현장:[^\n]*\n\s*\n', '', text.strip(), count=1)
+    parts = [part.strip() for part in re.split(r'[.!?\n]+', value) if part.strip()]
+    if not parts or len(parts) > 3:
+        return False
+    consent = False
+    for part in parts:
+        if re.fullmatch(r'(?:(?:나는|저는|난|나|저)\s*)?[가-힣]{2,4}(?:이다|입니다|이야)', part):
+            continue
+        if not re.fullmatch(r'(?:(?:내가|제가)\s*)?(?:(?:현재|지금)\s*)?'
+                            r'(?:(?:지피티|GPT|베스마|BESMA)(?:의)?\s*)?'
+                            r'(?:(?:이|그|해당)\s*)?(?:(?:요청|작업)(?:을|에)?\s*)?'
+                            r'(?:모두\s*)?(?:승인|수락|동의)'
+                            r'(?:한다|합니다|해|해\s*줘|해\s*주세요|하겠습니다|할게|할게요|하자)?', part, re.I):
+            return False
+        consent = True
+    return consent
+
+
 def file_name_question(text):
     return bool(len(text) <= 160 and re.search(r'방금|직전|앞서|아까|그\s*(?:파일|자료|문서)|이\s*(?:파일|자료|문서)', text)
                 and re.search(r'파일명|(?:파일|자료|문서)(?:\s*(?:의|은|는|이|가))?\s*(?:(?:무슨|어떤|정확한)\s*)?(?:이름|명칭)', text)
@@ -79,6 +105,8 @@ def answer(item, nas_answer, file_names=None, features=None):
     if item.get('kind') != 'QUESTION' or item.get('source'):
         return None
     text = current_text(item['body'])
+    if untargeted_consent(text):
+        return {'status': 'NEEDS_INFO', 'reply': '승인할 요청을 특정하지 못했습니다. 대상 요청의 제목을 알려 주세요.'}
     if file_name_question(text) and file_names is not None:
         names = file_names()
         if not names:
@@ -99,11 +127,9 @@ def answer(item, nas_answer, file_names=None, features=None):
                 if recent is not None:
                     return nas_answer('recent', recent['limit'], recent['query']) if recent['query'] else nas_answer('recent', recent['limit'])
         if features().get('photos') is True:
-            reply = '사진은 입력창 왼쪽 사진 아이콘으로 첨부할 수 있습니다.'
-            if nas_answer('scope', 0).get('status') == 'COMPLETED':
-                reply += ' NAS 자료는 파일 목록을 옮기지 않고 이 대화에서 검색을 요청하시면 됩니다.'
+            reply = '아래 ‘사진 첨부하기’를 눌러 주세요. ‘사진 연결 확인’이 보이면 먼저 눌러 주세요.'
             return {'status': 'COMPLETED', 'reply': reply}
-        return {'status': 'NEEDS_INFO', 'reply': '현재 사진 첨부 연결을 확인하지 못했습니다. NAS 파일 목록을 복사해 보내실 필요는 없습니다.'}
+        return {'status': 'NEEDS_INFO', 'reply': '이 답변 아래의 ‘사진 연결 확인’을 눌러 주세요. 작성한 질문은 그대로 유지됩니다.'}
     if re.search(r'질문|대화|채팅|히스토리|이력', text) and re.search(r'저장|쌓이|남아|남는|누적|기록|이어', text):
         return {'status': 'COMPLETED', 'reply': '질문과 답변은 본인 계정의 대화 이력에 저장됩니다. 같은 대화에서 이어서 질문할 수 있고, 아래 이력 버튼에서 이전 대화를 다시 열 수 있습니다.'}
     scope_question=source_scope_question(text)
