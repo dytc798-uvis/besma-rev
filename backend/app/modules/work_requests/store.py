@@ -435,12 +435,12 @@ class RequestStore:
                        and 0<len(item['filename'])<=255 and not any(c in item['filename']for c in '\x00\r\n/\\')]
                 if names:return list(dict.fromkeys(names))[:5]
                 if nas_metadata is not None and prior['kind']=='QUESTION' and not prior['source_json']:
-                    from .grounding import recent_limit
-                    limit=recent_limit(prior['body'])
-                    if limit is not None:
-                        # Revalidate the exact prior list with the current actor's
-                        # authorized index. Chat prose never supplies a filename.
-                        fresh=nas_metadata('recent',limit)
+                    from .grounding import recent_request
+                    recent=recent_request(prior['body'])
+                    if recent is not None:
+                        # Revalidate the exact prior query and list with the current
+                        # actor's authorized index. Chat prose supplies no filename.
+                        fresh=nas_metadata('recent',recent['limit'],recent['query']) if recent['query'] else nas_metadata('recent',recent['limit'])
                         if fresh.get('status')!='COMPLETED' or fresh.get('reply')!=prior['reply']:return []
                         names=fresh.get('_file_names',[])
                         if not isinstance(names,list):return []
