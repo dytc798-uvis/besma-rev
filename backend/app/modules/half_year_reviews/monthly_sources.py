@@ -21,16 +21,11 @@ def site_for_plan(db,row):
 def reference_sources(snapshot,site,period,quality):
     """Reviewed shared scope is for reading, never a classified/gradable source."""
     if 'reviewed_source_references'not in snapshot:return {}
-    references=snapshot['reviewed_source_references']
-    if not isinstance(references,list)or len(references)>1000:raise HTTPException(503,'공동 참고자료의 적용 범위를 확인해야 합니다.')
-    codes={c['code']for c in site.get('contracts',[{'code':site['code']}])};index={r['id']:r for r in snapshot['items']};seen=set();found=[];pending=0
+    references=monthly.reviewed_references(snapshot)
+    codes={c['code']for c in site.get('contracts',[{'code':site['code']}])};index={r['id']:r for r in snapshot['items']};found=[];pending=0
     lo=period[:4]+('-01'if period.endswith('H1')else'-07');hi=period[:4]+('-06'if period.endswith('H1')else'-12')
     for reference in references:
-        if not isinstance(reference,dict)or set(reference)!={'id','sha256','contracts'}or not isinstance(reference['id'],str)or not re.fullmatch('[a-f0-9]{64}',reference['id'])or not isinstance(reference['sha256'],str)or not re.fullmatch('[a-f0-9]{64}',reference['sha256'])or reference['id']in seen:raise HTTPException(503,'공동 참고자료의 수신 근거를 확인해야 합니다.')
-        seen.add(reference['id']);contracts=reference['contracts']
-        if not isinstance(contracts,list)or not 2<=len(contracts)<=8 or any(not isinstance(c,dict)or set(c)!={'code','name'}or not isinstance(c['code'],str)or not re.fullmatch('[A-Za-z0-9_-]{1,40}',c['code'])or not isinstance(c['name'],str)or not 1<=len(c['name'])<=500 or re.search(r'[\x00-\x1f\x7f]',c['name'])for c in contracts):raise HTTPException(503,'공동 참고자료의 계약 범위를 확인해야 합니다.')
-        scope=[c['code']for c in contracts]
-        if scope!=sorted(set(scope)):raise HTTPException(503,'공동 참고자료의 계약 범위를 확인해야 합니다.')
+        contracts=reference['contracts'];scope=[c['code']for c in contracts]
         if not codes.intersection(scope):continue
         row=index.get(reference['id'])
         if row is None:pending+=1;continue
