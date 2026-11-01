@@ -378,7 +378,9 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             file:UploadFile|None=File(None),user=Depends(worker),db=Depends(store)):
         content=await file.read(MAX_ORIGINAL_BYTES+1) if file else None
         if file and len(content)>MAX_ORIGINAL_BYTES:raise HTTPException(413,'원본 자료는 32MB까지 보낼 수 있습니다.')
-        return result(call(db.finish,rid,lease,status,reply,business_allowed,eligible_provider(),file.filename if file else None,content,source_valid,delivery_mode,user))
+        from . import result_followup
+        def result_validator(connection,row,who):return result_followup.validate(connection,db,who,row,config(),eligible_provider(),source_valid,retained_access=retained_result_access)
+        return result(call(db.finish,rid,lease,status,reply,business_allowed,eligible_provider(),file.filename if file else None,content,source_valid,delivery_mode,user,result_validator))
 
     @router.get('/{rid}')
     def detail(rid:str,user=Depends(actor),db=Depends(store)):

@@ -666,7 +666,7 @@ class RequestStore:
             self._event(db,rid,'INTERRUPTED')
             return self._public(db,db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone())
 
-    def finish(self, rid, lease, status, reply, business_allowed, eligible, filename=None, content=None, source_validator=None, delivery_mode='RESULT',worker_actor=None):
+    def finish(self, rid, lease, status, reply, business_allowed, eligible, filename=None, content=None, source_validator=None, delivery_mode='RESULT',worker_actor=None,result_validator=None):
         if status not in FINAL or type(business_allowed) is not bool:raise ValueError('INVALID_RESULT')
         reply=plain(reply,12000)
         attachment=None
@@ -695,7 +695,14 @@ class RequestStore:
             if current[pair] and status=='DECLINED' and not business_allowed:
                 raise Conflict('OWNER_SCOPE_EXEMPT')
             original_delivery=bool(row['source_json'] and row['kind']=='FILE' and not source_generation.requested(db,row))
-            if attachment and len(content)>(MAX_ORIGINAL_BYTES if original_delivery else MAX_BYTES):raise ValueError('RESULT_SIZE_LIMIT')
+            exact_result_delivery=False
+            from .result_followup import requested as result_requested
+            if attachment and len(content)>MAX_BYTES and not original_delivery and result_validator is not None and result_requested(db,rid):
+                if row['kind']!='QUESTION'or row['source_json']or delivery_mode!='RESULT'or status!='COMPLETED'or not business_allowed or not current[pair]or worker_actor is None:raise Conflict('EXACT_RESULT_REDELIVERY_REQUIRED')
+                reference=result_validator(db,row,worker_actor)
+                if (filename,len(content),attachment['sha256'])!=(reference['file_name'],reference['bytes'],reference['sha256']):raise Conflict('EXACT_RESULT_REDELIVERY_REQUIRED')
+                exact_result_delivery=True
+            if attachment and len(content)>(MAX_ORIGINAL_BYTES if original_delivery or exact_result_delivery else MAX_BYTES):raise ValueError('RESULT_SIZE_LIMIT')
             if attachment and len(content)>MAX_BYTES:
                 import shutil
                 if shutil.disk_usage(self.root).free<512*1024*1024:raise Conflict('RESULT_STORAGE_NOT_READY')
