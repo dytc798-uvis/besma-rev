@@ -145,7 +145,8 @@ def _plan(db, period, rows):
         else:
             action, reason = 'UNCHANGED', '기존 정보를 유지합니다.'
         actions.append((row, old, action, reason))
-    missing = sum(x.rrn_hash not in {r.rrn_hash for r in rows} for x in workers)
+    received_hashes = {row.rrn_hash for row in rows}
+    missing = sum(worker.rrn_hash not in received_hashes for worker in workers)
     counts = {key: sum(x[2] == key for x in actions) for key in ['NEW', 'UPDATED', 'UNCHANGED', 'PRESERVED', 'CHECK_REQUIRED']}
     return actions, sites, fingerprint, missing, counts
 
