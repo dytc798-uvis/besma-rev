@@ -99,7 +99,7 @@ class NasSources:
                 return parsed.astimezone(timezone(timedelta(hours=9))).strftime('%m/%d %H:%M')
             except (TypeError,ValueError,AttributeError):return '시각 확인 필요'
         generated=max((s.get('generated_at')or'' for s in sources),default='')
-        freshness='검색자료 갱신: '+stamp(generated)+'.'
+        freshness='검색목록 반영: '+stamp(generated)+'. 전체 폴더 검사 시각과는 다릅니다.'
         if operation=='scope' and not query:
             return {'status':'COMPLETED','reply':f'현재 채팅에서는 안전보건관리실 NAS의 파일명과 폴더명 {count:,}건을 검색합니다. 원가관리팀 NAS는 별도 인덱스에 있으나 이 채팅의 NAS 검색에는 연결되지 않았습니다. 자료를 찾고, 이용 권한이 확인된 원본을 받아 보거나 그 내용으로 질문할 수 있습니다. NAS 전체가 연결된 상태는 아닙니다.\n{freshness} 색인 이후 바뀐 파일은 다음 갱신 전까지 반영되지 않을 수 있습니다.'}
         if operation!='recent' or type(limit)is not int or not 1<=limit<=10 or not isinstance(query,str) or len(query)>100:
@@ -125,7 +125,7 @@ class NasSources:
         if not rows:return {'status':'NEEDS_INFO','reply':'현재 검색자료에서 수정일이 확인된 파일을 찾지 못했습니다. 검색자료 상태를 확인해야 합니다.'}
         reply='안전보건관리실에서 '+(f'‘{query}’와 일치하는 ' if query else '')+f'최근 수정된 파일 {len(rows)}개입니다.\n'
         reply+='\n'.join(f"{i}. {x['file_name']} · {stamp(x['modified_at'])}\n   {x['relative_path'].rsplit('/',1)[0] if '/'in x['relative_path']else '안전보건관리실'}" for i,x in enumerate(rows,1))
-        reply+=f'\n검색자료 갱신: {stamp(generated)}. 수정일 순서이며 최신 승인본이라는 뜻은 아닙니다.'
+        reply+=f'\n{freshness} 수정일 순서이며 최신 승인본이라는 뜻은 아닙니다.'
         return {'status':'COMPLETED','reply':reply,'_file_names':[x['file_name'] for x in rows]}
 
     def search_state(self,user,q,*,offset=0,sort='relevance',snapshot=None):
