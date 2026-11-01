@@ -1,7 +1,7 @@
 """Read-only NAVERWORKS intake metadata, separate from operational document records."""
 from pathlib import Path
 from datetime import datetime
-import json,unicodedata
+import json,re,unicodedata
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from app.core.auth import get_current_user
 from .source_quality import notes_by_id
@@ -15,6 +15,14 @@ def reader(user=Depends(get_current_user)):
  return user
 def search_key(value):
  return ''.join(unicodedata.normalize('NFC',value).casefold().split())
+
+def storage_fields(row):
+ if 'storage_filename'not in row:return {}
+ name=row['storage_filename'];display=row.get('filename');digest=row.get('sha256')
+ if not isinstance(name,str)or not 1<=len(name)<=600 or re.search(r'[\\/\x00-\x1f\x7f]',name)or not isinstance(display,str)or not isinstance(digest,str)or not re.fullmatch(r'[a-f0-9]{64}',digest):raise HTTPException(503,'취합자료 저장명을 확인해야 합니다.')
+ expected=Path(display).stem+'_'+digest[:12]+Path(display).suffix
+ if name!=expected:raise HTTPException(503,'취합자료 저장명을 확인해야 합니다.')
+ return {'storage_filename':name}
 
 def load():
  p=ROOT/'current.json'
@@ -36,4 +44,4 @@ def overview(response:Response,month:str=Query(default='',pattern=r'^(|20\d{2}-(
  rows=sorted(rows,key=lambda x:(x['month'],x['first_seen'],x['id']),reverse=True)
  counts={key:sum(1 for r in rows if r['category']==key) for key in LABELS}
  # File count and site count are separate; no submission rate without a verified required-site list.
- return {'generated_at':value.get('generated_at'),'schedule':'매일 02:00 (한국시간)','state':value.get('collection_state','NAS_SAVED'),'review_count':value['review_count'],'count':len(rows),'site_count':len({r['site_code'] for r in rows if r['site_code']}),'binding_counts':binding_counts,'linked_file_count':sum(bool(r['site_code'])for r in rows),'pending_file_count':sum(not r['site_code']for r in rows),'categories':[{'key':key,'label':label,'count':counts[key]} for key,label in LABELS.items()],'months':sorted({r['month'] for r in value['items']},reverse=True),'quality_review_file_count':sum(r['id']in quality for r in rows),'items':[{**{k:r[k] for k in ('id','category','month','team','site','filename','first_seen','last_seen','state','size')},'quality_notes':quality.get(r['id'],[])} for r in rows[offset:offset+200]],'next_offset':offset+200 if offset+200<len(rows) else None}
+ return {'generated_at':value.get('generated_at'),'schedule':'매일 02:00 (한국시간)','state':value.get('collection_state','NAS_SAVED'),'review_count':value['review_count'],'count':len(rows),'site_count':len({r['site_code'] for r in rows if r['site_code']}),'binding_counts':binding_counts,'linked_file_count':sum(bool(r['site_code'])for r in rows),'pending_file_count':sum(not r['site_code']for r in rows),'categories':[{'key':key,'label':label,'count':counts[key]} for key,label in LABELS.items()],'months':sorted({r['month'] for r in value['items']},reverse=True),'quality_review_file_count':sum(r['id']in quality for r in rows),'items':[{**{k:r[k] for k in ('id','category','month','team','site','filename','first_seen','last_seen','state','size')},**storage_fields(r),'quality_notes':quality.get(r['id'],[])} for r in rows[offset:offset+200]],'next_offset':offset+200 if offset+200<len(rows) else None}

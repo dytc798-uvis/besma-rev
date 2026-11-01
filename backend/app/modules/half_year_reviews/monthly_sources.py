@@ -38,7 +38,7 @@ def sources(snapshot,site,period):
         if len(contracts)>1:
             source.update(context_site_codes=codes,site_name=by_code[row['site_code']]['name']);identity.update(context_site_codes=codes,site_name=source['site_name'])
         canonical=json.dumps(identity,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()
-        source['source_version']=hashlib.sha256(canonical).hexdigest();source['quality_notes']=quality.get(row['id'],[]);found.append(source)
+        source['source_version']=hashlib.sha256(canonical).hexdigest();source.update(monthly.storage_fields(row));source['quality_notes']=quality.get(row['id'],[]);found.append(source)
     found.sort(key=lambda r:(r['month'],r['filename'],r['id']),reverse=True)
     quality_count=sum(bool(row['quality_notes'])for row in found)
     incomplete=bool(unverified or unassigned or quality_count)

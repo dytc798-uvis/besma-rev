@@ -1,4 +1,4 @@
-import {monthlyCandidates,monthlyQuery,monthlyHandoff,monthlyRequestBody} from './monthly-source-flow.js';
+import {findMonthlyCandidates,monthlyHandoff,monthlyRequestBody} from './monthly-source-flow.js';
 import {receiveVerifiedFile} from './request-file-download.js';
 const N=(tag,text)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;return e;};
 const categoryNames={theme:'테마점검',risk:'위험성평가','legal-training':'법정교육',opinions:'근로자 의견청취','safety-cost':'산업안전보건관리비'};
@@ -17,8 +17,7 @@ export function createMonthlyEvidence({host,evidenceId,refs,api,loadSources,onLi
     const item=options.items.find(x=>x.id===ref.source_id&&x.source_version===ref.source_version);if(!item)throw Error(unlinked?'수신자료가 변경되었습니다. 취합자료를 다시 확인해 주세요.':'연결 후 수신자료가 변경되었습니다. 연결 기록은 유지되니 취합자료에서 다시 확인해 주세요.');
     const access=await api('/work-requests/availability');if(!here())return;
     if(!access.enabled||!access.nas_files)throw Error('이 계정의 원본 자료 이용 권한을 확인해 주세요.');
-    const found=await api('/work-requests/nas/search',{method:'POST',body:JSON.stringify({q:monthlyQuery(item)})});if(!here())return;
-    const candidates=monthlyCandidates(item,found.items);if(candidates.length!==1)throw Error(candidates.length?'같은 이름의 원본이 여러 개입니다. 취합현황에서 폴더를 확인해 주세요.':'원본 검색 반영 상태를 확인해 주세요.'+(unlinked?'':' 연결 기록은 유지됩니다.'));
+    const candidates=await findMonthlyCandidates(item,api,{current:here,onProgress:({scanned,total})=>{if(here())note.textContent='원본 검색 중 '+scanned+' / '+total+'개';}});if(!here())return;if(candidates.length!==1)throw Error(candidates.length?'같은 이름의 원본이 여러 개입니다. 취합현황에서 폴더를 확인해 주세요.':'원본 검색 반영 상태를 확인해 주세요.'+(unlinked?'':' 연결 기록은 유지됩니다.'));
     const handoff=monthlyHandoff(item,candidates[0]);job={key:handoff.requestKey,body:{request_key:handoff.requestKey,kind:'FILE',title:item.filename.slice(0,100),body:monthlyRequestBody(handoff),nas_file_id:candidates[0].nas_file_id}};pending.set(ref.id,job);
    }
    if(!job.id){const created=await api('/work-requests',{method:'POST',body:JSON.stringify(job.body)});if(!/^[a-f0-9]{32}$/.test(created.id||''))throw Error('원본 요청 결과를 확인해 주세요.');job.id=created.id;}
