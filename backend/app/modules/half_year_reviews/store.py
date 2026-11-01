@@ -86,7 +86,9 @@ class ReviewStore:
                 if len(caption.splitlines())>3:raise ValueError('PHOTO_CAPTION_INVALID')
                 target['caption']=caption
             elif action=='attach':
-                if set(body)!={'evidence_id','filename','caption'}or body['evidence_id']not in {*EVIDENCE,'paper_assessment'}or attachment is None:raise ValueError('ATTACHMENT_INVALID')
+                if set(body)-{'evidence_id','filename','caption','walk_run_id','criterion_id','photo_stage'}or not {'evidence_id','filename','caption'}<=set(body)or body['evidence_id']not in {*EVIDENCE,'paper_assessment'}or attachment is None:raise ValueError('ATTACHMENT_INVALID')
+                photo_target=walkthrough.photo_target(data,body,context_meta)
+                if photo_target and attachment[1]not in {'image/jpeg','image/png','image/webp'}:raise ValueError('ATTACHMENT_TYPE_INVALID')
                 if len(data['files'])>=100:raise ValueError('ATTACHMENT_LIMIT')
                 raw,mime=attachment;filename=cleaned(body['filename'],180);suffix=Path(filename).suffix.casefold();caption=cleaned(body['caption'],60)
                 if not 0<len(raw)<=15*1024*1024:raise ValueError('ATTACHMENT_SIZE_INVALID')
@@ -104,6 +106,8 @@ class ReviewStore:
                     new_path=path;meta={'id':fid,'evidence_id':body['evidence_id'],'filename':Path(filename).stem+extension,'extension':extension,'kind':kind,'sha256':digest(content),'bytes':len(content),'caption':caption,'by':name,'at':stamp}
                     if photo:meta.update(width=photo['width'],height=photo['height'])
                     data['files'].append(meta);result['file']=meta
+                if photo_target:
+                    result['field_photo']=walkthrough.record_photo(photo_target,body,result['file'],actor,name,stamp)
             else:raise ValueError('ACTION_INVALID')
             try:
                 revision+=1;c.execute('INSERT INTO contexts VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,data=excluded.data',(key,revision,encoded(data)))

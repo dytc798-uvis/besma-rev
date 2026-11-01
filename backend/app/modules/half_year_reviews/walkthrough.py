@@ -31,7 +31,7 @@ def mutate(data,action,body,period,actor,name,stamp,context_meta):
         run={'id':uuid.uuid4().hex,'version':1,'plan_id':public_id,'inspection_date':day,'items':{},'created_by':name,'actor_id':actor,'created_at':stamp}
         runs.append(run);return {'inspection_run':run}
     if action=='walk-report':
-        if set(body)-{'run_id','board_url','posted_confirmed','draft_text','meta','public_attachment_ids','public_review_confirmed'}or not {'run_id','board_url','posted_confirmed','draft_text'}<=set(body)or type(body['posted_confirmed'])is not bool:raise ValueError('WALK_REPORT_INVALID')
+        if set(body)-{'run_id','board_url','posted_confirmed','draft_text','meta','public_attachment_ids','public_review_confirmed','public_field_photos'}or not {'run_id','board_url','posted_confirmed','draft_text'}<=set(body)or type(body['posted_confirmed'])is not bool:raise ValueError('WALK_REPORT_INVALID')
         run=run_for(data,body['run_id'])
         if run['plan_id']!=(context_meta or{}).get('public_id'):raise ValueError('WALK_PLAN_MISMATCH')
         link=cleaned(body['board_url'],700);text=cleaned(body['draft_text'],4000)
@@ -45,6 +45,16 @@ def mutate(data,action,body,period,actor,name,stamp,context_meta):
                 for fid in final.get('signed_table_photo_ids',[]):allowed[fid]=form
         selected=body.get('public_attachment_ids',[]);reviewed=body.get('public_review_confirmed',False)
         if not isinstance(selected,list)or len(selected)>40 or any(not isinstance(fid,str)or fid not in allowed for fid in selected)or len(set(selected))!=len(selected)or type(reviewed)is not bool:raise ValueError('WALK_PUBLIC_ATTACHMENTS_INVALID')
+        source_files={f['id']:f for f in data['files']}
+        internal_ids={fid for key,a in data['assessments'].items()if key.split(':',1)[0]in {'report','law'}for fid in a.get('completed',{}).get('data',{}).get('signed_table_photo_ids',[])}
+        internal_hashes={source_files[fid]['sha256']for fid in internal_ids if fid in source_files}
+        eligible={p['file_id']for p in run.get('field_photos',[])if p['file_id']in source_files and source_files[p['file_id']]['kind']=='image'and source_files[p['file_id']]['evidence_id']!='paper_assessment'and source_files[p['file_id']]['sha256']not in internal_hashes}
+        field_photos=body.get('public_field_photos',run.get('report',{}).get('public_field_photos',[]))
+        if not isinstance(field_photos,list)or len(field_photos)>24:raise ValueError('WALK_PUBLIC_ATTACHMENTS_INVALID')
+        seen=set();clean_field=[]
+        for photo in field_photos:
+            if not isinstance(photo,dict)or set(photo)!={'file_id','caption','reviewed'}or photo['file_id']not in eligible or photo['file_id']in seen or photo['reviewed']is not True:raise ValueError('WALK_PUBLIC_ATTACHMENTS_INVALID')
+            seen.add(photo['file_id']);clean_field.append({'file_id':photo['file_id'],'caption':cleaned(photo['caption'],120),'reviewed':True})
         if body['posted_confirmed']:
             if not reviewed or {allowed[fid]for fid in selected}!={'manager','supervisor'}:raise ValueError('WALK_PUBLIC_REVIEW_REQUIRED')
             if not link:raise ValueError('WALK_REPORT_URL_REQUIRED')
@@ -59,7 +69,7 @@ def mutate(data,action,body,period,actor,name,stamp,context_meta):
         limits={'inspection_time':60,'place':100,'hq_attendees':200,'site_attendees':200,'public_summary':1000,'public_findings':1000}
         if not isinstance(meta,dict)or set(meta)-set(limits):raise ValueError('WALK_REPORT_INVALID')
         meta={key:cleaned(meta.get(key,''),limit)for key,limit in limits.items()}
-        run['report']={'board_url':link,'posted_confirmed':body['posted_confirmed'],'draft_text':text,'meta':meta,'public_attachment_ids':selected,'public_review_confirmed':reviewed,'state':'REPORTED_USER_CONFIRMED'if body['posted_confirmed']else'REPORT_PENDING','server_verified':False,'by':name,'actor_id':actor,'at':stamp}
+        run['report']={'board_url':link,'posted_confirmed':body['posted_confirmed'],'draft_text':text,'meta':meta,'public_attachment_ids':selected,'public_field_photos':clean_field,'public_review_confirmed':reviewed,'state':'REPORTED_USER_CONFIRMED'if body['posted_confirmed']else'REPORT_PENDING','server_verified':False,'by':name,'actor_id':actor,'at':stamp}
         return {'inspection_run':run}
     if action!='walk-item'or set(body)!={'run_id','evidence_id','expected_version','entry'}:raise ValueError('WALK_INVALID')
     run=run_for(data,body['run_id'])
@@ -94,3 +104,22 @@ def assessment_run(data,run_id,inspection_date,plan_id=None):
     if run['plan_id']!=plan_id:raise ValueError('WALK_PLAN_MISMATCH')
     if run['inspection_date']!=inspection_date:raise ValueError('WALK_DATE_MISMATCH')
     return copy.deepcopy(run)
+
+
+def photo_target(data,body,context_meta):
+    fields={'walk_run_id','criterion_id','photo_stage'}
+    if not fields&set(body):return None
+    if not fields<=set(body):raise ValueError('PHOTO_CONTEXT_REQUIRED')
+    run=run_for(data,body['walk_run_id'])
+    if run['plan_id']!=(context_meta or{}).get('public_id'):raise ValueError('WALK_PLAN_MISMATCH')
+    criterion=next((c for c in FORMS['law']['criteria']if c['id']==body['criterion_id']),None)
+    if criterion is None or body['evidence_id']not in criterion['evidence']or body['photo_stage']not in {'BEFORE','AFTER','EVIDENCE'}:raise ValueError('PHOTO_CONTEXT_INVALID')
+    if len(run.get('field_photos',[]))>=300:raise ValueError('PHOTO_LINK_LIMIT')
+    return run
+
+def record_photo(run,body,file,actor,name,stamp):
+    photos=run.setdefault('field_photos',[])
+    known=next((p for p in photos if p['file_id']==file['id']and p['criterion_id']==body['criterion_id']),None)
+    if known:return known
+    link={'file_id':file['id'],'criterion_id':body['criterion_id'],'form':'law','evidence_id':body['evidence_id'],'stage':body['photo_stage'],'by':name,'actor_id':actor,'at':stamp}
+    photos.append(link);return link

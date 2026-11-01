@@ -36,7 +36,7 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'walkthrough_version':1,'signed_table_completion':True}
+    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':True}
 @router.get('/plans/{public_id}')
 def read(public_id:str,period:str,db:DbDep,user:Current):
     try:
@@ -73,13 +73,14 @@ def receipt(public_id:str,period:str,request_key:str,db:DbDep,user:Current):
         row,key=selected(db,user,public_id,period);return store().receipt(key,user.id,request_key)
     except(ValueError,KeyError,OSError)as e:fail(e)
 @router.post('/plans/{public_id}/files',status_code=201)
-async def upload(public_id:str,db:DbDep,user:Current,period:Annotated[str,Form()],revision:Annotated[int,Form()],request_key:Annotated[str,Form()],evidence_id:Annotated[str,Form()],caption:Annotated[str,Form()]='',file:UploadFile=File()):
+async def upload(public_id:str,db:DbDep,user:Current,period:Annotated[str,Form()],revision:Annotated[int,Form()],request_key:Annotated[str,Form()],evidence_id:Annotated[str,Form()],caption:Annotated[str,Form()]='',walk_run_id:Annotated[str,Form()]='',criterion_id:Annotated[str,Form()]='',photo_stage:Annotated[str,Form()]='EVIDENCE',file:UploadFile=File()):
     try:
         row,key=selected(db,user,public_id,period)
         if revision<0:raise ValueError('REVISION_INVALID')
         raw=await file.read(15*1024*1024+1);actor_id=user.id;name=user.name;db.rollback()
         request={'revision':revision,'request_key':request_key,'period':period,'action':'attach','data':{'evidence_id':evidence_id,'caption':caption,'filename':file.filename or'자료'}}
-        return await run_in_threadpool(store().mutate,key,actor_id,name,request,(raw,file.content_type or''))
+        if walk_run_id or criterion_id:request['data'].update(walk_run_id=walk_run_id,criterion_id=criterion_id,photo_stage=photo_stage)
+        return await run_in_threadpool(store().mutate,key,actor_id,name,request,(raw,file.content_type or''),{'public_id':public_id})
     except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
 @router.get('/plans/{public_id}/files/{file_id}')
 def download_file(public_id:str,period:str,file_id:str,db:DbDep,user:Current):
