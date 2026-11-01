@@ -49,6 +49,6 @@ def init_db() -> None:
     from app.modules.government_contact import models as government_contact_models  # noqa: F401
     from app.modules.collection_monitor import models as collection_monitor_models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine,tables=[table for table in Base.metadata.tables.values() if not table.info.get('explicit_migration_only')])
     ensure_safety_ledger_schema()
     ensure_pdf_signing_schema()
