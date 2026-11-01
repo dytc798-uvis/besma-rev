@@ -71,12 +71,12 @@ class OptionalNasSources:
             raise HTTPException(404,'NAS 자료 요청을 준비하고 있습니다.')
         return backend.search_state(user,query,**page)
 
-    def context_answer(self,actor,operation,limit):
+    def context_answer(self,actor,operation,limit,*,query=''):
         backend=self._backend()
         if backend is None:
             from fastapi import HTTPException
             raise HTTPException(404,'NAS 검색 연결을 확인해 주세요.')
-        return backend.context_answer(actor,operation,limit)
+        return backend.context_answer(actor,operation,limit,query=query) if query else backend.context_answer(actor,operation,limit)
 
 
 def private_root_ready():

@@ -130,7 +130,7 @@ class NasSources:
 
     def search_state(self,user,q,*,offset=0,sort='relevance',snapshot=None):
         # Reuse the original query semantics, limiter, audit and visibility predicates.
-        from app.modules.file_search.routes import search
+        from app.modules.file_search.routes import search,state_endpoint
         context=self.context(user)
         def revision():
             rows=context.database.state(context.actor_user_id)
@@ -139,7 +139,15 @@ class NasSources:
         current=revision()
         if (offset and not snapshot)or(snapshot is not None and snapshot!=current):
             raise HTTPException(409,'검색 자료가 갱신됐습니다. 처음부터 다시 찾아 주세요.')
-        found=search(SearchRequest(q=q,scopes=['TEAM_SAFETY_NAS'],extensions=sorted(NAS_ORIGINAL_EXTENSIONS),limit=20,offset=offset,sort=sort),context)
+        folder=None
+        if q=='':
+            if sort!='newest':raise ValueError('RECENT_ORDER_REQUIRED_FOR_EMPTY_QUERY')
+            sources=[row for row in state_endpoint(context)['sources']if row['scope']=='TEAM_SAFETY_NAS'and row['logical_root_id']=='team-safety-nas-z4']
+            if len(sources)!=1:raise HTTPException(503,'안전보건관리실의 검색목록을 확인해야 합니다.')
+            # Empty queries are already permitted by the file-search contract
+            # inside an explicit source. Pin the existing approved NAS root.
+            folder=FolderSelector(scope='TEAM_SAFETY_NAS',logical_root_id=sources[0]['logical_root_id'],installation_id=sources[0]['installation_id'],relative_path='')
+        found=search(SearchRequest(q=q,scopes=['TEAM_SAFETY_NAS'],folder=folder,extensions=sorted(NAS_ORIGINAL_EXTENSIONS),limit=20,offset=offset,sort=sort),context)
         if offset>found['total_count']:raise HTTPException(409,'검색 범위가 달라졌습니다. 처음부터 다시 찾아 주세요.')
         sources=[];unavailable=0;excluded=0
         for item in found['items']:

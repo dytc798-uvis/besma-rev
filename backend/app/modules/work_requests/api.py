@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .store import Conflict, MAX_BYTES, MAX_ORIGINAL_BYTES
 from .access import headquarters_user
 
@@ -41,10 +41,16 @@ class CreateRequest(BaseModel):
 
 class NasQuery(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
-    q: str=Field(min_length=1,max_length=100)
+    q: str=Field(min_length=0,max_length=100)
     offset: int=Field(default=0,ge=0,le=1_000_000)
     sort: Literal['relevance','newest','name']='relevance'
     snapshot: str|None=Field(default=None,pattern=r'^[0-9a-f]{64}$')
+
+    @model_validator(mode='after')
+    def empty_recent_only(self):
+        if not self.q.strip() and (self.q != '' or self.sort != 'newest'):
+            raise ValueError('RECENT_ORDER_REQUIRED_FOR_EMPTY_QUERY')
+        return self
 
 class DiscoveryQuery(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
@@ -151,6 +157,13 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             item={**item,'source':None,'files':[],'reply':'원본 자료와 이용 권한을 확인해 주세요.'}
         elif source and not user['owner'] and item.get('review_phase') not in {'OWN','SHARED','RELEASED'}:
             item={**item,'files':[],'reply':'자료와 답변의 제공 확인을 기다리고 있습니다.'}
+        # A query hint opens the existing requester-scoped search. It is never
+        # a file grant, a saved selection, or proof of latest approval.
+        if (item['kind']=='QUESTION' and item['status']=='COMPLETED' and not source
+                and not item.get('input_attachments') and config().nas_files_enabled and nas is not None):
+            from .grounding import recent_request
+            lookup=recent_request(item['body'])
+            if lookup is not None:item={**item,'nas_lookup':{'q':lookup['query'],'sort':'newest'}}
         return item
 
     def require_nas_gate():
