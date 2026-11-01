@@ -61,7 +61,7 @@ def forms(db:DbDep,q:str=Query('',max_length=120),user=Depends(get_current_user)
     for item,_ in _visible_entries(db,user):
         if item.category=='field':continue
         if all(word in (item.name+' '+item.relative_path).casefold()for word in words):
-            items.append({'name':item.name,'category':item.category,'path':item.relative_path,'modified_at':str(item.modified_at)})
+            items.append({'name':item.name,'category':item.category,'path':item.relative_path,'modified_at':str(item.modified_at),'size_bytes':item.size_bytes})
     return result({'items':items,'source':'현장 열람이 허용된 양식·법령','drive_latest_verified':False,'scope':'authenticated-site'})
 
 

@@ -75,7 +75,7 @@ def forms(q:str=Query('',max_length=120),user=Depends(authorized)):
  for item,_ in _scan_document_file_entries():
   if item.category=='field':continue
   if all(w in (item.name+' '+item.relative_path).lower() for w in words):
-   items.append({'name':item.name,'category':item.category,'path':item.relative_path,'modified_at':str(item.modified_at)})
+   items.append({'name':item.name,'category':item.category,'path':item.relative_path,'modified_at':str(item.modified_at),'size_bytes':item.size_bytes})
  return result({'items':items,'source':'BESMA 등록 양식·법령','drive_latest_verified':False})
 
 @router.get('/government-sites')

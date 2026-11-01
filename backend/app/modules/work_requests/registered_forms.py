@@ -65,8 +65,9 @@ class RegisteredForms:
         path=Path(self.resolve_file(user,relative))
         # The resolver is the existing authorized download handler, not user input.
         before=path.stat(follow_symlinks=False)
-        if not stat.S_ISREG(before.st_mode)or not 0<before.st_size<=MAX_BYTES:
-            raise ValueError('32MB 이하 등록 양식의 원본을 선택해 주세요.')
+        if not stat.S_ISREG(before.st_mode):raise ValueError('등록 양식의 원본 파일을 선택해 주세요.')
+        if before.st_size==0:raise ValueError('내용이 없는 파일입니다. 내용이 있는 원본을 선택해 주세요.')
+        if before.st_size>MAX_BYTES:raise ValueError('채팅에서는 32MB 이하 등록 양식을 선택해 주세요.')
         flags=os.O_RDONLY|getattr(os,'O_BINARY',0)|getattr(os,'O_NOFOLLOW',0)
         fd=os.open(path,flags)
         with os.fdopen(fd,'rb')as stream:
