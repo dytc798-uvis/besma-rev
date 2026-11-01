@@ -43,6 +43,8 @@ class ReviewStore:
                 data['evidence'][body['id']]={'checked':body['checked'],'note':cleaned(body['note'],160),'by':name,'at':stamp}
             elif action=='monthly-link':
                 result['monthly_source']=monthly_sources.link(data,key,request['period'],body,actor,name,stamp)
+            elif action=='monthly-links':
+                result['monthly_sources']=monthly_sources.link_many(data,key,request['period'],body,actor,name,stamp)
             elif action=='monthly-unlink':
                 result['monthly_source']=monthly_sources.unlink(data,body,name,stamp)
             elif action in {'walk-start','walk-item','walk-report'}:

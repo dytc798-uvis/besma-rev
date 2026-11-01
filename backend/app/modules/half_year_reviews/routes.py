@@ -21,7 +21,7 @@ class Change(BaseModel):
     request_key:str=Field(pattern=r'^[A-Za-z0-9_-]{8,80}$')
     revision:int=Field(ge=0)
     period:str=Field(pattern=r'^20\d{2}-H[12]$')
-    action:str=Field(pattern=r'^(evidence|subject|assessment|caption|parse|apply_parse|monthly-link|monthly-unlink|walk-start|walk-item|walk-report)$')
+    action:str=Field(pattern=r'^(evidence|subject|assessment|caption|parse|apply_parse|monthly-link|monthly-links|monthly-unlink|walk-start|walk-item|walk-report)$')
     data:dict
 def enabled(db,user):
     if os.environ.get('BESMA_HALF_YEAR_REVIEWS_ENABLED','').casefold()not in {'1','true'}:raise HTTPException(404,'반기평가를 준비하고 있습니다.')
@@ -36,7 +36,7 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':True}
+    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':True,'monthly_batch_links_version':1}
 @router.get('/plans/{public_id}')
 def read(public_id:str,period:str,db:DbDep,user:Current):
     try:
@@ -65,6 +65,7 @@ def change(public_id:str,body:Change,db:DbDep,user:Current):
     try:
         row,key=selected(db,user,public_id,body.period);request=body.model_dump()
         if body.action=='monthly-link':request['data']=monthly_sources.resolve(db,row,body.period,body.data)
+        if body.action=='monthly-links':request['data']=monthly_sources.resolve_many(db,row,body.period,body.data)
         return store().mutate(key,user.id,user.name,request,context_meta={'public_id':public_id,'site_name':row.title.removeprefix('[점검] ').strip()})
     except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
 @router.get('/plans/{public_id}/receipts/{request_key}')

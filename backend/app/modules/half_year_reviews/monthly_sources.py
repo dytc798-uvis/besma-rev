@@ -77,6 +77,25 @@ def resolve(db,row,period,body):
     if 'context_site_codes'in source:stable.update(context_site_codes=source['context_site_codes'],site_name=source['site_name'])
     return {'evidence_id':body['evidence_id'],'source':stable}
 
+def resolve_many(db,row,period,body):
+    if set(body)!={'evidence_id','sources'}or body['evidence_id']not in EVIDENCE or not isinstance(body['sources'],list)or not 1<=len(body['sources'])<=20:raise ValueError('MONTHLY_SOURCE_INVALID')
+    site=site_for_plan(db,row);available=sources(monthly.load(),site,period)
+    index={r['id']:r for r in available['items']};seen=set();selected=[]
+    for entry in body['sources']:
+        if not isinstance(entry,dict)or set(entry)!={'source_id','source_version'}or not isinstance(entry['source_id'],str)or not isinstance(entry['source_version'],str)or entry['source_id']in seen:raise ValueError('MONTHLY_SOURCE_INVALID')
+        source=index.get(entry['source_id'])
+        if source is None or source['source_version']!=entry['source_version']:raise Conflict('MONTHLY_SOURCE_CHANGED')
+        seen.add(entry['source_id']);stable={k:source[k]for k in ('id','category','month','team','filename','size','site_id','context_key','site_code','sha256','period','source_version')}
+        if 'context_site_codes'in source:stable.update(context_site_codes=source['context_site_codes'],site_name=source['site_name'])
+        selected.append(stable)
+    return {'evidence_id':body['evidence_id'],'sources':selected}
+
+def link_many(data,key,period,body,actor,name,stamp):
+    if set(body)!={'evidence_id','sources'}or body['evidence_id']not in EVIDENCE or not isinstance(body['sources'],list)or not 1<=len(body['sources'])<=20:raise ValueError('MONTHLY_SOURCE_INVALID')
+    ids=[s.get('id')if isinstance(s,dict)else None for s in body['sources']]
+    if any(not isinstance(s,str)for s in ids)or len(set(ids))!=len(ids):raise ValueError('MONTHLY_SOURCE_INVALID')
+    return [link(data,key,period,{'evidence_id':body['evidence_id'],'source':s},actor,name,stamp)for s in body['sources']]
+
 def link(data,key,period,body,actor,name,stamp):
     if set(body)!={'evidence_id','source'}or body['evidence_id']not in EVIDENCE:raise ValueError('MONTHLY_SOURCE_INVALID')
     s=body['source']
