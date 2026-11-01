@@ -164,6 +164,17 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             from .grounding import recent_request
             lookup=recent_request(item['body'])
             if lookup is not None:item={**item,'nas_lookup':{'q':lookup['query'],'sort':'newest'}}
+        from . import result_followup
+        if user['owner']and config().source_lookup_enabled and config().owner_result_followup_enabled:
+            queue=store()
+            with queue.connection() as connection:
+                if result_followup.requested(connection,item['id']):
+                    row=connection.execute('SELECT * FROM requests WHERE id=?',(item['id'],)).fetchone()
+                    try:
+                        reference=result_followup.validate(connection,queue,user,row,config(),eligible_provider(),source_valid,retained_access=retained_result_access)
+                        item={**item,'result_reference':{key:reference[key]for key in ['file_name','bytes','sha256']}}
+                    except (Conflict,KeyError,ValueError,OSError,RuntimeError):
+                        item={**item,'result_reference_unavailable':True}
         return item
 
     def require_nas_gate():

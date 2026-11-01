@@ -9,6 +9,14 @@ PREFIX='OWNER_RESULT_FOLLOWUP_V1:'
 CAP='OWNER_SOURCE_CHOICES_V2'
 EXTENSIONS={'.txt','.pdf','.docx','.xlsx','.pptx','.hwp','.hwpx','.csv'}
 REFERENCE=re.compile(r'(?:방금\s*(?:만든|수정한|받은|작성한)?|[이그]\s*)\s*(?:파일|안내문|문서|자료|사본)')
+NATURAL_REFERENCE=re.compile(r'(?<![가-힣A-Za-z0-9])(?:[이그]|해당|방금\s*(?:설명한|확인한|읽은|본))\s*(기준서?|절차서?|계획서|지침서|보고서|평가표|점검표|명부|명단|내용|본문)(?=$|[\s,.!?？]|은|는|이|가|을|를|의|에|로|으로|와|과|도|만|부터|까지|대로|중|내)')
+
+def natural_reference(text):
+ if not isinstance(text,str)or len(text)>6000:return None
+ # Comparing or replacing sources needs the existing multi-source search path.
+ if re.search(r'비교|대조|차이|다른|말고|대신|아닌|새로운|(?:최신|다시).{0,12}찾',text):return None
+ match=NATURAL_REFERENCE.search(text)
+ return match[1]if match else None
 class ReadResult(BaseModel):
  model_config=ConfigDict(extra='forbid',strict=True)
  lease:str=Field(pattern=r'^[a-f0-9]{64}$')
@@ -39,7 +47,8 @@ def nearest_result(db,actor,row,selected_file_id=None):
 def candidate(db,actor,row,selected_file_id=None):
  if selected_file_id is None:
   bound=requested(db,row['id']);selected_file_id=bound.get('selected_file_id')if bound else None
- if not actor['owner']or not row['scope_exempt']or row['kind']!='QUESTION'or not row['parent_request_id']or row['source_json']or(selected_file_id is None and not REFERENCE.search(row['body'])):return None
+ natural=natural_reference(row['body'])if selected_file_id is None and not REFERENCE.search(row['body'])else None
+ if not actor['owner']or not row['scope_exempt']or row['kind']!='QUESTION'or not row['parent_request_id']or row['source_json']or(selected_file_id is None and not REFERENCE.search(row['body'])and natural is None):return None
  from .input_images import for_request as image
  from .naver_delivery import for_request as delivery
  if image(db,row['id'])or delivery(db,row['id'])is not None:return None
@@ -47,6 +56,11 @@ def candidate(db,actor,row,selected_file_id=None):
  if resolved is None:return None
  parent,files,chain=resolved
  file=files[0]
+ if natural not in {None,'내용','본문'}:
+  topic=file['filename']
+  if parent['source_json']:topic+=' '+json.loads(parent['source_json']).get('relative_path','')
+  words=('기준',)if natural.startswith('기준')else('절차',)if natural.startswith('절차')else('명부','명단')if natural in {'명부','명단'}else(natural,)
+  if not any(word in topic for word in words):return None
  from .nas_sources import accident_source
  if not 0<file['bytes']<=MAX_ORIGINAL_BYTES or PurePosixPath(file['filename']).suffix.casefold()not in EXTENSIONS or accident_source(file['filename']):return None
  origin='RESULT';anchor=parent['id']
