@@ -36,4 +36,25 @@ def notes_by_id(snapshot):
                 if len(others)>3:text+=' 외 '+str(len(others)-3)+'개 월'
                 notes.append('다른 자료월과 같은 원본: '+text)
         if notes:result[key]=notes
+    # Explicit review codes bind only to these exact received bytes; no free-text source content.
+    reviewed=snapshot.get('reviewed_source_notes',[])
+    index={r.get('id'):r for r in rows if isinstance(r,dict)}
+    if isinstance(reviewed,list)and len(reviewed)<=1000:
+        for note in reviewed:
+            if not isinstance(note,dict):continue
+            key=note.get('id')
+            if not isinstance(key,str)or not SHA.fullmatch(key):continue
+            row=index.get(key);digest=note.get('sha256')
+            if row is None or not isinstance(digest,str)or not SHA.fullmatch(digest)or row.get('sha256')!=digest:continue
+            kind=note.get('kind');message=None
+            if kind=='PERIOD'and set(note)=={'id','sha256','kind','document_month'}:
+                period=note['document_month'];month=row.get('month')
+                if isinstance(period,str)and MONTH.fullmatch(period)and isinstance(month,str)and MONTH.fullmatch(month)and period!=month:
+                    message='원문 날짜 확인: '+period.replace('-','.')+' / 등록 자료월 '+month.replace('-','.')
+            elif kind=='PAGES'and set(note)=={'id','sha256','kind','present','expected'}:
+                present=note['present'];expected=note['expected']
+                if type(present)is int and type(expected)is int and 1<=present<expected<=1000:
+                    message=f'원문 확인: 참석지 {present}/{expected}쪽만 확인됨'
+            if message and message not in result.get(row['id'],[]):result.setdefault(row['id'],[]).append(message)
+
     return result
