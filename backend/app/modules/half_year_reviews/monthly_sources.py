@@ -18,6 +18,32 @@ def site_for_plan(db,row):
         scope.update(code=None,name=row.title.removeprefix('[점검] ').strip(),contracts=[{'code':s.site_code,'name':s.site_name,'registry_confirmed':s.id is not None}for s in contracts])
     return scope
 
+def reference_sources(snapshot,site,period,quality):
+    """Reviewed shared scope is for reading, never a classified/gradable source."""
+    if 'reviewed_source_references'not in snapshot:return {}
+    references=snapshot['reviewed_source_references']
+    if not isinstance(references,list)or len(references)>1000:raise HTTPException(503,'공동 참고자료의 적용 범위를 확인해야 합니다.')
+    codes={c['code']for c in site.get('contracts',[{'code':site['code']}])};index={r['id']:r for r in snapshot['items']};seen=set();found=[];pending=0
+    lo=period[:4]+('-01'if period.endswith('H1')else'-07');hi=period[:4]+('-06'if period.endswith('H1')else'-12')
+    for reference in references:
+        if not isinstance(reference,dict)or set(reference)!={'id','sha256','contracts'}or not isinstance(reference['id'],str)or not re.fullmatch('[a-f0-9]{64}',reference['id'])or not isinstance(reference['sha256'],str)or not re.fullmatch('[a-f0-9]{64}',reference['sha256'])or reference['id']in seen:raise HTTPException(503,'공동 참고자료의 수신 근거를 확인해야 합니다.')
+        seen.add(reference['id']);contracts=reference['contracts']
+        if not isinstance(contracts,list)or not 2<=len(contracts)<=8 or any(not isinstance(c,dict)or set(c)!={'code','name'}or not isinstance(c['code'],str)or not re.fullmatch('[A-Za-z0-9_-]{1,40}',c['code'])or not isinstance(c['name'],str)or not 1<=len(c['name'])<=500 or re.search(r'[\x00-\x1f\x7f]',c['name'])for c in contracts):raise HTTPException(503,'공동 참고자료의 계약 범위를 확인해야 합니다.')
+        scope=[c['code']for c in contracts]
+        if scope!=sorted(set(scope)):raise HTTPException(503,'공동 참고자료의 계약 범위를 확인해야 합니다.')
+        if not codes.intersection(scope):continue
+        row=index.get(reference['id'])
+        if row is None:pending+=1;continue
+        if not isinstance(row.get('month'),str)or not re.fullmatch(r'20\d{2}-(0[1-9]|1[0-2])',row['month']):raise HTTPException(503,'공동 참고자료의 자료월을 확인해야 합니다.')
+        if not lo<=row.get('month','')<=hi:continue
+        if row.get('sha256')!=reference['sha256']or row.get('site_code')or row.get('state')!='SITE_REVIEW':pending+=1;continue
+        if row.get('category')not in monthly.LABELS or type(row.get('size'))is not int or row['size']<1 or not isinstance(row.get('filename'),str)or not 1<=len(row['filename'])<=260 or re.search(r'[\\/\x00-\x1f\x7f]',row['filename']):raise HTTPException(503,'공동 참고자료의 원본 정보를 확인해야 합니다.')
+        source={k:row[k]for k in FIELDS};source.update(site_id=site['id'],context_key=site.get('context_id','site-'+str(site['id']))+'|'+period,site_code='',sha256=row['sha256'],period=period,reference_only=True,reference_contracts=contracts,reference_context_site_codes=sorted(codes),site_name=' / '.join(c['name']for c in contracts),quality_notes=quality.get(row['id'],[]));source.update(monthly.storage_fields(row))
+        identity={k:source[k]for k in ('id','category','month','team','sha256','size','filename','site_id','context_key','period','reference_only','reference_contracts','reference_context_site_codes')};source['source_version']=hashlib.sha256(json.dumps(identity,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest();found.append(source)
+    if not found and not pending:return {}
+    found.sort(key=lambda r:(r['month'],r['filename'],r['id']),reverse=True)
+    return {'reference_items':found,'reference_count':len(found)if found else None,'reference_pending_count':pending,'reference_state':'AVAILABLE'if found else'CHECK_REQUIRED'}
+
 def sources(snapshot,site,period):
     period_value(period)
     if site is None:return {'state':'SITE_UNCONFIRMED','items':[],'count':None,'unverified_count':None}
@@ -43,6 +69,7 @@ def sources(snapshot,site,period):
     quality_count=sum(bool(row['quality_notes'])for row in found)
     incomplete=bool(unverified or unassigned or quality_count)
     result={'state':'SOURCE_REVIEW_REQUIRED'if not found and incomplete else'AVAILABLE','items':found,'count':None if not found and incomplete else len(found),'unverified_count':unverified,'unassigned_count':unassigned,'scope_complete':not incomplete,'quality_review_count':quality_count,'generated_at':snapshot['generated_at'],'site_name':site['name'],'period':period,'site_registry_confirmed':site.get('registry_confirmed',True)}
+    result.update(reference_sources(snapshot,site,period,quality))
     if len(contracts)>1:result.update(contracts=contracts,publication_site_confirmed=False)
     return result
 
