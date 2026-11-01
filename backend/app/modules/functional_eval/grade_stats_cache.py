@@ -21,7 +21,19 @@ GRADE_STAT_CODES: tuple[str, ...] = ("S", "A", "B", "C")
 HQ_GRADE_STATS_CACHE_TTL = timedelta(days=1)
 
 
+def _has_confirmed_rounds(db: Session, period: FunctionalEvalPeriod) -> bool:
+    from . import additional_rounds
+    from . import signature_revisions
+    from .models import FunctionalEvalTargetEnrollment
+    enrolled = additional_rounds.schema_ready(db) and db.query(FunctionalEvalTargetEnrollment.worker_id).filter_by(period_id=period.id).first() is not None
+    revised = signature_revisions.schema_ready(db) and db.query(signature_revisions.Rejection.id).filter_by(period_id=period.id).first() is not None
+    return bool(enrolled or revised)
+
+
 def _closed_period(period: FunctionalEvalPeriod) -> bool:
+    from . import additional_rounds
+    if additional_rounds.continuous(period):
+        return False
     return period.deadline_date < kst_today()
 
 
@@ -365,10 +377,18 @@ def compute_hq_grade_stats(db: Session, period: FunctionalEvalPeriod) -> dict[st
         "by_site": site_items,
         "by_team": team_items,
     }
+    if _has_confirmed_rounds(db, period):
+        # Current confirmed waves are live data; the old stored snapshot remains intact.
+        payload.update(grade_stats_mode="live", grade_stats_mode_label=None,
+                       grade_stats_live_from=_live_from_date(period).isoformat(),
+                       target_scope="CURRENT_CONFIRMED_EVALUATION_ROUNDS", whole_roster_verified=False)
+        return payload
     return _finalize_grade_stats_payload(payload, period)
 
 
 def rebuild_and_persist(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
+    if _has_confirmed_rounds(db, period):
+        return compute_hq_grade_stats(db, period)
     if _closed_period(period):
         if isinstance(period.hq_grade_stats_json, dict) and period.hq_grade_stats_json.get("overall"):
             return _archived_view(period.hq_grade_stats_json)
@@ -386,6 +406,8 @@ def rebuild_and_persist(db: Session, period: FunctionalEvalPeriod) -> dict[str, 
 
 
 def mark_dirty(db: Session, period: FunctionalEvalPeriod, *, reason: str = "source_changed") -> None:
+    if _has_confirmed_rounds(db, period):
+        return
     if _closed_period(period):
         return
     cached = period.hq_grade_stats_json
@@ -409,6 +431,8 @@ def _cache_expired(period: FunctionalEvalPeriod) -> bool:
 
 
 def get_hq_grade_stats(db: Session, period: FunctionalEvalPeriod) -> dict[str, Any]:
+    if _has_confirmed_rounds(db, period):
+        return compute_hq_grade_stats(db, period)
     if _closed_period(period):
         if isinstance(period.hq_grade_stats_json, dict) and period.hq_grade_stats_json.get("overall"):
             return _archived_view(period.hq_grade_stats_json)
@@ -417,7 +441,7 @@ def get_hq_grade_stats(db: Session, period: FunctionalEvalPeriod) -> dict[str, A
     cached = period.hq_grade_stats_json
     if isinstance(cached, dict) and cached.get("overall"):
         if cached.get("grade_stats_mode") == expected_mode:
-            if not _cache_expired(period):
+            if not cached.get("is_stale") and not _cache_expired(period):
                 return cached
     return rebuild_and_persist(db, period)
 

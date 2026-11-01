@@ -1,6 +1,14 @@
-﻿from __future__ import annotations
+from __future__ import annotations
+from app.modules.functional_eval import site_evaluator_access
+from app.modules.functional_eval import manual_roster
+from app.modules.functional_eval import additional_rounds
+from app.modules.functional_eval.schemas import FunctionalEvalPeriodModeUpdate
+from fastapi import Path as ApiPath
+from app.modules.functional_eval.desktop_intake_boundary import assert_manual_erp_import_allowed
 
 import io
+import zipfile
+import tempfile
 import uuid
 from datetime import date
 from pathlib import Path
@@ -42,9 +50,12 @@ from app.modules.functional_eval.schemas import (
 )
 from app.modules.functional_eval.sanctions import DEFAULT_SANCTION_VIOLATION_CODE
 from app.modules.functional_eval import customer_rewards as reward_service
-from app.modules.functional_eval.site_grade_workbook import site_grade_export_filename
+from app.modules.functional_eval.site_grade_workbook import site_grade_export_filename, WorkbookReviewRequired
 
 router = APIRouter(prefix="/functional-eval", tags=["functional-eval"])
+
+from .workbench_context import router as workbench_context_router
+router.include_router(workbench_context_router)
 
 
 def _role_value(user) -> str:
@@ -53,8 +64,9 @@ def _role_value(user) -> str:
 
 
 def _assert_site_functional_eval(user) -> None:
-    if _role_value(user) != Role.SITE_FUNCTIONAL_EVAL.value:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SITE_FUNCTIONAL_EVAL only")
+    if not site_evaluator_access.is_site_evaluator(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="로그인한 현장의 평가 담당 권한을 확인해 주세요.")
+
 
 
 async def _save_upload(file: UploadFile, period_id: int) -> Path:
@@ -75,16 +87,43 @@ def _site_grade_workbook_response(content: bytes) -> StreamingResponse:
     )
 
 
+
+def _selected_site_round(db, user, period, requested=None, expected_period=None):
+    from . import round_selection
+    try:
+        return round_selection.select(db,user,period,requested,expected_period)
+    except ValueError as error:
+        code=str(error)
+        status=404 if code=='EVALUATION_ROUND_NOT_FOUND' else 409
+        message=('선택한 평가 회차를 찾을 수 없습니다.' if status==404 else
+                 '평가기간이 달라졌습니다. 현황에서 다시 선택해 주세요.' if code=='PERIOD_SCOPE_CHANGED' else
+                 '기존 추가 평가와 승인 회차의 연결을 먼저 확인해 주세요.')
+        raise HTTPException(status,message)from error
+
+
+def _selected_grade_stats(db,user,period,batch):
+    from . import round_selection
+    site_code=service._site_code_for_user(user,db)
+    rows=(service.site_worker_payloads_for_batch(db,period,site_code,batch)
+          if service._is_primary_site_evaluator(db,user,site_code)else service.list_workers_for_user(db,user,period,batch=batch))
+    return {'period_id':period.id,'evaluation_batch':batch,'site_code':site_code,
+            'site_name':service._site_name_map(db,{site_code}).get(site_code)or site_code,
+            'grade_stats_mode':'live',**service._grade_stats_block(rows)}
+
 @router.get("/my-site/export/site-grade-workbook")
-def export_my_site_grade_workbook(db: DbDep, current_user: CurrentUserDep):
+def export_my_site_grade_workbook(db: DbDep, current_user: CurrentUserDep, evaluation_batch: int|None=Query(default=None,ge=0), period_id: int|None=Query(default=None,gt=0)):
     """?꾩옣 ???쒗뵆由??뺤떇(1.?몄썝?꾪솴 / 2-1 / 2-2) ?묒? 異쒕젰."""
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
     site_code = service._site_code_for_user(current_user, db)
+    batch,_=_selected_site_round(db,current_user,period,evaluation_batch,period_id)
+    if not service._is_primary_site_evaluator(db,current_user,site_code):raise HTTPException(403,"현장 소장만 전체 등급을 출력할 수 있습니다.")
     try:
-        content = service.build_site_grade_workbook_bytes(db, period, site_code=site_code)
+        content = service.build_site_grade_workbook_bytes(db, period, site_code=site_code,batch=batch)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="기존 등급 출력 양식의 연결을 확인해 주세요.") from exc
+    except WorkbookReviewRequired as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         if str(exc) == "NO_ATTENDANCE_WORKERS":
             raise HTTPException(
@@ -108,6 +147,8 @@ def export_hq_site_grade_workbook(
         content = service.build_site_grade_workbook_bytes(db, period, site_code=site_code)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except WorkbookReviewRequired as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         if str(exc) == "NO_ATTENDANCE_WORKERS":
             raise HTTPException(status_code=404, detail="異쒖뿭 諛섏쁺??洹쇰줈?먭? ?놁뒿?덈떎.") from exc
@@ -235,6 +276,7 @@ def save_hq_assessment_override(
 def worker_assessment_revisions(worker_id: int, db: DbDep, current_user: CurrentUserDep):
     if _role_value(current_user) not in {
         Role.SITE_FUNCTIONAL_EVAL.value,
+        Role.SITE.value,
         Role.HQ_SAFE.value,
         Role.HQ_SAFE_ADMIN.value,
         Role.SUPER_ADMIN.value,
@@ -252,9 +294,10 @@ def worker_assessment_revisions(worker_id: int, db: DbDep, current_user: Current
     return {"items": items}
 
 
+
 @router.get("/period/current")
-def get_current_period(db: DbDep, current_user: CurrentUserDep, period_id: int | None = Query(default=None, ge=1)):
-    period = _workbench_read_period(db, current_user, period_id)
+def get_current_period(db: DbDep, current_user: CurrentUserDep):
+    period = service.get_or_create_active_period(db)
     return service.serialize_period(period, db)
 
 
@@ -269,6 +312,7 @@ def update_period_deadline(
     period = db.query(FunctionalEvalPeriod).filter(FunctionalEvalPeriod.id == period_id).first()
     if period is None:
         raise HTTPException(status_code=404, detail="Period not found")
+    if additional_rounds.continuous(period):raise HTTPException(status_code=409,detail='기간제로 전환할 때 마감일을 정해 주세요.')
     period.deadline_date = body.deadline_date
     db.add(period)
     db.commit()
@@ -276,41 +320,54 @@ def update_period_deadline(
     return service.serialize_period(period, db)
 
 
+@router.patch('/period/{period_id}/mode')
+def update_period_mode(period_id:int,body:FunctionalEvalPeriodModeUpdate,db:DbDep,current_user:CurrentUserDep):
+    assert_hq_safe_workspace(current_user)
+    try:period=additional_rounds.set_mode(db,current_user.id,period_id,body.mode,body.expected_mode,body.deadline_date)
+    except ValueError as error:
+        if str(error)=='ADDITIONAL_EVALUATION_DISABLED':raise HTTPException(404,'추가 평가 연결을 준비하고 있습니다.')from error
+        raise HTTPException(409,'평가기간과 방식이 달라졌습니다. 현재 내용을 다시 확인해 주세요.')from error
+    return service.serialize_period(period,db)
+
+
 @router.get("/my-site/workers")
-def list_my_site_workers(db: DbDep, current_user: CurrentUserDep):
+def list_my_site_workers(db: DbDep, current_user: CurrentUserDep, evaluation_batch: int|None=Query(default=None,ge=0), period_id: int|None=Query(default=None,gt=0)):
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
-    items = service.list_workers_for_user(db, current_user, period)
-    period_payload = service.serialize_period(period, db)
-    message = None
-    if not period_payload.get("last_attendance_date"):
-        message = "異쒖뿭?쇰낫媛 ?꾩쭅 諛섏쁺?섏? ?딆븯?듬땲?? 蹂몄궗???낅줈?쒕? ?붿껌?섏꽭??"
-    site_code = service._site_code_for_user(current_user, db)
-    site_overview = service.list_site_overview_for_manager(db, current_user, period)
-    approval = service.build_site_approval_payload(db, period, site_code)
-    signoff = signature_ops.build_signoff_payload_for_session(db, current_user, period, site_code, approval)
-    approval = {**approval, **signoff}
-    team_signoff = None
-    if _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
-        if not service._is_primary_site_evaluator(db, current_user, site_code):
-            try:
-                team_signoff = signature_ops.get_team_signoff_status(db, current_user, period)
-            except ValueError:
-                team_signoff = None
-    return {
-        "period": period_payload,
-        "items": items,
-        "site_overview": site_overview,
-        "approval": approval,
-        "team_signoff": team_signoff,
-        "evaluator": service.serialize_evaluator_session(db, current_user, period),
-        "attendance_message": message,
-        "signatures": signature_ops.list_my_signatures(db, current_user, period),
-    }
+    site_evaluator_access.assert_linked_site_evaluator(db,current_user,period)
+    batch,rounds = _selected_site_round(db,current_user,period,evaluation_batch,period_id)
+    items = service.list_workers_for_user(db,current_user,period,batch=batch)
+    site_code=service._site_code_for_user(current_user,db)
+    period_payload=service.serialize_period(period,db)
+    approval=service.build_site_approval_payload(db,period,site_code,batch=batch)
+    approval={**approval,**signature_ops.build_signoff_payload_for_session(db,current_user,period,site_code,approval,batch=batch)}
+    evaluator=service.serialize_evaluator_session(db,current_user,period,batch=batch)
+    from .site_grade_workbook import resolve_site_grade_template_path
+    try:
+        resolve_site_grade_template_path();grade_export_available=True
+    except FileNotFoundError:
+        grade_export_available=False
+    return {'period':period_payload,'items':items,
+            'site_overview':service.list_site_overview_for_manager(db,current_user,period,batch=batch),
+            'approval':approval,'team_signoff':None if evaluator['role']=='MANAGER'else signature_ops.get_team_signoff_status(db,current_user,period,batch=batch),
+            'evaluator':evaluator,'attendance_message':None if period_payload.get('last_attendance_date')else '출역 자료를 확인하지 못했습니다. 본사에 확인해 주세요.',
+            'signatures':signature_ops.list_my_signatures(db,current_user,period,batch=batch),
+            'selected_evaluation_batch':batch,'evaluation_rounds':rounds,
+            'grade_stats':_selected_grade_stats(db,current_user,period,batch),'grade_export_available':grade_export_available}
+
 
 
 def _signature_error(code: str) -> HTTPException:
     mapping = {
+        'SIGNATURE_REVISION_DISABLED':(409,'서명 이력을 보존하는 재작성 기능이 준비되지 않았습니다. 기존 문서는 유지됩니다.'),
+        'REJECTION_NOTE_REQUIRED':(400,'반려 사유를 입력해 주세요.'),
+        'REJECTION_REQUEST_CHANGED':(409,'이미 접수한 반려 요청과 내용이 다릅니다.'),
+        'LEGACY_ROUND_MAPPING_REQUIRED':(409,'기존 추가 평가와 승인 회차의 연결을 먼저 확인해 주세요.'),
+        'INCOMPLETE_APPROVAL_HISTORY':(409,'해당 회차의 제출 서명을 확인해 주세요.'),
+        'HQ_OFFICER_APPROVER_ONLY':(403,'담당 검토 권한이 필요합니다.'),
+        'HQ_DIRECTOR_APPROVER_ONLY':(403,'실장 승인 권한이 필요합니다.'),
+        'CEO_APPROVER_ONLY':(403,'대표이사 승인 권한이 필요합니다.'),
+        "SIGNED_ROUND_REVISION_REQUIRED": (409, "서명 이력을 보존하는 재작성 절차가 필요합니다. 기존 서명은 유지됩니다."),
         "CONSENT_REQUIRED": (403, "기능인인정제 이용 전 동의서 서명이 필요합니다."),
         "CONSENT_ACK_REQUIRED": (400, "동의서 확인 체크가 필요합니다."),
         "CONSENT_SCROLL_REQUIRED": (400, "동의서 내용을 끝까지 확인해야 합니다."),
@@ -327,6 +384,7 @@ def _signature_error(code: str) -> HTTPException:
         "TEAM_REPORTS_NOT_MANAGER_APPROVED": (400, "모든 팀장 평가 완료보고서에 소장 승인이 필요합니다."),
         "TEAM_LEADER_NOT_SIGNED": (400, "팀장 평가 완료 서명이 필요합니다."),
         "NO_PENDING_APPROVALS": (400, "승인 대기 항목이 없습니다."),
+        "EVALUATION_ROUND_CHANGED":(409,"평가 대상이나 회차가 달라졌습니다. 현재 내용을 다시 확인해 주세요."),
         "HQ_APPROVAL_NOT_OPEN_UNTIL_DEADLINE": (403, "본사 승인은 평가 마감일부터 가능합니다."),
         "NO_SUPPLEMENTAL_BATCH": (400, "추가 평가 대상이 없습니다."),
         "MANAGER_NOT_TEAM_LEADER": (403, "팀장만 사용할 수 있습니다."),
@@ -394,7 +452,7 @@ def list_my_signatures(db: DbDep, current_user: CurrentUserDep):
 
 
 @router.get("/signatures/{signature_id}/document")
-def download_signature_document(signature_id: int, db: DbDep, current_user: CurrentUserDep):
+def download_signature_document(signature_id: str, db: DbDep, current_user: CurrentUserDep):
     try:
         path = signature_ops.get_signature_document_path(db, current_user, signature_id)
     except ValueError as exc:
@@ -402,7 +460,7 @@ def download_signature_document(signature_id: int, db: DbDep, current_user: Curr
         if code == "FORBIDDEN":
             raise HTTPException(status_code=403, detail="?ㅼ슫濡쒕뱶 沅뚰븳???놁뒿?덈떎.") from exc
         raise HTTPException(status_code=404, detail="?쒕챸 臾몄꽌瑜?李얠쓣 ???놁뒿?덈떎.") from exc
-    return FileResponse(path, media_type="application/pdf", filename=f"湲곕뒫?몄젣_?쒕챸_{signature_id}.pdf")
+    return FileResponse(path,media_type='application/pdf',filename='기능인인정제_서명본.pdf')
 
 
 @router.get("/my-team/signoff-status")
@@ -432,6 +490,8 @@ def submit_team_signoff(
             signature_data=body.signature_data,
             s_over_limit_reason=body.s_over_limit_reason,
             no_c_grade_reason=body.no_c_grade_reason,
+            expected_batch=body.expected_evaluation_batch,
+            expected_scope_sha256=body.expected_scope_sha256,
             request=request,
         )
     except ValueError as exc:
@@ -458,6 +518,7 @@ def reject_team_leader_report(
             site_code,
             team_leader_login_id,
             reject_note=body.reject_note,
+            request_id=body.request_id,expected_batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256,
         )
     except ValueError as exc:
         raise _signature_error(str(exc)) from exc
@@ -484,6 +545,8 @@ def approve_team_leader_report(
             site_code,
             team_leader_login_id,
             signature_data=body.signature_data,
+            expected_batch=body.expected_evaluation_batch,
+            expected_scope_sha256=body.expected_scope_sha256,
             request=request,
         )
     except ValueError as exc:
@@ -511,10 +574,12 @@ def submit_site_approval(
             period,
             site_code,
             signature_data=body.signature_data,
+            expected_batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256,
             s_over_limit_reason=body.s_over_limit_reason,
             no_c_grade_reason=body.no_c_grade_reason,
             request=request,
         )
+
     except ValueError as exc:
         code = str(exc)
         if code in {"INCOMPLETE_EVALUATIONS", "INVALID_APPROVAL_TRANSITION"}:
@@ -546,13 +611,14 @@ def self_reject_site_approval(
             period,
             site_code,
             reject_note=body.reject_note,
+            request_id=body.request_id,expected_batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256,
         )
     except ValueError as exc:
         code = str(exc)
         if code == "INVALID_APPROVAL_TRANSITION":
             raise HTTPException(status_code=409, detail="본사 승인 전 제출 완료 상태에서만 자체반려할 수 있습니다.") from exc
         raise _signature_error(code) from exc
-    return {"approval": approval}
+    return approval
 
 
 @router.post("/my-site/supplemental-signoff")
@@ -624,9 +690,11 @@ def approve_all_hq_officer(
             current_user,
             period,
             signature_data=body.signature_data,
+            expected_rounds=[item.model_dump()for item in body.expected_rounds]if body.expected_rounds is not None else None,
             officer_comment=body.officer_comment,
             request=request,
         )
+
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_OFFICER_APPROVER_ONLY":
@@ -652,9 +720,11 @@ def approve_site_hq_officer(
             period,
             site_code.strip(),
             signature_data=body.signature_data,
+            expected_batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256,
             officer_comment=body.officer_comment,
             request=request,
         )
+
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_OFFICER_APPROVER_ONLY":
@@ -679,9 +749,11 @@ def approve_all_hq_director(
             current_user,
             period,
             signature_data=body.signature_data,
+            expected_rounds=[item.model_dump()for item in body.expected_rounds]if body.expected_rounds is not None else None,
             director_comment=body.director_comment,
             request=request,
         )
+
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_DIRECTOR_APPROVER_ONLY":
@@ -707,9 +779,11 @@ def approve_site_hq_director(
             period,
             site_code.strip(),
             signature_data=body.signature_data,
+            expected_batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256,
             director_comment=body.director_comment,
             request=request,
         )
+
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_DIRECTOR_APPROVER_ONLY":
@@ -729,10 +803,12 @@ def approve_all_hq(body: FunctionalEvalHqApprovalSubmit, request: Request, db: D
             current_user,
             period,
             signature_data=body.signature_data,
+            expected_rounds=[item.model_dump()for item in body.expected_rounds]if body.expected_rounds is not None else None,
             officer_comment=body.officer_comment,
             director_comment=body.director_comment,
             request=request,
         )
+
     except ValueError as exc:
         code = str(exc)
         if code == "HQ_APPROVER_ONLY":
@@ -752,7 +828,7 @@ def approve_site_hq(
     assert_hq_safe_workspace(current_user)
     period = service.get_or_create_active_period(db)
     code = site_code.strip()
-    row = approval_workflow.get_or_create_site_approval(db, period.id, code)
+    row = approval_workflow.get_or_create_site_approval(db, period.id, code,batch=body.expected_evaluation_batch)
     try:
         if row.status == APPROVAL_STATUS_SITE_APPROVED:
             approval = signature_ops.approve_hq_officer_site_with_signature(
@@ -761,9 +837,11 @@ def approve_site_hq(
                 period,
                 code,
                 signature_data=body.signature_data,
+            expected_batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256,
                 officer_comment=body.officer_comment,
                 request=request,
             )
+
         elif row.status == APPROVAL_STATUS_HQ_OFFICER_APPROVED:
             approval = signature_ops.approve_hq_director_site_with_signature(
                 db,
@@ -771,9 +849,11 @@ def approve_site_hq(
                 period,
                 code,
                 signature_data=body.signature_data,
+            expected_batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256,
                 director_comment=body.director_comment,
                 request=request,
             )
+
         else:
             raise ValueError("INVALID_APPROVAL_TRANSITION")
     except ValueError as exc:
@@ -795,6 +875,7 @@ def reject_site_hq(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep
         period = service.get_or_create_active_period(db)
         role = approval_workflow.resolve_hq_approval_role(current_user)
         stage = "HQ_OFFICER" if role in {"officer", "admin"} else "HQ_DIRECTOR"
+        if body.rejection_stage is not None:stage=body.rejection_stage
         approval = approval_workflow.reject_approval(
             db,
             period=period,
@@ -802,12 +883,13 @@ def reject_site_hq(site_code: str, body: FunctionalEvalApprovalReject, db: DbDep
             user=current_user,
             stage=stage,
             note=body.note,
+            request_id=body.request_id,batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256,
         )
     except ValueError as exc:
         if str(exc) == "INVALID_APPROVAL_TRANSITION":
             raise HTTPException(status_code=409, detail="諛섎젮?????녿뒗 ?곹깭?낅땲??") from exc
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"approval": approval}
+        raise _signature_error(str(exc)) from exc
+    return approval
 
 
 @router.get("/hq/ceo-approvals/pending")
@@ -842,8 +924,10 @@ def approve_all_ceo(body: FunctionalEvalSignatureSubmit, request: Request, db: D
     period = service.get_or_create_active_period(db)
     try:
         return signature_ops.approve_ceo_all_with_signature(
-            db, current_user, period, signature_data=body.signature_data, request=request
+            db, current_user, period, signature_data=body.signature_data,
+            expected_rounds=[item.model_dump()for item in body.expected_rounds]if body.expected_rounds is not None else None, request=request
         )
+
     except ValueError as exc:
         code = str(exc)
         if code == "CEO_APPROVER_ONLY":
@@ -863,14 +947,18 @@ def approve_site_ceo(
     try:
         approval_workflow.assert_ceo_approver(current_user)
         period = service.get_or_create_active_period(db)
-        approval = approval_workflow.approve_ceo(db, period=period, site_code=site_code.strip(), user=current_user)
+        approval = signature_ops.approve_ceo_site_with_signature(
+            db, current_user, period, site_code.strip(), signature_data=body.signature_data,
+            expected_batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256, request=request
+        )
+
     except ValueError as exc:
         code = str(exc)
         if code == "INVALID_APPROVAL_TRANSITION":
             raise HTTPException(status_code=409, detail="?덉쟾蹂닿굔???뱀씤 ?湲??곹깭媛 ?꾨떃?덈떎.") from exc
         if code == "CEO_APPROVER_ONLY":
             raise HTTPException(status_code=403, detail="??쒖씠??理쒓퀬愿由ъ옄) 沅뚰븳???꾩슂?⑸땲??") from exc
-        raise HTTPException(status_code=400, detail=code) from exc
+        raise _signature_error(code) from exc
     return {"approval": approval}
 
 
@@ -887,18 +975,20 @@ def reject_site_ceo(site_code: str, body: FunctionalEvalApprovalReject, db: DbDe
             user=current_user,
             stage="CEO",
             note=body.note,
+            request_id=body.request_id,batch=body.expected_evaluation_batch,expected_scope_sha256=body.expected_scope_sha256,
         )
     except ValueError as exc:
         if str(exc) == "INVALID_APPROVAL_TRANSITION":
             raise HTTPException(status_code=409, detail="諛섎젮?????녿뒗 ?곹깭?낅땲??") from exc
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"approval": approval}
+        raise _signature_error(str(exc)) from exc
+    return approval
 
 
 @router.get("/workers/{worker_id}/history")
 def worker_history(worker_id: int, db: DbDep, current_user: CurrentUserDep):
     if _role_value(current_user) not in {
         Role.SITE_FUNCTIONAL_EVAL.value,
+        Role.SITE.value,
         Role.HQ_SAFE.value,
         Role.HQ_SAFE_ADMIN.value,
         Role.SUPER_ADMIN.value,
@@ -913,6 +1003,7 @@ def worker_history(worker_id: int, db: DbDep, current_user: CurrentUserDep):
         if str(exc) == "SITE_MISMATCH":
             raise HTTPException(status_code=403, detail="Not allowed for this site") from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 
 @router.get("/workers/{worker_id}/mileage")
@@ -945,6 +1036,7 @@ async def create_sanction(
 
     if _role_value(current_user) not in {
         Role.SITE_FUNCTIONAL_EVAL.value,
+        Role.SITE.value,
         Role.HQ_SAFE.value,
         Role.HQ_SAFE_ADMIN.value,
         Role.SUPER_ADMIN.value,
@@ -1008,6 +1100,7 @@ async def create_sanction(
     return row
 
 
+
 @router.get("/sanctions/{sanction_id}/evidence-photo")
 def get_sanction_evidence_photo(sanction_id: int, db: DbDep, current_user: CurrentUserDep):
     from app.modules.functional_eval import sanction_evidence as evidence_service
@@ -1027,7 +1120,7 @@ def get_sanction_evidence_photo(sanction_id: int, db: DbDep, current_user: Curre
             Role.ACCIDENT_ADMIN.value,
         }:
             pass
-        elif _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
+        elif site_evaluator_access.is_site_evaluator(current_user):
             service._assert_worker_view_access(db, current_user, worker)
         else:
             raise HTTPException(status_code=403, detail="Not allowed")
@@ -1039,6 +1132,7 @@ def get_sanction_evidence_photo(sanction_id: int, db: DbDep, current_user: Curre
     if not path.is_file():
         raise HTTPException(status_code=404, detail="PHOTO_NOT_FOUND")
     return FileResponse(path)
+
 
 
 @router.get("/sanctions/{sanction_id}/signature")
@@ -1060,7 +1154,7 @@ def get_sanction_signature_image(sanction_id: int, db: DbDep, current_user: Curr
             Role.ACCIDENT_ADMIN.value,
         }:
             pass
-        elif _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
+        elif site_evaluator_access.is_site_evaluator(current_user):
             service._assert_worker_view_access(db, current_user, worker)
         else:
             raise HTTPException(status_code=403, detail="Not allowed")
@@ -1074,19 +1168,20 @@ def get_sanction_signature_image(sanction_id: int, db: DbDep, current_user: Curr
     return Response(content=png_bytes, media_type="image/png")
 
 
+
 @router.get("/hq/grade-stats")
-def hq_grade_stats(db: DbDep, current_user: CurrentUserDep, period_id: int | None = Query(default=None, ge=1)):
+def hq_grade_stats(db: DbDep, current_user: CurrentUserDep):
     """蹂몄궗 ???꾩껜쨌?蹂꽷룻쁽?λ퀎 ?깃툒 遺꾪룷."""
     assert_fe_hq_read(current_user)
-    period = _workbench_read_period(db, current_user, period_id)
+    period = service.get_or_create_active_period(db)
     return service.build_hq_grade_stats(db, period)
 
 
 @router.get("/hq/sites/{site_code}/grade-stats")
-def hq_site_grade_stats(site_code: str, db: DbDep, current_user: CurrentUserDep, period_id: int | None = Query(default=None, ge=1)):
+def hq_site_grade_stats(site_code: str, db: DbDep, current_user: CurrentUserDep):
     """蹂몄궗 ???뱀젙 ?꾩옣 ?깃툒 遺꾪룷."""
     assert_fe_hq_read(current_user)
-    period = _workbench_read_period(db, current_user, period_id)
+    period = service.get_or_create_active_period(db)
     try:
         return service.build_site_grade_stats(db, period, site_code.strip())
     except ValueError as exc:
@@ -1096,13 +1191,14 @@ def hq_site_grade_stats(site_code: str, db: DbDep, current_user: CurrentUserDep,
 
 
 @router.get("/my-site/grade-stats")
-def my_site_grade_stats(db: DbDep, current_user: CurrentUserDep):
+def my_site_grade_stats(db: DbDep, current_user: CurrentUserDep, evaluation_batch: int|None=Query(default=None,ge=0), period_id: int|None=Query(default=None,gt=0)):
     """?꾩옣 ?????꾩옣 ?깃툒 遺꾪룷."""
     _assert_site_functional_eval(current_user)
     period = service.get_or_create_active_period(db)
     site_code = service._site_code_for_user(current_user, db)
+    batch,_=_selected_site_round(db,current_user,period,evaluation_batch,period_id)
     try:
-        return service.build_site_grade_stats(db, period, site_code)
+        return _selected_grade_stats(db,current_user,period,batch)
     except ValueError as exc:
         if str(exc) in {"NO_ATTENDANCE_WORKERS", "NO_SITE_IN_REGISTRY"}:
             raise HTTPException(status_code=404, detail="異쒖뿭 ???洹쇰줈?먭? ?놁뒿?덈떎.") from exc
@@ -1115,13 +1211,12 @@ def hq_summary(
     current_user: CurrentUserDep,
     sort_by: str = Query(default="site_code"),
     sort_dir: str = Query(default="asc"),
-    period_id: int | None = Query(default=None, ge=1),
     site_code: str | None = Query(default=None),
     include_inactive: bool = Query(default=True),
 ):
     """?꾩옣蹂??됯? 吏꾪뻾瑜?紐⑸줉 (洹쇰줈???곸꽭 誘명룷??."""
     assert_fe_hq_read(current_user)
-    period = _workbench_read_period(db, current_user, period_id)
+    period = service.get_or_create_active_period(db)
     return service.build_hq_summary_response(
         db,
         period,
@@ -1129,7 +1224,6 @@ def hq_summary(
         sort_dir=sort_dir,
         site_code=site_code,
         include_inactive=include_inactive,
-        persist_completion_locks=period_id is None,
     )
 
 
@@ -1148,19 +1242,70 @@ def hq_site_evaluations(
     current_user: CurrentUserDep,
     sort_by: str = Query(default="name"),
     sort_dir: str = Query(default="asc"),
-    period_id: int | None = Query(default=None, ge=1),
+    evaluation_batch: int|None=Query(default=None,ge=0),
 ):
     """?꾩옣蹂??됯? ?꾨즺?먮쭔 (湲곕뒫+?덉쟾 紐⑤몢 ?꾨즺)."""
     assert_fe_hq_read(current_user)
-    period = _workbench_read_period(db, current_user, period_id)
+    period = service.get_or_create_active_period(db)
+    if evaluation_batch is not None:
+        from . import additional_rounds
+        from .models import FunctionalEvalSignature
+        row=additional_rounds.get_approval(db,period.id,site_code.strip(),batch=evaluation_batch)
+        if row is None:raise HTTPException(404,'해당 평가 회차를 확인해 주세요.')
+        workers=[worker for worker in service._evaluation_target_workers(db,period,site_code=site_code.strip()) if additional_rounds.worker_approval_batch(db,worker)==evaluation_batch]
+        assessments=service._assessments_map(db,[worker.id for worker in workers])
+        items=[{'worker':service.serialize_worker(db,worker,assessments=assessments.get(worker.id,{}))}for worker in workers]
+        summary=service.serialize_site_approval_summary(db,period,site_code.strip(),batch=evaluation_batch)
+        from . import signature_revisions
+        signatures=signature_revisions.all_records(db,period.id,site_code=site_code.strip(),batch=evaluation_batch)
+        return {'site':{'site_code':site_code.strip(),'site_name':next(iter(service._site_name_map(db,{site_code.strip()}).values()),site_code.strip()),'total':len(items),'fully_complete':summary['site_complete_workers'],'progress':str(summary['site_complete_workers'])+'/'+str(len(items))},'eval_rows':service.build_hq_eval_rows(items),'approval':{**approval_workflow.serialize_site_approval(row),**summary},'signatures':[signature_revisions.payload(db,item)for item in signatures],'evaluation_batch':evaluation_batch}
     return service.list_hq_site_completed_evaluations(
         db,
         period,
         site_code.strip(),
         sort_by=sort_by,
         sort_dir=sort_dir,
-        persist_approval_state=period_id is None,
     )
+
+
+@router.post("/hq/roster/manual-preview")
+async def manual_roster_preview(
+    db: DbDep, current_user: CurrentUserDep,
+    file: UploadFile = File(...), period_id: int = Form(...),
+):
+    assert_hq_safe_workspace(current_user)
+    assert_manual_erp_import_allowed()
+    raw = await file.read(manual_roster.MAX_BYTES + 1)
+    try:
+        return manual_roster.preview(db, current_user.id, period_id, raw, file.filename or "")
+    except manual_roster.ReviewRequired as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@router.post("/hq/roster/manual-apply")
+async def manual_roster_apply(
+    db: DbDep, current_user: CurrentUserDep,
+    file: UploadFile = File(...), period_id: int = Form(...), preview_token: str = Form(...),
+    add_to_targets:bool=Form(False),review_id:str|None=Form(None,pattern=r'^[0-9a-f]{32}$'),
+):
+    assert_hq_safe_workspace(current_user)
+    assert_manual_erp_import_allowed()
+    from app.config.settings import settings
+    raw = await file.read(manual_roster.MAX_BYTES + 1)
+    actor_id = current_user.id
+    try:
+        return manual_roster.apply(db, actor_id, period_id, preview_token, raw, file.filename or "",
+                                   Path(settings.storage_root) / "functional_eval" / "manual_rosters",add_to_targets=add_to_targets,review_id=review_id)
+    except manual_roster.ReviewRequired as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get('/hq/roster/manual-receipts/{review_id}')
+def manual_roster_receipt(db:DbDep,current_user:CurrentUserDep,review_id:str=ApiPath(...,pattern=r'^[0-9a-f]{32}$'),period_id:int=Query(...,gt=0),source_sha256:str=Query(...,pattern=r'^[0-9a-f]{64}$')):
+    assert_hq_safe_workspace(current_user)
+    try:return manual_roster.receipt(db,current_user.id,period_id,review_id,source_sha256)
+    except KeyError as error:raise HTTPException(404,'반영 결과를 확인하지 못했습니다.')from error
+    except manual_roster.ReviewRequired as error:raise HTTPException(409,str(error))from error
 
 
 @router.post("/hq/roster/diff")
@@ -1186,6 +1331,7 @@ async def roster_apply(
     file: UploadFile = File(...),
 ):
     assert_hq_safe_workspace(current_user)
+    assert_manual_erp_import_allowed()
     period = service.get_or_create_active_period(db)
     tmp = await _save_upload(file, period.id)
     try:
@@ -1228,17 +1374,45 @@ async def attendance_apply(
     db: DbDep,
     current_user: CurrentUserDep,
     file: UploadFile = File(...),
+    expected_period_id: int | None = Form(default=None, gt=0),
+    expected_source_sha256: str | None = Form(default=None, pattern=r"^[a-f0-9]{64}$"),
+    expected_work_date: date | None = Form(default=None),
+    expected_positive_people: int | None = Form(default=None, gt=0),
 ):
     """ERP 異쒖뿭?쇰낫 xls/xlsx ??吏묎퀎 諛섏쁺 ??1??1???낅줈??蹂꾩묶-?대쫫 怨꾩젙쨌????먮룞)."""
     assert_hq_safe_workspace(current_user)
-    period = service.get_or_create_active_period(db)
-    tmp = await _save_upload(file, period.id)
+    assert_manual_erp_import_allowed()
+    expected = [expected_period_id, expected_source_sha256, expected_work_date, expected_positive_people]
+    if any(v is not None for v in expected) and not all(v is not None for v in expected):
+        raise HTTPException(400, "출역일보를 다시 확인한 뒤 반영해 주세요.")
+    period = _existing_attendance_period(db, expected_period_id) if expected_period_id is not None else service.get_or_create_active_period(db)
+    tmp = await _save_attendance_upload(file, period.id)
+    if expected_source_sha256 is not None:
+        from .attendance import attendance_report_summary
+        import hashlib
+        try:
+            parsed_summary = attendance_report_summary(tmp)
+        except ValueError as error:
+            raise _attendance_upload_error(str(error)) from error
+        if (hashlib.sha256(tmp.read_bytes()).hexdigest() != expected_source_sha256
+                or parsed_summary["work_date"] != expected_work_date.isoformat()
+                or parsed_summary["positive_people"] != expected_positive_people):
+            raise HTTPException(409, "파일 또는 출역 범위가 달라졌습니다. 다시 확인해 주세요.")
     try:
         result = service.apply_attendance_report_file(
             db, period, tmp, original_filename=file.filename or "attendance.xlsx"
         )
     except ValueError as exc:
         code = str(exc)
+        if code in {"ATTENDANCE_AMOUNT_HEADER_REQUIRED", "ATTENDANCE_AMOUNT_INVALID"}:
+            raise _attendance_upload_error(code) from exc
+        if code in {"EVALUATOR_ACCOUNT_SCOPE_MISMATCH", "ATTENDANCE_EXCLUDED_WORKER_REVIEW_REQUIRED", "ATTENDANCE_PROTECTED_WORKER_SCOPE_CHANGED"}:
+            messages = {
+                "EVALUATOR_ACCOUNT_SCOPE_MISMATCH": "기존 평가 담당 계정의 현장 연결을 확인해 주세요. 계정과 로그인 정보는 바꾸지 않았습니다.",
+                "ATTENDANCE_EXCLUDED_WORKER_REVIEW_REQUIRED": "기존에 제외한 근로자가 포함돼 있습니다. 제외 이력을 유지하고 반영을 보류했습니다.",
+                "ATTENDANCE_PROTECTED_WORKER_SCOPE_CHANGED": "이미 평가·서명한 근로자의 소속이나 소장 구분이 달라졌습니다. 기존 이력을 유지하고 반영을 보류했습니다.",
+            }
+            raise HTTPException(409, messages[code]) from exc
         if code == "EMPTY_FILE":
             raise HTTPException(status_code=400, detail="?뚯씪??鍮꾩뼱 ?덉뒿?덈떎.") from exc
         if code == "NO_ATTENDANCE_ROWS":
@@ -1254,6 +1428,7 @@ async def attendance_apply(
             raise HTTPException(status_code=409, detail="留덇컧?쇱씠 吏??諛섏쁺?????놁뒿?덈떎.") from exc
         raise HTTPException(status_code=400, detail=code) from exc
     return result
+
 
 
 @router.get("/hq/evaluator-accounts")
@@ -1314,7 +1489,7 @@ def export_hq_evaluations_excel(
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "?됯??꾪솴"
+    ws.title = "평가현황"
     ws.append(
         [
             "?꾩옣肄붾뱶",
@@ -1373,7 +1548,7 @@ def export_hq_excel(
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "?쒖옱?꾪솴"
+    ws.title = "제재현황"
     ws.append(
         [
             "?꾩옣肄붾뱶",
@@ -1610,7 +1785,7 @@ def get_customer_reward_photo(reward_id: int, db: DbDep, current_user: CurrentUs
             Role.ACCIDENT_ADMIN.value,
         }:
             pass
-        elif _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
+        elif site_evaluator_access.is_site_evaluator(current_user):
             service._assert_worker_view_access(db, current_user, worker)
         else:
             raise HTTPException(status_code=403, detail="Not allowed")
@@ -1622,6 +1797,7 @@ def get_customer_reward_photo(reward_id: int, db: DbDep, current_user: CurrentUs
     if not path.is_file():
         raise HTTPException(status_code=404, detail="PHOTO_NOT_FOUND")
     return FileResponse(path)
+
 
 
 @router.get("/workers/{worker_id}/customer-rewards")
@@ -1637,13 +1813,14 @@ def list_worker_customer_rewards(worker_id: int, db: DbDep, current_user: Curren
             Role.ACCIDENT_ADMIN.value,
         }:
             pass
-        elif _role_value(current_user) == Role.SITE_FUNCTIONAL_EVAL.value:
+        elif site_evaluator_access.is_site_evaluator(current_user):
             service._assert_worker_view_access(db, current_user, worker)
         else:
             raise HTTPException(status_code=403, detail="Not allowed")
     except ValueError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     return {"items": reward_service.list_worker_customer_rewards(db, worker_id)}
+
 
 
 @router.get("/hq/daily-reports")
@@ -1740,15 +1917,127 @@ def list_hq_viewer_account_logs(db: DbDep, current_user: CurrentUserDep, limit: 
     return {"items": fe_viewer_provisioning_service.list_viewer_provision_logs(db, limit=limit)}
 
 
-def _workbench_read_period(db, user, period_id):
-    if period_id is None:
-        return service.get_or_create_active_period(db)
-    assert_fe_hq_read(user)
-    period = db.get(service.FunctionalEvalPeriod, period_id)
-    if period is None:
-        raise HTTPException(status_code=404, detail="평가기간을 찾을 수 없습니다.")
-    return period
+@router.get('/signature-rejections/{request_id}')
+def signature_rejection_receipt(db:DbDep,current_user:CurrentUserDep,request_id:str=ApiPath(...,pattern=r'^[0-9a-f]{32}$')):
+    from . import signature_revisions
+    try:return signature_revisions.receipt(db,current_user,request_id)
+    except ValueError as error:raise HTTPException(404,'반려 처리 결과를 찾을 수 없습니다.')from error
 
 
-from .workbench_context import router as workbench_context_router
-router.include_router(workbench_context_router)
+def _attendance_upload_error(code: str) -> HTTPException:
+    messages = {
+        "NO_ATTENDANCE_ROWS": "출역 공수가 있는 근로자 행을 찾지 못했습니다.",
+        "MULTIPLE_WORK_DATES": "출역일이 여러 개입니다. 하루 자료를 선택해 주세요.",
+        "ATTENDANCE_AMOUNT_HEADER_REQUIRED": "출역일보의 합계 열을 확인해 주세요.",
+        "ATTENDANCE_AMOUNT_INVALID": "출역 공수에 잘못된 값이 있습니다. 원본을 확인해 주세요.",
+    }
+    return HTTPException(400, messages.get(code, "파일 형식·출역일·공수를 확인해 주세요."))
+
+
+
+async def _save_attendance_upload(file: UploadFile, period_id: int, *, directory: Path | None = None) -> Path:
+    from app.config.settings import settings
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".xls", ".xlsx"}:
+        raise HTTPException(400, "ERP 출역일보 xls 또는 xlsx 파일을 선택해 주세요.")
+    raw = await file.read(20 * 1024 * 1024 + 1)
+    if not raw or len(raw) > 20 * 1024 * 1024:
+        raise HTTPException(400, "비어 있지 않은 20MB 이하 파일을 선택해 주세요.")
+    if suffix == ".xls":
+        if not raw.startswith(bytes.fromhex("d0cf11e0a1b11ae1")):
+            raise HTTPException(400, "ERP xls 파일 형식을 확인해 주세요.")
+    else:
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as package:
+                entries = package.infolist()
+                if ("xl/workbook.xml" not in package.namelist() or "[Content_Types].xml" not in package.namelist()
+                        or len(entries) > 10000 or sum(e.file_size for e in entries) > 20 * 1024 * 1024):
+                    raise ValueError("XLSX_SIZE")
+        except (zipfile.BadZipFile, ValueError):
+            raise HTTPException(400, "xlsx 파일 형식과 압축 해제 크기를 확인해 주세요.") from None
+    root = directory if directory is not None else Path(settings.storage_root) / "functional_eval"
+    tmp = root / f"attendance_{period_id}_{uuid.uuid4().hex}{suffix}"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_bytes(raw)
+    return tmp
+
+
+
+@router.post("/hq/attendance/preview")
+async def attendance_preview(db: DbDep, current_user: CurrentUserDep,
+                             file: UploadFile = File(...), period_id: int = Form(..., gt=0)):
+    assert_hq_safe_workspace(current_user)
+    assert_manual_erp_import_allowed()
+    period = _existing_attendance_period(db, period_id)
+    from .attendance import attendance_report_summary
+    import hashlib
+    with tempfile.TemporaryDirectory(prefix="fe-attendance-preview-") as folder:
+        tmp = await _save_attendance_upload(file, period.id, directory=Path(folder))
+        try:
+            result = attendance_report_summary(tmp)
+        except (ValueError, OSError) as error:
+            raise _attendance_upload_error(str(error)) from error
+        source_sha256 = hashlib.sha256(tmp.read_bytes()).hexdigest()
+    return {**result, "period_id": period.id, "source_sha256": source_sha256}
+
+
+def _existing_attendance_period(db, period_id):
+    # A pinned preview/apply is never a request to create or select a new period.
+    with db.no_autoflush:
+        periods = db.query(FunctionalEvalPeriod).filter_by(is_active=True).limit(2).all()
+        if len(periods) != 1 or periods[0].id != period_id:
+            raise HTTPException(409, "평가기간이 달라졌습니다. 현황을 새로고침해 주세요.")
+        return periods[0]
+
+
+@router.get('/hq/attendance/result')
+def attendance_result(db: DbDep, current_user: CurrentUserDep,
+                      period_id: int = Query(..., gt=0),
+                      source_sha256: str = Query(..., pattern=r'^[a-f0-9]{64}$'),
+                      work_date: date = Query(...), positive_people: int = Query(..., gt=0, le=100000)):
+    """Confirm an existing import's exact saved source. Never replay its mutation."""
+    assert_hq_safe_workspace(current_user)
+    from app.config.settings import settings
+    from .models import FunctionalEvalAttendanceImportBatch as Batch, FunctionalEvalTargetEnrollment as Enrollment, FunctionalEvalAttendanceEntry as Entry
+    from .attendance import attendance_report_summary
+    import hashlib
+    with db.no_autoflush:
+        period = _existing_attendance_period(db, period_id)
+        root = (Path(settings.storage_root) / 'functional_eval').resolve()
+        candidates = db.query(Batch).filter_by(period_id=period_id, work_date=work_date).order_by(Batch.id.desc()).limit(16).all()
+        matched = None
+        for row in candidates:
+            path = Path(row.stored_path)
+            try:
+                if not path.resolve().is_relative_to(root) or path.suffix.lower() not in {'.xls', '.xlsx'}:
+                    continue
+                if any(p.is_symlink() or getattr(p.stat(), 'st_file_attributes', 0) & 0x400 for p in (path, *path.parents)):
+                    continue
+                before = path.stat()
+                if not 0 < before.st_size <= 20 * 1024 * 1024:
+                    continue
+                raw = path.read_bytes()
+                if hashlib.sha256(raw).hexdigest() != source_sha256:
+                    continue
+                summary = attendance_report_summary(path)
+                after = path.stat()
+                if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                    continue
+                if summary['work_date'] != work_date.isoformat() or summary['positive_people'] != positive_people:
+                    continue
+                matched = row
+                break
+            except (OSError, ValueError):
+                continue
+        if matched is None:
+            raise HTTPException(409, '현재 확인한 파일과 일치하는 출역 반영 기록을 확인하지 못했습니다. 자동 재전송하지 않습니다.')
+        source_workers = set(db.query(Entry.site_code, Entry.rrn_hash).filter(
+            Entry.period_id == period_id, Entry.batch_id == matched.id).all())
+        rounds = dict(db.query(Enrollment.worker_id, Enrollment.evaluation_batch).filter_by(period_id=period_id)) if additional_rounds.schema_ready(db) else {}
+        links = sorted({(worker.site_code, rounds.get(worker.id, worker.evaluation_batch or 0)) for worker in service._evaluation_target_workers(db, period)
+                        if (worker.site_code, worker.rrn_hash) in source_workers})
+        return {'period': service.serialize_period(period, db), 'batch_id': matched.id,
+                'work_date': work_date.isoformat(), 'linked_workers': matched.linked_workers,
+                'skipped_no_registry': matched.skipped_no_roster, 'coverage_status': 'UNKNOWN_UPSERT_ONLY',
+                'source_sha256': source_sha256, 'record_verified': True,
+                'evaluation_links': [{'site_code': code, 'evaluation_batch': batch} for code, batch in links]}

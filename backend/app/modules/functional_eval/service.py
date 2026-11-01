@@ -1,4 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
+from app.modules.functional_eval import site_evaluator_access
+from app.modules.functional_eval.desktop_intake_boundary import read_manual_erp_intake_policy
+from app.modules.functional_eval import additional_rounds,signature_revisions
 
 import hashlib
 import csv
@@ -166,7 +169,9 @@ def get_or_create_active_period(db: Session) -> FunctionalEvalPeriod:
 
 
 def period_is_closed(period: FunctionalEvalPeriod, *, today: date | None = None) -> bool:
-    ref = today or utc_now().date()
+    if additional_rounds.continuous(period):return False
+    from app.core.datetime_utils import kst_today
+    ref = today or kst_today()
     return ref > period.deadline_date
 
 
@@ -324,9 +329,13 @@ def serialize_period(period: FunctionalEvalPeriod, db: Session | None = None) ->
                 .count()
             )
     return {
+        "erp_intake_policy": read_manual_erp_intake_policy(),
         "id": period.id,
         "title": period.title,
-        "deadline_date": period.deadline_date,
+        "deadline_date": None if additional_rounds.continuous(period)else period.deadline_date,
+        "evaluation_mode": "CONTINUOUS"if additional_rounds.continuous(period)else"PERIODIC",
+        "additional_target_policy": additional_rounds.policy(db)if db is not None else{'enabled':False,'state':'CHECK_REQUIRED'},
+        "whole_roster_verified": False,
         "is_active": period.is_active,
         "is_closed": period_is_closed(period),
         "evaluation_open": evaluation_is_open(),
@@ -361,7 +370,7 @@ def _is_hq_safety_user(user: User) -> bool:
 def _user_brief(db: Session, user_id: int | None) -> tuple[str | None, str | None]:
     if not user_id:
         return None, None
-    row = db.query(User.name, User.login_id).filter(User.id == user_id).first()
+    row = db.query(User).filter(User.id == user_id).first()
     if row is None:
         return None, None
     return (row.name or "").strip() or None, (row.login_id or "").strip() or None
@@ -1013,7 +1022,7 @@ def _site_evaluator_map(db: Session, site_codes: set[str]) -> dict[str, str]:
     login_ids = set(site_codes)
     login_ids.update(r.manager_login_id for r in regs if r.manager_login_id)
     users = (
-        db.query(User.login_id, User.name)
+        db.query(User)
         .filter(User.role == Role.SITE_FUNCTIONAL_EVAL, User.login_id.in_(login_ids))
         .all()
     )
@@ -1077,9 +1086,9 @@ def _summarize_hq_site_buckets(sites: list[dict[str, Any]]) -> dict[str, Any]:
 def _hq_evaluator_site_codes(db: Session) -> set[str]:
     """본사 현장 목록 — 소장 계정(별칭-이름)이 있는 현장코드."""
     codes = {r.site_code for r in db.query(FunctionalEvalSiteRegistry.site_code).all() if r[0]}
-    for user in db.query(User.site_id, User.login_id).filter(User.role == Role.SITE_FUNCTIONAL_EVAL).all():
+    for user in db.query(User).filter(User.role == Role.SITE_FUNCTIONAL_EVAL).all():
         if user.site_id:
-            site = db.query(Site.site_code).filter(Site.id == user.site_id).first()
+            site = db.query(Site).filter(Site.id == user.site_id).first()
             if site and site.site_code:
                 codes.add(site.site_code)
         elif (user.login_id or "").strip().isdigit():
@@ -1182,11 +1191,7 @@ def _site_completed_in_report_snapshot(snapshot: dict[str, Any] | None, site_cod
 
 def _locked_completed_site_codes(db: Session, period: FunctionalEvalPeriod) -> set[str]:
     codes: set[str] = set()
-    approval_rows = (
-        db.query(FunctionalEvalSiteApproval)
-        .filter(FunctionalEvalSiteApproval.period_id == period.id)
-        .all()
-    )
+    approval_rows = additional_rounds.current_approvals(db,period.id)
     for row in approval_rows:
         status = (row.status or "").strip()
         if row.evaluation_completed_at or row.site_submitted_at or status not in {"IN_PROGRESS", "REJECTED"}:
@@ -1200,7 +1205,7 @@ def _locked_completed_site_codes(db: Session, period: FunctionalEvalPeriod) -> s
         snapshot = report.report_json_snapshot or {}
         for site in snapshot.get("sites") or []:
             code = str(site.get("site_code") or "")
-            if code and _site_completed_in_report_snapshot(snapshot, code):
+            if code and not additional_rounds.active_batch(db,period.id,code)and _site_completed_in_report_snapshot(snapshot, code):
                 codes.add(code)
     return codes
 
@@ -1224,15 +1229,23 @@ def _apply_site_completion_locks(
     touched = False
     for row in sites:
         code = str(row.get("site_code") or "")
+        batch=additional_rounds.active_batch(db,period.id,code)
+        if batch:
+            previous=additional_rounds.get_approval(db,period.id,code,batch=0)
+            row['active_evaluation_batch']=batch;row['independent_additional_round']=True
+            row['previous_approval']=approval_workflow.serialize_site_approval(previous)
+            row['previous_evaluation_preserved']=bool(previous and(previous.evaluation_completed_at or previous.site_submitted_at or previous.status not in {'IN_PROGRESS','REJECTED'}))
         total = int(row.get("total") or 0)
         fully = int(row.get("fully_complete") or 0)
         currently_complete = total > 0 and fully >= total
         locked = code in locked_codes or currently_complete
         if not locked:
+            if batch:row['bucket_label']='추가 평가 진행'
             continue
         if currently_complete and persist_completion_locks:
-            _mark_site_eval_completed(db, period, code)
-            touched = True
+            if not additional_rounds.requires_round_scope(db,period.id,code):
+                _mark_site_eval_completed(db, period, code)
+                touched = True
         row["completion_locked"] = True
         row["completion_lock_reason"] = "site_once_completed"
         row["fully_complete"] = total
@@ -1266,6 +1279,13 @@ def _attendance_target_workers(
     if site_code:
         q = q.filter(FunctionalEvalWorker.site_code == site_code)
     return q.all()
+
+
+def _evaluation_target_workers(db: Session,period: FunctionalEvalPeriod,*,site_code: str|None=None):
+    """출역 이력과 명시적으로 확인한 대상의 합집합. 출역 자체는 만들지 않는다."""
+    rows=_attendance_target_workers(db,period,site_code=site_code);seen={row.id for row in rows}
+    rows.extend(row for row in additional_rounds.enrolled_workers(db,period.id,site_code)if row.id not in seen)
+    return rows
 
 
 def _workers_with_any_assessment(
@@ -1325,7 +1345,7 @@ def _list_eval_complete_site_submit_blockers(
         APPROVAL_STATUS_SITE_APPROVED,
     )
 
-    workers = _attendance_target_workers(db, period)
+    workers = _evaluation_target_workers(db, period)
     site_codes = sorted({w.site_code for w in workers if w.site_code})
     site_names = _site_name_map(db, set(site_codes))
     blockers: list[dict[str, Any]] = []
@@ -1338,7 +1358,7 @@ def _list_eval_complete_site_submit_blockers(
             continue
 
         approval = approval_workflow.get_or_create_site_approval(db, period.id, site_code)
-        if approval.evaluation_completed_at is not None and approval.status in {
+        if not getattr(approval,'evaluation_batch',0)and approval.evaluation_completed_at is not None and approval.status in {
             APPROVAL_STATUS_IN_PROGRESS,
             APPROVAL_STATUS_REJECTED,
         }:
@@ -1395,11 +1415,7 @@ def _list_eval_complete_site_submit_blockers_from_progress(
         APPROVAL_STATUS_HQ_APPROVED,
         APPROVAL_STATUS_CEO_APPROVED,
     }
-    approval_rows = (
-        db.query(FunctionalEvalSiteApproval)
-        .filter(FunctionalEvalSiteApproval.period_id == period.id)
-        .all()
-    )
+    approval_rows = additional_rounds.current_approvals(db,period.id)
     status_by_site = {row.site_code: row.status for row in approval_rows}
     completed_at_by_site = {row.site_code: row.evaluation_completed_at for row in approval_rows}
     blockers: list[dict[str, Any]] = []
@@ -1412,7 +1428,7 @@ def _list_eval_complete_site_submit_blockers_from_progress(
         status = status_by_site.get(site_code)
         if status in submitted_statuses:
             continue
-        if completed_at_by_site.get(site_code) is not None and status in {
+        if not additional_rounds.active_batch(db,period.id,site_code)and completed_at_by_site.get(site_code) is not None and status in {
             APPROVAL_STATUS_IN_PROGRESS,
             APPROVAL_STATUS_REJECTED,
         }:
@@ -1459,34 +1475,10 @@ def build_hq_review_queue(
         )
         .count()
     )
-    pending_officer_count = (
-        db.query(FunctionalEvalSiteApproval)
-        .filter(FunctionalEvalSiteApproval.period_id == period.id)
-        .filter(
-            (FunctionalEvalSiteApproval.status == APPROVAL_STATUS_SITE_APPROVED)
-            | (
-                FunctionalEvalSiteApproval.evaluation_completed_at.isnot(None)
-                & FunctionalEvalSiteApproval.status.in_({APPROVAL_STATUS_IN_PROGRESS, APPROVAL_STATUS_REJECTED})
-            )
-        )
-        .count()
-    )
-    pending_director_count = (
-        db.query(FunctionalEvalSiteApproval)
-        .filter(
-            FunctionalEvalSiteApproval.period_id == period.id,
-            FunctionalEvalSiteApproval.status == APPROVAL_STATUS_HQ_OFFICER_APPROVED,
-        )
-        .count()
-    )
-    pending_ceo_count = (
-        db.query(FunctionalEvalSiteApproval)
-        .filter(
-            FunctionalEvalSiteApproval.period_id == period.id,
-            FunctionalEvalSiteApproval.status == APPROVAL_STATUS_HQ_APPROVED,
-        )
-        .count()
-    )
+    approval_rows=additional_rounds.all_approvals(db,period.id)
+    pending_officer_count=sum(row.status==APPROVAL_STATUS_SITE_APPROVED or not getattr(row,'evaluation_batch',0)and row.evaluation_completed_at is not None and row.status in {APPROVAL_STATUS_IN_PROGRESS,APPROVAL_STATUS_REJECTED}for row in approval_rows)
+    pending_director_count=sum(row.status==APPROVAL_STATUS_HQ_OFFICER_APPROVED for row in approval_rows)
+    pending_ceo_count=sum(row.status==APPROVAL_STATUS_HQ_APPROVED for row in approval_rows)
     site_submit_blockers = (
         _list_eval_complete_site_submit_blockers_from_progress(db, period, site_progress)
         if site_progress is not None
@@ -1533,10 +1525,11 @@ def build_hq_sites_overview(
     persist_completion_locks: bool = True,
 ) -> dict[str, Any]:
     """본사 현장 목록. 기본은 출역 근로자 기준, include_inactive면 평가 이력 근로자도 포함."""
-    workers = _attendance_target_workers(db, period, site_code=site_code)
+    all_targets = _evaluation_target_workers(db, period, site_code=site_code)
+    workers = additional_rounds.current_workers(db,period.id,all_targets)
     assessed_workers: list[FunctionalEvalWorker] = []
     if include_inactive:
-        assessed_workers = _workers_with_any_assessment(db, period, site_code=site_code)
+        assessed_workers = additional_rounds.current_workers(db,period.id,_workers_with_any_assessment(db, period, site_code=site_code))
     seen_worker_ids = {w.id for w in workers}
     for assessed_worker in assessed_workers:
         if assessed_worker.id not in seen_worker_ids:
@@ -1602,6 +1595,9 @@ def build_hq_sites_overview(
         )
     return {
         "period": serialize_period(period, db),
+        "target_scope": "CURRENT_CONFIRMED_EVALUATION_ROUNDS",
+        "whole_roster_verified": False,
+        "all_confirmed_target_count":len(all_targets),
         "attendance_message": attendance_message,
         "gaps": gaps,
         "totals": {
@@ -1680,7 +1676,6 @@ def list_hq_site_completed_evaluations(
     *,
     sort_by: str = "name",
     sort_dir: str = "asc",
-    persist_approval_state: bool = True,
 ) -> dict[str, Any]:
     items = list_hq_summary(
         db,
@@ -1711,7 +1706,7 @@ def list_hq_site_completed_evaluations(
         "bucket": classify_hq_site_bucket(fully_complete=fully, total=total),
         "bucket_label": _hq_site_bucket_label(classify_hq_site_bucket(fully_complete=fully, total=total)),
     }
-    approval = build_site_approval_payload(db, period, site_code, persist_approval_state=persist_approval_state)
+    approval = build_site_approval_payload(db, period, site_code)
     return {
         "site": site_row,
         "eval_rows": build_hq_eval_rows(items, completed_only=False),
@@ -1763,9 +1758,11 @@ def list_grade_workbook_workers(
     period: FunctionalEvalPeriod,
     *,
     site_code: str | None = None,
+    batch: int | None = None,
 ) -> list[dict[str, Any]]:
     """출역 대상 근로자 + 평가 데이터 (현장별 기능인등급 엑셀용)."""
-    workers = _attendance_target_workers(db, period, site_code=site_code)
+    workers = _evaluation_target_workers(db, period, site_code=site_code)
+    if batch is not None:workers=[w for w in workers if additional_rounds.worker_approval_batch(db,w)==batch]
     workers.sort(key=lambda w: (w.site_code or "", w.row_no or 0, w.id or 0))
     site_codes = {w.site_code for w in workers if w.site_code}
     site_names = _site_name_map(db, site_codes)
@@ -1785,10 +1782,11 @@ def build_site_grade_workbook_bytes(
     period: FunctionalEvalPeriod,
     *,
     site_code: str | None = None,
+    batch: int | None = None,
 ) -> bytes:
     from app.modules.functional_eval.site_grade_workbook import generate_site_grade_workbook_bytes
 
-    workers = list_grade_workbook_workers(db, period, site_code=site_code)
+    workers = list_grade_workbook_workers(db, period, site_code=site_code,batch=batch)
     if not workers:
         raise ValueError("NO_ATTENDANCE_WORKERS")
     return generate_site_grade_workbook_bytes(workers)
@@ -1875,6 +1873,9 @@ def serialize_mileage_placeholder(db: Session, worker: FunctionalEvalWorker) -> 
 
 
 def _site_code_for_user(user: User, db: Session) -> str:
+    from . import site_evaluator_access
+    if getattr(user.role,"value",user.role)=="SITE":
+        return site_evaluator_access.linked_site_code(db,user)
     if user.site_id:
         site = db.query(Site).filter(Site.id == user.site_id).first()
         if site and site.site_code:
@@ -1956,6 +1957,7 @@ def _site_code_for_user(user: User, db: Session) -> str:
     return ""
 
 
+
 def _manager_login_for_site(db: Session, site_code: str) -> str:
     reg = (
         db.query(FunctionalEvalSiteRegistry)
@@ -1988,6 +1990,9 @@ def _manager_login_for_site(db: Session, site_code: str) -> str:
 
 
 def _is_manager_user_for_site(db: Session, user: User, site_code: str) -> bool:
+    from . import site_evaluator_access
+    if getattr(user.role,"value",user.role)=="SITE":
+        return site_evaluator_access.is_linked_site_manager(db,user,site_code)
     login_id = (user.login_id or "").strip()
     login_norm = _normalize_login_to_name(login_id)
     if not login_id and not login_norm:
@@ -2041,6 +2046,7 @@ def _is_manager_user_for_site(db: Session, user: User, site_code: str) -> bool:
     return False
 
 
+
 def _worker_eval_assignment(
     db: Session,
     worker: FunctionalEvalWorker,
@@ -2075,7 +2081,7 @@ def _site_attendance_workers(
     site_code: str,
 ) -> list[FunctionalEvalWorker]:
     """기간 내 출역 이력이 있는 현장 근로자(퇴사·재출역 포함, 평가·승인·서명 대상)."""
-    workers = _attendance_target_workers(db, period, site_code=site_code)
+    workers = _evaluation_target_workers(db, period, site_code=site_code)
     workers.sort(key=lambda w: (w.row_no or 0, w.id or 0))
     return workers
 
@@ -2107,8 +2113,10 @@ def site_worker_payloads_for_batch(
     return payloads
 
 
-def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, site_code: str, *, persist_approval_state: bool = True) -> dict[str, Any]:
+def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, site_code: str, *, batch=None) -> dict[str, Any]:
     rows = _site_attendance_workers(db, period, site_code)
+    active_round=additional_rounds.active_batch(db,period.id,site_code)if batch is None else batch
+    if active_round or batch is not None:rows=[row for row in rows if additional_rounds.worker_approval_batch(db,row)==active_round]
     manager_login = _manager_login_for_site(db, site_code)
     team_leader_logins = _collect_team_leader_evaluator_logins(
         rows, manager_login, db=db, site_code=site_code, period_id=period.id
@@ -2138,17 +2146,13 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
             if _is_fully_evaluated(payload):
                 team_complete += 1
     currently_complete = len(rows) > 0 and complete >= len(rows)
-    locked = site_code in _locked_completed_site_codes(db, period) or currently_complete
-    approval_row = approval_workflow.get_or_create_site_approval(db, period.id, site_code) if persist_approval_state else db.query(FunctionalEvalSiteApproval).filter(FunctionalEvalSiteApproval.period_id == period.id, FunctionalEvalSiteApproval.site_code == site_code).first()
-    if persist_approval_state and currently_complete and approval_row.evaluation_completed_at is None:
-        approval_row.evaluation_completed_at = utc_now()
-        db.add(approval_row)
-        db.commit()
+    approval_row = approval_workflow.get_or_create_site_approval(db, period.id, site_code,batch=active_round)
+    locked = (currently_complete or bool(approval_row.evaluation_completed_at)) if additional_rounds.requires_round_scope(db,period.id,site_code) else (site_code in _locked_completed_site_codes(db, period) or currently_complete)
     if locked:
         complete = len(rows)
         direct_complete = direct_total
         team_complete = team_total
-    status = approval_row.status if approval_row is not None else "IN_PROGRESS"
+    status = approval_row.status
     batches = sorted({r.evaluation_batch or 0 for r in rows})
     batch = batches[-1] if batches else 0
     from app.modules.functional_eval.grade_inflation_guard import compute_grade_inflation_review
@@ -2156,6 +2160,12 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
     site_workers = site_worker_payloads_for_batch(db, period, site_code, batch)
     grade_review = compute_grade_inflation_review(site_workers)
     return {
+        "active_evaluation_batch": active_round if active_round else batch,
+        "approval_evaluation_batch":active_round,
+        "round_scope_required":additional_rounds.requires_round_scope(db,period.id,site_code),
+        "target_sha256": additional_rounds.round_fingerprint(db,period.id,site_code,active_round),
+        "independent_additional_round": bool(active_round),
+        "previous_rounds": [approval_workflow.serialize_site_approval(row)for row in additional_rounds.round_history(db,period.id,site_code)if getattr(row,'evaluation_batch',0)<active_round],
         "site_total_workers": len(rows),
         "site_complete_workers": complete,
         "direct_total": direct_total,
@@ -2166,17 +2176,19 @@ def serialize_site_approval_summary(db: Session, period: FunctionalEvalPeriod, s
         "completion_locked": locked,
         "can_submit_site_approval": complete == len(rows) and len(rows) > 0
         and approval_workflow.is_site_evaluation_editable(status),
-        "can_self_reject_site_approval": status == "SITE_APPROVED",
+        "can_self_reject_site_approval": status == "SITE_APPROVED" and signature_revisions.policy(db)["enabled"],
+        "signature_revision_policy":signature_revisions.policy(db),
+        "revision_open":signature_revisions.revision_open(db,period.id,site_code,active_round) and status in {"IN_PROGRESS","REJECTED"},
         "evaluation_editable": approval_workflow.is_site_evaluation_editable(status),
         **grade_review,
     }
 
 
-def build_site_approval_payload(db: Session, period: FunctionalEvalPeriod, site_code: str, *, persist_approval_state: bool = True) -> dict[str, Any]:
-    row = approval_workflow.get_or_create_site_approval(db, period.id, site_code) if persist_approval_state else db.query(FunctionalEvalSiteApproval).filter(FunctionalEvalSiteApproval.period_id == period.id, FunctionalEvalSiteApproval.site_code == site_code).first()
+def build_site_approval_payload(db: Session, period: FunctionalEvalPeriod, site_code: str, *, batch=None) -> dict[str, Any]:
+    row = approval_workflow.get_or_create_site_approval(db, period.id, site_code,batch=batch)
     return {
         **approval_workflow.serialize_site_approval(row),
-        **serialize_site_approval_summary(db, period, site_code, persist_approval_state=persist_approval_state),
+        **serialize_site_approval_summary(db, period, site_code,batch=batch),
     }
 
 
@@ -2210,7 +2222,7 @@ def _attendance_worker_count_for_site(
     return len(rows)
 
 
-def serialize_evaluator_session(db: Session, user: User, period: FunctionalEvalPeriod) -> dict[str, Any]:
+def serialize_evaluator_session(db: Session, user: User, period: FunctionalEvalPeriod, *, batch=None) -> dict[str, Any]:
     site_code = _site_code_for_user(user, db)
     login_id = (user.login_id or "").strip()
     is_manager = _is_primary_site_evaluator(db, user, site_code)
@@ -2222,15 +2234,20 @@ def serialize_evaluator_session(db: Session, user: User, period: FunctionalEvalP
     site_alias = (reg.site_alias or "").strip() if reg else ""
     manager_name = (reg.manager_name or "").strip() if reg else ""
     manager_login_id = _manager_login_for_site(db, site_code)
-    site_worker_count = _attendance_worker_count_for_site(db, period.id, site_code)
-    workers = list_workers_for_user(db, user, period)
-    approval = build_site_approval_payload(db, period, site_code) if is_manager else None
+    attendance_count = _attendance_worker_count_for_site(db, period.id, site_code)
+    from .round_selection import workers as round_workers
+    selected = additional_rounds.active_batch(db,period.id,site_code) if batch is None else batch
+    targets = round_workers(db,period,site_code,selected)
+    site_worker_count = len(targets)
+    team_split = any((row.assigned_evaluator_login_id or '').strip() not in {'',manager_login_id} for row in targets)
+    workers = list_workers_for_user(db, user, period,batch=selected)
+    approval = build_site_approval_payload(db, period, site_code,batch=selected) if is_manager else None
     return {
         "role": "MANAGER" if is_manager else "TEAM_LEADER",
         "role_label": "소장" if is_manager else "팀장",
         "eval_scope_label": (
             "직영 평가"
-            if is_manager and site_worker_count > TEAM_LEADER_SPLIT_THRESHOLD
+            if is_manager and team_split
             else ("전원 평가" if is_manager else "팀원 평가")
         ),
         "login_id": login_id,
@@ -2241,7 +2258,9 @@ def serialize_evaluator_session(db: Session, user: User, period: FunctionalEvalP
         "manager_login_id": manager_login_id,
         "assigned_worker_count": len(workers),
         "site_worker_count": site_worker_count,
-        "team_split_active": site_worker_count > TEAM_LEADER_SPLIT_THRESHOLD,
+        "team_split_active": team_split,
+        "latest_attendance_worker_count": attendance_count,
+        "selected_evaluation_batch": selected,
         "split_threshold": TEAM_LEADER_SPLIT_THRESHOLD,
         "approval": approval,
     }
@@ -2351,10 +2370,13 @@ def _worker_assignment_for_site(
     team_leader_logins = _collect_team_leader_evaluator_logins(
         rows, manager_login, db=db, site_code=worker.site_code, period_id=period_row.id
     )
+    return _worker_eval_assignment(db, worker, team_leader_logins=team_leader_logins)
 
 
 def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
-    if user.role != Role.SITE_FUNCTIONAL_EVAL:
+    from . import site_evaluator_access
+    if not site_evaluator_access.is_site_evaluator(user):
+        if getattr(user.role,"value",user.role)=="SITE":raise ValueError("SITE_MISMATCH")
         return
     login_id = (user.login_id or "").strip()
     site_code = _site_code_for_user(user, db)
@@ -2371,9 +2393,12 @@ def _assert_worker_access(db: Session, user: User, worker: FunctionalEvalWorker)
         raise ValueError("SITE_MISMATCH")
 
 
+
 def _assert_worker_score_save_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
     """기능·안전 점수 저장 — 소장은 팀원(팀장 담당) 점수 수정 불가."""
-    if user.role != Role.SITE_FUNCTIONAL_EVAL:
+    from . import site_evaluator_access
+    if not site_evaluator_access.is_site_evaluator(user):
+        if getattr(user.role,"value",user.role)=="SITE":raise ValueError("SITE_MISMATCH")
         return
     site_code = _site_code_for_user(user, db)
     if site_code != worker.site_code:
@@ -2385,11 +2410,13 @@ def _assert_worker_score_save_access(db: Session, user: User, worker: Functional
     _assert_worker_access(db, user, worker)
 
 
+
 def _assert_worker_evidence_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
     """포상·제재 등록 — 소장은 현장 전체, 팀장은 담당 팀원만."""
     if _is_hq_safety_user(user):
         return
-    if user.role != Role.SITE_FUNCTIONAL_EVAL:
+    from . import site_evaluator_access
+    if not site_evaluator_access.is_site_evaluator(user):
         raise ValueError("SITE_MISMATCH")
     site_code = _site_code_for_user(user, db)
     if site_code != worker.site_code:
@@ -2408,11 +2435,13 @@ def _assert_worker_evidence_access(db: Session, user: User, worker: FunctionalEv
         raise ValueError("SITE_MISMATCH")
 
 
+
 def _assert_worker_view_access(db: Session, user: User, worker: FunctionalEvalWorker) -> None:
     """이력·조회 — 소장은 현장 전체, 팀장은 담당만, 본사는 전체."""
     if _is_hq_safety_user(user):
         return
-    if user.role != Role.SITE_FUNCTIONAL_EVAL:
+    from . import site_evaluator_access
+    if not site_evaluator_access.is_site_evaluator(user):
         raise ValueError("SITE_MISMATCH")
     site_code = _site_code_for_user(user, db)
     if site_code != worker.site_code:
@@ -2420,6 +2449,7 @@ def _assert_worker_view_access(db: Session, user: User, worker: FunctionalEvalWo
     if _is_primary_site_evaluator(db, user, site_code):
         return
     _assert_worker_access(db, user, worker)
+
 
 
 def _worker_has_safety_bottom(db: Session, worker_id: int) -> bool:
@@ -2459,10 +2489,12 @@ def _assert_sanction_register(db: Session, user: User, worker: FunctionalEvalWor
     _assert_sanction_access(db, user, worker)
 
 
-def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
+def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod, *, batch=None) -> list[dict[str, Any]]:
     site_code = _site_code_for_user(user, db)
     login_id = (user.login_id or "").strip()
-    rows = _site_attendance_workers(db, period, site_code)
+    from .round_selection import workers as round_workers
+    rows = (additional_rounds.current_workers(db,period.id,_site_attendance_workers(db, period, site_code))
+            if batch is None else round_workers(db,period,site_code,batch))
     if not rows:
         return []
     is_manager = _is_primary_site_evaluator(db, user, site_code)
@@ -2478,8 +2510,8 @@ def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod)
             .first()
         )
         site_alias = (reg.site_alias or "").strip() if reg else ""
-    if is_manager and len(rows) > TEAM_LEADER_SPLIT_THRESHOLD:
-        rows = [r for r in rows if (r.assigned_evaluator_login_id or "").strip() == manager_login]
+    if is_manager:
+        rows = [r for r in rows if (r.assigned_evaluator_login_id or "").strip() in {"",manager_login}]
     elif not is_manager:
         rows = [
             r
@@ -2494,11 +2526,13 @@ def list_workers_for_user(db: Session, user: User, period: FunctionalEvalPeriod)
     ]
 
 
-def list_site_overview_for_manager(db: Session, user: User, period: FunctionalEvalPeriod) -> list[dict[str, Any]]:
+def list_site_overview_for_manager(db: Session, user: User, period: FunctionalEvalPeriod, *, batch=None) -> list[dict[str, Any]]:
     site_code = _site_code_for_user(user, db)
     if not _is_primary_site_evaluator(db, user, site_code):
         return []
-    rows = _site_attendance_workers(db, period, site_code)
+    from .round_selection import workers as round_workers
+    rows = (additional_rounds.current_workers(db,period.id,_site_attendance_workers(db, period, site_code))
+            if batch is None else round_workers(db,period,site_code,batch))
     manager_login = _manager_login_for_site(db, site_code)
     team_leader_logins = _collect_team_leader_evaluator_logins(
         rows, manager_login, db=db, site_code=site_code, period_id=period.id
@@ -2728,7 +2762,7 @@ def record_sanction(
         assert_period_editable(period)
     elif _is_hq_safety_user(user):
         pass
-    elif user.role != Role.SITE_FUNCTIONAL_EVAL:
+    elif not site_evaluator_access.is_site_evaluator(user):
         raise ValueError("SITE_MISMATCH")
 
     if violation_code not in VIOLATION_BY_CODE:
@@ -2807,6 +2841,7 @@ def record_sanction(
     return _serialize_sanction(row, worker.name, db, strike_sequence=strike_sequence)
 
 
+
 def list_hq_summary(
     db: Session,
     period: FunctionalEvalPeriod,
@@ -2817,10 +2852,11 @@ def list_hq_summary(
     sanction_status: str | None = None,
     include_inactive: bool = False,
 ) -> list[dict[str, Any]]:
-    workers = _attendance_target_workers(db, period, site_code=site_code)
+    workers = _evaluation_target_workers(db, period, site_code=site_code)
+    workers=additional_rounds.current_workers(db,period.id,workers)
     assessed_workers: list[FunctionalEvalWorker] = []
     if include_inactive:
-        assessed_workers = _workers_with_any_assessment(db, period, site_code=site_code)
+        assessed_workers = additional_rounds.current_workers(db,period.id,_workers_with_any_assessment(db, period, site_code=site_code))
 
     all_worker_ids = [w.id for w in workers]
     seen_worker_ids = {w.id for w in workers}
@@ -2929,7 +2965,7 @@ def _attendance_worker_payloads(
     *,
     site_code: str | None = None,
 ) -> list[dict[str, Any]]:
-    workers = _attendance_target_workers(db, period, site_code=site_code)
+    workers = additional_rounds.current_workers(db, period.id, _evaluation_target_workers(db, period, site_code=site_code))
     site_codes = {w.site_code for w in workers if w.site_code}
     site_names = _site_name_map(db, site_codes)
     _, attendance_labels, _ = _attendance_site_meta(db, period.id)
@@ -3419,41 +3455,16 @@ def save_worker_assessment(
         raise ValueError("WORKER_NOT_FOUND")
     if period_is_closed(period):
         raise ValueError("PERIOD_CLOSED")
-    approval_workflow.assert_site_editable(db, period.id, worker.site_code)
+    lock=additional_rounds.get_approval(db,period.id,worker.site_code,batch=additional_rounds.worker_approval_batch(db,worker),create=True)
+    model=type(lock);db.query(model).filter(model.id==lock.id,model.status==lock.status).update({model.status:model.status},synchronize_session=False);db.refresh(lock)
+    approval_workflow.assert_site_editable(db, period.id, worker.site_code,batch=additional_rounds.worker_approval_batch(db,worker))
     from app.modules.functional_eval import signature_ops
 
     signature_ops.assert_worker_not_signature_locked(db, user, worker)
     _assert_worker_attendance_eligible(db, period, worker)
 
-    computed = compute_assessment(eval_type, scores)
-    row = (
-        db.query(FunctionalEvalAssessment)
-        .filter(
-            FunctionalEvalAssessment.worker_id == worker_id,
-            FunctionalEvalAssessment.eval_type == eval_type,
-        )
-        .first()
-    )
-    if row is None:
-        row = FunctionalEvalAssessment(
-            worker_id=worker_id,
-            eval_type=eval_type,
-            scores_json=computed["scores"],
-            total_score=computed["total_score"],
-            max_score=computed["max_score"],
-            grade_code=computed["grade_code"],
-            grade_label=computed["grade_label"],
-            updated_by_user_id=user.id,
-        )
-        db.add(row)
-    else:
-        row.scores_json = computed["scores"]
-        row.total_score = computed["total_score"]
-        row.max_score = computed["max_score"]
-        row.grade_code = computed["grade_code"]
-        row.grade_label = computed["grade_label"]
-        row.updated_by_user_id = user.id
-        db.add(row)
+    _upsert_assessment_with_revision(db,worker=worker,eval_type=eval_type,scores=scores,user=user,reason='현장 평가 내용 저장',source='SITE_EVALUATION')
+    row=db.query(FunctionalEvalAssessment).filter_by(worker_id=worker_id,eval_type=eval_type).one()
     db.commit()
     db.refresh(row)
     from app.modules.functional_eval import grade_stats_cache
@@ -3489,6 +3500,7 @@ def save_hq_assessment_override(
     if period_is_closed(period):
         raise ValueError("PERIOD_CLOSED")
 
+    approval_workflow.assert_site_editable(db,period.id,worker.site_code,batch=additional_rounds.worker_approval_batch(db,worker))
     assessment = _upsert_assessment_with_revision(
         db,
         worker=worker,

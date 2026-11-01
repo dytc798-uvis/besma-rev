@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "profile": "CURRENT_OPERATING_EVALUATION_95_V1",
+  "template_file": "01. 현장별 기능인등급_출력양식.xlsx",
+  "template_sha256": "658cb0c0cd0fdd33a7bc5c4ffa0b70d96bed35d57b2b2d2efe6117e9f2dc3be4",
+  "source_sha256": "118d09b41d552d3167f67ac9d5278147550f2b9cb3d52d5f3e4e8b4441230976",
+  "catalog_sha256": "ea65f7c4fe935163d475ed089d8db6d805f41ba51dfebbbb53c20210cceacb39",
+  "operating_catalog_sha256": "ea65f7c4fe935163d475ed089d8db6d805f41ba51dfebbbb53c20210cceacb39",
+  "max_scores": {
+    "FUNCTIONAL": 100,
+    "SAFETY": 95
+  },
+  "input_roster_sheet": "1. 현장별 인원현황",
+  "roster_start": 6,
+  "roster_derived_formula_columns": [
+    8
+  ],
+  "evaluation_sheets": {
+    "FUNCTIONAL": "2-1. 인사고과표(기능)",
+    "SAFETY": "2-2. 인사고과표(안전)"
+  },
+  "evaluation_start": 7,
+  "body_capacity": 1277,
+  "site_lookup_sheet": "현장리스트",
+  "no_personnel_data": true,
+  "source_original_unchanged": true,
+  "styles_sha256": "6ca7f9fc01316bd5e1c5cc70785e61a7555fe1b6a28ca172ac470192ef559c8e",
+  "authoring": "Artifact Tool cells transferred to source package for native-format preservation"
+}
