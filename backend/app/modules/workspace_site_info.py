@@ -60,6 +60,8 @@ def save(code,payload,db,user):
  if old:
   if old['site_code']!=code or old['updated_by']!=user.id or old['address']!=payload.address or old['description']!=payload.description:raise HTTPException(409,'저장 요청을 다시 확인해 주세요.')
   return {'saved':True,'site_code':code,'revision':old['revision']}
+ from app.modules.site_corrections import availability
+ if availability(db)!='READY':raise HTTPException(404,'현장 정보 수정 기능이 꺼져 있습니다.')
  _,sites=catalog(db);site=next((s for s in sites if s['code']==code and not annual_unit_contract(s)),None)
  if site is None:raise HTTPException(404,'현장을 찾지 못했습니다.')
  if (site['edit_revision'],site['address'],site['description'])!=(payload.expected_revision,payload.expected_address,payload.expected_description):raise HTTPException(409,'다른 사용자가 먼저 수정했거나 현장 원장이 바뀌었습니다. 새로고침 후 확인해 주세요.')

@@ -118,14 +118,16 @@ def create_general_opinion(body:SiteImprovement,db:DbDep,user=Depends(get_curren
 def current_site(db:DbDep,user=Depends(get_current_user)):
     from app.modules.workspace import result
     site=actor(db,user)
-    value={'id':site.id,'code':site.site_code,'name':site.site_name,'address':site.address,'description':site.description or'','client':site.client_name,'contractor':site.contractor_name,'contacts':None,'directory_state':'UNAVAILABLE'}
+    value={'id':site.id,'code':site.site_code,'name':site.site_name,'address':site.address,'description':site.description or'','client':site.client_name,'contractor':site.contractor_name,'contacts':None,'directory_state':'UNAVAILABLE','correction_available':False,'correction_can_edit':False,'correction_status':'LINK_UNCONFIRMED'}
     from app.modules.site_directory import catalog
     try:
         data,items=catalog(db);from app.modules.site_corrections import canonical_site_code
         own_code=canonical_site_code(db,site,data.get('aliases',{}),forbidden=True);item=next((r for r in items if r['code']==own_code),None)
         if item:value.update(code=item['code'],address=item['address'],description=item.get('description',''),contacts=item['contacts'],directory_state='READY',correction_review_required=item.get('correction_review_required',False),correction_status=item.get('correction_status',''),correction_available=item.get('correction_available',False),correction_can_edit=item.get('correction_can_edit',False))
     except HTTPException as error:
-        if error.status_code!=503:raise
+        # actor() already verified this exact authenticated Site outside this try.
+        # A catalog identity conflict cannot grant directory data or editing.
+        if error.status_code not in {403,409,503}:raise
     return result(value)
 
 

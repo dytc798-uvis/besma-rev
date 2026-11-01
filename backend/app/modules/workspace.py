@@ -318,3 +318,6 @@ router.include_router(site_workspace_router)
 def evaluation_status(db:DbDep,user=Depends(authorized)):
  from app.modules.workspace_evaluation import evaluation_status as project
  return result(project(db,user))
+
+from app.modules.site_corrections import router as site_corrections_router
+router.include_router(site_corrections_router)

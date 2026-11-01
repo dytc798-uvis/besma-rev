@@ -15,6 +15,8 @@ DATA=Path(settings.storage_root)/'site-directory'/'directory.json'
 VERSION='2026.10.26.7'
 
 def migrate(connection):
+ from app.modules.workspace_site_info import migrate as migrate_corrections
+ migrate_corrections(connection)
  connection.execute(text('''CREATE TABLE IF NOT EXISTS site_directory_favorites (
  user_id INTEGER NOT NULL REFERENCES users(id),site_code TEXT NOT NULL,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,site_code))'''))
@@ -55,7 +57,7 @@ def detail(key,label,value,unit=''):
  if value is None or value=='':return None
  return {'key':key,'label':label,'value':str(value),'unit':unit}
 
-def catalog(db):
+def catalog(db,*,include_corrections=True):
  data=snapshot();aliases=data.get('aliases',{})
  ranks={r['contact_id']:dict(r) for r in db.execute(text('SELECT contact_id,rank,revision FROM site_directory_contact_ranks')).mappings()}
  completed=[dict(r) for r in db.execute(text('SELECT site_code,field,contact_id,value,revision FROM site_directory_info_completions ORDER BY site_code,revision')).mappings()]
@@ -63,7 +65,7 @@ def catalog(db):
  revisions={}
  for r in completed:revisions[r['site_code']]=max(revisions.get(r['site_code'],0),r['revision'])
  rows={str(r['site_code']):dict(r) for r in db.execute(text('''SELECT id,site_code,site_name,address,latitude,longitude,project_amount,start_date,end_date,
- client_name,contractor_name,contract_type,contract_date,work_types,building_count,floor_underground,floor_ground,household_count,gross_area,gross_area_unit,main_usage FROM sites''')).mappings()}
+ description,client_name,contractor_name,contract_type,contract_date,work_types,building_count,floor_underground,floor_ground,household_count,gross_area,gross_area_unit,main_usage FROM sites''')).mappings()}
  for alias,code in aliases.items():
   if code not in rows and alias in rows:rows[code]=rows[alias]
  result=[]
@@ -92,10 +94,15 @@ def catalog(db):
    if not str(contact.get('phone') or '').strip():contact['phone']=completions.get((item['code'],'phone',contact['contact_id']),'')
   address=value('address',erp.get('address','')) or ''
   if not str(address).strip():address=completions.get((item['code'],'address',''),'')
-  result.append({'code':item['code'],'name':item['name'],'address':address,'info_revision':revisions.get(item['code'],0),
+  result.append({'code':item['code'],'name':item['name'],'address':address,'description':str(value('description','')or''),'info_revision':revisions.get(item['code'],0),
     'latitude':current.get('latitude'),'longitude':current.get('longitude'),'contacts':contacts,
     'contracts':[{'name':c['name'],'amount':c['amount'],'basis':c['basis'],'start':c.get('start',''),'end':c.get('end','')} for c in contracts],
     'contract_total_complete':contract_info.get('complete',False),'details':[f for f in fields if f is not None]})
+ from app.modules.workspace_site_info import apply as apply_corrections
+ result=apply_corrections(db,result)
+ if include_corrections:
+  from app.modules.site_corrections import project
+  result=project(db,result)
  return data,result
 
 @router.get('')
