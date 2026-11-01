@@ -4,6 +4,15 @@ import {createNasSearchStatus} from '/assets/nas-search-status.js';
 const labels={QUEUED:'접수 완료',RUNNING:'처리 중',AWAITING_REVIEW:'자료 확인 대기',AWAITING_RELEASE:'제공 확인 대기',COMPLETED:'답변 완료',DECLINED:'처리 안내',NEEDS_INFO:'추가 확인 필요',FAILED:'처리 오류',INTERRUPTED:'처리 중단',CANCELLED:'취소',ACCESS_REVOKED:'이용 권한 확인 필요'};
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 
+export function recentReplySummary(text,item){
+ if(item?.kind!=='QUESTION'||item.status!=='COMPLETED'||item.source_access===false||item.source||item.nas_lookup?.sort!=='newest'||typeof text!=='string'||text.length>12000)return null;
+ const lines=text.split('\n'),head=lines[0].match(/^안전보건관리실에서 (?:‘[^‘’\n]{1,100}’와 일치하는 )?최근 수정된 파일 ([1-9]|10)개입니다\.$/);
+ if(!head||lines.length!==2*Number(head[1])+2||!/^검색목록 반영: .+\. 전체 폴더 검사 시각과는 다릅니다\. 수정일 순서이며 최신 승인본이라는 뜻은 아닙니다\.$/.test(lines.at(-1)))return null;
+ const files=[];
+ for(let i=1;i<=Number(head[1]);i++){const match=lines[2*i-1].match(new RegExp('^'+i+'\\. (.{1,255}) · (\\d{2}/\\d{2} \\d{2}:\\d{2}|시각 확인 필요)$')),folder=lines[2*i];if(!match||!folder.startsWith('   ')||folder.length>4096||/[\x00-\x1f]/.test(folder))return null;files.push({name:match[1],modified:match[2],folder:folder.slice(3)});}
+ return {heading:lines[0],files,note:lines.at(-1)};
+}
+
 export function fileReplySummary(text,item){
  if(item?.status!=='COMPLETED'||item.source_access===false||item.files?.length!==1||typeof text!=='string')return null;
  const lines=text.split('\n');
@@ -112,7 +121,7 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
    nasSummary.textContent=Number.isInteger(value.total_count)&&Number.isInteger(value.scanned_count)?`검색 일치 ${value.total_count.toLocaleString()}건 중 ${value.scanned_count.toLocaleString()}건 확인 · 선택 가능 ${nasResults.size.toLocaleString()}개`:`자료 ${nasResults.size.toLocaleString()}개 표시 · 전체 건수 확인 필요`;
    if(nasUnavailable)nasSummary.textContent+=` · 32MB 초과 ${nasUnavailable}개`;if(nasExcluded)nasSummary.textContent+=` · 이용 제한 ${nasExcluded}개`;
    if(!nasResults.size)found.append(node('p',hasMore?'현재 범위에 선택할 자료가 없습니다. 자료 더 보기를 눌러 확인해 주세요.':nasUnavailable?'자료는 검색됐지만 32MB를 넘어 아직 채팅으로 받을 수 없습니다. NAS 원본은 그대로 보관되어 있습니다.':nasIndex?.emptyMessage('조건에 맞는 자료를 찾지 못했습니다. 검색어를 바꿔 확인해 주세요.')||'조건에 맞는 자료를 찾지 못했습니다.'));
-   for(const item of nasResults.values()){const row=node('div',null,'request-nas-result'),choose=node('button','이 자료 선택 · '+item.file_name);choose.type='button';choose.title=item.file_name;choose.onclick=()=>{if(sending||!current()||kind.value==='EDIT'&&!editable(item))return;nasSelection=item;resultSelection=null;requestKey=crypto.randomUUID();submittedContent=null;selectionText();save();options.open=false;body.focus();};row.append(choose,node('small',item.relative_path));found.append(row);}
+   for(const item of nasResults.values()){const row=node('div',null,'request-nas-result'),choose=node('button','이 자료 선택 · '+item.file_name);choose.type='button';choose.title=item.file_name;choose.onclick=()=>{if(sending||!current()||kind.value==='EDIT'&&!editable(item))return;nasSelection=item;resultSelection=null;requestKey=crypto.randomUUID();submittedContent=null;selectionText();save();options.open=false;status.textContent='자료를 선택했습니다.';body.focus();};row.append(choose,node('small',item.relative_path));found.append(row);}
    if(!more)(found.querySelector('button')||nasSummary).scrollIntoView({block:'nearest'});save();
   }catch(e){if(current()&&epoch===nasEpoch){const stale=e.status===409||/갱신됐|범위가 달라졌/.test(e.message);if(stale){nasPage=null;nasMore.hidden=true;found.replaceChildren();}nasSummary.textContent=stale?'검색 자료가 갱신됐습니다. 자료 찾기를 눌러 다시 확인해 주세요.':e.message;}}finally{if(current()&&epoch===nasEpoch)find.disabled=nasMore.disabled=false;}}
  find.onclick=()=>void searchNas();nasMore.onclick=()=>void searchNas(true);nasSort.onchange=()=>{resetNas();save();if(query.value.trim())void searchNas();};query.addEventListener('input',()=>{resetNas();save();});query.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();void searchNas();}};
@@ -126,6 +135,12 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
   details.append(summary,node('p',text,'request-body'));return details;
  }
  function appendReply(answer,text,item){
+  const recent=recentReplySummary(text,item);
+  if(recent){
+   const list=node('div',null,'request-recent-files');list.style.display='grid';list.style.gap='8px';list.style.minWidth='0';
+   for(const[fileIndex,file]of recent.files.entries()){const row=node('div',null,'request-recent-file'),name=node('strong',(fileIndex+1)+'. '+file.name);name.title=file.name+' / '+file.folder;Object.assign(name.style,{display:'block',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'});row.style.minWidth='0';row.append(name,node('small',file.modified));list.append(row);}
+   answer.append(node('p',recent.heading,'request-body'),list,node('p',recent.note,'request-progress'),sourceDetails(item.id+':recent','파일명·폴더 전체 보기',recent.files.map((file,i)=>(i+1)+'. '+file.name+' · '+file.modified+'\n'+file.folder).join('\n\n')));return;
+  }
   const compact=fileReplySummary(text,item);
   if(compact){answer.append(node('p',compact.body,'request-body'),sourceDetails(item.id+':lookup','출처 보기',compact.source));return;}
   const boundary=text.lastIndexOf('\n\n원문 근거 · ');
@@ -137,8 +152,9 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
   const actions=node('div',null,'request-result-actions');
   for(const [mode,label]of [['NAS','파일 받기'],['SOURCE_QUESTION','내용 질문']]){const open=node('button',label);open.type='button';open.style.minHeight='44px';open.onclick=()=>{
    if(sending||uploading||!current())return;
-   if(body.value.trim()||inputAttachment||resultSelection||nasSelection||channel.value==='WORK'){status.textContent='작성 중인 내용을 보내거나 비운 뒤 파일 목록을 열어 주세요.';return;}
-   kind.value=mode;query.value=hint.q;nasSort.value='newest';resetNas();selectionText();options.open=true;save();status.textContent='현재 검색목록에서 파일을 선택해 주세요. 이전 답변 뒤에 수정된 자료가 포함될 수 있습니다.';void searchNas();
+   const keepQuestion=mode==='SOURCE_QUESTION'&&channel.value==='CHAT'&&['QUESTION','SOURCE_QUESTION'].includes(kind.value);
+   if((body.value.trim()&&!keepQuestion)||inputAttachment||resultSelection||nasSelection||channel.value==='WORK'){status.textContent='작성 중인 내용을 보내거나 비운 뒤 파일 목록을 열어 주세요.';return;}
+   kind.value=mode;query.value=hint.q;nasSort.value='newest';resetNas();selectionText();options.open=true;save();status.textContent=keepQuestion&&body.value.trim()?'질문은 그대로입니다. 사용할 자료를 선택해 주세요.':'현재 검색목록에서 사용할 자료를 선택해 주세요.';void searchNas();
   };actions.append(open);}
   answer.append(actions);
  }
