@@ -226,9 +226,8 @@ async function render(){if(siteWorkspace)return siteWorkspace.render();if(pendin
  }else{const mod=await import('/assets/workspace-settings.js');if(g!==generation)return;const cleanup=await mod.mountWorkspaceSettings(host,{api,context,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token});if(g!==generation)cleanup?.();else requestCleanup=cleanup;}
  }
  else if(key==='forms'){
- const saved=readView('forms');let seq=0,q=typeof saved.q==='string'?saved.q.slice(0,120):'',selected=typeof saved.selected==='string'?saved.selected:'';const tools=N('div',null,'tools'),list=N('div'),note=N('p',null,'top-note'),canReceive=['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role);
- async function loadForms(value=q){q=value.slice(0,120);saveView('forms',{q,selected});const seqNow=++seq,d=await api('/workspace/forms?q='+encodeURIComponent(q));if(g!==generation||seqNow!==seq)return;note.textContent=d.items.length+'개 자료 · '+d.source;list.replaceChildren();for(const item of d.items){const p=N('article',null,'policy-item'+(item.path===selected?' selected':''));p.dataset.formPath=item.path;p.append(N('strong',item.name),N('p',item.path,'small muted'));if(canReceive){const get=B('받기',async()=>{selected=item.path;saveView('forms',{q,selected});for(const r of list.children)r.classList.toggle('selected',r.dataset.formPath===selected);await receiveForm(item,g,get);});p.append(get);}list.append(p);}if(!d.items.length)list.append(N('p','검색 결과가 없습니다.','empty'));}
- const input=search('양식 · 법령 · 문서명 검색',v=>{if(g===generation)void loadForms(v).catch(e=>{if(g===generation)tell(e.message);});});input.maxLength=120;input.value=q;input.addEventListener('input',()=>{if(g===generation){q=input.value.trim().slice(0,120);saveView('forms',{q,selected});}});tools.append(input);host.append(tools,note,list);if(canReceive)host.append(links([['문서탐색','큰 파일과 전체 문서 확인','/hq-safe/document-explorer']]));await loadForms();
+ await drawForms(host,g,{viewKey:'forms',endpoint:'/workspace/forms',placeholder:'양식 · 법령 · 문서명 검색',empty:'검색 결과가 없습니다.',canReceive:['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role)});
+ if(['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role))host.append(links([['문서탐색','큰 파일과 전체 문서 확인','/hq-safe/document-explorer']]));
  }
 
  else if(key==='government'){
@@ -257,10 +256,26 @@ async function receiveFeedback(path,filename){
  }finally{clearTimeout(timeout);if(fileTransfer===controller)fileTransfer=null;}
 }
 
+async function drawForms(target,g,{viewKey,endpoint,placeholder,empty,canReceive}){
+ const saved=readView(viewKey);let q=typeof saved.q==='string'?saved.q.slice(0,120):'',selected=typeof saved.selected==='string'?saved.selected:'',sequence=0,timer;
+ const current=()=>target.isConnected&&g===generation&&localStorage.getItem('besma_token')===token;
+ const tools=N('div',null,'tools'),input=N('input'),note=N('p',null,'top-note'),list=N('div');input.type='search';input.placeholder=placeholder;input.setAttribute('aria-label',placeholder);input.maxLength=120;input.value=q;note.setAttribute('role','status');note.setAttribute('aria-live','polite');tools.append(input);target.append(tools,note,list);
+ const remember=()=>saveView(viewKey,{q,selected});
+ function pending(){list.replaceChildren();list.setAttribute('aria-busy','true');note.textContent='자료를 찾고 있습니다.';}
+ async function load(){
+  if(!current())return;clearTimeout(timer);const request=++sequence,query=q;pending();
+  try{const data=await api(endpoint+'?q='+encodeURIComponent(query));if(!current()||request!==sequence)return;
+   if(!Array.isArray(data.items)||typeof data.source!=='string')throw Error('자료 목록을 확인하지 못했습니다. 다시 시도해 주세요.');
+   note.textContent=data.items.length+'개 자료 · '+data.source;list.replaceChildren();
+   for(const item of data.items){const row=N('article',null,'policy-item'+(item.path===selected?' selected':''));row.dataset.formPath=item.path;row.append(N('strong',item.name),N('p',item.path,'small muted'));
+    if(canReceive){const get=B('받기',async()=>{if(!current()||request!==sequence)return;selected=item.path;remember();for(const other of list.children)other.classList.toggle('selected',other.dataset.formPath===selected);await receiveForm(item,g,get);});row.append(get);}list.append(row);}
+   if(!data.items.length)list.append(N('p',empty,'empty'));
+  }catch(e){if(!current()||request!==sequence)return;note.textContent='자료 목록 확인 필요';list.replaceChildren(N('p',e.message,'error'),B('다시 시도',load));
+  }finally{if(current()&&request===sequence)list.setAttribute('aria-busy','false');}
+ }
+ input.oninput=()=>{if(!current())return;clearTimeout(timer);++sequence;q=input.value.trim().slice(0,120);remember();pending();timer=setTimeout(()=>{if(current())void load();},180);};
+ await load();
+}
 async function drawSiteForms(target){
- const g=generation,saved=readView('site-forms');let q=typeof saved.q==='string'?saved.q.slice(0,120):'',selected=typeof saved.selected==='string'?saved.selected:'',sequence=0;
- const tools=N('div',null,'tools'),input=search('양식 · 법령 검색',()=>{}),note=N('p',null,'top-note'),list=N('div');input.maxLength=120;input.value=q;tools.append(input);target.append(tools,note,list);
- async function load(){const current=++sequence,data=await api(workspaceEndpoint('forms')+'?q='+encodeURIComponent(q));if(!target.isConnected||g!==generation||current!==sequence)return;note.textContent=data.items.length+'개 자료 · '+data.source;list.replaceChildren();
- for(const item of data.items){const row=N('article',null,'policy-item'+(item.path===selected?' selected':''));row.dataset.formPath=item.path;row.append(N('strong',item.name),N('p',item.path,'small muted'));const get=B('받기',async()=>{if(g!==generation||!target.isConnected)return;selected=item.path;saveView('site-forms',{q,selected});for(const other of list.children)other.classList.toggle('selected',other.dataset.formPath===selected);await receiveForm(item,g,get);});row.append(get);list.append(row);}if(!data.items.length)list.append(N('p','현재 열람 가능한 양식이 없습니다.'));}
- input.oninput=()=>{q=input.value.slice(0,120);saveView('site-forms',{q,selected});load().catch(e=>{if(target.isConnected&&g===generation)tell(e.message);});};await load();
+ await drawForms(target,generation,{viewKey:'site-forms',endpoint:workspaceEndpoint('forms'),placeholder:'양식 · 법령 검색',empty:'현재 열람 가능한 양식이 없습니다.',canReceive:true});
 }
