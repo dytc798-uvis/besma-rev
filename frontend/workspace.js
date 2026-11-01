@@ -1,3 +1,4 @@
+import {createHQSiteCorrectionEditor} from '/assets/site-correction-access.js';
 import {receiveVerifiedFile} from '/assets/request-file-download.js';
 import {siteChatLink} from '/assets/chat-context.js';
 import {mountWorkerOpinions} from '/assets/worker-opinions.js';
@@ -158,40 +159,43 @@ async function showSiteManagerPhoto(site,contact,row,g){
 }
 
 async function drawSites(host,g){
+ siteEditingHash=location.hash;const pending=()=>!!host.querySelector('.site-correction-editor[data-dirty="true"],.site-correction-editor[data-busy="true"]');const block=()=>{if(!pending())return false;tell('입력한 내용을 먼저 저장하거나 취소해 주세요.');return true;};
  const data=await api('/workspace/sites');if(g!==generation)return;let homeSites=[];try{const home=await api('/workspace/home');if(g!==generation)return;homeSites=home.sites||[];}catch{}
  const params=new URLSearchParams(location.hash.split('?')[1]||'');
  const saved=readView('sites'),explicit=params.has('site')||params.has('q');let exact=params.getAll('site').length===1?params.get('site'):!explicit&&typeof saved.exact==='string'?saved.exact:'',q=exact?(data.items.find(s=>s.code===exact)?.name||exact):(params.get('q')||(!explicit&&typeof saved.q==='string'?saved.q.slice(0,100):'')),only=explicit?!params.has('q')&&!exact:typeof saved.only==='boolean'?saved.only:true;
  const expanded=new Set(exact?[exact]:Array.isArray(saved.expanded)?saved.expanded.filter(v=>data.items.some(s=>s.code===v)).slice(0,30):[]),tools=N('div',null,'tools'),list=N('div',null,'site-list'),note=N('div',null,'results-note');
- async function refresh(){const current=await api('/workspace/sites');if(g!==generation)return;data.items=current.items;draw();}
- const input=search('현장명 · 주소 · 담당자 · 고객사 검색',v=>{if(g!==generation)return;q=v.slice(0,100);exact='';draw();});input.value=q;input.maxLength=100;input.addEventListener('input',()=>{if(g!==generation)return;q=input.value.trim().slice(0,100);exact='';remember();});
- const star=B('즐겨찾기',()=>{only=true;draw();}),all=B('전체 현장',()=>{only=false;draw();});
+ async function refresh(){if(block())return;const current=await api('/workspace/sites');if(g!==generation)return;data.items=current.items;draw();}
+ const input=search('현장명 · 주소 · 담당자 · 고객사 검색',v=>{if(g!==generation)return;if(block()){input.value=q;return;}q=v.slice(0,100);exact='';draw();});input.value=q;input.maxLength=100;input.addEventListener('input',()=>{if(g!==generation)return;if(block()){input.value=q;return;}q=input.value.trim().slice(0,100);exact='';remember();});
+ const star=B('즐겨찾기',()=>{if(block())return;only=true;draw();}),all=B('전체 현장',()=>{if(block())return;only=false;draw();});
  tools.append(input,star,all,B('목록 새로고침',refresh));
  if(exact)host.append(A('지도로 돌아가기','/company.html','button'));
  host.append(tools,note,list);
  function remember(){saveView('sites',{q:q.slice(0,100),exact,only,expanded:[...expanded].slice(0,30)});}
  function draw(){
-  remember();star.setAttribute('aria-pressed',String(only));all.setAttribute('aria-pressed',String(!only));
+  if(block())return;remember();star.setAttribute('aria-pressed',String(only));all.setAttribute('aria-pressed',String(!only));
   const rows=data.items.filter(s=>(!exact||s.code===exact)&&(!only||s.favorite||q)&&q.split(/\s+/).every(w=>(s.code+' '+s.name+' '+s.address+' '+s.contractor+' '+(s.client||'')+' '+s.contacts.map(c=>c.name+' '+c.phone).join(' ')).includes(w)));
   note.textContent=rows.length+'개 현장 · 안전보건실 담당 현장은 즐겨찾기에 기본 표시';list.replaceChildren();
   for(const s of rows){
    const a=N('article',null,'site-card'+(s.code===exact?' selected':''));a.dataset.siteCode=s.code;
-   const head=N('header'),b=B(s.favorite?'★':'☆',async()=>{b.disabled=true;try{await api('/workspace/sites/'+encodeURIComponent(s.code)+'/favorite',{method:'PUT',body:JSON.stringify({favorite:!s.favorite})});s.favorite=!s.favorite;draw();}finally{b.disabled=false;}},'star');
-   b.setAttribute('aria-label',s.name+' 즐겨찾기');b.setAttribute('aria-pressed',String(s.favorite));head.append(N('h2',s.name),b);a.append(head,N('p',s.address||'주소 미등록'));
+   const head=N('header'),b=B(s.favorite?'★':'☆',async()=>{if(block())return;b.disabled=true;try{await api('/workspace/sites/'+encodeURIComponent(s.code)+'/favorite',{method:'PUT',body:JSON.stringify({favorite:!s.favorite})});s.favorite=!s.favorite;draw();}finally{b.disabled=false;}},'star');
+   b.setAttribute('aria-label',s.name+' 즐겨찾기');b.setAttribute('aria-pressed',String(s.favorite));head.append(N('h2',s.name),b);a.append(head,N('p',s.address||'주소 미등록'));if(s.description)a.append(N('p',s.description,'site-description'));
    for(const c of s.contacts){const row=N('div',null,'contact-row');row.append(N('span',[c.role,c.rank,c.name].filter(Boolean).join(' ')||c.label),c.phone?A(c.phone,'tel:'+c.phone.replace(/\D/g,'')):N('span','번호 미등록'));a.append(row);void showSiteManagerPhoto(homeSites.find(x=>x.code===s.code),c,row,g);}
    const actions=N('div',null,'site-actions'),map=A('길찾기','#','button primary');bindNaverDirections(map,homeSites.find(x=>x.code===s.code)||s,tell);actions.append(map,A('현장안전기준','#contractors?'+new URLSearchParams({company:siteCustomerName(s),client:s.client||'',contractor:s.contractor||'',site:s.code}),'button'));const ask=siteChatLink(s);ask.className='button';actions.append(ask);a.append(actions);
    const detail=N('details');detail.open=expanded.has(s.code);detail.addEventListener('toggle',()=>{if(g===generation&&detail.isConnected){if(detail.open)expanded.add(s.code);else expanded.delete(s.code);}});
    detail.append(N('summary','현장 상세'));const full=homeSites.find(x=>x.code===s.code),facts=N('dl',null,'site-detail-facts');const fact=(label,value)=>{const row=N('div');row.append(N('dt',label),N('dd',value==null||value===''?'확인 중':String(value)));facts.append(row);};fact('현장 코드',s.code);if(full){fact('출역',full.today_people==null?'오늘 출역 미확인':full.today_people+'명');fact('담당 팀',full.team?.label||'팀 확인 중');for(const x of full.details||[])if(x?.label&&x.value!=null&&typeof x.value!=='object'&&!['address','site_code','site_name','name'].includes(x.key))fact(x.label,String(x.value)+(x.unit?' '+x.unit:''));if(full.photo?.verified===true&&full.photo.site_code===s.code&&full.photo.url?.startsWith('/workspace-assets/')){const figure=N('figure',null,'site-detail-photo'),img=N('img');img.src=full.photo.url;img.alt=full.photo.caption||s.name+' 현장 사진';img.loading='lazy';figure.append(img,N('figcaption',full.photo.caption||'현장 사진'));if(full.photo.source_url){const source=A('사진 출처',full.photo.source_url);source.target='_blank';source.rel='noopener noreferrer';figure.append(source);}detail.append(figure);}if(full.contracts?.length)for(const c of full.contracts){fact('계약',c.name||'계약 정보');for(const [key,label]of [['amount','계약금액'],['basis','기준'],['start','착공'],['end','준공']])if(c[key]!=null&&c[key]!=='')fact(label,c[key]);}}else{fact('고객사',siteCustomerName(s));detail.append(N('p','추가 현장 정보를 확인하지 못했습니다. 새로고침 후 다시 확인해 주세요.'));}detail.append(facts);detail.append(mountSiteNotes({site:s,request:api,role:context?.user.role,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token}));
-   detail.addEventListener('toggle',remember);const editor=missingInfoEditor(s,g,refresh);if(editor)detail.append(editor);a.append(detail);list.append(a);
+   detail.addEventListener('toggle',remember);const editor=createHQSiteCorrectionEditor({site:s,role:context?.user.role,token,onSaved:async()=>{await refresh();},onNotice:tell,isCurrent:()=>g===generation&&a.isConnected&&localStorage.getItem('besma_token')===token});if(editor)a.append(editor);a.append(detail);list.append(a);
   }
   if(!rows.length)list.append(N('p',exact?'요청한 현장을 찾지 못했습니다. 검색어를 바꾸어 확인하세요.':q?'검색 결과가 없습니다.':'즐겨찾기 현장이 없습니다. 전체 현장에서 별표를 눌러 추가하세요.','empty'));
  }
  draw();
 }
-let siteWorkspace=null;
+let siteWorkspace=null,siteEditingHash='';
+function pendingSiteEdit(){return !!$('content')?.querySelector('.site-correction-editor[data-dirty="true"],.site-correction-editor[data-busy="true"]');}
+document.addEventListener('click',event=>{const link=event.target?.closest?.('a[href]');if(link&&context?.user.role==='HQ_SAFE'&&pendingSiteEdit()&&!/^tel:/i.test(link.getAttribute('href'))&&!link.hasAttribute('download')){event.preventDefault();event.stopImmediatePropagation();tell('입력한 내용을 먼저 저장하거나 취소해 주세요.');}},true);
 function workspaceEndpoint(path){return "/workspace"+(context?.user?.role==="SITE"?"/site":"")+"/"+path;}
 let voiceCleanup=null;
 let requestCleanup=null;
-async function render(){if(siteWorkspace)return siteWorkspace.render();requestCleanup?.();requestCleanup=null;voiceCleanup?.();voiceCleanup=null;fileTransfer?.abort();const g=++generation,key=section();blobUrls.forEach(u=>URL.revokeObjectURL(u));blobUrls=[];document.body.dataset.section=key;document.body.classList.remove('drawer');$('mobile-menu').setAttribute('aria-expanded','false');for(const a of $('menus').querySelectorAll('a'))a.setAttribute('aria-current',a.hash==='#'+key?'page':'false');$('help-top').href='#guide/'+key;$('content').replaceChildren(heading(key));const host=N('div');$('content').append(host);try{
+async function render(){if(siteWorkspace)return siteWorkspace.render();if(pendingSiteEdit()){history.replaceState(null,'',siteEditingHash);tell('입력한 내용을 먼저 저장하거나 취소해 주세요.');return;}requestCleanup?.();requestCleanup=null;voiceCleanup?.();voiceCleanup=null;fileTransfer?.abort();const g=++generation,key=section();blobUrls.forEach(u=>URL.revokeObjectURL(u));blobUrls=[];document.body.dataset.section=key;document.body.classList.remove('drawer');$('mobile-menu').setAttribute('aria-expanded','false');for(const a of $('menus').querySelectorAll('a'))a.setAttribute('aria-current',a.hash==='#'+key?'page':'false');$('help-top').href='#guide/'+key;$('content').replaceChildren(heading(key));const host=N('div');$('content').append(host);try{
  if(key==='duties')await drawDuties(host,g);else if(key==='risks')await drawRisks(host,g);else if(key==='sites')await drawSites(host,g);else if(key==='contractors')await drawContractors(host,g);else if(key==='guide')await drawGuide(host);
  else if(key==='functional'){const [overview,preparation]=await Promise.all([api('/workspace/functional-overview'),api('/workspace/functional-readiness')]);if(g!==generation)return;drawReadiness(host,preparation);if(overview.period){const summary=panel(overview.period.title+' · 기존 평가 현황');for(const [type,label]of [['FUNCTIONAL','기능'],['SAFETY','안전']]){const line=N('p');line.textContent=label+' 평가  '+['S','A','B','C'].map(grade=>grade+' '+(overview.grades.find(x=>x.eval_type===type&&x.grade_code===grade)?.count||0)+'명').join('  /  ');summary.append(line);}host.append(summary);}host.append(N('div','기능·안전 평가기준과 기존 평가·서명 이력을 유지합니다.','info-strip'));if(['HQ_OTHER','HQ_BUDGET_ESTIMATE','HQ_OUTSOURCING_PURCHASE','FUNCTIONAL_EVAL_VIEWER'].includes(context.user.role)){host.append(N('p','본사 조회 계정입니다. 평가 입력·승인은 지정된 담당자가 진행합니다.','top-note'));return;}host.append(links([['평가·등급 조회','기능·안전 평가와 기존 등급 확인','/hq-safe/functional-eval'],['진행현황','평가·서명·승인 진행상황','/hq-safe/functional-eval-monitoring'],['포상·제재 및 검토·승인','안전보건실 검토와 포상·제재 처리','/hq-safe/functional-eval-rewards-sanctions'],['등급 보고서','기존 등급 통계·보고서 확인','/hq-safe/functional-eval/grade-report']]));}
  else if(key==='voice'){if(context.permissions?.worker_voice_read){voiceCleanup=mountWorkerOpinions(host,{api,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token,canRefresh:['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'].includes(context.user.role),initialScope:readView('voice'),onScope:value=>saveView('voice',value)});}}

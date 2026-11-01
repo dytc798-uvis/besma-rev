@@ -203,7 +203,7 @@ def site_data(db,user):
   contractor=next((d['value'] for d in site['details'] if d['key']=='contractor'),'')
   out.append({'code':site['code'],'name':site['name'],'address':site['address'],'latitude':site['latitude'],'longitude':site['longitude'],
    'contacts':[{k:c.get(k,'') for k in ['name','role','rank','label','phone','contact_id','rank_revision','rank_confirmed']} for c in site['contacts']],
-   'info_revision':site['info_revision'],'description':site.get('description',''),'edit_revision':site.get('edit_revision',0),'client':next((d['value'] for d in site['details'] if d['key']=='client'),''),'contractor':contractor,'favorite':site['code'] in stars,'default_favorite':site['code'] in defaults,
+   **{key:site.get(key,False if key!='correction_status' else '')for key in ['correction_available','correction_can_edit','correction_status','correction_review_required']},'info_revision':site['info_revision'],'description':site.get('description',''),'edit_revision':site.get('edit_revision',0),'client':next((d['value'] for d in site['details'] if d['key']=='client'),''),'contractor':contractor,'favorite':site['code'] in stars,'default_favorite':site['code'] in defaults,
    'management':{'status':'미등록','note':'현장별 평가점수·제재 현황이 확인되면 표시합니다.'}})
  return out
 
