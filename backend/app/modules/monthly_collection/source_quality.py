@@ -54,7 +54,7 @@ def notes_by_id(snapshot):
             elif kind=='PAGES'and set(note)=={'id','sha256','kind','present','expected'}:
                 present=note['present'];expected=note['expected']
                 if type(present)is int and type(expected)is int and 1<=present<expected<=1000:
-                    message=f'원문 확인: 참석지 {present}/{expected}쪽만 확인됨'
+                    message=f'원문 확인: PDF {present}쪽 / 원문 표기 {expected}쪽. 전체 자료 여부 확인 필요'
             if message and message not in result.get(row['id'],[]):result.setdefault(row['id'],[]).append(message)
 
     return result
