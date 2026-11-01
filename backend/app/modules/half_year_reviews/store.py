@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3,json,hashlib,uuid,re,io,zipfile,os
 from .catalog import CATALOG,FORMS,EVIDENCE,blank,cleaned,validate_assessment,Conflict
 from app.modules.inspection_reports.pptx_report import normalize_photo
-from . import exports,jobs,monthly_sources
+from . import exports,jobs,monthly_sources,walkthrough
 digest=lambda value:hashlib.sha256(value).hexdigest()
 encoded=lambda value:json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 class ReviewStore:
@@ -45,6 +45,8 @@ class ReviewStore:
                 result['monthly_source']=monthly_sources.link(data,key,request['period'],body,actor,name,stamp)
             elif action=='monthly-unlink':
                 result['monthly_source']=monthly_sources.unlink(data,body,name,stamp)
+            elif action in {'walk-start','walk-item','walk-report'}:
+                result.update(walkthrough.mutate(data,action,body,request['period'],actor,name,stamp,context_meta))
             elif action=='subject':
                 if set(body)!={'form','name'}or body['form']not in {'manager','supervisor'}:raise ValueError('SUBJECT_INVALID')
                 target=cleaned(body['name'],40)
@@ -58,10 +60,15 @@ class ReviewStore:
                 day=answers['inspection_date'];actual_period=day[:4]+('-H1'if int(day[5:7])<=6 else'-H2')
                 if actual_period!=request['period']:raise ValueError('DATE_PERIOD_MISMATCH')
                 if form in {'manager','supervisor'}:subject_name=next(s['name']for s in data['subjects'][form]if s['id']==subject)
+                selected_run=walkthrough.assessment_run(data,answers.get('walkthrough_run_id',''),day,(context_meta or{}).get('public_id'))
+                if body['complete']:
+                    for assessment_key,prior in data['assessments'].items():
+                        if assessment_key!=form+':'+subject and set(answers['signed_table_photo_ids'])&set(prior.get('completed',{}).get('data',{}).get('signed_table_photo_ids',[])):
+                            raise ValueError('SIGNED_PHOTO_ALREADY_USED')
                 assessment=data['assessments'].setdefault(form+':'+subject,{})
                 draft={'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};assessment['draft']=draft
                 if body['complete']:
-                    complete={**draft,'id':uuid.uuid4().hex,'revision':revision+1,'evidence':data['evidence'].copy(),'monthly_sources':[dict(r)for r in data.get('monthly_sources',[])if r['active']],'photo_metadata':[{**f,'caption':answers['photo_captions'].get(f['id'],f['caption'])}for f in data['files']if f['id']in answers['photo_ids']]};assessment['completed']=complete;result['completed_id']=complete['id']
+                    complete={**draft,'id':uuid.uuid4().hex,'revision':revision+1,'evidence':data['evidence'].copy(),'monthly_sources':[dict(r)for r in data.get('monthly_sources',[])if r['active']],'photo_metadata':[{**f,'caption':answers['photo_captions'].get(f['id'],f['caption'])}for f in data['files']if f['id']in answers['photo_ids']]};complete['inspection_run']=selected_run;assessment['completed']=complete;result['completed_id']=complete['id']
                 result['assessment']=assessment
             elif action=='parse':
                 result['parse_job']=jobs.queue(c,key,data,actor,name,body,context_meta,request['period'],stamp)

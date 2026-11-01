@@ -21,7 +21,7 @@ class Change(BaseModel):
     request_key:str=Field(pattern=r'^[A-Za-z0-9_-]{8,80}$')
     revision:int=Field(ge=0)
     period:str=Field(pattern=r'^20\d{2}-H[12]$')
-    action:str=Field(pattern=r'^(evidence|subject|assessment|caption|parse|apply_parse|monthly-link|monthly-unlink)$')
+    action:str=Field(pattern=r'^(evidence|subject|assessment|caption|parse|apply_parse|monthly-link|monthly-unlink|walk-start|walk-item|walk-report)$')
     data:dict
 def enabled(db,user):
     if os.environ.get('BESMA_HALF_YEAR_REVIEWS_ENABLED','').casefold()not in {'1','true'}:raise HTTPException(404,'반기평가를 준비하고 있습니다.')
@@ -32,11 +32,11 @@ def selected(db,user,public_id,period):
 def fail(error):
     if isinstance(error,Conflict):raise HTTPException(409,'다른 화면에서 자료가 변경되었습니다. 입력 내용을 보존했으니 새로 확인해 주세요.')
     if isinstance(error,KeyError):raise HTTPException(404,'이 현장·반기의 자료를 찾을 수 없습니다.')
-    messages={'MONTHLY_SOURCE_INVALID':'이 현장·반기의 취합자료를 다시 선택해 주세요.','MONTHLY_SOURCE_LIMIT':'연결할 수 있는 취합자료 수를 넘었습니다.','UNREVIEWED_ITEMS_REMAIN':'미평가 항목과 점검사진을 확인해 주세요.','COMPLETE_FIRST':'평가 항목을 입력하고 완료 저장한 뒤 받을 수 있습니다.','SUBJECT_REQUIRED':'평가대상자를 먼저 추가해 주세요.','SUBJECT_EXISTS':'이미 등록된 평가대상자입니다.','NOTE_TOO_LONG':'비고는 두 줄 이내로 짧게 입력해 주세요.','VERDICT_INVALID':'해당없음 사유와 적합 여부를 확인해 주세요.','SCORE_INVALID':'평가표의 배점 범위 안에서 점수를 입력해 주세요.','TEMPLATE_CHANGED':'평가표 원본이 변경되어 확인이 필요합니다.','DATE_PERIOD_MISMATCH':'점검일이 선택한 반기와 다릅니다.','PDF_REQUIRED':'평가한 PDF 파일을 선택해 주세요.','PARSE_REVIEW_REQUIRED':'현장·대상자·점검일·합계와 판독 내용을 확인해 주세요.'}
+    messages={'SIGNED_TABLE_REQUIRED':'해당 최종 평가표 사진을 업로드하고 원본 기준 서명·전체 쪽 확인을 체크해 주세요.','WALK_FOUR_FORMS_REQUIRED':'4종 각각의 최종 평가표 사진 업로드·확인을 먼저 완료해 주세요.','WALK_REPORT_URL_INVALID':'네이버웍스 게시글 주소를 확인해 주세요.','SIGNED_PHOTO_ALREADY_USED':'다른 평가표에 사용한 사진입니다. 이 평가표 사진을 따로 연결해 주세요.','WALK_REASON_REQUIRED':'해당없음 사유를 입력해 주세요.','WALK_DATE_MISMATCH':'점검기록과 평가일이 다릅니다. 점검일과 연결 기록을 확인해 주세요.','MONTHLY_SOURCE_INVALID':'이 현장·반기의 취합자료를 다시 선택해 주세요.','MONTHLY_SOURCE_LIMIT':'연결할 수 있는 취합자료 수를 넘었습니다.','UNREVIEWED_ITEMS_REMAIN':'미평가 항목과 점검사진을 확인해 주세요.','COMPLETE_FIRST':'평가 항목을 입력하고 완료 저장한 뒤 받을 수 있습니다.','SUBJECT_REQUIRED':'평가대상자를 먼저 추가해 주세요.','SUBJECT_EXISTS':'이미 등록된 평가대상자입니다.','NOTE_TOO_LONG':'비고는 두 줄 이내로 짧게 입력해 주세요.','VERDICT_INVALID':'해당없음 사유와 적합 여부를 확인해 주세요.','SCORE_INVALID':'평가표의 배점 범위 안에서 점수를 입력해 주세요.','TEMPLATE_CHANGED':'평가표 원본이 변경되어 확인이 필요합니다.','DATE_PERIOD_MISMATCH':'점검일이 선택한 반기와 다릅니다.','PDF_REQUIRED':'평가한 PDF 파일을 선택해 주세요.','PARSE_REVIEW_REQUIRED':'현장·대상자·점검일·합계와 판독 내용을 확인해 주세요.'}
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600}
+    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'walkthrough_version':1,'signed_table_completion':True}
 @router.get('/plans/{public_id}')
 def read(public_id:str,period:str,db:DbDep,user:Current):
     try:
@@ -47,6 +47,18 @@ def monthly_candidates(public_id:str,period:str,db:DbDep,user:Current,response:R
     try:
         row,key=selected(db,user,public_id,period);response.headers['Cache-Control']='no-store'
         return monthly_sources.sources(monthly_sources.monthly.load(),monthly_sources.site_for_plan(db,row),period)
+    except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
+@router.get('/plans/{public_id}/walkthrough-collection')
+def walkthrough_collection(public_id:str,period:str,month:str,db:DbDep,user:Current,response:Response):
+    import re
+    if not re.fullmatch(r'20\d{2}-(0[1-9]|1[0-2])',month):raise HTTPException(422,'자료월을 확인해 주세요.')
+    try:
+        row,key=selected(db,user,public_id,period);site=monthly_sources.site_for_plan(db,row)
+        source_period=month[:4]+('-H1'if int(month[5:])<=6 else'-H2')
+        value=monthly_sources.sources(monthly_sources.monthly.load(),site,source_period)
+        value['items']=[r for r in value['items']if r['month']==month]
+        value.update(month=month,count=len(value['items']),submission_rate=None,rate_state='DENOMINATOR_UNCONFIRMED',site_code=site.get('code')if site else None)
+        response.headers['Cache-Control']='no-store';return value
     except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
 @router.post('/plans/{public_id}/changes')
 def change(public_id:str,body:Change,db:DbDep,user:Current):
@@ -75,6 +87,23 @@ def download_file(public_id:str,period:str,file_id:str,db:DbDep,user:Current):
         row,key=selected(db,user,public_id,period);content,meta=store().file(key,file_id)
     except(ValueError,KeyError,OSError)as e:fail(e)
     return Response(content,media_type='image/jpeg'if meta['kind']=='image'else'application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(meta['filename']),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+@router.get('/plans/{public_id}/drafts/{form}/{subject_id}')
+def draft_copy(public_id:str,form:str,subject_id:str,period:str,db:DbDep,user:Current):
+    try:
+        row,key=selected(db,user,public_id,period)
+        snapshot=store().load(key)['data']['assessments'].get(form+':'+subject_id,{}).get('draft')
+        if not snapshot or form not in FORMS:raise KeyError('DRAFT_MISSING')
+        if snapshot['result'].get('missing'):raise ValueError('DRAFT_REVIEW_REQUIRED')
+        site=row.title.removeprefix('[점검] ').strip()
+        if form=='report':
+            photos=[]
+            for file_id in snapshot['data']['photo_ids']:
+                raw,meta=store().file(key,file_id);photos.append({'data':raw,'width':meta['width'],'height':meta['height'],'sha256':meta['sha256'],'caption':snapshot['data']['photo_captions'].get(file_id,meta['caption'])})
+            content=exports.pptx(snapshot,site,snapshot['inspector'],photos,period)
+        elif form=='law':content=exports.hwpx(snapshot,site,snapshot['inspector'])
+        else:content=exports.xlsx(form,snapshot,site,snapshot['inspector'])
+    except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
+    return Response(content,media_type='application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote('서명용_'+FORMS[form]['title']+'.'+FORMS[form]['format']),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 @router.post('/plans/{public_id}/exports/{form}/{subject_id}')
 async def export(public_id:str,form:str,subject_id:str,period:str,snapshot_id:str,db:DbDep,user:Current):
     try:

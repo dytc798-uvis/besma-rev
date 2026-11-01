@@ -17,7 +17,7 @@ def cleaned(value,limit):
     if not isinstance(value,str)or len(value)>limit or re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]',value):raise ValueError('TEXT_INVALID')
     return value.strip()
 def validate_assessment(form,data,files,subjects,subject_id,complete):
-    if form not in FORMS or not isinstance(data,dict)or set(data)-{'answers','summary','inspection_date','photo_ids','photo_captions','improvements','entry_mode','paper_file_ids'}:raise ValueError('ASSESSMENT_INVALID')
+    if form not in FORMS or not isinstance(data,dict)or set(data)-{'answers','summary','inspection_date','photo_ids','photo_captions','improvements','entry_mode','paper_file_ids','walkthrough_run_id','signed_table_photo_ids','required_signatures_confirmed','signed_pages_complete'}:raise ValueError('ASSESSMENT_INVALID')
     schema=FORMS[form]
     if schema.get('needs_subject'):
         subject=next((r for r in subjects[form]if r['id']==subject_id),None)
@@ -61,5 +61,12 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
     if entry_mode not in {'SCREEN','PAPER','PAPER_PDF'}:raise ValueError('ENTRY_MODE_INVALID')
     paper_ids=data.get('paper_file_ids',[])
     if not isinstance(paper_ids,list)or len(paper_ids)>10 or len(set(paper_ids))!=len(paper_ids)or not set(paper_ids)<={r['id']for r in files}:raise ValueError('PAPER_FILES_INVALID')
+    run_id=data.get('walkthrough_run_id','')
+    if not isinstance(run_id,str)or run_id and not re.fullmatch('[a-f0-9]{32}',run_id):raise ValueError('WALK_RUN_INVALID')
+    signed=data.get('signed_table_photo_ids',[])
+    signed_flag=data.get('required_signatures_confirmed',False);pages_flag=data.get('signed_pages_complete',False)
+    signed_known={r['id']for r in files if r['kind']=='image'and r['evidence_id']=='paper_assessment'}
+    if type(signed_flag)is not bool or type(pages_flag)is not bool or not isinstance(signed,list)or len(signed)>10 or any(not isinstance(p,str)for p in signed)or len(set(signed))!=len(signed)or not set(signed)<=signed_known:raise ValueError('SIGNED_PHOTO_INVALID')
+    if complete and(not signed or not signed_flag or not pages_flag):raise ValueError('SIGNED_TABLE_REQUIRED')
     if complete and(missing or form=='report'and not photos and entry_mode=='SCREEN'):raise ValueError('UNREVIEWED_ITEMS_REMAIN')
-    return {'answers':result,'summary':summary,'inspection_date':day,'photo_ids':photos,'photo_captions':captions,'improvements':clean_improvements,'entry_mode':entry_mode,'paper_file_ids':paper_ids}, {'missing':missing,'score':score if not missing and schema['scoring']!='COMPLIANCE'else None,'graded':len(schema['criteria'])-missing}
+    return {'answers':result,'summary':summary,'inspection_date':day,'photo_ids':photos,'photo_captions':captions,'improvements':clean_improvements,'entry_mode':entry_mode,'paper_file_ids':paper_ids,'walkthrough_run_id':run_id,'signed_table_photo_ids':signed,'required_signatures_confirmed':signed_flag,'signed_pages_complete':pages_flag}, {'missing':missing,'score':score if not missing and schema['scoring']!='COMPLIANCE'else None,'graded':len(schema['criteria'])-missing}

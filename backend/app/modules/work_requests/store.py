@@ -337,7 +337,7 @@ class RequestStore:
             if db.execute("SELECT COUNT(*) FROM requests WHERE user_id=? AND status IN ('QUEUED','RUNNING','AWAITING_REVIEW','AWAITING_RELEASE')",(actor['id'],)).fetchone()[0]>=10:
                 raise Conflict('REQUEST_LIMIT_REACHED')
             rid=uuid4().hex;now=self.clock()
-            phase='NONE'if not source else 'OWN'if actor['owner']else 'SHARED'if source.get('shared_file_id')and kind!='EDIT'else 'WAITING_REVIEW'
+            phase='NONE'if not source else 'OWN'if actor['owner']else 'SHARED'if(source.get('shared_file_id')or source.get('scope')=='BESMA_REGISTERED_FORM')and kind!='EDIT'else 'WAITING_REVIEW'
             status='AWAITING_REVIEW'if phase=='WAITING_REVIEW'else'QUEUED'
             db.execute('INSERT INTO requests(id,user_id,login_id,request_key,payload_sha256,kind,title,body,scope_exempt,status,created_at,updated_at,source_json,selection_id,review_phase,conversation_id,parent_request_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                 (rid,actor['id'],actor['login_id'],request_key,digest,kind,title,body,int(actor['owner']),status,now,now,json.dumps(source,ensure_ascii=False,sort_keys=True)if source else None,selection_id,phase,parent['conversation_id']if parent else rid,parent_request_id))
@@ -597,7 +597,8 @@ class RequestStore:
                     contextual_images=inputs(db,candidate)
                     if contextual_images and CAP not in capabilities:continue
                 elif candidate['source_json']and direct_images:continue
-                if candidate['kind']=='EDIT'and 'NAS_EDIT_V1'not in capabilities:continue
+                form_source=bool(candidate['source_json']and json.loads(candidate['source_json']).get('scope')=='BESMA_REGISTERED_FORM')
+                if candidate['kind']=='EDIT'and not form_source and 'NAS_EDIT_V1'not in capabilities:continue
                 if candidate['kind']=='EDIT'and json.loads(candidate['source_json']).get('extension')=='.xlsx'and 'NAS_WORKBOOK_EDIT_V1'not in capabilities:continue
                 if source_generation.requested(db,candidate)and 'NAS_SOURCE_CREATE_V1'not in capabilities:continue
                 if candidate['kind']=='FILE'and not candidate['source_json']and candidate['body'].startswith(PDF_PREFIX)and 'GENERATED_PDF_V1'not in capabilities:continue
@@ -620,7 +621,8 @@ class RequestStore:
                         db.execute("UPDATE requests SET status='ACCESS_REVOKED',updated_at=? WHERE id=?",(self.clock(),candidate['id']));self._event(db,candidate['id'],'ACCESS_REVOKED');continue
                     if not {'OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2'}&set(capabilities):continue
                 if candidate['source_json']:
-                    if 'NAS_REVIEW_V1'not in capabilities or worker_actor is None:continue
+                    if json.loads(candidate['source_json']).get('scope')=='BESMA_REGISTERED_FORM'and 'REGISTERED_FORM_SOURCE_V1'not in capabilities:continue
+                    if(not form_source and 'NAS_REVIEW_V1'not in capabilities)or worker_actor is None:continue
                     if candidate['review_phase']=='OWN'and not eligible[pair]:
                         db.execute("UPDATE requests SET status='AWAITING_REVIEW',review_phase='WAITING_REVIEW',review_version=review_version+1 WHERE id=?",(candidate['id'],));continue
                     if candidate['review_phase']=='PREVIEW_QUEUED'and (candidate['prepare_owner_id'],candidate['prepare_owner_login'])!=(worker_actor['id'],worker_actor['login_id']):

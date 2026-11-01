@@ -226,7 +226,7 @@ async function render(){if(siteWorkspace)return siteWorkspace.render();if(pendin
  }else{const mod=await import('/assets/workspace-settings.js');if(g!==generation)return;const cleanup=await mod.mountWorkspaceSettings(host,{api,context,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token});if(g!==generation)cleanup?.();else requestCleanup=cleanup;}
  }
  else if(key==='forms'){
- await drawForms(host,g,{viewKey:'forms',endpoint:'/workspace/forms',placeholder:'양식 · 법령 · 문서명 검색',empty:'검색 결과가 없습니다.',canReceive:['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role)});
+ await drawForms(host,g,{viewKey:'forms',endpoint:'/workspace/forms',placeholder:'양식 · 법령 · 문서명 검색',empty:'검색 결과가 없습니다.',canChat:true,canReceive:['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role)});
  if(['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role))host.append(links([['문서탐색','큰 파일과 전체 문서 확인','/hq-safe/document-explorer']]));
  }
 
@@ -256,19 +256,29 @@ async function receiveFeedback(path,filename){
  }finally{clearTimeout(timeout);if(fileTransfer===controller)fileTransfer=null;}
 }
 
-async function drawForms(target,g,{viewKey,endpoint,placeholder,empty,canReceive}){
+async function drawForms(target,g,{viewKey,endpoint,placeholder,empty,canReceive,canChat=false}){
  const saved=readView(viewKey);let q=typeof saved.q==='string'?saved.q.slice(0,120):'',selected=typeof saved.selected==='string'?saved.selected:'',sequence=0,timer;
  const current=()=>target.isConnected&&g===generation&&localStorage.getItem('besma_token')===token;
  const tools=N('div',null,'tools'),input=N('input'),note=N('p',null,'top-note'),list=N('div');input.type='search';input.placeholder=placeholder;input.setAttribute('aria-label',placeholder);input.maxLength=120;input.value=q;note.setAttribute('role','status');note.setAttribute('aria-live','polite');tools.append(input);target.append(tools,note,list);
  const remember=()=>saveView(viewKey,{q,selected});
+ const chatReady=canChat?api('/work-requests/availability').then(x=>x.enabled===true&&x.registered_forms===true).catch(()=>false):Promise.resolve(false);let selecting=false;
+ async function useForm(item,request,button){
+  if(!current()||request!==sequence||selecting)return;const draft=readView('requests'),different=draft.nasSelection&&draft.nasSelection.relative_path!==item.path;
+  if(draft.pendingSubmission||draft.inputAttachment||draft.resultSelection||draft.monthlyHandoff||(draft.channel==='WORK'&&draft.body?.trim())||(different&&draft.body?.trim())){tell('채팅에서 작성 중인 실적·첨부·자료 요청을 마친 뒤 양식을 선택해 주세요.');return;}
+  selecting=true;button.disabled=true;
+  try{const source=await api('/work-requests/form-selections',{method:'POST',body:JSON.stringify({relative_path:item.path})});if(!current()||request!==sequence)return;
+   if(source.scope!=='BESMA_REGISTERED_FORM'||source.relative_path!==item.path||source.file_name!==item.name||!/^[a-f0-9]{64}$/.test(source.form_file_id||'')||!/^[a-f0-9]{64}$/.test(source.approved_content_sha256||'')||!Number.isInteger(source.size)||source.size<1||source.size>32*1024*1024)throw Error('선택한 양식의 원본을 확인하지 못했습니다.');
+   selected=item.path;remember();saveView('requests',{...draft,kind:'SOURCE_QUESTION',channel:'CHAT',nasSelection:source,resultSelection:null,requestKey:crypto.randomUUID(),formReturn:true});location.hash='#requests';
+  }finally{selecting=false;button.disabled=false;}
+ }
  function pending(){list.replaceChildren();list.setAttribute('aria-busy','true');note.textContent='자료를 찾고 있습니다.';}
  async function load(){
   if(!current())return;clearTimeout(timer);const request=++sequence,query=q;pending();
-  try{const data=await api(endpoint+'?q='+encodeURIComponent(query));if(!current()||request!==sequence)return;
+  try{const[data,canUseChat]=await Promise.all([api(endpoint+'?q='+encodeURIComponent(query)),chatReady]);if(!current()||request!==sequence)return;
    if(!Array.isArray(data.items)||typeof data.source!=='string')throw Error('자료 목록을 확인하지 못했습니다. 다시 시도해 주세요.');
    note.textContent=data.items.length+'개 자료 · '+data.source;list.replaceChildren();
    for(const item of data.items){const row=N('article',null,'policy-item'+(item.path===selected?' selected':''));row.dataset.formPath=item.path;row.append(N('strong',item.name),N('p',item.path,'small muted'));
-    if(canReceive){const get=B('받기',async()=>{if(!current()||request!==sequence)return;selected=item.path;remember();for(const other of list.children)other.classList.toggle('selected',other.dataset.formPath===selected);await receiveForm(item,g,get);});row.append(get);}list.append(row);}
+    if(canReceive){const get=B('받기',async()=>{if(!current()||request!==sequence)return;selected=item.path;remember();for(const other of list.children)other.classList.toggle('selected',other.dataset.formPath===selected);await receiveForm(item,g,get);});row.append(get);if(canUseChat){const use=B('채팅에서 사용',()=>useForm(item,request,use));row.append(use);}}list.append(row);}
    if(!data.items.length)list.append(N('p',empty,'empty'));
   }catch(e){if(!current()||request!==sequence)return;note.textContent='자료 목록 확인 필요';list.replaceChildren(N('p',e.message,'error'),B('다시 시도',load));
   }finally{if(current()&&request===sequence)list.setAttribute('aria-busy','false');}

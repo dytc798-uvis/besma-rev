@@ -25,6 +25,7 @@ class RequestConfig:
     workbook_edit_enabled: bool = False
     owner_result_followup_enabled: bool = False
     image_source_comparison_enabled: bool = False
+    registered_forms_enabled: bool = False
 
 
 class CreateRequest(BaseModel):
@@ -34,6 +35,12 @@ class CreateRequest(BaseModel):
     title: str = Field(min_length=1,max_length=100)
     body: str = Field(min_length=1,max_length=6000)
     nas_file_id: str|None = Field(default=None,pattern=r'^[0-9a-f]{64}$')
+    form_file_id: str|None = Field(default=None,pattern=r'^[0-9a-f]{64}$')
+
+    @model_validator(mode='after')
+    def one_source(self):
+        if self.form_file_id and(self.nas_file_id or self.input_attachment_id or self.result_file_id):raise ValueError('한 개의 원본을 선택해 주세요.')
+        return self
     parent_request_id: str|None = Field(default=None,pattern=r'^[0-9a-f]{32}$')
     input_attachment_id: str|None = Field(default=None,pattern=r'^[0-9a-f]{32}$')
     result_file_id: str|None = Field(default=None,pattern=r'^[0-9a-f]{32}$')
@@ -59,7 +66,7 @@ class DiscoveryQuery(BaseModel):
 
 class WorkerCapabilities(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
-    capabilities: list[Literal['NAS_ORIGINAL_V1','NAS_REVIEW_V1','NAS_EDIT_V1','GENERATED_PDF_V1','UPLOADED_IMAGE_V1','REQUEST_SOURCE_LOOKUP_V1','NAS_SOURCE_CREATE_V1','NAS_WORKBOOK_EDIT_V1','OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2','UPLOADED_IMAGE_SOURCE_V1']]=Field(default_factory=list,max_length=9)
+    capabilities: list[Literal['NAS_ORIGINAL_V1','NAS_REVIEW_V1','NAS_EDIT_V1','GENERATED_PDF_V1','UPLOADED_IMAGE_V1','REQUEST_SOURCE_LOOKUP_V1','NAS_SOURCE_CREATE_V1','NAS_WORKBOOK_EDIT_V1','OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2','UPLOADED_IMAGE_SOURCE_V1','REGISTERED_FORM_SOURCE_V1']]=Field(default_factory=list,max_length=12)
 
 
 class InputImageRead(BaseModel):
@@ -97,8 +104,10 @@ class ReadResult(BaseModel):
     completion_token:str=Field(pattern=r'^[0-9a-f]{64}$')
 
 
-def create_router(auth, config_provider, store_provider, eligible_provider, nas=None):
+def create_router(auth, config_provider, store_provider, eligible_provider, nas=None, forms=None):
     router=APIRouter(prefix='/work-requests',tags=['work-requests'])
+    from .registered_forms import RegisteredForms,SCOPE as FORM_SCOPE,CAP as FORM_CAP
+    forms=forms or RegisteredForms()
 
     def config():
         try:return config_provider()
@@ -132,11 +141,16 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
         return JSONResponse(value,headers={'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff'})
 
     def source_valid(user,source):
+        if source.get('scope')==FORM_SCOPE:return config().registered_forms_enabled and forms.valid(user,source)
         return config().nas_files_enabled and nas is not None and nas.valid(user,source)
 
     def file_access(item,user):
         source=item.get('source')
         if not source:return True
+        if source.get('scope')==FORM_SCOPE:
+            if not config().registered_forms_enabled:return False
+            if item['status']=='COMPLETED'and item.get('review_phase')in {'OWN','SHARED','RELEASED'}:return forms.member_valid(user)
+            return forms.valid(user,source)
         if not config().nas_files_enabled or nas is None:return False
         # A confirmed immutable copy is a request-specific grant. Moving/re-indexing
         # the NAS source alone does not erase it; current account membership still gates it.
@@ -187,7 +201,42 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             if error.status_code==404:return result({'enabled':False})
             raise
         from .input_images import available
-        return result({'enabled':True,'original_max_bytes':MAX_ORIGINAL_BYTES,'analysis_max_bytes':MAX_BYTES,'question_retry':True,'owner_result_followup':bool(identity['owner']and config().source_lookup_enabled and config().owner_result_followup_enabled),'owner_source_choices':bool(identity['owner']and config().source_lookup_enabled),'owner_choices_allowed_sources':['NAS','PC']if config().nas_files_enabled else['PC'],'scope_exempt':identity['owner'],'nas_files':bool(config().nas_files_enabled and nas and nas.available(user)),'source_edit':bool(config().nas_files_enabled and nas and nas.available(user)),'workbook_edit':bool(config().workbook_edit_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_choices':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_lookup':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_generation':bool(config().source_generation_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'image_source_comparison':bool(config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'input_images':available(store_provider()),'naver_delivery':bool(config().naver_delivery_enabled and identity['owner'])})
+        return result({'enabled':True,'original_max_bytes':MAX_ORIGINAL_BYTES,'analysis_max_bytes':MAX_BYTES,'question_retry':True,'owner_result_followup':bool(identity['owner']and config().source_lookup_enabled and config().owner_result_followup_enabled),'owner_source_choices':bool(identity['owner']and config().source_lookup_enabled),'owner_choices_allowed_sources':['NAS','PC']if config().nas_files_enabled else['PC'],'scope_exempt':identity['owner'],'nas_files':bool(config().nas_files_enabled and nas and nas.available(user)),'source_edit':bool(config().nas_files_enabled and nas and nas.available(user)),'workbook_edit':bool(config().workbook_edit_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_choices':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_lookup':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_generation':bool(config().source_generation_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'image_source_comparison':bool(config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'input_images':available(store_provider()),'registered_forms_enabled':bool(config().registered_forms_enabled and forms.member_valid(identity)),'registered_forms':bool(config().registered_forms_enabled and forms.member_valid(identity)and form_worker_ready()),'naver_delivery':bool(config().naver_delivery_enabled and identity['owner'])})
+
+    def form_worker_ready():
+        queue=store_provider()
+        with queue.connection()as connection:row=connection.execute('SELECT seen_at,capabilities FROM worker_state WHERE id=1').fetchone()
+        if row is None:return False
+        try:return 0<=queue.clock()-row['seen_at']<=120 and FORM_CAP in json.loads(row['capabilities'])
+        except(ValueError,TypeError):return False
+
+    class FormSelection(BaseModel):
+        model_config=ConfigDict(extra='forbid',strict=True)
+        relative_path:str=Field(min_length=6,max_length=1600)
+
+    class FormRead(BaseModel):
+        model_config=ConfigDict(extra='forbid',strict=True)
+        lease:str=Field(pattern=r'^[a-f0-9]{64}$')
+
+    @router.post('/form-selections',status_code=201)
+    def select_form(body:FormSelection,user=Depends(actor),db=Depends(store)):
+        if not config().registered_forms_enabled:raise HTTPException(404,'등록 양식 연결을 준비하고 있습니다.')
+        if not form_worker_ready():raise HTTPException(503,'양식 처리기 연결을 확인하고 있습니다. 잠시 후 다시 확인해 주세요.')
+        source,_=call(forms.snapshot,user,body.relative_path)
+        response=result({**source,'form_file_id':call(db.register_selection,user,source)});response.status_code=201;return response
+
+    @router.post('/worker/{rid}/form-source')
+    def read_form(rid:str,body:FormRead,user=Depends(worker),db=Depends(store)):
+        if not config().registered_forms_enabled:raise HTTPException(404,'등록 양식 연결을 준비하고 있습니다.')
+        with db.connection()as connection:
+            row=call(db._lease,connection,rid,body.lease)
+            source=json.loads(row['source_json']or'null')
+            requester={'id':row['user_id'],'login_id':row['login_id']}
+        allowed={(x['id'],x['login_id'])for x in eligible_provider()}
+        if(not source or source.get('scope')!=FORM_SCOPE or (requester['id'],requester['login_id'])not in allowed
+                or not forms.member_valid(user)):raise HTTPException(404,'원본 자료 이용 권한을 확인해 주세요.')
+        content=call(forms.read,requester,source)
+        return Response(content,media_type='application/octet-stream',headers={'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff'})
 
     @router.post('/input-attachments',status_code=201)
     async def upload_input(file:UploadFile=File(...),request_key:str=Form(...,min_length=8,max_length=80),user=Depends(actor),db=Depends(store)):
@@ -262,16 +311,19 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
     @router.post('',status_code=201)
     def create(body:CreateRequest,user=Depends(actor),db=Depends(store)):
         source=None
-        if body.nas_file_id:
+        selection_id=body.form_file_id or body.nas_file_id
+        if body.form_file_id and not config().registered_forms_enabled:raise HTTPException(404,'등록 양식 연결을 준비하고 있습니다.')
+        if selection_id:
             if body.kind not in {'FILE','QUESTION','EDIT'}:raise HTTPException(422,'자료 요청 내용을 확인해 주세요.')
-            replay=call(db.replay,user,body.request_key,body.kind,body.title,body.body,body.nas_file_id,body.parent_request_id,result_file_id=body.result_file_id)
+            replay=call(db.replay,user,body.request_key,body.kind,body.title,body.body,selection_id,body.parent_request_id,result_file_id=body.result_file_id)
             if replay is not None:
                 response=result(visible(replay,user));response.status_code=201;return response
-            source=call(db.selection,user,body.nas_file_id)
+            source=call(db.selection,user,selection_id)
+            if bool(body.form_file_id)!=(source.get('scope')==FORM_SCOPE):raise HTTPException(409,'선택한 원본의 저장 위치를 다시 확인해 주세요.')
             if not source_valid(user,source):raise HTTPException(409,'자료를 다시 찾아 선택해 주세요.')
         if body.kind=='EDIT'and source and source.get('extension')=='.xlsx'and not config().workbook_edit_enabled:raise HTTPException(404,'엑셀 문구 수정 사본을 준비하고 있습니다.')
         if body.kind=='EDIT'and(not source or source.get('extension')not in {'.txt','.docx','.xlsx'}):raise HTTPException(422,'수정할 TXT·DOCX·XLSX 원본을 선택해 주세요.')
-        response=result(visible(call(db.create,user,body.request_key,body.kind,body.title,body.body,source,body.nas_file_id,body.parent_request_id,input_attachment_id=body.input_attachment_id,result_file_id=body.result_file_id,result_followup_enabled=config().owner_result_followup_enabled and config().source_lookup_enabled and user['owner'],image_comparison_enabled=config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled),user));response.status_code=201;return response
+        response=result(visible(call(db.create,user,body.request_key,body.kind,body.title,body.body,source,selection_id,body.parent_request_id,input_attachment_id=body.input_attachment_id,result_file_id=body.result_file_id,result_followup_enabled=config().owner_result_followup_enabled and config().source_lookup_enabled and user['owner'],image_comparison_enabled=config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled),user));response.status_code=201;return response
 
     @router.get('/owner/inbox')
     def inbox(user=Depends(worker),db=Depends(store)):
@@ -306,7 +358,8 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
 
     @router.post('/worker/claim')
     def claim(body:WorkerCapabilities=Body(default=WorkerCapabilities()),user=Depends(worker),db=Depends(store)):
-        capabilities=[c for c in body.capabilities if c in {'GENERATED_PDF_V1','UPLOADED_IMAGE_V1','OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2'}or config().nas_files_enabled]
+        capabilities=[c for c in body.capabilities if c in {'GENERATED_PDF_V1','UPLOADED_IMAGE_V1','OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2',FORM_CAP}or config().nas_files_enabled]
+        if not config().registered_forms_enabled:capabilities=[c for c in capabilities if c!=FORM_CAP]
         if not config().source_generation_enabled:capabilities=[c for c in capabilities if c!='NAS_SOURCE_CREATE_V1']
         if not config().source_lookup_enabled:capabilities=[c for c in capabilities if c not in {'OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2'}]
         if not config().workbook_edit_enabled:capabilities=[c for c in capabilities if c!='NAS_WORKBOOK_EDIT_V1']
