@@ -438,7 +438,11 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             if selected:item['owner_source_choice_id']=selected;item.pop('grounded_reply',None)
         if item is not None and 'OWNER_SOURCE_CHOICES_V2'in capabilities:
             with db.connection()as connection:
-                if result_followup.requested(connection,item['id']) and not (grounded is not None and (selected_name_question or file_name_question(current_text(item['body'])))):
+                # Account/index/UI questions keep their grounded response even when a
+                # result remains selected. Explicit document references keep its source.
+                selected_text=current_text(item['body'])
+                independent_answer=grounded is not None and not(result_followup.REFERENCE.search(selected_text) or result_followup.natural_reference(selected_text))
+                if result_followup.requested(connection,item['id']) and not (grounded is not None and (selected_name_question or file_name_question(selected_text) or independent_answer)):
                     row=connection.execute('SELECT * FROM requests WHERE id=?',(item['id'],)).fetchone();item['result_source']=result_validator(connection,row,user);item.pop('grounded_reply',None)
         return result({'item':item})
 
