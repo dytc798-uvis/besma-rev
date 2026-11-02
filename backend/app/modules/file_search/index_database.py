@@ -49,6 +49,16 @@ MAX_DATABASE_SESSIONS = 10_000
 MAX_DATABASE_ENTRIES = 4_000_000
 MAX_PERSONAL_SESSION_CANONICAL_BYTES = 16 * 1024 * 1024
 MAX_TEAM_SESSION_CANONICAL_BYTES = 64 * 1024 * 1024
+# A valid row cannot be smaller than the canonical form of a one-byte path
+# and filename, no extension/date, zero size, and a one-byte directory flag.
+MIN_CANONICAL_BYTES_PER_ENTRY = len(
+    canonical_entries_bytes([
+        IndexEntry(
+            relative_path="a", file_name="a", extension="", size=0,
+            modified_at=None, is_directory=False,
+        )
+    ])
+)
 # 8 owners x (16 MiB ACTIVE + 32 MiB RETIRED + 16 MiB STAGING), plus
 # three 64 MiB TEAM generations, fit below this hard global ceiling.
 MAX_DATABASE_CANONICAL_BYTES = 768 * 1024 * 1024
@@ -1236,6 +1246,25 @@ class IndexDatabase:
                         actor_user_id,
                         source_key,
                         body.expected_entry_count,
+                    )
+                # Reject snapshots that cannot fit even their smallest valid
+                # rows before allocating a session. Otherwise a full store
+                # repeatedly creates empty STAGING→RETIRED generations while
+                # the first chunk fails the unchanged byte quota. Existing
+                # staging replay above remains available for resumption.
+                database_canonical_bytes = int(
+                    connection.execute(
+                        "SELECT COALESCE(SUM(canonical_bytes),0) FROM index_sessions"
+                    ).fetchone()[0]
+                )
+                if (
+                    database_canonical_bytes
+                    + body.expected_entry_count * MIN_CANONICAL_BYTES_PER_ENTRY
+                    > MAX_DATABASE_CANONICAL_BYTES
+                ):
+                    raise IndexDatabaseContractError(
+                        "FILE_SEARCH_DATABASE_BYTE_QUOTA",
+                        conflict=True,
                     )
                 connection.execute(
                     """
