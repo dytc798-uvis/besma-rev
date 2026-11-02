@@ -63,6 +63,12 @@ def notes_by_id(snapshot):
                 month=note['document_month'];day=note['day']
                 if isinstance(month,str)and MONTH.fullmatch(month)and type(day)is int and 0<=day<=31 and (day==0 or day>calendar.monthrange(int(month[:4]),int(month[5:]))[1]):
                     message=f'원문 날짜 확인: {month.replace("-",".")}.{day:02d}은 존재하지 않는 날짜입니다.'
+            elif kind=='OPINION_NONE_DECLARED'and set(note)=={'id','sha256','kind','date_scope'}and row.get('category')=='opinions':
+                scope=note['date_scope']
+                if isinstance(scope,str)and scope in ('DAY','PERIOD_ONLY','MISSING'):
+                    message='원문 의견표: ‘해당 없음’으로 기재'
+                    if scope=='PERIOD_ONLY':message+=' · 의견일자는 기간만 표시'
+                    elif scope=='MISSING':message+=' · 의견일자 없음'
             elif kind=='OPINION_STATE_DIFFERENCE'and set(note)=={'id','sha256','kind'}and row.get('category')=='opinions':
                 message='같은 의견의 원본별 조치상태가 다릅니다.'
             if message and message not in result.get(row['id'],[]):result.setdefault(row['id'],[]).append(message)

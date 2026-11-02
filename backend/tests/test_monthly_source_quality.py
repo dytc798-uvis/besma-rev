@@ -101,3 +101,18 @@ class ReviewedSourceQualityTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ExplicitNoOpinionTableNotes(unittest.TestCase):
+    def test_none_declaration_and_missing_date_are_typed_without_zero_or_completion(self):
+        row=dict(id='a'*64,sha256='b'*64,size=10,category='opinions',month='2026-10',filename='원문.pdf')
+        for scope in ['DAY','PERIOD_ONLY','MISSING']:
+            note=dict(id=row['id'],sha256=row['sha256'],kind='OPINION_NONE_DECLARED',date_scope=scope)
+            value=dict(items=[row],reviewed_source_notes=[note]);before=copy.deepcopy(value)
+            text=notes_by_id(value)[row['id']][0]
+            self.assertIn('해당 없음',text);self.assertNotIn('0건',text);self.assertNotIn('완료',text);self.assertEqual(value,before)
+            if scope=='MISSING':self.assertIn('의견일자 없음',text)
+            if scope=='PERIOD_ONLY':self.assertIn('기간만 표시',text)
+            for extra in [{'text':'blocked'},{'date_scope':True},{'date_scope':'COMPLETED'},{'sha256':'c'*64}]:
+                self.assertEqual(notes_by_id(dict(items=[row],reviewed_source_notes=[dict(note,**extra)])),{})
+        row['category']='risk';self.assertEqual(notes_by_id(dict(items=[row],reviewed_source_notes=[note])),{})
