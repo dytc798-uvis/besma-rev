@@ -69,6 +69,7 @@ def install(router,worker,store,config,eligible,nas,result,call):
    row=connection.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone();photo_context=bool(config().image_source_comparison_enabled and inputs(connection,row))
   categories=[('위험성평가',['위험성평가 데이터베이스']),('절차·지침',['절차서']),('고객사 평가기준',['평가기준','안전등급']),('서식',['양식']),('안전관리계획',['안전관리계획'])]
   if photo_context:categories[3]=('안전관계자 명부',['105 안전관리자 현황','105 선해임'])
+  else:categories.append(('안전관리자 명단·선임현황',['안전관리자 현황','105 선해임']))
   for category,queries in categories:
    pools=[];uncertain=False
    for q in queries:
