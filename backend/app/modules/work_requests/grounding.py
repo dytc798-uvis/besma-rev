@@ -101,11 +101,30 @@ def source_scope_answer(nas_answer,features=None,*,pc_question=False):
     return value
 
 
-def answer(item, nas_answer, file_names=None, features=None):
+def answer(item, nas_answer, file_names=None, features=None, consent_context=None):
     if item.get('kind') != 'QUESTION' or item.get('source'):
         return None
     text = current_text(item['body'])
     if untargeted_consent(text):
+        context = consent_context() if consent_context is not None else None
+        if context is not None:
+            state = context.get('status')
+            if state == 'COMPLETED':
+                reply = '앞선 파일 요청은 완료됐습니다. 아래 ‘준비된 파일 보기’에서 파일을 열어 주세요.' if context.get('files_available') else '앞선 요청은 이미 완료됐습니다. 추가로 필요한 작업을 적어 주세요.'
+            elif state in {'AWAITING_REVIEW', 'AWAITING_RELEASE'}:
+                reply = '앞선 자료는 확인 대기 중입니다. 아래 ‘요청 상태 보기’에서 확인해 주세요. 이 메시지로 승인이나 전달을 실행하지 않았습니다.'
+            elif state in {'QUEUED', 'RUNNING'}:
+                reply = '앞선 요청을 처리 중입니다. 아래 ‘요청 상태 보기’에서 진행 상황을 확인해 주세요.'
+            elif state == 'NEEDS_INFO':
+                reply = '앞선 요청에 자료 선택이나 추가 확인이 필요합니다. 아래 ‘요청 상태 보기’에서 확인해 주세요.'
+            elif state in {'CANCELLED', 'INTERRUPTED', 'FAILED'}:
+                reply = '앞선 요청은 중단된 상태입니다. 아래 ‘요청 상태 보기’에서 확인해 주세요. 다시 실행하지 않았습니다.'
+            elif state == 'UNAVAILABLE':
+                reply = '앞선 자료의 이용 권한이나 제공 상태를 확인해야 합니다. 승인이나 전달을 실행하지 않았습니다.'
+            else:
+                reply = None
+            if reply:
+                return {'status': 'COMPLETED', 'reply': reply}
         return {'status': 'NEEDS_INFO', 'reply': '승인할 요청을 특정하지 못했습니다. 대상 요청의 제목을 알려 주세요.'}
     if file_name_question(text) and file_names is not None:
         names = file_names()

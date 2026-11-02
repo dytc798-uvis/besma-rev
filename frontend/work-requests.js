@@ -22,6 +22,12 @@ export function fileReplySummary(text,item){
  return {body:lines[0]+'\n'+lines[2],source:lines[1]};
 }
 
+export function replyContextTarget(item){
+ const reference=item?.reply_context;
+ if(item?.source_access===false||!reference||!(/^[0-9a-f]{32}$/).test(reference.request_id||'')||reference.request_id!==item.parent_request_id||!['준비된 파일 보기','요청 상태 보기'].includes(reference.label))return null;
+ return {id:reference.request_id,label:reference.label};
+}
+
 export async function mountWorkRequests(host,{api,download,isCurrent,initialDraft={},onDraft=()=>{}}){
  let alive=true,workerOnline=false,timer=null,loading=false,loadingHistory=false,sending=false,forceLatest=true,viewEpoch=0,reloadAgain=false,nasIndex=null,photoPreview=null;
  const viewport=window.visualViewport,sourceDetailsOpen=new Map();
@@ -176,6 +182,24 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
   const help=node('div',null,'request-attachment-help');
   const choose=node('button',availability.input_images===true?'사진 첨부하기':'사진 연결 확인','request-file');choose.type='button';choose.dataset.photoHelp='';choose.setAttribute('aria-label',choose.textContent);choose.style.minHeight='44px';choose.disabled=photoAvailabilityChecking||sending||uploading;choose.onclick=attachmentHelpAction;help.append(choose);answer.append(help);
  }
+ async function revealPriorRequest(id){
+  const epoch=viewEpoch,conversation=conversationId,same=()=>current()&&epoch===viewEpoch&&conversation===conversationId;
+  const cursors=new Set();let pages=0;
+  while(!items.some(item=>item.id===id)&&turnCursor&&pages<10){
+   if(cursors.has(turnCursor))break;cursors.add(turnCursor);
+   const value=await api('/work-requests/conversations/'+conversation+'?before='+turnCursor);
+   if(!same())return;
+   if(value.id!==conversation||!Array.isArray(value.items))throw Error('이전 요청을 확인하지 못했습니다.');
+   const present=new Set(items.map(item=>item.id));items=[...value.items.filter(item=>!present.has(item.id)),...items];turnCursor=value.next_cursor;pages++;
+  }
+  if(!same())return;
+  if(!items.some(item=>item.id===id)){status.textContent='이전 요청을 확인하지 못했습니다. 대화 이력에서 다시 확인해 주세요.';return;}
+  forceLatest=false;draw();
+  requestAnimationFrame(()=>{if(!same())return;const turn=messages.querySelector('[data-request-id="'+id+'"]');if(!turn)return;
+   log.scrollTop+=turn.getBoundingClientRect().top-log.getBoundingClientRect().top-12;
+   const control=turn.querySelector('.request-result-file,button');control?.focus({preventScroll:true});status.textContent='앞선 요청으로 이동했습니다.';
+  });
+ }
  function draw(){const keepBottom=forceLatest||log.scrollHeight-log.clientHeight-log.scrollTop<70;forceLatest=false;const signature=JSON.stringify(items);if(signature===rendered)return;rendered=signature;
   const prior=log.scrollTop;messages.replaceChildren();if(!items.length)messages.append(node('p','질문하거나 필요한 파일을 요청해 주세요.','request-chat-empty'));
   for(const item of items){const turn=node('article',null,'request-turn');turn.dataset.requestId=item.id;const user=node('div',null,'request-message request-message-user'),answer=node('div',null,'request-message request-message-answer');
@@ -187,6 +211,8 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
    else if(item.status==='RUNNING')answer.append(node('p',item.processing_phase==='ERP_RECEIPT_CHECK'?'ERP 수신자료를 확인하고 있습니다.':item.processing_phase==='LARGE'?'자세히 검토하고 있습니다. 잠시 기다려 주세요.':item.processing_phase==='DOCUMENT_BUILDING'?'파일을 만들고 있습니다.':item.processing_phase==='SOURCE_READING'?'자료 내용을 확인하고 있습니다.':'답변을 준비하고 있습니다.','request-progress'));
    if(item.source&&item.source_access!==false)answer.append(sourceDetails(item.id+':metadata','출처 보기',(typeof item.source.label==='string'&&item.source.label.trim()?item.source.label:'안전보건실 NAS')+' / '+item.source.relative_path));
    for(const file of item.files||[]){const get=node('button',null,'request-file request-result-file');get.setAttribute('aria-label','파일 받기 · '+file.filename);get.append(node('span','파일 받기','request-file-action'),node('span',file.filename,'request-file-name'));get.title=file.filename;get.type='button';get.onclick=async()=>{get.disabled=true;try{await download(item.id,file);if(current())status.textContent='다운로드를 시작했습니다.';}catch(e){if(current())status.textContent=e.message;}finally{if(current())get.disabled=false;}};if(availability.owner_result_followup&&item.status==='COMPLETED'&&item.source_access!==false&&validId(file.id)&&/\.(txt|pdf|docx|xlsx|pptx|hwp|hwpx|csv)$/i.test(file.filename||'')&&Number.isSafeInteger(file.bytes)&&file.bytes>0&&file.bytes<=Math.min(16*1024*1024,Number.isSafeInteger(availability.analysis_max_bytes)&&availability.analysis_max_bytes>0?availability.analysis_max_bytes:16*1024*1024)&&items.slice(-12).findLast(x=>x.files?.length)?.id===item.id){const actions=node('div',null,'request-result-actions'),ask=node('button','질문','request-result-ask');ask.type='button';ask.style.minWidth='76px';ask.style.whiteSpace='nowrap';ask.setAttribute('aria-label',file.filename+' 파일로 질문');ask.onclick=()=>chooseResult(item,file);actions.append(get,ask);answer.append(actions);}else{answer.append(get);if(file.bytes>16*1024*1024&&availability.owner_result_followup)answer.append(node('p','원본 받기는 가능합니다. 내용 질문·수정은 16MB 이하 파일을 지원합니다.','request-progress'));}}
+   const contextTarget=replyContextTarget(item);
+   if(contextTarget){const show=node('button',contextTarget.label,'request-context-jump');show.type='button';show.style.minHeight='44px';show.onclick=async()=>{if(!current()||show.disabled)return;show.disabled=true;try{await revealPriorRequest(contextTarget.id);}catch(error){if(current())status.textContent=error.message;}finally{if(current()&&show.isConnected)show.disabled=false;}};answer.append(show);}
    appendRecentLookup(answer,item);
    appendAttachmentHelp(answer,item);
    if(['QUEUED','RUNNING','INTERRUPTED','AWAITING_REVIEW','AWAITING_RELEASE'].includes(item.status)||item.source_choices_available||item.owner_source_choices_available){const cancel=node('button','요청 취소');cancel.type='button';cancel.onclick=async()=>{cancel.disabled=true;try{await api('/work-requests/'+item.id+'/cancel',{method:'POST'});await reload();}catch(e){if(current())status.textContent=e.message;}finally{if(current())cancel.disabled=false;}};answer.append(cancel);}

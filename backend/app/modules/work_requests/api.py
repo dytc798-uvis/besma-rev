@@ -2,6 +2,7 @@ from starlette.responses import StreamingResponse
 from starlette.background import BackgroundTask
 """BESMA-authenticated private request API; no remote shell or model tools."""
 import json
+import sqlite3
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import quote
@@ -162,7 +163,26 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
         return file_access({'source':json.loads(anchor['source_json']),
                             'status':anchor['status'],'review_phase':anchor['review_phase']},user)
 
-    def visible(item,user):
+    def consent_context(user,rid):
+        """Read the exact prior request, without granting or applying consent."""
+        queue=store()
+        try:
+            with queue.connection()as connection:
+                row=connection.execute('SELECT rowid AS sequence,* FROM requests WHERE id=? AND user_id=? AND login_id=?',
+                                       (rid,user['id'],user['login_id'])).fetchone()
+                if row is None or row['kind']!='QUESTION' or not row['parent_request_id']:return None
+                prior=connection.execute('SELECT * FROM requests WHERE id=? AND user_id=? AND login_id=? AND conversation_id=? AND rowid<?',
+                                         (row['parent_request_id'],user['id'],user['login_id'],row['conversation_id'],row['sequence'])).fetchone()
+                if prior is None:return None
+                view=visible(queue._public(connection,prior,False),user,with_consent=False)
+                if view.get('source_access')is False or prior['status']=='ACCESS_REVOKED' or prior['review_phase']=='DENIED':
+                    return {'status':'UNAVAILABLE'}
+                return {'request_id':prior['id'],'status':prior['status'],
+                        'files_available':prior['status']=='COMPLETED'and bool(view.get('files'))}
+        except (sqlite3.Error,KeyError,ValueError,OSError,HTTPException):
+            return None
+
+    def visible(item,user,*,with_consent=True):
         source=item.get('source')
         if item.get('can_retry')and(item.get('review_phase')=='OWN'and not user['owner']or source and not source_valid(user,source)):
             item['can_retry']=False;item['retry_unavailable_reason']='원본 자료와 이용 권한을 확인해 주세요.'
@@ -189,6 +209,13 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
                         item={**item,'result_reference':{key:reference[key]for key in ['file_name','bytes','sha256']}}
                     except (Conflict,KeyError,ValueError,OSError,RuntimeError):
                         item={**item,'result_reference_unavailable':True}
+        if with_consent and item['kind']=='QUESTION'and not source and not item.get('input_attachments'):
+            from .grounding import current_text,untargeted_consent
+            if untargeted_consent(current_text(item['body'])):
+                context=consent_context(user,item['id'])
+                if context and context.get('request_id')and context['status']!='UNAVAILABLE':
+                    item={**item,'reply_context':{'request_id':context['request_id'],
+                          'label':'준비된 파일 보기'if context['files_available']else'요청 상태 보기'}}
         return item
 
     def require_nas_gate():
@@ -402,7 +429,7 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             with db.connection()as connection:selected_result=result_followup.requested(connection,item['id'])
             selected_name_question=bool(selected_result and selected_result.get('selected_file_id')and file_name_question('이 파일의 '+current_text(item['body'])))
             grounded_item={**item,'body':'이 파일의 '+current_text(item['body'])}if selected_name_question else item
-            grounded=answer(grounded_item,nas_answer,file_names,ui_features)if not item.get('input_attachments')else None
+            grounded=answer(grounded_item,nas_answer,file_names,ui_features,lambda:consent_context(requester,item['id']))if not item.get('input_attachments')else None
             if grounded is not None:item['grounded_reply']=grounded
             if config().source_lookup_enabled and config().nas_files_enabled and 'REQUEST_SOURCE_LOOKUP_V1'in capabilities and item['kind']=='QUESTION'and not item.get('source')and not item.get('input_attachments')and grounded is None:item['source_lookup_available']=True;item['source_choices_available']=True
         if item is not None and item['scope_exempt']and {'OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2'}&set(capabilities):
