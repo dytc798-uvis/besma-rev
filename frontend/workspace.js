@@ -1,3 +1,4 @@
+import {mountDocumentMaterials} from '/assets/document-materials.js';
 import {drawFunctionalReadiness} from '/assets/functional-readiness.js';
 import {createHQSiteCorrectionEditor} from '/assets/site-correction-access.js';
 import {receiveVerifiedFile} from '/assets/request-file-download.js';
@@ -22,8 +23,8 @@ async function receiveForm(item,g,control){
  try{const response=await fetch(API+'/document-explorer/file?'+new URLSearchParams({relative_path:item.path,disposition:'attachment'}),{headers:{Authorization:'Bearer '+token},credentials:'omit',redirect:'error',cache:'no-store',signal:controller.signal});guard();if(!current())return;if(!response.ok)throw Error(response.status===403?'이 자료의 다운로드 권한이 없습니다.':response.status===401?'로그인을 확인해 주세요.':response.status===404?'원본 자료가 변경되었거나 없습니다. 목록을 새로고침해 주세요.':'자료를 받지 못했습니다. 다시 시도해 주세요.');const limit=64*1024*1024;if(Number(response.headers.get('Content-Length'))>limit)throw Error('64MB를 넘는 자료는 문서탐색에서 받아 주세요.');const reader=response.body.getReader(),parts=[];let total=0;for(;;){const {value,done}=await reader.read();if(done)break;total+=value.length;if(total>limit){await reader.cancel();throw Error('64MB를 넘는 자료는 문서탐색에서 받아 주세요.');}if(!current()){await reader.cancel();return;}parts.push(value);}if(!current())return;const blob=new Blob(parts,{type:response.headers.get('Content-Type')||'application/octet-stream'}),url=URL.createObjectURL(blob),a=N('a');fileUrls.add(url);a.href=url;a.download=item.name.replace(/[\\/:*?"<>|]/g,'_').slice(0,180);document.body.append(a);a.click();a.remove();setTimeout(()=>{URL.revokeObjectURL(url);fileUrls.delete(url);},60000);tell('자료를 받았습니다.');
  }catch(e){if(current())tell(e.name==='AbortError'?'자료 받기를 중단했습니다. 다시 시도해 주세요.':e.message);}finally{clearTimeout(timeout);if(fileTransfer===controller)fileTransfer=null;control.disabled=false;control.textContent='받기';}
 }
-const names={functional:'기능인인정제',duties:'업무분장',risks:'위험성평가 DB',forms:'양식·법령 탐색',sites:'현장 정보 검색',contractors:'고객사 안전기준',government:'관급공사 현장 소통',guide:'사용설명서',voice:'근로자의견청취',requests:'베스마채팅',weekly:'주간회의록',settings:'설정',collection:'취합현황',feedback:'현장 피드백'};
-const descriptions={functional:'기능·안전 평가부터 검토·승인, 포상과 제재까지 한곳에서 확인합니다.',duties:'업무로 찾고, 담당자에게 바로 연결하세요.',risks:'표준작업별 위험요인과 감소대책, 신고가 확인된 사고사례를 함께 확인합니다.',forms:'필요한 업무 양식과 법령 자료를 찾아 확인합니다.',sites:'담당 현장을 먼저 확인하고, 지도와 전화로 바로 연결합니다.',contractors:'고객사별 평가 항목과 제재·지원 기준을 확인합니다.',government:'현재 운영 중인 관급 현장의 서류 취합과 현장 소통을 연결합니다.',guide:'화면을 보며 필요한 업무 순서를 확인하세요.',voice:'근로자 의견의 접수·조치 상태를 확인합니다.',weekly:'이번 주 실적을 모아 주간회의록에 옮깁니다.',settings:'계정과 기존 업무 설정을 확인합니다.',requests:'질문하거나 필요한 자료를 요청하세요.',collection:'현장에서 올린 월간자료의 수신·저장 현황을 확인합니다.',feedback:'현장별 보완사항과 안내자료를 확인하고 실제 안내·전달·후속 활동을 기록합니다.'};
+const names={functional:'기능인인정제',duties:'업무분장',risks:'위험성평가 DB',forms:'문서·자료 찾기',sites:'현장 정보 검색',contractors:'고객사 안전기준',government:'관급공사 현장 소통',guide:'사용설명서',voice:'근로자의견청취',requests:'베스마채팅',weekly:'주간회의록',settings:'설정',collection:'취합현황',feedback:'현장 피드백'};
+const descriptions={functional:'기능·안전 평가부터 검토·승인, 포상과 제재까지 한곳에서 확인합니다.',duties:'업무로 찾고, 담당자에게 바로 연결하세요.',risks:'표준작업별 위험요인과 감소대책, 신고가 확인된 사고사례를 함께 확인합니다.',forms:'등록 양식과 NAS 자료를 찾고, 출처 확인과 채팅으로 이어 씁니다.',sites:'담당 현장을 먼저 확인하고, 지도와 전화로 바로 연결합니다.',contractors:'고객사별 평가 항목과 제재·지원 기준을 확인합니다.',government:'현재 운영 중인 관급 현장의 서류 취합과 현장 소통을 연결합니다.',guide:'화면을 보며 필요한 업무 순서를 확인하세요.',voice:'근로자 의견의 접수·조치 상태를 확인합니다.',weekly:'이번 주 실적을 모아 주간회의록에 옮깁니다.',settings:'계정과 기존 업무 설정을 확인합니다.',requests:'질문하거나 필요한 자료를 요청하세요.',collection:'현장에서 올린 월간자료의 수신·저장 현황을 확인합니다.',feedback:'현장별 보완사항과 안내자료를 확인하고 실제 안내·전달·후속 활동을 기록합니다.'};
 function tell(s){clearTimeout(toastTimer);$('toast').textContent=s;toastTimer=setTimeout(()=>$('toast').textContent='',4000);}
 function B(text,fn,cls=''){const b=N('button',text,cls);b.type='button';b.onclick=()=>Promise.resolve().then(fn).catch(e=>tell(e.message));return b;}
 function A(label,href,cls=''){const a=N('a',label,cls);a.href=href;return a;}
@@ -226,7 +227,12 @@ async function render(){if(siteWorkspace)return siteWorkspace.render();if(pendin
  }else{const mod=await import('/assets/workspace-settings.js');if(g!==generation)return;const cleanup=await mod.mountWorkspaceSettings(host,{api,context,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token});if(g!==generation)cleanup?.();else requestCleanup=cleanup;}
  }
  else if(key==='forms'){
- await drawForms(host,g,{viewKey:'forms',endpoint:'/workspace/forms',placeholder:'양식 · 법령 · 문서명 검색',empty:'검색 결과가 없습니다.',canChat:true,canReceive:['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role)});
+ const current=()=>g===generation&&localStorage.getItem('besma_token')===token;
+ const cleanup=await mountDocumentMaterials(host,{api,isCurrent:current,initialScope:readView('materials').q!==undefined?readView('materials'):readView('forms'),onScope:value=>saveView('materials',value),canReceive:['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role),receiveForm:(item,button)=>receiveForm(item,g,button),onChoose:async(source,kind)=>{
+  guard();if(!current())return;const draft=readView('requests'),same=draft.nasSelection?.scope===source.scope&&draft.nasSelection?.relative_path===source.relative_path;
+  if(draft.pendingSubmission||draft.inputAttachment||draft.resultSelection||draft.monthlyHandoff||(draft.channel==='WORK'&&draft.body?.trim())||(!same&&draft.nasSelection&&draft.body?.trim()))throw Error('채팅에서 작성 중인 실적·첨부·자료 요청을 마친 뒤 자료를 선택해 주세요.');
+  saveView('requests',{...draft,kind,channel:'CHAT',nasSelection:source,resultSelection:null,requestKey:crypto.randomUUID(),formReturn:false,materialsReturn:true});location.hash='#requests';
+ }});if(current())requestCleanup=cleanup;else cleanup?.();
  if(['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role))host.append(links([['문서탐색','큰 파일과 전체 문서 확인','/hq-safe/document-explorer']]));
  }
 
