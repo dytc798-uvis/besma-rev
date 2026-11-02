@@ -97,14 +97,45 @@ def active_sites(db,attendance,user=None):
                        'is_government':classification,'photo':verified_photo(code,photos),'map_visible':map_exclusion(site['name']) is None,'map_exclusion_reason':map_exclusion(site['name']),**home_site_fields(site,user)})
     return result
 
+def readiness_identity_scope(attendance):
+    expected=attendance.get('people');population_valid=type(expected)is int and expected>=0
+    populations={};source_sites=attendance.get('sites')
+    if not isinstance(source_sites,list):population_valid=False
+    for site in source_sites if isinstance(source_sites,list)else []:
+        if not isinstance(site,dict):population_valid=False;continue
+        code=site.get('code');people=site.get('people')
+        if not isinstance(code,str)or not code or code in populations or type(people)is not int or people<0:
+            population_valid=False;continue
+        populations[code]=people
+    population_valid=population_valid and sum(populations.values())==expected
+    source=attendance.get('identities');invalid=not isinstance(source,list);by_hash={};conflicts=set()
+    for person in source if isinstance(source,list)else []:
+        if not isinstance(person,dict):invalid=True;continue
+        value=person.get('rrn_hash');code=person.get('site_code')
+        if not isinstance(value,str)or not re.fullmatch(r'[0-9a-fA-F]{64}',value)or not isinstance(code,str)or code not in populations:
+            invalid=True;continue
+        value=value.lower()
+        if value in conflicts:continue
+        if value in by_hash and by_hash[value]!=code:
+            conflicts.add(value);by_hash.pop(value);continue
+        by_hash[value]=code
+    counts={code:0 for code in populations}
+    for code in by_hash.values():counts[code]+=1
+    complete=population_valid and not invalid and not conflicts and len(by_hash)==expected and counts==populations
+    unverified=expected-len(by_hash)if population_valid and len(by_hash)<=expected else None
+    coverage={'state':'COMPLETE'if complete else'INCOMPLETE','attendance_people':expected if type(expected)is int and expected>=0 else None,'verified_identity_people':len(by_hash),'unverified_people':unverified}
+    return [{'rrn_hash':value,'site_code':code}for value,code in by_hash.items()],coverage
+
+
 def readiness(db,attendance=None):
     attendance=attendance if attendance is not None else daily();today=str(kst_today())
-    base={'target_start':'2026-12-20','deadline':None,'attendance_population':'DAILY_ATTENDANCE','full_worker_population_confirmed':False,'state':'PREPARING','can_evaluate':False,'source_date':attendance['date'] if attendance else None,'source_current':bool(attendance and attendance['date']==today),'today_people':attendance['people'] if attendance and attendance['date']==today else None}
+    base={'target_start':'2026-12-20','deadline':None,'attendance_population':'DAILY_ATTENDANCE','full_worker_population_confirmed':False,'state':'PREPARING','can_evaluate':False,'source_date':attendance['date'] if attendance else None,'source_current':bool(attendance and attendance['date']==today),'today_people':attendance['people'] if attendance and attendance['date']==today else None,'history_comparison':{'state':'UNAVAILABLE','attendance_people':None,'verified_identity_people':None,'unverified_people':None}}
     periods=[dict(r) for r in db.execute(text('SELECT id,title,deadline_date,is_active FROM functional_eval_periods ORDER BY id DESC')).mappings()]
     base['previous_periods']=periods
     if not base['source_current']:
         return {**base,'sites':[],'blockers':['오늘 ERP 출역자료 수집이 필요합니다.','12월 20일 평가 예정으로 준비합니다. 실시일과 마감일은 평가 회차에서 확인합니다.']}
-    hashes=[x['rrn_hash'] for x in attendance.get('identities',[]) if x.get('rrn_hash')]
+    identities,comparison=readiness_identity_scope(attendance);base['history_comparison']=comparison;complete=comparison['state']=='COMPLETE'
+    hashes=[x['rrn_hash'] for x in identities]
     known=set();prior=set();functional=set();safety=set()
     # Bind the hashes; never log identities or mix old assessment rows with current criteria.
     for offset in range(0,len(hashes),400):
@@ -117,17 +148,18 @@ def readiness(db,attendance=None):
     registry={str(r['site_code']):dict(r) for r in db.execute(text('SELECT site_code,manager_login_id FROM functional_eval_site_registry')).mappings()}
     active_evaluators={r['login_id'] for r in db.execute(text("SELECT login_id FROM users WHERE is_active=1 AND role='SITE_FUNCTIONAL_EVAL'")).mappings()}
     site_people={}
-    for person in attendance.get('identities',[]):
+    for person in identities:
         code=person.get('site_code');count=site_people.setdefault(code,{'prior':0,'new':0})
         count['prior' if person.get('rrn_hash') in prior else 'new']+=1
     sites=[]
     for site in attendance['sites']:
         code=site.get('code');reg=registry.get(code,{})
-        sites.append({'code':code,'name':site['name'],'people':site['people'],'prior_grade_people':site_people.get(code,{}).get('prior',0),'new_or_ungraded_people':site_people.get(code,{}).get('new',0),'evaluator_registered':bool(reg.get('manager_login_id') in active_evaluators)})
+        sites.append({'code':code,'name':site['name'],'people':site['people'],'prior_grade_people':site_people.get(code,{}).get('prior',0)if complete else None,'new_or_ungraded_people':site_people.get(code,{}).get('new',0)if complete else None,'evaluator_registered':bool(reg.get('manager_login_id') in active_evaluators)})
     missing=sum(not s['evaluator_registered'] for s in sites)
     blockers=['12월 20일 평가 예정에 맞춰 평가 회차의 실시일과 마감일을 확인해야 합니다.','당일 출역과 전 근로자 명부를 구분해 평가대상을 확인해야 합니다.']
+    if not complete:blockers.append('기존 등급과 대조할 출역 인원 정보를 확인해야 합니다. 확인되지 않은 인원을 신규·미평가로 판정하지 않습니다.')
     if missing:blockers.append(f'{missing}개 현장의 소장·평가자 배정을 확인해야 합니다.')
-    return {**base,'source_sha256':attendance['source_sha256'],'captured_at':attendance['captured_at'],'sites':sites,'site_count':len(sites),'prior_roster_people':len(known),'prior_grade_people':len(prior),'prior_functional_people':len(functional),'prior_safety_people':len(safety),'new_or_ungraded_people':attendance['people']-len(prior),'evaluator_check_sites':missing,'blockers':blockers}
+    return {**base,'source_sha256':attendance['source_sha256'],'captured_at':attendance['captured_at'],'sites':sites,'site_count':len(sites),'prior_roster_people':len(known)if complete else None,'prior_grade_people':len(prior)if complete else None,'prior_functional_people':len(functional)if complete else None,'prior_safety_people':len(safety)if complete else None,'new_or_ungraded_people':attendance['people']-len(prior)if complete else None,'evaluator_check_sites':missing,'blockers':blockers}
 
 def home(db,user=None):
     data=daily();today=str(kst_today());current=bool(data and data['date']==today);sites=active_sites(db,data,user)
