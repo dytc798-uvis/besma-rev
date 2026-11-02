@@ -7,6 +7,7 @@ import sqlite3
 import threading
 import time
 from collections import OrderedDict, deque
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 from urllib.parse import quote
 
@@ -31,7 +32,10 @@ from app.modules.file_search.important_files import (
     stage_explicit_upload,
     validate_upload_selection,
 )
-from app.modules.file_search.index_database import IndexDatabaseContractError
+from app.modules.file_search.index_database import (
+    MAX_DATABASE_CANONICAL_BYTES,
+    IndexDatabaseContractError,
+)
 from app.modules.file_search.schemas import (
     FILE_SEARCH_CONTRACT_VERSION,
     FileSearchScope,
@@ -573,6 +577,66 @@ def folders_endpoint(
     return {"items": items}
 
 
+def _team_publication_state(database, sources: list[dict]) -> dict | None:
+    shared = [row for row in sources if row.get("scope") == "TEAM_SAFETY_NAS"]
+    if not shared:
+        return None
+    source = shared[0]
+    result = {
+        "source_session_id": source.get("session_id"),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "capacity": "UNKNOWN",
+        "newer_uncommitted": None,
+    }
+    if len(shared) != 1 or source.get("logical_root_id") != TEAM_SAFETY_NAS_LOGICAL_ROOT_ID:
+        return result
+    try:
+        # Only session metadata is read. Keep an already usable source available
+        # when the diagnostic fails or a publication changes during this read.
+        with database.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT COALESCE(SUM(canonical_bytes),0) AS retained_bytes,
+                       SUM(CASE WHEN scope='TEAM_SAFETY_NAS'
+                                 AND logical_root_id=? AND status='ACTIVE' THEN 1 ELSE 0 END)
+                           AS active_count,
+                       MAX(CASE WHEN session_id=? AND status='ACTIVE'
+                                 AND scope='TEAM_SAFETY_NAS' AND logical_root_id=?
+                                THEN generated_at END) AS active_generation,
+                       MAX(CASE WHEN session_id=? AND status='ACTIVE'
+                                 AND scope='TEAM_SAFETY_NAS' AND logical_root_id=?
+                                THEN canonical_bytes END) AS active_bytes,
+                       MAX(CASE WHEN scope='TEAM_SAFETY_NAS' AND logical_root_id=?
+                                 AND status IN ('STAGING','RETIRED') AND committed_at IS NULL
+                                THEN generated_at END) AS pending_generation
+                FROM index_sessions
+                """,
+                (TEAM_SAFETY_NAS_LOGICAL_ROOT_ID, source["session_id"],
+                 TEAM_SAFETY_NAS_LOGICAL_ROOT_ID, source["session_id"],
+                 TEAM_SAFETY_NAS_LOGICAL_ROOT_ID, TEAM_SAFETY_NAS_LOGICAL_ROOT_ID),
+            ).fetchone()
+        if row["active_count"] != 1 or row["active_generation"] != source["generated_at"]:
+            return result
+        retained, active = row["retained_bytes"], row["active_bytes"]
+        if type(retained) is not int or type(active) is not int or retained < 0 or active < 0:
+            return result
+        def timestamp(value):
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                raise ValueError("UNQUALIFIED_GENERATION")
+            return parsed
+        generation = timestamp(row["active_generation"])
+        pending = row["pending_generation"]
+        result.update(
+            capacity="LOW" if MAX_DATABASE_CANONICAL_BYTES - retained < max(active, 1) else "AVAILABLE",
+            newer_uncommitted=bool(pending and timestamp(pending) > generation),
+        )
+    except (sqlite3.Error, OSError, IndexDatabaseContractError, ValueError, TypeError, KeyError, OverflowError):
+        # Do not expose paths, private source sizes, or raw exception text.
+        logger.warning("Shared file-search publication diagnostic unavailable")
+    return result
+
+
 @router.get("/state")
 def state_endpoint(context: FileSearchContextDep) -> dict:
     require_search(context)
@@ -583,7 +647,8 @@ def state_endpoint(context: FileSearchContextDep) -> dict:
             detail="FILE_SEARCH_STATE_RATE_LIMITED",
             headers={"Retry-After": str(retry_after)},
         )
-    return {"sources": context.database.state(context.actor_user_id)}
+    sources = context.database.state(context.actor_user_id)
+    return {"sources": sources, "team_publication": _team_publication_state(context.database, sources)}
 
 
 @important_files_router.get("/capabilities")

@@ -6,7 +6,13 @@ export function describeNasIndex(value,now=Date.now()){
  if(rows.length!==1)return {phase:'unknown'};
  const row=rows[0],date=Date.parse(row.generated_at);
  if(row.status!=='ACTIVE'||row.logical_root_id!=='team-safety-nas-z4'||!Number.isSafeInteger(row.entry_count)||row.entry_count<0||typeof row.generated_at!=='string'||!/(?:Z|[+-]\d\d:\d\d)$/.test(row.generated_at)||!Number.isFinite(date)||date>now+300000)return {phase:'unknown'};
- return {phase:now-date>36*3600000?'stale':'ready',generatedAt:row.generated_at,count:row.entry_count};
+ const base={phase:now-date>36*3600000?'stale':'ready',generatedAt:row.generated_at,count:row.entry_count};
+ if(value.team_publication===undefined)return base;
+ const health=value.team_publication,checked=Date.parse(health?.checked_at);
+ if(!health||typeof row.session_id!=='string'||!row.session_id||health.source_session_id!==row.session_id||typeof health.checked_at!=='string'||!/(?:Z|[+-]\d\d:\d\d)$/.test(health.checked_at)||!Number.isFinite(checked)||Math.abs(now-checked)>300000||!['LOW','AVAILABLE'].includes(health.capacity)||typeof health.newer_uncommitted!=='boolean')return {...base,phase:'unknown'};
+ if(health.capacity==='LOW')return {...base,phase:'stale',reason:'capacity'};
+ if(health.newer_uncommitted)return {...base,phase:'stale',reason:'pending'};
+ return base;
 }
 
 export function createNasSearchStatus({api,isCurrent,now=()=>Date.now()}){
@@ -19,7 +25,8 @@ export function createNasSearchStatus({api,isCurrent,now=()=>Date.now()}){
   if(!current())return;const prior=state.phase==='error'||state.phase==='loading'?lastGood:null,meta=state.generatedAt?state:prior;
   const basis=meta?'검색목록 기준 '+labelTime(meta.generatedAt)+' · '+meta.count.toLocaleString('ko-KR')+'개':'';
   const messages={loading:'검색목록 상태를 확인하고 있습니다.',missing:'검색목록을 준비하고 있습니다. 자료가 없다는 뜻은 아닙니다.',unknown:'검색목록 기준을 확인하지 못했습니다.',error:'검색목록 상태를 확인하지 못했습니다.',stale:'목록이 오래되어 갱신 확인이 필요합니다.',ready:'기준 시각 이후의 새 자료는 다음 목록 갱신 후 검색됩니다.'};
-  text.textContent=(basis?basis+(prior?' (마지막 확인값)':'')+'\n':'')+messages[state.phase];
+  const warning=state.reason==='capacity'?'새 목록 반영을 위한 저장공간이 부족합니다. 현재 목록에서 검색합니다.':state.reason==='pending'?'새 목록 반영이 아직 완료되지 않았습니다. 현재 목록에서 검색합니다.':messages[state.phase];
+  text.textContent=(basis?basis+(prior?' (마지막 확인값)':'')+'\n':'')+warning;
   element.dataset.state=state.phase;check.disabled=state.phase==='loading';
  }
  async function refresh(force=false){
