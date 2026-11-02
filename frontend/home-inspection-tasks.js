@@ -4,10 +4,10 @@ const date=value=>typeof value==='string'&&/^20\d{2}-(0[1-9]|1[0-2])-\d{2}$/.tes
 export function createHomeInspectionTasks({anchor,api,token,onNavigate}){
  const n=(tag,text)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;return e;};
  const host=n('details');host.className='government-document-tasks';host.id='today-inspection-tasks';host.hidden=true;anchor.after(host);
- let sequence=0,owner='',opened=false,last=null;const current=()=>!!token&&localStorage.getItem('besma_token')===token;
- const ready=crypto.subtle.digest('SHA-256',new TextEncoder().encode(token||'')).then(bytes=>{owner=[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');try{const old=JSON.parse(sessionStorage.getItem(KEY)||'null');if(old?.owner===owner&&Date.now()-old.at>=0&&Date.now()-old.at<TTL)opened=old.open===true;}catch{}}).catch(()=>{});
- function remember(){if(current()&&owner)try{sessionStorage.setItem(KEY,JSON.stringify({owner,at:Date.now(),open:opened}));}catch{}}
- host.addEventListener('toggle',()=>{opened=host.open;remember();});
+ let sequence=0,owner='',opened=false,last=null,state={query:'',filter:'all',selected:''};const current=()=>!!token&&localStorage.getItem('besma_token')===token;
+ const ready=crypto.subtle.digest('SHA-256',new TextEncoder().encode(token||'')).then(bytes=>{owner=[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');try{const old=JSON.parse(sessionStorage.getItem(KEY)||'null');if(old?.owner===owner&&Date.now()-old.at>=0&&Date.now()-old.at<TTL){opened=old.open===true;state={query:typeof old.query==='string'?old.query.slice(0,100):'',filter:['all','overdue','planned','progress','hold'].includes(old.filter)?old.filter:'all',selected:inspectionPlanId(old.selected)||''};}}catch{}}).catch(()=>{});
+ function remember(){if(current()&&owner)try{sessionStorage.setItem(KEY,JSON.stringify({owner,at:Date.now(),open:opened,...state}));}catch{}}
+ host.addEventListener('toggle',()=>{opened=host.open;remember();});addEventListener('pagehide',remember);
  function clear(message){sequence++;last=null;host.hidden=false;host.replaceChildren(n('summary','내 점검 확인 필요'),n('p',message||'점검계획을 다시 확인해 주세요.'));}
  async function refresh(home,user){
   const pass=++sequence;last={home,user};await ready;if(!current()||pass!==sequence)return;
@@ -24,8 +24,22 @@ export function createHomeInspectionTasks({anchor,api,token,onNavigate}){
    if(!Array.isArray(value.items)||value.items.length>2000)throw Error('점검계획의 조회 범위를 확인해야 합니다.');
    const seen=new Set();for(const row of value.items){if(!inspectionPlanId(row.public_id)||seen.has(row.public_id)||row.owner_user_id!==user.id||!date(row.scheduled_date)||row.due_date!=null&&(!date(row.due_date)||row.due_date<row.scheduled_date)||typeof row.title!=='string'||!['PLANNED','IN_PROGRESS','ON_HOLD','COMPLETED'].includes(row.status))throw Error('점검계획의 담당·현장·기간을 확인해야 합니다.');seen.add(row.public_id);}
    const rows=value.items.filter(r=>!r.archived&&['PLANNED','IN_PROGRESS','ON_HOLD'].includes(r.status)).sort((a,b)=>(a.due_date||a.scheduled_date).localeCompare(b.due_date||b.scheduled_date)||a.public_id.localeCompare(b.public_id));
-   host.replaceChildren(n('summary','내 점검 · '+rows.length+'건'),n('small','예정일이 지난 점검과 14일 이내 예정 · 조회 '+start+' ~ '+end));
-   const list=n('ul');list.className='document-task-list';for(const row of rows){const li=n('li'),link=n('a',row.title.replace(/^\[점검\]\s*/,''));link.href=inspectionHref(row);link.dataset.inspectionPlan=row.public_id;link.onclick=()=>{remember();onNavigate();};const endDate=row.due_date||row.scheduled_date;li.append(link,n('small',row.scheduled_date+(row.due_date?' ~ '+row.due_date:'')+' · '+(row.status==='ON_HOLD'?'보류':endDate<today?'예정일 지남':row.status==='IN_PROGRESS'?'진행 중':'예정')));list.append(li);}if(!rows.length)list.append(n('li','이 조회기간에 미완료·예정 점검이 없습니다.'));host.append(list);const all=n('a','내 점검 전체 보기');all.href='/inspection-plan.html';all.onclick=()=>{remember();onNavigate();};host.append(all);
+   const overdue=rows.filter(row=>(row.due_date||row.scheduled_date)<today).length;
+   host.replaceChildren(n('summary','내 점검 · '+rows.length+'건'+(overdue?' · 예정일 지남 '+overdue+'건':'')),n('small','본인의 미완료 점검과 14일 이내 예정 · 조회 '+start+' ~ '+end));
+   const controls=n('div');controls.className='document-task-controls';
+   const searchGroup=n('div'),searchLabel=n('label','현장·주소 검색'),search=n('input');search.id='home-inspection-query';searchLabel.htmlFor=search.id;search.type='search';search.maxLength=100;search.placeholder='현장명·주소';search.value=state.query;searchGroup.append(searchLabel,search);
+   const filterGroup=n('div'),filterLabel=n('label','확인 구분'),filter=n('select');filter.id='home-inspection-filter';filterLabel.htmlFor=filter.id;
+   for(const[key,text]of[['all','미완료 전체'],['overdue','예정일 지남'],['planned','예정'],['progress','진행 중'],['hold','보류']]){const option=n('option',text);option.value=key;filter.append(option);}filter.value=state.filter;filterGroup.append(filterLabel,filter);controls.append(searchGroup,filterGroup);
+   const result=n('p');result.className='document-task-result';result.setAttribute('role','status');const list=n('ul');list.className='document-task-list';host.append(controls,result,list);
+   function draw(){
+    const terms=state.query.normalize('NFC').trim().toLocaleLowerCase('ko-KR').split(/\s+/).filter(Boolean);
+    const visible=rows.filter(row=>terms.every(term=>[row.title,row.detail_text||''].join(' ').normalize('NFC').toLocaleLowerCase('ko-KR').includes(term))&&(state.filter==='all'||state.filter==='overdue'&&(row.due_date||row.scheduled_date)<today||state.filter==='planned'&&row.status==='PLANNED'||state.filter==='progress'&&row.status==='IN_PROGRESS'||state.filter==='hold'&&row.status==='ON_HOLD'));
+    result.textContent='표시 '+visible.length+'건 / 미완료 '+rows.length+'건';list.replaceChildren();
+    for(const row of visible){const li=n('li'),link=n('a',row.title.replace(/^\[점검\]\s*/,''));link.href=inspectionHref(row);link.dataset.inspectionPlan=row.public_id;if(state.selected===row.public_id){li.className='selected';link.setAttribute('aria-current','true');}link.onclick=()=>{state.selected=row.public_id;remember();onNavigate();};const endDate=row.due_date||row.scheduled_date;li.append(link,n('small',row.scheduled_date+(row.due_date?' ~ '+row.due_date:'')+' · '+(row.status==='ON_HOLD'?'보류':endDate<today?'예정일 지남':row.status==='IN_PROGRESS'?'진행 중':'예정')));list.append(li);}
+    if(!visible.length)list.append(n('li',rows.length?'현재 검색·확인 조건에 맞는 점검이 없습니다.':'이 조회기간의 미완료·예정 점검이 없습니다.'));
+   }
+   search.oninput=()=>{state.query=search.value.slice(0,100);draw();remember();};filter.onchange=()=>{state.filter=filter.value;draw();remember();};draw();
+   const all=n('a','내 점검 전체 보기');all.href='/inspection-plan.html';all.onclick=()=>{remember();onNavigate();};host.append(all);
   }catch(e){if(current()&&pass===sequence)failure(e.message||'점검계획을 확인하지 못했습니다.');}
  }
  function failure(message){host.hidden=false;host.replaceChildren(n('summary','내 점검 확인 필요'),n('p',message));const retry=n('button','다시 확인');retry.type='button';retry.onclick=()=>last&&refresh(last.home,last.user);host.append(retry);}
