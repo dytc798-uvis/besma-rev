@@ -20,6 +20,19 @@ class ReviewedSourceQualityTests(unittest.TestCase):
         self.assertEqual(result[self.row['id']], ['원문 날짜 확인: 2026.11.31은 존재하지 않는 날짜입니다.'])
         self.assertEqual(self.row, before)
 
+    def test_zero_day_is_displayed_without_rewriting_the_receipt_or_completing_an_opinion(self):
+        note = self.note('INVALID_DATE', document_month='2026-09', day=0)
+        before = copy.deepcopy(self.row)
+        self.assertEqual(self.decode(note)[self.row['id']],
+                         ['원문 날짜 확인: 2026.09.00은 존재하지 않는 날짜입니다.'])
+        self.assertEqual(self.row, before)
+        for value in [-1, 32, True, '0', None]:
+            with self.subTest(day=value):
+                self.assertEqual(self.decode(self.note('INVALID_DATE', document_month='2026-09', day=value)), {})
+        for field in ['id', 'sha256']:
+            changed = dict(note, **{field: 'c'*64})
+            self.assertEqual(self.decode(changed), {})
+
     def test_leap_year_and_valid_month_end_are_not_false_warnings(self):
         for month, day in [('2024-02', 29), ('2026-10', 31), ('2026-11', 30)]:
             with self.subTest(month=month, day=day):
