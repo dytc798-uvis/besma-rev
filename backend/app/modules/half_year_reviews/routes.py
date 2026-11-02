@@ -32,11 +32,11 @@ def selected(db,user,public_id,period):
 def fail(error):
     if isinstance(error,Conflict):raise HTTPException(409,'다른 화면에서 자료가 변경되었습니다. 입력 내용을 보존했으니 새로 확인해 주세요.')
     if isinstance(error,KeyError):raise HTTPException(404,'이 현장·반기의 자료를 찾을 수 없습니다.')
-    messages={'SIGNED_TABLE_REQUIRED':'해당 최종 평가표 사진을 업로드하고 원본 기준 서명·전체 쪽 확인을 체크해 주세요.','WALK_FOUR_FORMS_REQUIRED':'4종 각각의 최종 평가표 사진 업로드·확인을 먼저 완료해 주세요.','WALK_REPORT_URL_INVALID':'네이버웍스 게시글 주소를 확인해 주세요.','SIGNED_PHOTO_ALREADY_USED':'다른 평가표에 사용한 사진입니다. 이 평가표 사진을 따로 연결해 주세요.','WALK_REASON_REQUIRED':'해당없음 사유를 입력해 주세요.','WALK_DATE_MISMATCH':'점검기록과 평가일이 다릅니다. 점검일과 연결 기록을 확인해 주세요.','MONTHLY_SOURCE_INVALID':'이 현장·반기의 취합자료를 다시 선택해 주세요.','MONTHLY_SOURCE_LIMIT':'연결할 수 있는 취합자료 수를 넘었습니다.','UNREVIEWED_ITEMS_REMAIN':'미평가 항목과 점검사진을 확인해 주세요.','COMPLETE_FIRST':'평가 항목을 입력하고 완료 저장한 뒤 받을 수 있습니다.','SUBJECT_REQUIRED':'평가대상자를 먼저 추가해 주세요.','SUBJECT_EXISTS':'이미 등록된 평가대상자입니다.','NOTE_TOO_LONG':'비고는 두 줄 이내로 짧게 입력해 주세요.','VERDICT_INVALID':'해당없음 사유와 적합 여부를 확인해 주세요.','SCORE_INVALID':'평가표의 배점 범위 안에서 점수를 입력해 주세요.','TEMPLATE_CHANGED':'평가표 원본이 변경되어 확인이 필요합니다.','DATE_PERIOD_MISMATCH':'점검일이 선택한 반기와 다릅니다.','PDF_REQUIRED':'평가한 PDF 파일을 선택해 주세요.','PARSE_REVIEW_REQUIRED':'현장·대상자·점검일·합계와 판독 내용을 확인해 주세요.'}
+    messages={'PDF_PREVIEW_UNAVAILABLE':'원문을 미리 볼 수 없습니다. 원본 파일을 받아 확인해 주세요.','PDF_PREVIEW_SOURCE_CHANGED':'원문 파일 확인이 필요합니다. 다시 조회해 주세요.','SIGNED_TABLE_REQUIRED':'해당 최종 평가표 사진을 업로드하고 원본 기준 서명·전체 쪽 확인을 체크해 주세요.','WALK_FOUR_FORMS_REQUIRED':'4종 각각의 최종 평가표 사진 업로드·확인을 먼저 완료해 주세요.','WALK_REPORT_URL_INVALID':'네이버웍스 게시글 주소를 확인해 주세요.','SIGNED_PHOTO_ALREADY_USED':'다른 평가표에 사용한 사진입니다. 이 평가표 사진을 따로 연결해 주세요.','WALK_REASON_REQUIRED':'해당없음 사유를 입력해 주세요.','WALK_DATE_MISMATCH':'점검기록과 평가일이 다릅니다. 점검일과 연결 기록을 확인해 주세요.','MONTHLY_SOURCE_INVALID':'이 현장·반기의 취합자료를 다시 선택해 주세요.','MONTHLY_SOURCE_LIMIT':'연결할 수 있는 취합자료 수를 넘었습니다.','UNREVIEWED_ITEMS_REMAIN':'미평가 항목과 점검사진을 확인해 주세요.','COMPLETE_FIRST':'평가 항목을 입력하고 완료 저장한 뒤 받을 수 있습니다.','SUBJECT_REQUIRED':'평가대상자를 먼저 추가해 주세요.','SUBJECT_EXISTS':'이미 등록된 평가대상자입니다.','NOTE_TOO_LONG':'비고는 두 줄 이내로 짧게 입력해 주세요.','VERDICT_INVALID':'해당없음 사유와 적합 여부를 확인해 주세요.','SCORE_INVALID':'평가표의 배점 범위 안에서 점수를 입력해 주세요.','TEMPLATE_CHANGED':'평가표 원본이 변경되어 확인이 필요합니다.','DATE_PERIOD_MISMATCH':'점검일이 선택한 반기와 다릅니다.','PDF_REQUIRED':'평가한 PDF 파일을 선택해 주세요.','PARSE_REVIEW_REQUIRED':'현장·대상자·점검일·합계와 판독 내용을 확인해 주세요.'}
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':True,'monthly_batch_links_version':1,'template_bundle_version':1}
+    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':True,'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1}
 @router.get('/plans/{public_id}')
 def read(public_id:str,period:str,db:DbDep,user:Current):
     try:
@@ -89,6 +89,24 @@ def download_file(public_id:str,period:str,file_id:str,db:DbDep,user:Current):
         row,key=selected(db,user,public_id,period);content,meta=store().file(key,file_id)
     except(ValueError,KeyError,OSError)as e:fail(e)
     return Response(content,media_type='image/jpeg'if meta['kind']=='image'else'application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(meta['filename']),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+@router.get('/plans/{public_id}/files/{file_id}/preview')
+async def pdf_information(public_id:str,period:str,file_id:str,db:DbDep,user:Current):
+    from . import pdf_preview
+    try:
+        row,key=selected(db,user,public_id,period);content,meta=store().file(key,file_id);db.rollback()
+        value=await run_in_threadpool(pdf_preview.information,content,meta)
+    except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
+    return Response(json.dumps(value),media_type='application/json',headers={'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'})
+
+@router.get('/plans/{public_id}/files/{file_id}/preview/{page_number}')
+async def pdf_page(public_id:str,period:str,file_id:str,page_number:int,db:DbDep,user:Current):
+    from . import pdf_preview
+    try:
+        row,key=selected(db,user,public_id,period);content,meta=store().file(key,file_id);db.rollback()
+        image,proof=await run_in_threadpool(pdf_preview.render,content,meta,page_number)
+    except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
+    return Response(image,media_type='image/png',headers={'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Source-SHA256':proof['source_sha256'],'X-Page-Number':str(proof['page_number']),'X-Preview-SHA256':proof['sha256'],'Access-Control-Expose-Headers':'X-Source-SHA256, X-Page-Number, X-Preview-SHA256, Content-Length'})
+
 @router.get('/plans/{public_id}/drafts/{form}/{subject_id}')
 def draft_copy(public_id:str,form:str,subject_id:str,period:str,db:DbDep,user:Current):
     try:
