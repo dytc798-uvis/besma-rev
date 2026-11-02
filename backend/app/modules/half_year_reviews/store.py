@@ -28,7 +28,7 @@ class ReviewStore:
             return json.loads(row['result'])
     def mutate(self,key,actor,name,request,attachment=None,context_meta=None):
         if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',request['request_key']):raise ValueError('REQUEST_KEY_INVALID')
-        canonical={**request,'attachment_sha256':digest(attachment[0])if attachment else None};payload_sha=digest(encoded(canonical).encode());stamp=datetime.now(timezone.utc).isoformat();new_path=None
+        canonical={**{k:v for k,v in request.items()if k!='base'or v is not None},'attachment_sha256':digest(attachment[0])if attachment else None};payload_sha=digest(encoded(canonical).encode());stamp=datetime.now(timezone.utc).isoformat();new_path=None
         with closing(self.connect())as c:
             c.execute('BEGIN IMMEDIATE')
             replay=c.execute('SELECT payload_sha256,result FROM receipts WHERE context_id=? AND request_key=? AND actor_id=?',(key,request['request_key'],actor)).fetchone()
