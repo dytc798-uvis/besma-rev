@@ -16,6 +16,17 @@ def pack(items,hwpx=False):
     with zipfile.ZipFile(output,'w',zipfile.ZIP_DEFLATED)as z:
         for name,data in items.items():z.writestr(name,data,compress_type=zipfile.ZIP_STORED if hwpx and name=='mimetype'else zipfile.ZIP_DEFLATED)
     return output.getvalue()
+
+def template_bundle():
+    # Reuse exactly the four individually available output templates.
+    order=CATALOG['order']
+    if len(order)!=4 or set(order)!={'report','law','manager','supervisor'}:raise ValueError('TEMPLATE_CHANGED')
+    files={}
+    for form in order:
+        schema=FORMS[form];name=schema['title']+'_출력용.'+schema['format']
+        if name in files or '/'in name or '\\'in name:raise ValueError('TEMPLATE_CHANGED')
+        files[name]=template(schema.get('template','반기평가표.pptx'))
+    return pack(files)
 def xlsx(form,snapshot,site,inspector):
     schema=FORMS[form];items=parts(template(schema['template']));uri='http://schemas.openxmlformats.org/spreadsheetml/2006/main';ns={'s':uri};q=lambda tag:'{'+uri+'}'+tag
     workbook=E.fromstring(items['xl/workbook.xml']);sheet_ref=next(s for s in workbook.find('s:sheets',ns)if s.get('name')=='평가표');rid=sheet_ref.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')

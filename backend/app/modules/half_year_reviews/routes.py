@@ -36,7 +36,7 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':True,'monthly_batch_links_version':1}
+    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':True,'monthly_batch_links_version':1,'template_bundle_version':1}
 @router.get('/plans/{public_id}')
 def read(public_id:str,period:str,db:DbDep,user:Current):
     try:
@@ -118,6 +118,13 @@ def output(public_id:str,period:str,output_id:str,db:DbDep,user:Current):
         row,key=selected(db,user,public_id,period);content,meta=store().output_file(key,output_id)
     except(ValueError,KeyError,OSError)as e:fail(e)
     return Response(content,media_type='application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(meta['filename']),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+@router.get('/plans/{public_id}/templates')
+def blank_templates(public_id:str,period:str,db:DbDep,user:Current):
+    try:
+        row,key=selected(db,user,public_id,period);content=exports.template_bundle()
+    except(ValueError,KeyError,OSError)as e:fail(e)
+    return Response(content,media_type='application/zip',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote('반기평가_출력용_4종.zip'),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
 @router.get('/plans/{public_id}/templates/{form}')
 def blank_template(public_id:str,period:str,form:str,db:DbDep,user:Current):
