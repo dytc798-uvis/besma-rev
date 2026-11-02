@@ -57,6 +57,25 @@ class ReviewedSourceQualityTests(unittest.TestCase):
             '원문 확인: PDF 1쪽 / 원문 표기 2쪽. 전체 자료 여부 확인 필요',
             '원문 월 표기 확인: 표제 7월 / 등록 자료월 2026.11'])
 
+    def test_source_state_difference_is_factual_and_does_not_complete_an_action(self):
+        row = dict(self.row, category='opinions')
+        before = copy.deepcopy(row)
+        result = self.decode(self.note('OPINION_STATE_DIFFERENCE'), row)
+        self.assertEqual(result[row['id']], ['같은 의견의 원본별 조치상태가 다릅니다.'])
+        self.assertEqual(row, before)
+
+    def test_source_state_difference_is_limited_to_exact_opinion_bytes(self):
+        note = self.note('OPINION_STATE_DIFFERENCE')
+        self.assertEqual(self.decode(note), {})
+        for row in [dict(self.row, category='opinions', id='c'*64),
+                    dict(self.row, category='opinions', sha256='c'*64)]:
+            self.assertEqual(self.decode(note, row), {})
+
+    def test_source_state_difference_never_renders_supplied_body_or_person(self):
+        for field in ['person', 'opinion', 'status', 'text']:
+            self.assertEqual(self.decode(self.note('OPINION_STATE_DIFFERENCE', **{field: '<script>private</script>'}),
+                                         dict(self.row, category='opinions')), {})
+
     def test_one_review_does_not_change_other_files_or_complete_anything(self):
         second = dict(self.row, id='c'*64, sha256='d'*64)
         value = {'items': [self.row, second], 'review_count': 121,
