@@ -5,6 +5,7 @@ import sqlite3,json,hashlib,uuid,re,io,zipfile,os
 from .catalog import CATALOG,FORMS,EVIDENCE,blank,cleaned,validate_assessment,Conflict
 from app.modules.inspection_reports.pptx_report import normalize_photo
 from . import exports,jobs,monthly_sources,walkthrough
+from .concurrent import merge_edits,confirm_evidence
 digest=lambda value:hashlib.sha256(value).hexdigest()
 encoded=lambda value:json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 class ReviewStore:
@@ -35,12 +36,16 @@ class ReviewStore:
                 if replay['payload_sha256']!=payload_sha:raise Conflict('REQUEST_CHANGED')
                 return json.loads(replay['result'])
             row=c.execute('SELECT * FROM contexts WHERE id=?',(key,)).fetchone();revision=row['revision']if row else 0;data=json.loads(row['data'])if row else blank()
-            if revision!=request['revision']:raise Conflict('REVISION_CHANGED')
+            if request['revision']>revision:raise Conflict('REVISION_INVALID')
             action=request['action'];body=request['data'];result={};op_meta={}
             if not isinstance(body,dict):raise ValueError('REQUEST_INVALID')
             if action=='evidence':
-                if set(body)!={'id','checked','note'}or body['id']not in EVIDENCE or type(body['checked'])is not bool:raise ValueError('EVIDENCE_INVALID')
-                data['evidence'][body['id']]={'checked':body['checked'],'note':cleaned(body['note'],160),'by':name,'at':stamp}
+                if set(body)-{'id','checked','note','hold'}or not {'id','checked','note'}<=set(body)or body['id']not in EVIDENCE or type(body['checked'])is not bool or type(body.get('hold',False))is not bool:raise ValueError('EVIDENCE_INVALID')
+                previous=data['evidence'].get(body['id'],{})
+                edit={k:v for k,v in body.items()if k!='id'}
+                if isinstance(request.get('base'),dict):edit=merge_edits(request['base'],edit,{k:previous.get(k,False if k in {'checked','hold'}else '')for k in ['checked','note','hold']})
+                note=cleaned(edit['note'],160);hold=edit.get('hold',False)
+                data['evidence'][body['id']]={'checked':False if hold else bool(edit['checked']or note),'hold':hold,'note':note,'by':name,'at':stamp}
             elif action=='monthly-link':
                 result['monthly_source']=monthly_sources.link(data,key,request['period'],body,actor,name,stamp)
             elif action=='monthly-links':
@@ -58,6 +63,9 @@ class ReviewStore:
                 subject={'id':uuid.uuid4().hex,'name':target};data['subjects'][body['form']].append(subject);result['subject']=subject
             elif action=='assessment':
                 if set(body)!={'form','subject_id','answers','complete'}or type(body['complete'])is not bool:raise ValueError('ASSESSMENT_INVALID')
+                if isinstance(request.get('base'),dict):
+                    current=data['assessments'].get(body['form']+':'+body['subject_id'],{}).get('draft',{}).get('data')or request['base']
+                    body={**body,'answers':merge_edits(request['base'],body['answers'],current)}
                 form=body['form'];subject=body['subject_id'];answers,totals=validate_assessment(form,body['answers'],data['files'],data['subjects'],subject,body['complete']);subject_name=''
                 day=answers['inspection_date'];actual_period=day[:4]+('-H1'if int(day[5:7])<=6 else'-H2')
                 if actual_period!=request['period']:raise ValueError('DATE_PERIOD_MISMATCH')
@@ -108,6 +116,7 @@ class ReviewStore:
                     new_path=path;meta={'id':fid,'evidence_id':body['evidence_id'],'filename':Path(filename).stem+extension,'extension':extension,'kind':kind,'sha256':digest(content),'bytes':len(content),'caption':caption,'by':name,'at':stamp}
                     if photo:meta.update(width=photo['width'],height=photo['height'])
                     data['files'].append(meta);result['file']=meta
+                if body['evidence_id']in EVIDENCE and result['file']['kind']=='image':confirm_evidence(data,body['evidence_id'],name,stamp)
                 if photo_target:
                     result['field_photo']=walkthrough.record_photo(photo_target,body,result['file'],actor,name,stamp)
             else:raise ValueError('ACTION_INVALID')

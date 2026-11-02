@@ -20,6 +20,7 @@ class Change(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
     request_key:str=Field(pattern=r'^[A-Za-z0-9_-]{8,80}$')
     revision:int=Field(ge=0)
+    base:dict|None=None
     period:str=Field(pattern=r'^20\d{2}-H[12]$')
     action:str=Field(pattern=r'^(evidence|subject|assessment|caption|parse|apply_parse|monthly-link|monthly-links|monthly-unlink|walk-start|walk-item|walk-report)$')
     data:dict
@@ -36,7 +37,7 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':True,'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1}
+    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':True,'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1}
 @router.get('/plans/{public_id}')
 def read(public_id:str,period:str,db:DbDep,user:Current):
     try:

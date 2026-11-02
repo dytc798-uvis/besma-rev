@@ -3,6 +3,7 @@ from datetime import date
 from urllib.parse import urlsplit
 import re,uuid,copy
 from .catalog import EVIDENCE,FORMS,cleaned,Conflict
+from .concurrent import merge_edits,confirm_evidence
 
 VERSION=1
 
@@ -71,19 +72,23 @@ def mutate(data,action,body,period,actor,name,stamp,context_meta):
         meta={key:cleaned(meta.get(key,''),limit)for key,limit in limits.items()}
         run['report']={'board_url':link,'posted_confirmed':body['posted_confirmed'],'draft_text':text,'meta':meta,'public_attachment_ids':selected,'public_field_photos':clean_field,'public_review_confirmed':reviewed,'state':'REPORTED_USER_CONFIRMED'if body['posted_confirmed']else'REPORT_PENDING','server_verified':False,'by':name,'actor_id':actor,'at':stamp}
         return {'inspection_run':run}
-    if action!='walk-item'or set(body)!={'run_id','evidence_id','expected_version','entry'}:raise ValueError('WALK_INVALID')
+    if action!='walk-item'or set(body)-{'run_id','evidence_id','expected_version','entry','base_entry'}or not {'run_id','evidence_id','expected_version','entry'}<=set(body):raise ValueError('WALK_INVALID')
     run=run_for(data,body['run_id'])
     if run['plan_id']!=(context_meta or{}).get('public_id'):raise ValueError('WALK_PLAN_MISMATCH')
     eid=body['evidence_id']
     if eid not in EVIDENCE or type(body['expected_version'])is not int:raise ValueError('WALK_INVALID')
     old=run['items'].get(eid,{})
-    if body['expected_version']!=old.get('version',0):raise Conflict('WALK_ITEM_CHANGED')
+    if body['expected_version']>old.get('version',0):raise Conflict('WALK_ITEM_CHANGED')
     entry=body['entry']
-    allowed={'status','note','risk','previous','today','action','owner','due','photos'}
+    allowed={'status','hold','note','risk','previous','today','action','owner','due','photos'}
     if not isinstance(entry,dict)or set(entry)-allowed:raise ValueError('WALK_INVALID')
+    if isinstance(body.get('base_entry'),dict):entry=merge_edits(body['base_entry'],entry,old)
+    elif body['expected_version']<old.get('version',0):entry={**entry,'photos':merge_edits([],entry.get('photos',[]),old.get('photos',[]))}
+    hold=entry.get('hold',False)
+    if type(hold)is not bool:raise ValueError('WALK_INVALID')
     status=entry.get('status','PENDING')
     if status not in {'CONFIRMED','MISSING','PENDING','NA'}:raise ValueError('WALK_INVALID')
-    clean={k:cleaned(entry.get(k,''),1000 if k=='note'else 500 if k in {'risk','previous','today','action'}else 40 if k=='owner'else 10)for k in allowed-{'status','photos'}}
+    clean={k:cleaned(entry.get(k,''),1000 if k=='note'else 500 if k in {'risk','previous','today','action'}else 40 if k=='owner'else 10)for k in allowed-{'status','photos','hold'}}
     if status=='NA'and not clean['note']:raise ValueError('WALK_REASON_REQUIRED')
     if clean['due']:date.fromisoformat(clean['due'])
     photos=entry.get('photos',[])
@@ -94,8 +99,14 @@ def mutate(data,action,body,period,actor,name,stamp,context_meta):
         if not isinstance(link,dict)or set(link)!={'id','stage'}or link['id']not in known or link['stage']not in {'BEFORE','AFTER','EVIDENCE'}or link['id']in seen:raise ValueError('WALK_PHOTOS_INVALID')
         seen.add(link['id']);links.append(dict(link))
     # Revisions/events preserve prior entries. Other runs and all assessment data are untouched.
-    item={**clean,'status':status,'photos':links,'version':old.get('version',0)+1,'by':name,'actor_id':actor,'at':stamp}
+    if hold:status='PENDING'
+    elif status in {'PENDING','CONFIRMED'}and(clean['note']or links):status='CONFIRMED'
+    item={**clean,'status':status,'hold':hold,'photos':links,'version':old.get('version',0)+1,'by':name,'actor_id':actor,'at':stamp}
     run['items'][eid]=item;run['updated_at']=stamp
+    if status=='CONFIRMED':
+        data['evidence'][eid]={**data['evidence'].get(eid,{}),'hold':False}
+        confirm_evidence(data,eid,name,stamp)
+    elif hold:data['evidence'][eid]={**data['evidence'].get(eid,{}),'checked':False,'hold':True,'by':name,'at':stamp}
     return {'inspection_run':run,'inspection_item':item}
 
 def assessment_run(data,run_id,inspection_date,plan_id=None):
@@ -122,4 +133,10 @@ def record_photo(run,body,file,actor,name,stamp):
     known=next((p for p in photos if p['file_id']==file['id']and p['criterion_id']==body['criterion_id']),None)
     if known:return known
     link={'file_id':file['id'],'criterion_id':body['criterion_id'],'form':'law','evidence_id':body['evidence_id'],'stage':body['photo_stage'],'by':name,'actor_id':actor,'at':stamp}
-    photos.append(link);return link
+    photos.append(link)
+    eid=body['evidence_id'];old=run['items'].get(eid,{})
+    linked=list(old.get('photos',[]))
+    if not any(p['id']==file['id']for p in linked):linked.append({'id':file['id'],'stage':body['photo_stage']})
+    run['items'][eid]={**old,'photos':linked,'status':'PENDING'if old.get('hold')else 'CONFIRMED','version':old.get('version',0)+1,'by':name,'actor_id':actor,'at':stamp}
+    run['updated_at']=stamp
+    return link
