@@ -1,6 +1,6 @@
 """Read-only source-month notes from received metadata; never grade or rewrite it."""
 from collections import defaultdict
-import re
+import calendar,re
 
 MONTH=re.compile(r'20\d{2}-(0[1-9]|1[0-2])\Z')
 NAMED_MONTH=re.compile(r'(?<!\d)(20\d{2}|\d{2})\s*년\s*(1[0-2]|0?[1-9])\s*월')
@@ -55,6 +55,14 @@ def notes_by_id(snapshot):
                 present=note['present'];expected=note['expected']
                 if type(present)is int and type(expected)is int and 1<=present<expected<=1000:
                     message=f'원문 확인: PDF {present}쪽 / 원문 표기 {expected}쪽. 전체 자료 여부 확인 필요'
+            elif kind=='LABEL_MONTH'and set(note)=={'id','sha256','kind','label_month'}:
+                label=note['label_month'];month=row.get('month')
+                if type(label)is int and 1<=label<=12 and isinstance(month,str)and MONTH.fullmatch(month)and label!=int(month[5:]):
+                    message=f'원문 월 표기 확인: 표제 {label}월 / 등록 자료월 '+month.replace('-','.')
+            elif kind=='INVALID_DATE'and set(note)=={'id','sha256','kind','document_month','day'}:
+                month=note['document_month'];day=note['day']
+                if isinstance(month,str)and MONTH.fullmatch(month)and type(day)is int and 1<=day<=31 and day>calendar.monthrange(int(month[:4]),int(month[5:]))[1]:
+                    message=f'원문 날짜 확인: {month.replace("-",".")}.{day:02d}은 존재하지 않는 날짜입니다.'
             if message and message not in result.get(row['id'],[]):result.setdefault(row['id'],[]).append(message)
 
     return result
