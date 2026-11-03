@@ -70,5 +70,9 @@ export function createMonthlyEvidence({host,evidenceId,refs,api,loadSources,onLi
   function filterRows(){const code=contractSelect?.value||'';viewState.contract=code;viewState.query=filter.value;const words=filter.value.normalize('NFC').toLocaleLowerCase('ko-KR').trim().split(/\s+/).filter(Boolean);let connected=0;for(const x of rows){const match=!(code&&!x.codes.includes(code))&&words.every(w=>x.text.includes(w));if(match&&x.alreadyLinked)connected++;x.line.hidden=!match||x.alreadyLinked;x.line.style.display=x.line.hidden?'none':'';}const regular=rows.filter(x=>!x.line.hidden&&!x.referenceOnly).length,shared=rows.filter(x=>!x.line.hidden&&x.referenceOnly).length;note.textContent=shared?(regular?'연결할 자료 '+regular+'개 · ':connected?'연결된 자료 '+connected+'개 · ':'평가자료 수신 확인 필요 · ')+'공동 참고자료 '+shared+'개입니다. 공동자료는 원본 확인용입니다.':regular?'새로 연결할 수신자료 '+regular+'개입니다. 내용을 확인한 뒤 필요한 항목에 연결해 주세요.':connected?'검색한 자료 '+connected+'개는 이미 연결되어 있습니다.':result.scope_complete===false||result.reference_state==='CHECK_REQUIRED'?'아직 이 범위의 자료 수신을 확인하지 못했습니다.':'조건에 맞는 수신자료가 없습니다.';note.textContent+=registrationNote;updateSelected();}
   filter.oninput=filterRows;if(contractSelect)contractSelect.onchange=filterRows;filterRows();
  }catch(e){if(here())note.textContent=e.message||'취합자료를 확인하지 못했습니다.';}finally{loading=false;if(here()){find.disabled=false;refreshSelection();}}};
- wrap.append(list,find,note,choices);host.append(wrap);if(viewState.loaded)queueMicrotask(()=>{if(here())find.click();});return()=>{alive=false;};
+ // Opening an evidence item loads references, never original file contents.
+ const opened=()=>{if(here()&&host.open&&!viewState.loaded&&!loading)find.click();};
+ wrap.append(list,find,note,choices);host.append(wrap);host.addEventListener('toggle',opened);
+ if(viewState.loaded)queueMicrotask(()=>{if(here())find.click();});else queueMicrotask(opened);
+ return()=>{alive=false;host.removeEventListener('toggle',opened);};
 }
