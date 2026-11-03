@@ -1,18 +1,18 @@
 import {inspectionHref,inspectionPlanId} from '/assets/inspection-work-entry.js';
 const KEY='besma-home-inspection-tasks-v1',TTL=14400000,DAY=86400000;
 const date=value=>typeof value==='string'&&/^20\d{2}-(0[1-9]|1[0-2])-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
-export function createHomeInspectionTasks({anchor,api,token,onNavigate}){
+export function createHomeInspectionTasks({anchor,api,token,onNavigate,onSummary=()=>{}}){
  const n=(tag,text)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;return e;};
  const host=n('details');host.className='government-document-tasks';host.id='today-inspection-tasks';host.hidden=true;anchor.after(host);
  let sequence=0,owner='',opened=false,last=null,state={query:'',filter:'all',selected:''};const current=()=>!!token&&localStorage.getItem('besma_token')===token;
  const ready=crypto.subtle.digest('SHA-256',new TextEncoder().encode(token||'')).then(bytes=>{owner=[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');try{const old=JSON.parse(sessionStorage.getItem(KEY)||'null');if(old?.owner===owner&&Date.now()-old.at>=0&&Date.now()-old.at<TTL){opened=old.open===true;state={query:typeof old.query==='string'?old.query.slice(0,100):'',filter:['all','overdue','planned','progress','hold'].includes(old.filter)?old.filter:'all',selected:inspectionPlanId(old.selected)||''};}}catch{}}).catch(()=>{});
  function remember(){if(current()&&owner)try{sessionStorage.setItem(KEY,JSON.stringify({owner,at:Date.now(),open:opened,...state}));}catch{}}
  host.addEventListener('toggle',()=>{opened=host.open;remember();});addEventListener('pagehide',remember);
- function clear(message){sequence++;last=null;host.hidden=false;host.replaceChildren(n('summary','내 점검 확인 필요'),n('p',message||'점검계획을 다시 확인해 주세요.'));}
+ function clear(message){onSummary({state:"UNKNOWN"});sequence++;last=null;host.hidden=false;host.replaceChildren(n('summary','내 점검 확인 필요'),n('p',message||'점검계획을 다시 확인해 주세요.'));}
  async function refresh(home,user){
-  const pass=++sequence;last={home,user};await ready;if(!current()||pass!==sequence)return;
+  const pass=++sequence;onSummary({state:"LOADING"});last={home,user};await ready;if(!current()||pass!==sequence)return;
   if(!user){failure('계정의 점검계획 조회 권한을 확인하지 못했습니다.');return;}
-  if(!['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(user.role)){host.hidden=true;host.replaceChildren();return;}
+  if(!['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(user.role)){onSummary({state:'HIDDEN'});host.hidden=true;host.replaceChildren();return;}
   const today=home?.date;if(!date(today)){failure('점검계획의 기준일과 계정을 확인해야 합니다.');return;}
   host.hidden=false;host.open=opened;host.replaceChildren(n('summary','내 점검 확인 중'));
   const start=new Date(Date.parse(today)-350*DAY).toISOString().slice(0,10),end=new Date(Date.parse(today)+14*DAY).toISOString().slice(0,10);
@@ -24,6 +24,7 @@ export function createHomeInspectionTasks({anchor,api,token,onNavigate}){
    if(!Array.isArray(value.items)||value.items.length>2000)throw Error('점검계획의 조회 범위를 확인해야 합니다.');
    const seen=new Set();for(const row of value.items){if(!inspectionPlanId(row.public_id)||seen.has(row.public_id)||row.owner_user_id!==user.id||!date(row.scheduled_date)||row.due_date!=null&&(!date(row.due_date)||row.due_date<row.scheduled_date)||typeof row.title!=='string'||!['PLANNED','IN_PROGRESS','ON_HOLD','COMPLETED'].includes(row.status))throw Error('점검계획의 담당·현장·기간을 확인해야 합니다.');seen.add(row.public_id);}
    const rows=value.items.filter(r=>!r.archived&&['PLANNED','IN_PROGRESS','ON_HOLD'].includes(r.status)).sort((a,b)=>(a.due_date||a.scheduled_date).localeCompare(b.due_date||b.scheduled_date)||a.public_id.localeCompare(b.public_id));
+   onSummary({state:'VERIFIED',count:rows.length,scope:start+' ~ '+end+' 본인 점검'});
    const overdue=rows.filter(row=>(row.due_date||row.scheduled_date)<today).length;
    host.replaceChildren(n('summary','내 점검 · '+rows.length+'건'+(overdue?' · 예정일 지남 '+overdue+'건':'')),n('small','본인의 미완료 점검과 14일 이내 예정 · 조회 '+start+' ~ '+end));
    const controls=n('div');controls.className='document-task-controls';
@@ -42,7 +43,7 @@ export function createHomeInspectionTasks({anchor,api,token,onNavigate}){
    const all=n('a','내 점검 전체 보기');all.href='/inspection-plan.html';all.onclick=()=>{remember();onNavigate();};host.append(all);
   }catch(e){if(current()&&pass===sequence)failure(e.message||'점검계획을 확인하지 못했습니다.');}
  }
- function failure(message){host.hidden=false;host.replaceChildren(n('summary','내 점검 확인 필요'),n('p',message));const retry=n('button','다시 확인');retry.type='button';retry.onclick=()=>last&&refresh(last.home,last.user);host.append(retry);}
+ function failure(message){onSummary({state:'UNKNOWN'});host.hidden=false;host.replaceChildren(n('summary','내 점검 확인 필요'),n('p',message));const retry=n('button','다시 확인');retry.type='button';retry.onclick=()=>last&&refresh(last.home,last.user);host.append(retry);}
  addEventListener('storage',e=>{if(e.key==='besma_token'||e.key===null){try{sessionStorage.removeItem(KEY);}catch{}clear('로그인 계정이 변경되었습니다. 화면을 다시 열어 주세요.');}});
  return {refresh,clear};
 }

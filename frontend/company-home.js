@@ -1,3 +1,4 @@
+import {createHomeTaskShortcuts} from '/assets/home-task-shortcuts.js';
 import {createHomeInspectionTasks} from '/assets/home-inspection-tasks.js';
 import {createHomeOpinionTasks} from '/assets/home-opinion-tasks.js';
 import {createHomeEvaluationTasks} from '/assets/home-evaluation-tasks.js';
@@ -20,10 +21,11 @@ const mapLegend=$('map-team-legend');
 const button=(label,fn,cls)=>{const b=node('button',label,cls);b.type='button';b.onclick=fn;return b;};
 const requestNotices=document.createElement('section');requestNotices.id='home-request-notifications';requestNotices.hidden=true;document.querySelector('.field-dashboard').before(requestNotices);let stopChatNotifications=null;if(token)void mountRequestNotifications(requestNotices,{api,compact:true,isCurrent:()=>localStorage.getItem('besma_token')===token}).then(stop=>stopChatNotifications=stop);addEventListener('storage',e=>{if(e.key==='besma_token'||e.key===null){stopChatNotifications?.();requestNotices.replaceChildren();requestNotices.hidden=true;}});
 let attendanceGapsOpen=false,homeRole=null,transportError='';
-const homeDocumentTasks=createHomeDocumentTasks({anchor:$('seoul-weather'),api:API,token,onNavigate:()=>{rememberHomeView();try{sessionStorage.setItem(HOME_RETURN_KEY,JSON.stringify({owner:viewOwner,at:Date.now()}));}catch{}}});
+const homeTaskShortcuts=createHomeTaskShortcuts({anchor:$('seoul-weather'),token});
+const homeDocumentTasks=createHomeDocumentTasks({onSummary:value=>homeTaskShortcuts.update('documents',value),anchor:$('seoul-weather'),api:API,token,onNavigate:()=>{rememberHomeView();try{sessionStorage.setItem(HOME_RETURN_KEY,JSON.stringify({owner:viewOwner,at:Date.now()}));}catch{}}});
 const homeEvaluationTasks=createHomeEvaluationTasks({anchor:$('today-document-tasks')||$('seoul-weather'),api:API,token,onNavigate:()=>{rememberHomeView();try{sessionStorage.setItem(HOME_RETURN_KEY,JSON.stringify({owner:viewOwner,at:Date.now()}));}catch{}}});
-const homeInspectionTasks=createHomeInspectionTasks({anchor:$('seoul-weather'),api:API,token,onNavigate:()=>{rememberHomeView();try{sessionStorage.setItem(HOME_RETURN_KEY,JSON.stringify({owner:viewOwner,at:Date.now()}));}catch{}}});
-const homeOpinionTasks=createHomeOpinionTasks({anchor:$('seoul-weather'),api:API,token,onNavigate:()=>{rememberHomeView();try{sessionStorage.setItem(HOME_RETURN_KEY,JSON.stringify({owner:viewOwner,at:Date.now()}));}catch{}}});
+const homeInspectionTasks=createHomeInspectionTasks({onSummary:value=>homeTaskShortcuts.update('inspections',value),anchor:$('seoul-weather'),api:API,token,onNavigate:()=>{rememberHomeView();try{sessionStorage.setItem(HOME_RETURN_KEY,JSON.stringify({owner:viewOwner,at:Date.now()}));}catch{}}});
+const homeOpinionTasks=createHomeOpinionTasks({onSummary:value=>homeTaskShortcuts.update('opinions',value),anchor:$('seoul-weather'),api:API,token,onNavigate:()=>{rememberHomeView();try{sessionStorage.setItem(HOME_RETURN_KEY,JSON.stringify({owner:viewOwner,at:Date.now()}));}catch{}}});
 const attendanceCoverage=node('details',null,'attendance-coverage');attendanceCoverage.id='attendance-coverage';attendanceCoverage.hidden=true;document.querySelector('.attendance-block').after(attendanceCoverage);
 attendanceCoverage.addEventListener('toggle',()=>{if(!attendanceCoverage.hidden){attendanceGapsOpen=attendanceCoverage.open;rememberHomeView();}});
 function drawAttendanceCoverage(value,summary){
