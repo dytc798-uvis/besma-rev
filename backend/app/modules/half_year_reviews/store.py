@@ -45,13 +45,16 @@ class ReviewStore:
                 edit={k:v for k,v in body.items()if k!='id'}
                 if isinstance(request.get('base'),dict):edit=merge_edits(request['base'],edit,{k:previous.get(k,False if k in {'checked','hold'}else '')for k in ['checked','note','hold']})
                 note=cleaned(edit['note'],160);hold=edit.get('hold',False)
-                data['evidence'][body['id']]={'checked':False if hold else bool(edit['checked']or note),'hold':hold,'note':note,'by':name,'at':stamp}
+                data['evidence'][body['id']]={'checked':bool(edit['checked']or note),'hold':hold,'note':note,'by':name,'at':stamp}
             elif action=='monthly-link':
                 result['monthly_source']=monthly_sources.link(data,key,request['period'],body,actor,name,stamp)
             elif action=='monthly-links':
                 result['monthly_sources']=monthly_sources.link_many(data,key,request['period'],body,actor,name,stamp)
             elif action=='monthly-unlink':
                 result['monthly_source']=monthly_sources.unlink(data,body,name,stamp)
+            elif action in {'criterion-check','evidence-photo'}:
+                from .evidence_checks import mutate as factual_check
+                result.update(factual_check(data,action,body,name,actor,stamp))
             elif action in {'walk-start','walk-item','walk-report','walk-guidance'}:
                 result.update(walkthrough.mutate(data,action,body,request['period'],actor,name,stamp,context_meta))
             elif action=='subject':
@@ -76,7 +79,7 @@ class ReviewStore:
                         if assessment_key!=form+':'+subject and set(answers['signed_table_photo_ids'])&set(prior.get('completed',{}).get('data',{}).get('signed_table_photo_ids',[])):
                             raise ValueError('SIGNED_PHOTO_ALREADY_USED')
                 assessment=data['assessments'].setdefault(form+':'+subject,{})
-                draft={'criterion_evidence':walkthrough.criterion_evidence(data,form),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};assessment['draft']=draft
+                draft={'criterion_evidence':walkthrough.criterion_evidence(data,form,subject),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};assessment['draft']=draft
                 if body['complete']:
                     complete={**draft,'id':uuid.uuid4().hex,'revision':revision+1,'evidence':data['evidence'].copy(),'monthly_sources':[dict(r)for r in data.get('monthly_sources',[])if r['active']],'photo_metadata':[{**f,'caption':answers['photo_captions'].get(f['id'],f['caption'])}for f in data['files']if f['id']in answers['photo_ids']]};complete['inspection_run']=selected_run;assessment['completed']=complete;result['completed_id']=complete['id']
                 result['assessment']=assessment

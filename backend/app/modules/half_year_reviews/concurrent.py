@@ -23,5 +23,4 @@ def merge_edits(base,local,current):
 
 def confirm_evidence(data,eid,name,stamp):
     previous=data['evidence'].get(eid,{})
-    if previous.get('hold'):return
-    data['evidence'][eid]={**previous,'checked':True,'hold':False,'by':name,'at':stamp}
+    data['evidence'][eid]={**previous,'checked':True,'hold':bool(previous.get('hold')),'by':name,'at':stamp}

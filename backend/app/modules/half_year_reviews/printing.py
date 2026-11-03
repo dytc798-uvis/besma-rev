@@ -80,11 +80,11 @@ def xlsx(raw):
             html+=f'<td rowspan="{rows}" colspan="{cols}" style="{style}">'+safe(cell.value if cell.value is not None else'')+'</td>'
         html+='</tr>'
     margins=sheet.page_margins;css=f'@page{{size:A4 portrait;margin:{margins.top*25.4}mm {margins.right*25.4}mm {margins.bottom*25.4}mm {margins.left*25.4}mm}}.sheet td{{padding:{.4*scale}mm;line-height:1.1}}.sheet table{{table-layout:fixed}}'
-    book.close();return html+'</table></article>',css
+    book.close();return html+'</table><p class="signature-line">현장소장: ____________________ (서명)</p></article>',css+' .sheet tr{break-inside:avoid}.signature-line{font-size:11pt;text-align:right;margin:8mm 0 0;break-inside:avoid}'
 
 def hwpx(raw):
     items=exports.parts(raw);root=E.fromstring(items['Contents/section0.xml']);hp='http://www.hancom.co.kr/hwpml/2011/paragraph';ns={'hp':hp};tables=[]
-    for table in root.findall('.//hp:tbl',ns):
+    for table_index,table in enumerate(root.findall('.//hp:tbl',ns)):
         rows={};columns={}
         for cell in table.findall('hp:tr/hp:tc',ns):
             addr=cell.find('hp:cellAddr',ns);span=cell.find('hp:cellSpan',ns);size=cell.find('hp:cellSz',ns)
@@ -94,17 +94,21 @@ def hwpx(raw):
         total=sum(columns.values())or 1
         html='<table class="law-table">'
         if columns and set(columns)==set(range(max(columns)+1)):html+='<colgroup>'+''.join(f'<col style="width:{100*columns[c]/total}%">'for c in sorted(columns))+'</colgroup>'
-        for r,cells in sorted(rows.items()):
+        for row_index,(r,cells)in enumerate(sorted(rows.items())):
+            if table_index>0 and row_index==0:html+='<thead>'
+            elif table_index>0 and row_index==2:html+='<tbody>'
             html+='<tr>'
             for c,cs,rs,cell in sorted(cells,key=lambda x:x[0]):
                 value=text(cell,'{'+hp+'}p','{'+hp+'}t')
                 html+=f'<td colspan="{cs}" rowspan="{rs}">'+safe(value)+'</td>'
             html+='</tr>'
+            if table_index>0 and row_index==1:html+='</thead>'
+        if table_index>0 and len(rows)>2:html+='</tbody>'
         tables.append(html+'</table>')
     return '<article class="law">'+''.join(tables)+'</article>','@page{size:A4 portrait;margin:12mm}.law{width:186mm}.law td{font-size:9pt;padding:1mm;line-height:1.2}.law-table{margin-bottom:3mm}.law-table tr{break-inside:avoid}'
 
-def document(form,snapshot,site,period):
-    if form=='report':body,css=pptx(exports.pptx(snapshot,site,snapshot['inspector'],[],period))
+def document(form,snapshot,site,period,blind=True):
+    if form=='report':body,css=pptx(exports.pptx(snapshot,site,snapshot['inspector'],[],period,blind=blind))
     elif form=='law':body,css=hwpx(exports.hwpx(snapshot,site,snapshot['inspector']))
     else:body,css=xlsx(exports.xlsx(form,snapshot,site,snapshot['inspector']))
     title=FORMS[form]['title']+' · '+site

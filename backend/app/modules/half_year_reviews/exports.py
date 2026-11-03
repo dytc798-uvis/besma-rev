@@ -82,7 +82,7 @@ def hwpx(snapshot,site,inspector):
         fill(tc(table,row,4),('해당없음: 'if value=='NA'else'')+note);fill(tc(table,row,5),'✓'if value=='PASS'else'');fill(tc(table,row,6),'✓'if value=='FAIL'else'')
     items['Contents/section0.xml']=E.tostring(root,encoding='utf-8',xml_declaration=True);items['Preview/PrvText.txt']='\n'.join(root.itertext()).encode('utf-8')
     return pack(items,True)
-def pptx(snapshot,site,inspector,photos,period):
+def pptx(snapshot,site,inspector,photos,period,blind=False):
     template_path=Path(__file__).parents[1]/'inspection_reports/assets/반기평가표.pptx';data=snapshot['data'];fields={'site_name':site,'inspection_date':data['inspection_date'],'inspector':inspector,'summary':data['summary'],'evaluation_period':period.replace('-H1','년 상반기').replace('-H2','년 하반기')}
     if photos:items=parts(make_report(template_path.read_bytes(),fields,photos))
     else:
@@ -91,9 +91,9 @@ def pptx(snapshot,site,inspector,photos,period):
         overview=E.fromstring(items['ppt/slides/slide2.xml']);text(cell(overview,7,1,1),site);text(cell(overview,7,3,1),day.strftime('%Y.%m.%d'));text(cell(overview,7,5,1),inspector);items['ppt/slides/slide2.xml']=xml(overview)
         confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,0,1),site);text(cell(confirm,7,0,3),day.strftime('%Y.%m.%d'));text(cell(confirm,7,1,1),fields['evaluation_period']);text(cell(confirm,9,0,0),data['summary']);text(cell(confirm,11,0,1),inspector+'  (서명)');items['ppt/slides/slide6.xml']=xml(confirm)
     summary=E.fromstring(items['ppt/slides/slide3.xml']);score=snapshot['result']['score']
-    text(shape(summary,8),f'{score:g}');text(cell(summary,12,19,5),f'{score:g}')
+    text(shape(summary,8),''if blind else f'{score:g}');text(cell(summary,12,19,5),''if blind else f'{score:g}')
     for criterion in FORMS['report']['criteria']:
-        level=data['answers'][criterion['id']]['value'];points=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[level];text(cell(summary,12,criterion['row'],5),f'{points:g}')
+        level=data['answers'][criterion['id']]['value'];points=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[level];text(cell(summary,12,criterion['row'],5),''if blind else f'{points:g}')
         note=data['answers'][criterion['id']]['note']
         if note:
             target=cell(summary,12,criterion['row'],3);prior=''.join(target.itertext());text(target,prior+'  '+note)
@@ -101,5 +101,5 @@ def pptx(snapshot,site,inspector,photos,period):
     improvement=E.fromstring(items['ppt/slides/slide4.xml']);rows=data['improvements'];text(shape(improvement,7),f'개선요구 {len(rows)}건')
     for i,row in enumerate(rows,1):
         for col,key in enumerate(['finding','action','owner','due'],1):text(cell(improvement,8,i,col),row[key])
-    items['ppt/slides/slide4.xml']=xml(improvement);confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,1,3),f'{score:g} / 100점');text(cell(confirm,7,2,1),f'{len(rows)}건');items['ppt/slides/slide6.xml']=xml(confirm)
+    items['ppt/slides/slide4.xml']=xml(improvement);confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,1,3),''if blind else f'{score:g} / 100점');text(cell(confirm,7,2,1),f'{len(rows)}건');items['ppt/slides/slide6.xml']=xml(confirm)
     return pack(items)

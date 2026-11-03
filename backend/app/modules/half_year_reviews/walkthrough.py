@@ -20,6 +20,7 @@ def run_for(data,run_id):
     return run
 
 def mutate(data,action,body,period,actor,name,stamp,context_meta):
+    if action=='walk-report'and(body.get('public_attachment_ids')or body.get('public_field_photos')):raise ValueError('PHOTO_PUBLICATION_DISABLED')
     if action=='walk-guidance':
         if set(body)!={'inspection_date','recipient','method','items'}:raise ValueError('GUIDANCE_INVALID')
         day=day_in_period(body['inspection_date'],period);recipient=cleaned(body['recipient'],80)
@@ -166,6 +167,14 @@ def record_photo(run,body,file,actor,name,stamp):
     return link
 
 
-def criterion_evidence(data,form):
-    """Snapshot shared factual observations and files, without deriving any verdict."""
-    return {c['id']:[{'evidence_id':eid,'note':data.get('evidence',{}).get(eid,{}).get('note',''),'file_ids':[f['id']for f in data.get('files',[])if f.get('kind')=='image'and f.get('evidence_id')==eid]}for eid in c['evidence']]for c in FORMS[form]['criteria']}
+def criterion_evidence(data,form,subject='site'):
+    """Freeze selected evidence and actual photo-use choices without deriving grades."""
+    result={}
+    for criterion in FORMS[form]['criteria']:
+        record=data.get('criterion_checks',{}).get(form+':'+subject+':'+criterion['id'],{})
+        selected=record.get('evidence_ids',criterion['evidence']);items=[]
+        for eid in selected:
+            files=[f['id']for f in data.get('files',[])if f.get('kind')=='image'and f.get('evidence_id')==eid]
+            items.append({'evidence_id':eid,'note':data.get('evidence',{}).get(eid,{}).get('note',''),'file_ids':files,'used_file_ids':[fid for fid in files if data.get('evidence_photo_checks',{}).get(fid,{}).get('checked')],'checked':bool(record.get('checked')),'hold':bool(record.get('hold'))})
+        result[criterion['id']]=items
+    return result
