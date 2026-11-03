@@ -81,7 +81,35 @@ def read_rows(requester, year, half):
         rows = value['items']
         if len(rows) > 500 or {r['public_id'] for r in rows} != set(names):
             raise ValueError('REVIEW_SCOPE_CHANGED')
-        return [{**r, 'title': names[r['public_id']]} for r in rows]
+        own_rows = [{**r, 'title': names[r['public_id']]} for r in rows]
+        # Team calendar already permits these names/statuses. Do not read another
+        # inspector's private assessments or infer completion from a missing form.
+        visible = list_team_schedule_items(db, user, start, end, False, False, True, False)
+        return include_visible_completions(own_rows, visible['items'], year, half)
+
+
+def include_visible_completions(own_rows, plans, year, half):
+    result = {row['public_id']: dict(row) for row in own_rows}
+    if len(plans) > 500:
+        raise ValueError('REVIEW_SCOPE_CHANGED')
+    seen = set()
+    for plan in plans:
+        key = plan['public_id']
+        if key in seen:
+            raise ValueError('DUPLICATE_VISIBLE_PLAN')
+        seen.add(key)
+        if plan['status'] != 'COMPLETED':
+            continue
+        scheduled = date.fromisoformat(plan['scheduled_date'])
+        if scheduled.year != year or (1 if scheduled.month <= 6 else 2) != half:
+            continue
+        existing = result.get(key)
+        if existing and (existing['status'] == 'COMPLETED' or existing['screen_completed']):
+            continue
+        result[key] = {'public_id': key, 'period': f'{year}-H{half}',
+                       'title': plan['title'], 'status': 'COMPLETED',
+                       'screen_completed': False, 'plan_completed': True}
+    return list(result.values())
 
 
 def answer(item, provider=None, today=None):
@@ -107,7 +135,7 @@ def answer(item, provider=None, today=None):
             complete = row['status'] == 'COMPLETED' or row['screen_completed']
             if selected['mode'] == 'completed' and not complete or selected['mode'] == 'incomplete' and complete:
                 continue
-            status = ('최종본 등록 완료' if row.get('paper_completion') else '완료 등록' if row.get('reported_completion') else '완료') if row['status'] == 'COMPLETED' else '전자평가 4종 완료' if row['screen_completed'] else '작성 중' if row['status'] == 'IN_PROGRESS' else '미작성'
+            status = ('최종본 등록 완료' if row.get('paper_completion') else '점검 완료 등록' if row.get('plan_completed') else '완료 등록' if row.get('reported_completion') else '완료') if row['status'] == 'COMPLETED' else '전자평가 4종 완료' if row['screen_completed'] else '작성 중' if row['status'] == 'IN_PROGRESS' else '미작성'
             selected_rows.append((row['title'].removeprefix('[점검] ').strip(), status))
         # Multiple plans may refer to one shared site/period; never inflate site counts.
         selected_rows = sorted(set(selected_rows))
