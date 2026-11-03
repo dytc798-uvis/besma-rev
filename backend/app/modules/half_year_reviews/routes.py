@@ -13,7 +13,7 @@ from app.modules.users.models import User
 from app.modules.inspection_reports.routes import plan,actor
 from .catalog import CATALOG,context_key,period_value,Conflict
 from .store import ReviewStore
-from . import jobs,exports,monthly_sources
+from . import jobs,exports,monthly_sources,mobile_pilot
 from .catalog import FORMS
 router=APIRouter(prefix='/safety-features/half-year-reviews',tags=['half-year-reviews'])
 Current=Annotated[User,Depends(get_current_user)]
@@ -27,10 +27,10 @@ class Change(BaseModel):
     data:dict
 def enabled(db,user):
     if os.environ.get('BESMA_HALF_YEAR_REVIEWS_ENABLED','').casefold()not in {'1','true'}:raise HTTPException(404,'반기평가를 준비하고 있습니다.')
-    actor(db,user)
+    if not mobile_pilot.allowed(user):actor(db,user)
 def store():return ReviewStore(Path(settings.storage_root).parent/'half-year-reviews-private')
 def selected(db,user,public_id,period):
-    enabled(db,user);row=plan(db,user,public_id);return row,context_key(row,period)
+    enabled(db,user);row=mobile_pilot.own_plan(db,user,public_id)if mobile_pilot.allowed(user)else plan(db,user,public_id);return row,context_key(row,period)
 def fail(error):
     if isinstance(error,Conflict):raise HTTPException(409,'다른 화면에서 자료가 변경되었습니다. 입력 내용을 보존했으니 새로 확인해 주세요.')
     if isinstance(error,KeyError):raise HTTPException(404,'이 현장·반기의 자료를 찾을 수 없습니다.')
@@ -38,15 +38,28 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1}
+    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1}
+@router.get('/mobile-pilot/capabilities')
+def mobile_capabilities(db:DbDep,user:Current,response:Response):
+    enabled(db,user)
+    if not mobile_pilot.allowed(user):raise HTTPException(403,'휴대폰 평가 대상 계정을 확인해 주세요.')
+    response.headers['Cache-Control']='private, no-store'
+    return {'can_read':True,'can_write':False,'own_evaluations_only':True,'mobile_review_pilot':True}
+
+@router.get('/mobile-pilot/plans')
+def mobile_plans(db:DbDep,user:Current,response:Response,from_date:date,to_date:date):
+    enabled(db,user);response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    return mobile_pilot.plans(db,user,from_date,to_date)
+
 @router.get('/overview')
 def overview(db:DbDep,user:Current,response:Response,from_date:date,to_date:date):
     from app.modules.safety_features.team_schedule_routes import list_team_schedule_items
     from .overview import summaries
     enabled(db,user)
-    value=list_team_schedule_items(db,user,from_date,to_date,False,False,True,True)
-    # Reapply the exact owner/linked-plan boundary before reading private contexts.
-    rows=[plan(db,user,item['public_id'])for item in value['items']]
+    if mobile_pilot.allowed(user):rows=mobile_pilot.rows(db,user,from_date,to_date)
+    else:
+        value=list_team_schedule_items(db,user,from_date,to_date,False,False,True,True)
+        rows=[plan(db,user,item['public_id'])for item in value['items']]
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
     return {'items':summaries(store().root,rows)}
 
