@@ -1,10 +1,33 @@
 """Read-only source-month notes from received metadata; never grade or rewrite it."""
 from collections import defaultdict
 import calendar,re
+from datetime import date,datetime,timedelta,timezone
 
 MONTH=re.compile(r'20\d{2}-(0[1-9]|1[0-2])\Z')
 NAMED_MONTH=re.compile(r'(?<!\d)(20\d{2}|\d{2})\s*년\s*(1[0-2]|0?[1-9])\s*월')
 SHA=re.compile(r'[a-f0-9]{64}\Z')
+
+def document_facts_by_id(snapshot):
+    """Facts require reviewed bytes and the same confirmed contract, never a filename guess."""
+    rows=snapshot.get('items',[]);notes=snapshot.get('reviewed_source_notes',[])
+    if not isinstance(rows,list)or not isinstance(notes,list)or len(notes)>1000:return {}
+    index={r['id']:r for r in rows if isinstance(r,dict)and isinstance(r.get('id'),str)};result={};seen=set()
+    for note in notes:
+        if not isinstance(note,dict)or note.get('kind')!='ASSESSMENT_DOCUMENT':continue
+        key=note.get('id')
+        if not isinstance(key,str):continue
+        row=index.get(key)
+        if key in seen:result.pop(key,None);continue
+        if isinstance(key,str):seen.add(key)
+        if set(note)!={'id','sha256','kind','assessment_kind','document_date','site_code'}or row is None:continue
+        if not SHA.fullmatch(key)or not isinstance(note['sha256'],str)or not SHA.fullmatch(note['sha256'])or note['sha256']!=row.get('sha256'):continue
+        if row.get('category')!='risk'or row.get('state')!='SAVED'or not isinstance(note['site_code'],str)or not re.fullmatch(r'[A-Za-z0-9_-]{1,40}',note['site_code'])or note['site_code']!=row.get('site_code'):continue
+        if note['assessment_kind']not in ('INITIAL','REGULAR','OCCASIONAL','CONTINUOUS')or not isinstance(note['document_date'],str)or not re.fullmatch(r'20\d{2}-\d{2}-\d{2}',note['document_date']):continue
+        try:day=date.fromisoformat(note['document_date'])
+        except ValueError:continue
+        if day>datetime.now(timezone(timedelta(hours=9))).date():continue
+        result[key]={'assessment_kind':note['assessment_kind'],'document_date':day.isoformat()}
+    return result
 
 def named_months(filename):
     if not isinstance(filename,str):return set()
