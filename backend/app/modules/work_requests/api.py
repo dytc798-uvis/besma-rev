@@ -429,13 +429,15 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             with db.connection()as connection:selected_result=result_followup.requested(connection,item['id'])
             selected_name_question=bool(selected_result and selected_result.get('selected_file_id')and file_name_question('이 파일의 '+current_text(item['body'])))
             grounded_item={**item,'body':'이 파일의 '+current_text(item['body'])}if selected_name_question else item
-            grounded=answer(grounded_item,nas_answer,file_names,ui_features,lambda:consent_context(requester,item['id']))if not item.get('input_attachments')else None
+            from .halfyear_status import answer as halfyear_answer
+            live_status=halfyear_answer(item)if not item.get('input_attachments')else None
+            grounded=live_status or (answer(grounded_item,nas_answer,file_names,ui_features,lambda:consent_context(requester,item['id']))if not item.get('input_attachments')else None)
             if grounded is not None:item['grounded_reply']=grounded
             if config().source_lookup_enabled and config().nas_files_enabled and 'REQUEST_SOURCE_LOOKUP_V1'in capabilities and item['kind']=='QUESTION'and not item.get('source')and not item.get('input_attachments')and grounded is None:item['source_lookup_available']=True;item['source_choices_available']=True
         if item is not None and item['scope_exempt']and {'OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2'}&set(capabilities):
             from .owner_source_choices import state as owner_choice_state
             with db.connection()as connection:proposal,selected=owner_choice_state(connection,item['id'])
-            if selected:item['owner_source_choice_id']=selected;item.pop('grounded_reply',None)
+            if selected and live_status is None:item['owner_source_choice_id']=selected;item.pop('grounded_reply',None)
         if item is not None and 'OWNER_SOURCE_CHOICES_V2'in capabilities:
             with db.connection()as connection:
                 # Account/index/UI questions keep their grounded response even when a
