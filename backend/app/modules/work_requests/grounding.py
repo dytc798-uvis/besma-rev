@@ -47,13 +47,14 @@ def recent_request(text):
     """
     if not isinstance(text,str) or len(text)>200:
         return None
-    counts=list(re.finditer(r'(?<!\d)(\d+)\s*개(?:의)?',text))
+    counts=list(re.finditer(r'(?<!\d)(\d+)\s*개(?:의|만)?',text))
     if len(counts)>1 or counts and not 1<=int(counts[0][1])<=10:
         return None
     limit=int(counts[0][1]) if counts else 3
     value=text[:counts[0].start()]+text[counts[0].end():] if counts else text
     prefix=r'(?:(?:나스|NAS|안전보건관리실|안전보건실)(?:\s*NAS)?\s*(?:에서|에|의)?\s*)?'
-    recent=r'(?:(?:가장\s*)?최근(?:에)?\s*(?:수정(?:된|한)?|변경된|저장된)?|마지막(?:으로)?\s*수정(?:된|한)?|수정일\s*순(?:으로)?)'
+    changed=r'(?:(?:수정|변경|저장|갱신)(?:된|한)|바뀐|(?:수정|변경|저장|갱신)(?=\s|파일|자료|문서|$))'
+    recent=r'(?:(?:가장\s*)?최근(?:에)?\s*(?:'+changed+r')?|마지막(?:으로)?\s*수정(?:된|한)?|수정일\s*순(?:으로)?)'
     ending=r'(?:들(?:의)?|의)?\s*(?:파일명|이름|제목|명칭|목록)?(?:은|는|이|가|을|를)?\s*(?:(?:뭐|무엇)(?:야|지|죠|인가요|이야)?|알려\s*(?:줘|주세요)|보여\s*(?:줘|주세요)|찾아\s*(?:줘|주세요)|조회(?:해\s*(?:줘|주세요))?)?\s*[?.!]*'
     match=re.fullmatch(r'\s*'+prefix+recent+r'\s*(?P<query>[가-힣A-Za-z0-9_. -]*?)\s*(?:파일명|파일|자료|문서)\s*'+ending,value,re.I)
     if not match:
