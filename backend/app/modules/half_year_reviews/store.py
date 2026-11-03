@@ -52,7 +52,7 @@ class ReviewStore:
                 result['monthly_sources']=monthly_sources.link_many(data,key,request['period'],body,actor,name,stamp)
             elif action=='monthly-unlink':
                 result['monthly_source']=monthly_sources.unlink(data,body,name,stamp)
-            elif action in {'walk-start','walk-item','walk-report'}:
+            elif action in {'walk-start','walk-item','walk-report','walk-guidance'}:
                 result.update(walkthrough.mutate(data,action,body,request['period'],actor,name,stamp,context_meta))
             elif action=='subject':
                 if set(body)!={'form','name'}or body['form']not in {'manager','supervisor'}:raise ValueError('SUBJECT_INVALID')

@@ -20,6 +20,22 @@ def run_for(data,run_id):
     return run
 
 def mutate(data,action,body,period,actor,name,stamp,context_meta):
+    if action=='walk-guidance':
+        if set(body)!={'inspection_date','recipient','method','items'}:raise ValueError('GUIDANCE_INVALID')
+        day=day_in_period(body['inspection_date'],period);recipient=cleaned(body['recipient'],80)
+        if not recipient or body['method']not in {'현장 설명','전화 안내','베스마 자료 전달'}:raise ValueError('GUIDANCE_INVALID')
+        raw=body['items']
+        if not isinstance(raw,list)or len(raw)>120:raise ValueError('GUIDANCE_INVALID')
+        items=[]
+        for item in raw:
+            if not isinstance(item,dict)or set(item)!={'label','detail','action','owner','due'}:raise ValueError('GUIDANCE_INVALID')
+            clean={k:cleaned(item[k],{'label':180,'detail':1000,'action':500,'owner':80,'due':10}[k])for k in item}
+            if clean['due']:date.fromisoformat(clean['due'])
+            items.append(clean)
+        records=data.setdefault('guidance_records',[])
+        if len(records)>=500:raise ValueError('GUIDANCE_LIMIT')
+        record={'id':uuid.uuid4().hex,'plan_id':(context_meta or{}).get('public_id'),'inspection_date':day,'recipient':recipient,'method':body['method'],'items':items,'by':name,'actor_id':actor,'at':stamp}
+        records.append(record);return {'guidance_record':record}
     if action=='walk-start':
         if set(body)!={'inspection_date'}:raise ValueError('WALK_INVALID')
         day=day_in_period(body['inspection_date'],period)
@@ -57,15 +73,9 @@ def mutate(data,action,body,period,actor,name,stamp,context_meta):
             if not isinstance(photo,dict)or set(photo)!={'file_id','caption','reviewed'}or photo['file_id']not in eligible or photo['file_id']in seen or photo['reviewed']is not True:raise ValueError('WALK_PUBLIC_ATTACHMENTS_INVALID')
             seen.add(photo['file_id']);clean_field.append({'file_id':photo['file_id'],'caption':cleaned(photo['caption'],120),'reviewed':True})
         if body['posted_confirmed']:
-            if not reviewed or {allowed[fid]for fid in selected}!={'manager','supervisor'}:raise ValueError('WALK_PUBLIC_REVIEW_REQUIRED')
+            if not reviewed or not(selected or clean_field):raise ValueError('WALK_PUBLIC_REVIEW_REQUIRED')
             if not link:raise ValueError('WALK_REPORT_URL_REQUIRED')
-            complete=set()
-            for key,a in data['assessments'].items():
-                draft=a.get('draft',{}).get('data',{});final=a.get('completed',{}).get('data',{})
-                if draft.get('walkthrough_run_id')!=run['id']and final.get('walkthrough_run_id')!=run['id']:continue
-                if draft!=final or final.get('walkthrough_run_id')!=run['id']or not final.get('signed_table_photo_ids')or not final.get('required_signatures_confirmed')or not final.get('signed_pages_complete'):raise ValueError('WALK_FOUR_FORMS_REQUIRED')
-                complete.add(key.split(':',1)[0])
-            if complete!=set(FORMS):raise ValueError('WALK_FOUR_FORMS_REQUIRED')
+            if not evaluation_ready(data):raise ValueError('WALK_FOUR_FORMS_REQUIRED')
         meta=body.get('meta',run.get('report',{}).get('meta',{}))
         limits={'inspection_time':60,'place':100,'hq_attendees':200,'site_attendees':200,'public_summary':1000,'public_findings':1000}
         if not isinstance(meta,dict)or set(meta)-set(limits):raise ValueError('WALK_REPORT_INVALID')
@@ -108,6 +118,19 @@ def mutate(data,action,body,period,actor,name,stamp,context_meta):
         confirm_evidence(data,eid,name,stamp)
     elif hold:data['evidence'][eid]={**data['evidence'].get(eid,{}),'checked':False,'hold':True,'by':name,'at':stamp}
     return {'inspection_run':run,'inspection_item':item}
+
+def evaluation_ready(data):
+    """Existing final PDF, or all current form subjects completed; no duplicate table photos."""
+    paper=data.get('paper_completion',{}).get('file',{})
+    if paper and any(f.get('id')==paper.get('id')and f.get('sha256')==paper.get('sha256')and f.get('evidence_id')=='paper_completion'and f.get('extension')=='.pdf'for f in data.get('files',[])):return True
+    for form,schema in FORMS.items():
+        if form=='law'and data.get('prior_assessments',{}).get('law'):continue
+        subjects=data.get('subjects',{}).get(form,[])if schema.get('needs_subject')else[{'id':'site'}]
+        if not subjects:return False
+        for subject in subjects:
+            record=data['assessments'].get(form+':'+subject['id'],{});final=record.get('completed',{}).get('data')
+            if not final or record.get('draft',{}).get('data')!=final:return False
+    return True
 
 def assessment_run(data,run_id,inspection_date,plan_id=None):
     if not run_id:return None
