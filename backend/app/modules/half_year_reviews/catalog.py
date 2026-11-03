@@ -67,6 +67,5 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
     signed_flag=data.get('required_signatures_confirmed',False);pages_flag=data.get('signed_pages_complete',False)
     signed_known={r['id']for r in files if r['kind']=='image'and r['evidence_id']=='paper_assessment'}
     if type(signed_flag)is not bool or type(pages_flag)is not bool or not isinstance(signed,list)or len(signed)>10 or any(not isinstance(p,str)for p in signed)or len(set(signed))!=len(signed)or not set(signed)<=signed_known:raise ValueError('SIGNED_PHOTO_INVALID')
-    if complete and(not signed or not signed_flag or not pages_flag):raise ValueError('SIGNED_TABLE_REQUIRED')
-    if complete and(missing or form=='report'and not photos and entry_mode=='SCREEN'):raise ValueError('UNREVIEWED_ITEMS_REMAIN')
+    if complete and missing:raise ValueError('UNREVIEWED_ITEMS_REMAIN')
     return {'answers':result,'summary':summary,'inspection_date':day,'photo_ids':photos,'photo_captions':captions,'improvements':clean_improvements,'entry_mode':entry_mode,'paper_file_ids':paper_ids,'walkthrough_run_id':run_id,'signed_table_photo_ids':signed,'required_signatures_confirmed':signed_flag,'signed_pages_complete':pages_flag}, {'missing':missing,'score':score if not missing and schema['scoring']!='COMPLIANCE'else None,'graded':len(schema['criteria'])-missing}

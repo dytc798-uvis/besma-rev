@@ -94,6 +94,9 @@ def pptx(snapshot,site,inspector,photos,period):
     text(shape(summary,8),f'{score:g}');text(cell(summary,12,19,5),f'{score:g}')
     for criterion in FORMS['report']['criteria']:
         level=data['answers'][criterion['id']]['value'];points=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[level];text(cell(summary,12,criterion['row'],5),f'{points:g}')
+        note=data['answers'][criterion['id']]['note']
+        if note:
+            target=cell(summary,12,criterion['row'],3);prior=''.join(target.itertext());text(target,prior+'  '+note)
     items['ppt/slides/slide3.xml']=xml(summary)
     improvement=E.fromstring(items['ppt/slides/slide4.xml']);rows=data['improvements'];text(shape(improvement,7),f'개선요구 {len(rows)}건')
     for i,row in enumerate(rows,1):
