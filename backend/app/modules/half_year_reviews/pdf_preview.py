@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import hashlib,math
 
 MAX_BYTES=15*1024*1024
-MAX_PAGES=12
+MAX_PAGES=100
 LONG_EDGE=1400
 
 @contextmanager

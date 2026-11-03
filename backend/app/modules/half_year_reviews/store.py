@@ -96,13 +96,17 @@ class ReviewStore:
                 if len(caption.splitlines())>3:raise ValueError('PHOTO_CAPTION_INVALID')
                 target['caption']=caption
             elif action=='attach':
-                if set(body)-{'evidence_id','filename','caption','walk_run_id','criterion_id','photo_stage'}or not {'evidence_id','filename','caption'}<=set(body)or body['evidence_id']not in {*EVIDENCE,'paper_assessment'}or attachment is None:raise ValueError('ATTACHMENT_INVALID')
+                if set(body)-{'evidence_id','filename','caption','walk_run_id','criterion_id','photo_stage'}or not {'evidence_id','filename','caption'}<=set(body)or body['evidence_id']not in {*EVIDENCE,'paper_assessment','paper_completion'}or attachment is None:raise ValueError('ATTACHMENT_INVALID')
                 photo_target=walkthrough.photo_target(data,body,context_meta)
                 if photo_target and attachment[1]not in {'image/jpeg','image/png','image/webp'}:raise ValueError('ATTACHMENT_TYPE_INVALID')
                 if len(data['files'])>=100:raise ValueError('ATTACHMENT_LIMIT')
                 raw,mime=attachment;filename=cleaned(body['filename'],180);suffix=Path(filename).suffix.casefold();caption=cleaned(body['caption'],60)
                 if not 0<len(raw)<=15*1024*1024:raise ValueError('ATTACHMENT_SIZE_INVALID')
                 photo=None
+                if body['evidence_id']=='paper_completion':
+                    from .pdf_preview import document
+                    if suffix!='.pdf':raise ValueError('PDF_REQUIRED')
+                    with document(raw):pass
                 if mime in {'image/jpeg','image/png','image/webp'}:photo=normalize_photo(raw);content=photo['data'];kind='image';extension='.jpg'
                 else:
                     if suffix not in {'.pdf','.xlsx','.docx','.pptx','.hwp','.hwpx'}:raise ValueError('ATTACHMENT_TYPE_INVALID')
@@ -116,6 +120,14 @@ class ReviewStore:
                     new_path=path;meta={'id':fid,'evidence_id':body['evidence_id'],'filename':Path(filename).stem+extension,'extension':extension,'kind':kind,'sha256':digest(content),'bytes':len(content),'caption':caption,'by':name,'at':stamp}
                     if photo:meta.update(width=photo['width'],height=photo['height'])
                     data['files'].append(meta);result['file']=meta
+                if body['evidence_id']=='paper_completion':
+                    meta=result['file']
+                    prior=data.get('paper_completion')
+                    if not prior or prior['file']['id']!=meta['id']:
+                        completion={'id':uuid.uuid4().hex,'file':dict(meta),'actor_id':actor,'by':name,'at':stamp,'period':request['period']}
+                        data.setdefault('paper_completion_history',[]).append(completion)
+                        data['paper_completion']=completion
+                    result['paper_completion']=data['paper_completion']
                 if body['evidence_id']in EVIDENCE and result['file']['kind']=='image':confirm_evidence(data,body['evidence_id'],name,stamp)
                 if photo_target:
                     result['field_photo']=walkthrough.record_photo(photo_target,body,result['file'],actor,name,stamp)

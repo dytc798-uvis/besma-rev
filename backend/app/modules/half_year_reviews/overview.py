@@ -23,8 +23,10 @@ def summarize(data):
                     'draft_changed':saved.get('draft',{}).get('data')!=snapshot['data']})
     active=bool(completed or any(v.get('draft')for v in assessments.values())or data.get('files')or
         any(r.get('items')or r.get('field_photos')for r in data.get('inspection_runs',[])))
-    return {'status':'COMPLETED'if completed==required and required else'IN_PROGRESS'if active else'NOT_STARTED',
-        'completed':completed,'required':required,'forms':forms}
+    paper=data.get('paper_completion')
+    if paper and not any(f.get('id')==paper.get('file',{}).get('id')and f.get('sha256')==paper['file'].get('sha256')and f.get('evidence_id')=='paper_completion'and f.get('extension')=='.pdf'for f in data.get('files',[])):paper=None
+    return {'status':'COMPLETED'if paper else'IN_PROGRESS'if active else'NOT_STARTED',
+        'completed':completed,'required':required,'forms':forms,'paper_completion':paper,'screen_completed':bool(completed==required and required)}
 
 def summaries(root,rows):
     targets=[(r,r.scheduled_date.strftime('%Y')+('-H1'if r.scheduled_date.month<=6 else'-H2'))for r in rows]
