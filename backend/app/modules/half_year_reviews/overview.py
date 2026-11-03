@@ -30,8 +30,11 @@ def summarize(data):
         any(r.get('items')or r.get('field_photos')for r in data.get('inspection_runs',[])))
     paper=data.get('paper_completion')
     if paper and not any(f.get('id')==paper.get('file',{}).get('id')and f.get('sha256')==paper['file'].get('sha256')and f.get('evidence_id')=='paper_completion'and f.get('extension')=='.pdf'for f in data.get('files',[])):paper=None
-    return {'status':'COMPLETED'if paper else'IN_PROGRESS'if active else'NOT_STARTED',
-        'completed':completed,'required':required,'forms':forms,'paper_completion':paper,'prior_assessments':{'law':prior}if prior else{},'screen_completed':bool(completed==required and required and not any(f.get('source_type')=='PRIOR_PDF'for f in forms))}
+    reported=data.get('reported_completion')
+    # Administrative completion is recorded separately from answers and uploaded evidence.
+    if not isinstance(reported,dict)or reported.get('status')!='COMPLETED'or not reported.get('inspector')or not reported.get('inspection_date')or not reported.get('id'):reported=None
+    return {'status':'COMPLETED'if paper or reported else'IN_PROGRESS'if active else'NOT_STARTED',
+        'completed':completed,'required':required,'forms':forms,'paper_completion':paper,'reported_completion':reported,'prior_assessments':{'law':prior}if prior else{},'screen_completed':bool(completed==required and required and not any(f.get('source_type')=='PRIOR_PDF'for f in forms))}
 
 def summaries(root,rows):
     targets=[(r,r.scheduled_date.strftime('%Y')+('-H1'if r.scheduled_date.month<=6 else'-H2'))for r in rows]
