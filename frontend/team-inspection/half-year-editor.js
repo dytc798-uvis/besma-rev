@@ -184,7 +184,7 @@ export async function mountHalfYearReview({origin,token,session,user,workspace,p
   const search=commonBody.querySelector('input[type=search]');if(search){search.value=value.search;search.dispatchEvent(new Event('input'));}
   common.open=value.open;if(!value.utilitiesWereOpen){panel.classList.remove('hyr-utilities-open');utilitiesButton.setAttribute('aria-expanded','false');}
   const card=[...body.querySelectorAll('.hyr-criterion')].find(e=>e.dataset.criterion===value.criterion),target=value.guide?guide:card||body;
-  const check=card&&[...card.querySelectorAll('.hyr-proof-check[data-evidence]')].find(e=>e.dataset.evidence===value.evidence),focus=check?.closest('.hyr-proof-row')?.querySelector('button')||target;
+  const check=card&&[...card.querySelectorAll('.hyr-proof-check[data-evidence]')].find(e=>e.dataset.evidence===value.evidence),focus=check?.closest('.hyr-proof-row')?.querySelector('.hyr-proof-open')||target;
   if(card){const details=card.querySelector('details');if(details)details.open=true;}
   if(focus===target)target.tabIndex=-1;
   focus.scrollIntoView({block:'center'});focus.focus({preventScroll:true});
