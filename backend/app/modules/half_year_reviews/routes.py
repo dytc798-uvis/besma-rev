@@ -38,7 +38,7 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False}
+    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False,'linked_navigation_version':1}
 @router.get('/mobile-pilot/capabilities')
 def mobile_capabilities(db:DbDep,user:Current,response:Response):
     enabled(db,user)
@@ -242,3 +242,31 @@ async def signature_preview_page(public_id:str,period:str,job_id:str,page_number
         image,proof=await run_in_threadpool(render,raw,{**meta,'extension':'.pdf'},page_number)
     except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
     return Response(image,media_type='image/png',headers={'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Source-SHA256':proof['source_sha256'],'X-Page-Number':str(proof['page_number']),'X-Preview-SHA256':proof['sha256'],'Access-Control-Expose-Headers':'X-Source-SHA256, X-Page-Number, X-Preview-SHA256, Content-Length'})
+
+
+class NavigationRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    form:str=Field(pattern=r'^(report|law|manager|supervisor)$')
+    subject:str=Field(pattern=r'^(site|[0-9a-f]{32})$')
+    criterion:str=Field(min_length=1,max_length=40)
+    version:int=Field(ge=0)
+    device:str=Field(pattern=r'^[0-9a-f-]{36}$')
+    sequence:int=Field(ge=1,le=9007199254740991)
+
+@router.get('/plans/{public_id}/navigation')
+def navigation_read(public_id:str,period:str,db:DbDep,user:Current,response:Response):
+    from . import navigation
+    row,key=selected(db,user,public_id,period)
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    return navigation.read(store().root,key,user.id)
+
+@router.post('/plans/{public_id}/navigation')
+def navigation_write(public_id:str,period:str,body:NavigationRequest,db:DbDep,user:Current,response:Response):
+    from . import navigation
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    try:
+        row,key=selected(db,user,public_id,period);review=store()
+        position={k:getattr(body,k) for k in ['form','subject','criterion']}
+        navigation.validate(position,review.load(key)['data'])
+        return navigation.write(review.root,key,user.id,position,body.version,body.device,body.sequence)
+    except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
