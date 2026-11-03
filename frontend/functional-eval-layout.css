@@ -1,0 +1,10 @@
+/* Grade summaries fit narrow dialogs; worker rosters keep their own scrolling. */
+@media screen {
+.fe-grade-stats{min-width:0;max-width:100%}
+.fe-grade-stats .fe-grade-stats__body>*{min-width:0}
+.fe-grade-stats .fe-grade-stats__table{min-width:0;width:100%;max-width:100%}
+.fe-grade-stats.fe-grade-stats--compact .fe-grade-stats__body{grid-template-columns:minmax(0,1fr)}
+}
+@media screen and (max-width:640px){
+  .fe-grade-stats .fe-grade-stats__body{grid-template-columns:minmax(0,1fr)}
+}
