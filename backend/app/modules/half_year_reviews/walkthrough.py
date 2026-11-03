@@ -123,7 +123,7 @@ def photo_target(data,body,context_meta):
     if not fields<=set(body):raise ValueError('PHOTO_CONTEXT_REQUIRED')
     run=run_for(data,body['walk_run_id'])
     if run['plan_id']!=(context_meta or{}).get('public_id'):raise ValueError('WALK_PLAN_MISMATCH')
-    criterion=next((c for c in FORMS['law']['criteria']if c['id']==body['criterion_id']),None)
+    criterion=next((c for schema in FORMS.values()for c in schema['criteria']if c['id']==body['criterion_id']),None)
     if criterion is None or body['evidence_id']not in criterion['evidence']or body['photo_stage']not in {'BEFORE','AFTER','EVIDENCE'}:raise ValueError('PHOTO_CONTEXT_INVALID')
     if len(run.get('field_photos',[]))>=300:raise ValueError('PHOTO_LINK_LIMIT')
     return run
@@ -132,7 +132,8 @@ def record_photo(run,body,file,actor,name,stamp):
     photos=run.setdefault('field_photos',[])
     known=next((p for p in photos if p['file_id']==file['id']and p['criterion_id']==body['criterion_id']),None)
     if known:return known
-    link={'file_id':file['id'],'criterion_id':body['criterion_id'],'form':'law','evidence_id':body['evidence_id'],'stage':body['photo_stage'],'by':name,'actor_id':actor,'at':stamp}
+    form=next(f for f,schema in FORMS.items()if any(c['id']==body['criterion_id']for c in schema['criteria']))
+    link={'file_id':file['id'],'criterion_id':body['criterion_id'],'form':form,'evidence_id':body['evidence_id'],'stage':body['photo_stage'],'by':name,'actor_id':actor,'at':stamp}
     photos.append(link)
     eid=body['evidence_id'];old=run['items'].get(eid,{})
     linked=list(old.get('photos',[]))
@@ -140,3 +141,8 @@ def record_photo(run,body,file,actor,name,stamp):
     run['items'][eid]={**old,'photos':linked,'status':'PENDING'if old.get('hold')else 'CONFIRMED','version':old.get('version',0)+1,'by':name,'actor_id':actor,'at':stamp}
     run['updated_at']=stamp
     return link
+
+
+def criterion_evidence(data,form):
+    """Snapshot shared factual observations and files, without deriving any verdict."""
+    return {c['id']:[{'evidence_id':eid,'note':data.get('evidence',{}).get(eid,{}).get('note',''),'file_ids':[f['id']for f in data.get('files',[])if f.get('kind')=='image'and f.get('evidence_id')==eid]}for eid in c['evidence']]for c in FORMS[form]['criteria']}

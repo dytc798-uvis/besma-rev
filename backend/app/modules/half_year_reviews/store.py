@@ -76,10 +76,24 @@ class ReviewStore:
                         if assessment_key!=form+':'+subject and set(answers['signed_table_photo_ids'])&set(prior.get('completed',{}).get('data',{}).get('signed_table_photo_ids',[])):
                             raise ValueError('SIGNED_PHOTO_ALREADY_USED')
                 assessment=data['assessments'].setdefault(form+':'+subject,{})
-                draft={'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};assessment['draft']=draft
+                draft={'criterion_evidence':walkthrough.criterion_evidence(data,form),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};assessment['draft']=draft
                 if body['complete']:
                     complete={**draft,'id':uuid.uuid4().hex,'revision':revision+1,'evidence':data['evidence'].copy(),'monthly_sources':[dict(r)for r in data.get('monthly_sources',[])if r['active']],'photo_metadata':[{**f,'caption':answers['photo_captions'].get(f['id'],f['caption'])}for f in data['files']if f['id']in answers['photo_ids']]};complete['inspection_run']=selected_run;assessment['completed']=complete;result['completed_id']=complete['id']
                 result['assessment']=assessment
+            elif action=='prior-assessment':
+                if set(body)!={'form','file_id','inspector','date_label','note','rotation'}or body['form']!='law'or type(body['rotation'])is not int or body['rotation']not in {0,90,180,270}:raise ValueError('PRIOR_ASSESSMENT_INVALID')
+                inspector=cleaned(body['inspector'],40);date_label=cleaned(body['date_label'],40);note=cleaned(body['note'],240)
+                if not inspector or not date_label:raise ValueError('PRIOR_ASSESSMENT_INVALID')
+                content,meta=self.file(key,body['file_id'])
+                if meta['evidence_id']!='paper_assessment'or meta['extension']!='.pdf':raise ValueError('PDF_REQUIRED')
+                from .pdf_preview import information
+                information(content,meta)
+                fields={'form':'law','file':dict(meta),'inspector':inspector,'date_label':date_label,'note':note,'rotation':body['rotation']}
+                prior=data.setdefault('prior_assessments',{}).get('law')
+                if not prior or any(prior.get(k)!=v for k,v in fields.items()):
+                    prior={**fields,'id':uuid.uuid4().hex,'at':stamp,'actor_id':actor,'by':name}
+                    data.setdefault('prior_assessment_history',[]).append(prior);data['prior_assessments']['law']=prior
+                result['prior_assessment']=prior
             elif action=='parse':
                 result['parse_job']=jobs.queue(c,key,data,actor,name,body,context_meta,request['period'],stamp)
             elif action=='apply_parse':
@@ -96,8 +110,10 @@ class ReviewStore:
                 if len(caption.splitlines())>3:raise ValueError('PHOTO_CAPTION_INVALID')
                 target['caption']=caption
             elif action=='attach':
-                if set(body)-{'evidence_id','filename','caption','walk_run_id','criterion_id','photo_stage'}or not {'evidence_id','filename','caption'}<=set(body)or body['evidence_id']not in {*EVIDENCE,'paper_assessment','paper_completion'}or attachment is None:raise ValueError('ATTACHMENT_INVALID')
+                if set(body)-{'evidence_id','filename','caption','walk_run_id','criterion_id','photo_stage','evidence_note'}or not {'evidence_id','filename','caption'}<=set(body)or body['evidence_id']not in {*EVIDENCE,'paper_assessment','paper_completion'}or attachment is None:raise ValueError('ATTACHMENT_INVALID')
                 photo_target=walkthrough.photo_target(data,body,context_meta)
+                evidence_note=cleaned(body.get('evidence_note',''),160)
+                if evidence_note and not photo_target:raise ValueError('PHOTO_CONTEXT_REQUIRED')
                 if photo_target and attachment[1]not in {'image/jpeg','image/png','image/webp'}:raise ValueError('ATTACHMENT_TYPE_INVALID')
                 if len(data['files'])>=100:raise ValueError('ATTACHMENT_LIMIT')
                 raw,mime=attachment;filename=cleaned(body['filename'],180);suffix=Path(filename).suffix.casefold();caption=cleaned(body['caption'],60)
@@ -131,6 +147,7 @@ class ReviewStore:
                 if body['evidence_id']in EVIDENCE and result['file']['kind']=='image':confirm_evidence(data,body['evidence_id'],name,stamp)
                 if photo_target:
                     result['field_photo']=walkthrough.record_photo(photo_target,body,result['file'],actor,name,stamp)
+                    if evidence_note:data['evidence'][body['evidence_id']]={**data['evidence'].get(body['evidence_id'],{}),'note':evidence_note,'by':name,'at':stamp}
             else:raise ValueError('ACTION_INVALID')
             try:
                 revision+=1;c.execute('INSERT INTO contexts VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,data=excluded.data',(key,revision,encoded(data)))

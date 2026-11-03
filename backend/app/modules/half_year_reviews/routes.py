@@ -23,7 +23,7 @@ class Change(BaseModel):
     revision:int=Field(ge=0)
     base:dict|None=None
     period:str=Field(pattern=r'^20\d{2}-H[12]$')
-    action:str=Field(pattern=r'^(evidence|subject|assessment|caption|parse|apply_parse|monthly-link|monthly-links|monthly-unlink|walk-start|walk-item|walk-report)$')
+    action:str=Field(pattern=r'^(evidence|subject|assessment|prior-assessment|caption|parse|apply_parse|monthly-link|monthly-links|monthly-unlink|walk-start|walk-item|walk-report)$')
     data:dict
 def enabled(db,user):
     if os.environ.get('BESMA_HALF_YEAR_REVIEWS_ENABLED','').casefold()not in {'1','true'}:raise HTTPException(404,'반기평가를 준비하고 있습니다.')
@@ -38,7 +38,7 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1}
+    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1}
 @router.get('/mobile-pilot/capabilities')
 def mobile_capabilities(db:DbDep,user:Current,response:Response):
     enabled(db,user)
@@ -113,13 +113,13 @@ def receipt(public_id:str,period:str,request_key:str,db:DbDep,user:Current):
         row,key=selected(db,user,public_id,period);return store().receipt(key,user.id,request_key)
     except(ValueError,KeyError,OSError)as e:fail(e)
 @router.post('/plans/{public_id}/files',status_code=201)
-async def upload(public_id:str,db:DbDep,user:Current,period:Annotated[str,Form()],revision:Annotated[int,Form()],request_key:Annotated[str,Form()],evidence_id:Annotated[str,Form()],caption:Annotated[str,Form()]='',walk_run_id:Annotated[str,Form()]='',criterion_id:Annotated[str,Form()]='',photo_stage:Annotated[str,Form()]='EVIDENCE',file:UploadFile=File()):
+async def upload(public_id:str,db:DbDep,user:Current,period:Annotated[str,Form()],revision:Annotated[int,Form()],request_key:Annotated[str,Form()],evidence_id:Annotated[str,Form()],caption:Annotated[str,Form()]='',walk_run_id:Annotated[str,Form()]='',criterion_id:Annotated[str,Form()]='',photo_stage:Annotated[str,Form()]='EVIDENCE',evidence_note:Annotated[str,Form()]='',file:UploadFile=File()):
     try:
         row,key=selected(db,user,public_id,period)
         if revision<0:raise ValueError('REVISION_INVALID')
         raw=await file.read(15*1024*1024+1);actor_id=user.id;name=user.name;db.rollback()
         request={'revision':revision,'request_key':request_key,'period':period,'action':'attach','data':{'evidence_id':evidence_id,'caption':caption,'filename':file.filename or'자료'}}
-        if walk_run_id or criterion_id:request['data'].update(walk_run_id=walk_run_id,criterion_id=criterion_id,photo_stage=photo_stage)
+        if walk_run_id or criterion_id:request['data'].update(walk_run_id=walk_run_id,criterion_id=criterion_id,photo_stage=photo_stage,evidence_note=evidence_note)
         return await run_in_threadpool(store().mutate,key,actor_id,name,request,(raw,file.content_type or''),{'public_id':public_id})
     except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
 @router.get('/plans/{public_id}/files/{file_id}')
