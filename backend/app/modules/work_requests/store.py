@@ -9,7 +9,7 @@ from contextlib import contextmanager, closing
 from pathlib import Path
 from uuid import uuid4
 from .artifact_validation import PDF_PREFIX,validate_pdf,pdf_name,validate_edited_copy
-from . import source_generation
+from . import source_generation, conversation_titles
 
 FINAL = {'COMPLETED', 'DECLINED', 'FAILED', 'NEEDS_INFO'}
 MAX_BYTES = 16 * 1024 * 1024
@@ -361,6 +361,7 @@ class RequestStore:
                 current=db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone()
                 if inputs(db,current)and(source is not None or needs_source(body)or requested(db,rid)):
                     self._event(db,rid,'IMAGE_COMPARISON_BOUND')
+            conversation_titles.refresh(db,self.root,rid)
             return self._public(db,db.execute('SELECT * FROM requests WHERE id=?',(rid,)).fetchone())
 
     @staticmethod
@@ -403,7 +404,7 @@ class RequestStore:
             for row in rows[:50]:
                 first=db.execute('SELECT title FROM requests WHERE id=?',(row['id'],)).fetchone()
                 last=db.execute('SELECT id,status FROM requests WHERE conversation_id=? AND user_id=? AND login_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1',(row['id'],actor['id'],actor['login_id'])).fetchone()
-                items.append({**dict(row),'title':first['title'],'last_request_id':last['id'],'status':last['status']})
+                items.append({**dict(row),'title':conversation_titles.resolve(db,self.root,actor,row['id']),'last_request_id':last['id'],'status':last['status']})
             return {'items':items,'next_cursor':items[-1]['id']if more else None}
 
     def conversation(self,actor,rid,before=None):
@@ -417,7 +418,7 @@ class RequestStore:
                 clause=' AND (created_at<? OR (created_at=? AND rowid<?))';values.extend([anchor['created_at'],anchor['created_at'],anchor['rowid']])
             rows=db.execute('SELECT * FROM requests WHERE conversation_id=? AND user_id=? AND login_id=?'+clause+' ORDER BY created_at DESC,rowid DESC LIMIT 101',values).fetchall()
             more=len(rows)>100;rows=rows[:100]
-            return {'id':row['conversation_id'],'items':[self._read_state(db,actor,r,self._public(db,r,False))for r in reversed(rows)],'next_cursor':rows[-1]['id']if more else None}
+            return {'id':row['conversation_id'],'title':conversation_titles.resolve(db,self.root,actor,row['conversation_id']),'items':[self._read_state(db,actor,r,self._public(db,r,False))for r in reversed(rows)],'next_cursor':rows[-1]['id']if more else None}
 
     def conversation_file_names(self,actor,rid,visible,nas_metadata=None):
         """Requester-visible result metadata; never infer a name from chat text."""
