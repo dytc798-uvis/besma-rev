@@ -221,3 +221,24 @@ def signature_file(public_id:str,period:str,job_id:str,db:DbDep,user:Current):
         row,key=selected(db,user,public_id,period);raw,meta=output(store(),key,user.id,job_id)
     except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
     return Response(raw,media_type='application/pdf',headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Disposition':"inline; filename*=UTF-8''"+quote(meta['filename'])})
+
+@router.get('/plans/{public_id}/signature-prints/{job_id}/preview')
+async def signature_preview(public_id:str,period:str,job_id:str,db:DbDep,user:Current,response:Response):
+    from .signature_jobs import output
+    from .pdf_preview import information
+    try:
+        row,key=selected(db,user,public_id,period);raw,meta=output(store(),key,user.id,job_id);db.rollback()
+        result=await run_in_threadpool(information,raw,{**meta,'extension':'.pdf'})
+    except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    return result
+
+@router.get('/plans/{public_id}/signature-prints/{job_id}/preview/{page_number}')
+async def signature_preview_page(public_id:str,period:str,job_id:str,page_number:int,db:DbDep,user:Current):
+    from .signature_jobs import output
+    from .pdf_preview import render
+    try:
+        row,key=selected(db,user,public_id,period);raw,meta=output(store(),key,user.id,job_id);db.rollback()
+        image,proof=await run_in_threadpool(render,raw,{**meta,'extension':'.pdf'},page_number)
+    except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
+    return Response(image,media_type='image/png',headers={'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Source-SHA256':proof['source_sha256'],'X-Page-Number':str(proof['page_number']),'X-Preview-SHA256':proof['sha256'],'Access-Control-Expose-Headers':'X-Source-SHA256, X-Page-Number, X-Preview-SHA256, Content-Length'})
