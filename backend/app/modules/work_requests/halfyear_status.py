@@ -42,7 +42,7 @@ def query(body, today=None):
         turns.extend(history[start+1:])
         turns.append(current)
     year, half = today.year, 1 if today.month <= 6 else 2
-    mode = 'completed'
+    mode = 'all'
     for text in turns:
         years = set(re.findall(r'(?<!\d)(20\d{2})(?!\d)', text))
         halves = set(re.findall(r'([상하])반기', text))
@@ -54,10 +54,10 @@ def query(body, today=None):
             half = 1 if next(iter(halves)) == '상' else 2
         if '미완료' in text:
             mode = 'incomplete'
-        elif '전체' in text or '진행현황' in text:
-            mode = 'all'
         elif '완료' in text:
             mode = 'completed'
+        elif '전체' in text or '현황' in text:
+            mode = 'all'
     return {'year': year, 'half': half, 'mode': mode, 'clarify': False}
 
 
@@ -98,13 +98,16 @@ def include_visible_completions(own_rows, plans, year, half):
         if key in seen:
             raise ValueError('DUPLICATE_VISIBLE_PLAN')
         seen.add(key)
-        if plan['status'] != 'COMPLETED':
-            continue
         scheduled = date.fromisoformat(plan['scheduled_date'])
         if scheduled.year != year or (1 if scheduled.month <= 6 else 2) != half:
             continue
         existing = result.get(key)
-        if existing and (existing['status'] == 'COMPLETED' or existing['screen_completed']):
+        if existing and (plan['status'] != 'COMPLETED' or existing['status'] == 'COMPLETED' or existing['screen_completed']):
+            continue
+        if plan['status'] != 'COMPLETED':
+            result[key] = {'public_id': key, 'period': f'{year}-H{half}',
+                           'title': plan['title'], 'status': 'UNVERIFIED',
+                           'screen_completed': False}
             continue
         result[key] = {'public_id': key, 'period': f'{year}-H{half}',
                        'title': plan['title'], 'status': 'COMPLETED',
@@ -129,24 +132,25 @@ def answer(item, provider=None, today=None):
         selected_rows = []
         seen = set()
         for row in rows:
-            if row.get('period') != f'{year}-H{half}' or row.get('status') not in {'COMPLETED', 'IN_PROGRESS', 'NOT_STARTED'} or type(row.get('screen_completed')) is not bool or not isinstance(row.get('title'), str) or row['public_id'] in seen:
+            if row.get('period') != f'{year}-H{half}' or row.get('status') not in {'COMPLETED', 'IN_PROGRESS', 'NOT_STARTED', 'UNVERIFIED'} or type(row.get('screen_completed')) is not bool or not isinstance(row.get('title'), str) or row['public_id'] in seen:
                 raise ValueError('REVIEW_SCOPE_UNVERIFIED')
             seen.add(row['public_id'])
             complete = row['status'] == 'COMPLETED' or row['screen_completed']
-            if selected['mode'] == 'completed' and not complete or selected['mode'] == 'incomplete' and complete:
+            if selected['mode'] == 'completed' and not complete or selected['mode'] == 'incomplete' and (complete or row['status'] == 'UNVERIFIED'):
                 continue
-            status = ('최종본 등록 완료' if row.get('paper_completion') else '점검 완료 등록' if row.get('plan_completed') else '완료 등록' if row.get('reported_completion') else '완료') if row['status'] == 'COMPLETED' else '전자평가 4종 완료' if row['screen_completed'] else '작성 중' if row['status'] == 'IN_PROGRESS' else '미작성'
+            status = ('최종본 등록 완료' if row.get('paper_completion') else '점검 완료 등록' if row.get('plan_completed') else '완료 등록' if row.get('reported_completion') else '완료') if row['status'] == 'COMPLETED' else '전자평가 4종 완료' if row['screen_completed'] else '작성 중' if row['status'] == 'IN_PROGRESS' else '평가 상태 확인 필요' if row['status'] == 'UNVERIFIED' else '미작성'
             selected_rows.append((row['title'].removeprefix('[점검] ').strip(), status))
         # Multiple plans may refer to one shared site/period; never inflate site counts.
-        selected_rows = sorted(set(selected_rows))
+        selected_rows = sorted(set(selected_rows), key=lambda value: (value[1] == '평가 상태 확인 필요', value))
         if not selected_rows:
             reply = label + ('에 등록된 점검·평가 계획이 없습니다.' if not rows else ' 완료 현장은 등록된 평가 원장에서 확인되지 않습니다.' if selected['mode'] == 'completed' else ' 미완료 현장은 등록된 평가 원장에서 확인되지 않습니다.')
         else:
-            heading = {'completed':'완료 현장', 'incomplete':'미완료 현장', 'all':'평가 현황'}[selected['mode']]
+            heading = {'completed':'완료 현장', 'incomplete':'내 담당 미완료 현장', 'all':'평가 현황'}[selected['mode']]
             reply = label + ' ' + heading + '\n' + '\n'.join('· '+name+' — '+status for name, status in selected_rows[:40])
             if len(selected_rows) > 40:
-                reply += f'\n외 {len(selected_rows)-40}개 항목은 내 점검에서 확인할 수 있습니다.'
-        return {'status': 'COMPLETED', 'reply': reply + '\n\n현재 계정으로 조회 가능한 BESMA 평가 원장 기준입니다. 미등록 현장의 완료 여부는 확정하지 않습니다.'}
+                reply += f'\n외 {len(selected_rows)-40}개 항목은 팀 점검계획에서 확인할 수 있습니다.'
+        scope = '\n다른 담당자의 평가 상세는 확인하지 못한 경우 완료·미완료로 분류하지 않습니다.' if selected['mode'] != 'completed' and any(row['status'] == 'UNVERIFIED' for row in rows) else ''
+        return {'status': 'COMPLETED', 'reply': reply + scope + '\n\n현재 계정으로 조회 가능한 BESMA 평가 원장 기준입니다. 미등록 현장의 완료 여부는 확정하지 않습니다.'}
     except Exception:
         # No template search fallback: failure/denial is not zero completed sites.
         return {'status': 'NEEDS_INFO', 'reply': label+' 평가 원장의 조회 권한·연결을 확인하지 못했습니다. 완료 현장을 0건으로 확정하지 않았습니다. 평가표 파일을 다시 보내실 필요는 없습니다.'}
