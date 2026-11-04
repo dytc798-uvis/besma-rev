@@ -37,7 +37,7 @@ def xlsx(form,snapshot,site,inspector):
         if formula:changes[address]=('', '<f>'+escape(formula)+'</f><v>'+str(cache)+'</v>')
         elif isinstance(value,(int,float)):changes[address]=('', '<v>'+str(value)+'</v>')
         else:changes[address]=(' t="inlineStr"','<is><t xml:space="preserve">'+escape(str(value))+'</t></is>')
-    data=snapshot['data'];day=data['inspection_date'];subject=snapshot['subject_name']
+    data=snapshot['data'];day=data['inspection_date'];subject=snapshot.get('subject_name')or(snapshot.get('site_manager','')if form=='manager'else'')
     for address,value in ({'B2':site,'P2':day,'U2':subject,'Y2':inspector}if form=='manager'else{'C2':site,'M2':day,'S2':subject,'Y2':inspector}).items():setcell(address,value)
     for criterion in schema['criteria']:
         answer=data['answers'][criterion['id']];setcell('X'+str(criterion['row']),answer['value']);setcell('Y'+str(criterion['row']),answer['note'])
@@ -90,16 +90,37 @@ def pptx(snapshot,site,inspector,photos,period,blind=False):
         day=date.fromisoformat(data['inspection_date']);items=parts(template_path.read_bytes());cover=E.fromstring(items['ppt/slides/slide1.xml']);text(cell(cover,6,0,1),site);text(cell(cover,6,1,1),day.strftime('%Y.%m.%d'));text(shape(cover,5),f'{day.year}년 '+('상'if day.month<=6 else'하')+'반기');items['ppt/slides/slide1.xml']=xml(cover)
         overview=E.fromstring(items['ppt/slides/slide2.xml']);text(cell(overview,7,1,1),site);text(cell(overview,7,3,1),day.strftime('%Y.%m.%d'));text(cell(overview,7,5,1),inspector);items['ppt/slides/slide2.xml']=xml(overview)
         confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,0,1),site);text(cell(confirm,7,0,3),day.strftime('%Y.%m.%d'));text(cell(confirm,7,1,1),fields['evaluation_period']);text(cell(confirm,9,0,0),data['summary']);text(cell(confirm,11,0,1),inspector+'  (서명)');items['ppt/slides/slide6.xml']=xml(confirm)
+    overview=E.fromstring(items['ppt/slides/slide2.xml'])
+    progress=snapshot.get('progress','')+(' ('+snapshot['progress_date']+' 기준)'if snapshot.get('progress')and snapshot.get('progress_date')else'')
+    for row,value in [(2,' / '.join(filter(None,[snapshot.get('contractor',''),snapshot.get('trade','')]))),(4,' / '.join(filter(None,[snapshot.get('site_manager',''),snapshot.get('safety_staff','')]))),(6,' / '.join(filter(None,[snapshot.get('construction_amount',''),progress])))]:text(cell(overview,7,row,1),value)
+    items['ppt/slides/slide2.xml']=xml(overview)
     summary=E.fromstring(items['ppt/slides/slide3.xml']);score=snapshot['result']['score']
     text(shape(summary,8),''if blind else f'{score:g}');text(cell(summary,12,19,5),''if blind else f'{score:g}')
     for criterion in FORMS['report']['criteria']:
-        level=data['answers'][criterion['id']]['value'];points=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[level];text(cell(summary,12,criterion['row'],5),''if blind else f'{points:g}')
+        level=data['answers'][criterion['id']]['value'];points=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[level];text(cell(summary,12,criterion['row'],5),('미흡'if points<=1 else'')if blind else f'{points:g}')
+        if blind and points<=1:
+            for target in shape(summary,12).findall('.//a:tr',NS)[criterion['row']].findall('a:tc',NS):
+                prop=target.find('a:tcPr',NS)
+                if prop is None:prop=E.SubElement(target,'{'+NS['a']+'}tcPr')
+                for prior in list(prop):
+                    if prior.tag in {'{'+NS['a']+'}solidFill','{'+NS['a']+'}noFill'}:prop.remove(prior)
+                fill=E.SubElement(prop,'{'+NS['a']+'}solidFill');E.SubElement(fill,'{'+NS['a']+'}srgbClr',{'val':'FFF0D9'})
+                for run in target.findall('.//a:rPr',NS):run.set('b','1')
         note=data['answers'][criterion['id']]['note']
         if note:
             target=cell(summary,12,criterion['row'],3);prior=''.join(target.itertext());text(target,prior+'  '+note)
     items['ppt/slides/slide3.xml']=xml(summary)
-    improvement=E.fromstring(items['ppt/slides/slide4.xml']);rows=data['improvements'];text(shape(improvement,7),f'개선요구 {len(rows)}건')
+    improvement=E.fromstring(items['ppt/slides/slide4.xml']);rows=[];text(shape(improvement,7),'개선요구')
+    for target in shape(improvement,8).findall('.//a:tr',NS)[1:]:
+        for slot in target.findall('a:tc',NS):text(slot,'')
     for i,row in enumerate(rows,1):
         for col,key in enumerate(['finding','action','owner','due'],1):text(cell(improvement,8,i,col),row[key])
-    items['ppt/slides/slide4.xml']=xml(improvement);confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,1,3),''if blind else f'{score:g} / 100점');text(cell(confirm,7,2,1),f'{len(rows)}건');items['ppt/slides/slide6.xml']=xml(confirm)
+    items['ppt/slides/slide4.xml']=xml(improvement);confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,1,3),''if blind else f'{score:g} / 100점');text(cell(confirm,7,2,1),'');text(cell(confirm,7,2,3),'');text(cell(confirm,9,0,0),data.get('summary',''));text(cell(confirm,11,0,1),inspector+'    (서명)');text(cell(confirm,11,0,3),snapshot.get('site_manager','')+'    (서명)')
+    for col in [1,3]:
+        target=cell(confirm,11,0,col)
+        for paragraph in target.findall('.//a:p',NS):
+            prop=paragraph.find('a:pPr',NS)
+            if prop is None:prop=E.Element('{'+NS['a']+'}pPr');paragraph.insert(0,prop)
+            prop.set('algn','l');prop.set('marL','90000')
+    items['ppt/slides/slide6.xml']=xml(confirm)
     return pack(items)

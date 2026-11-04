@@ -14,12 +14,14 @@ def connect(store):
 def visible(row):
     p=json.loads(row['payload']);return {'id':row['id'],'status':row['status'],'form':p['form'],'subject_id':p['subject_id'],'snapshot_id':p['snapshot_id'],'filename':p['filename'],'at':row['at'],'updated_at':row['updated_at'],'error':row['error'],'result':json.loads(row['result'])if row['result']else None,'delivery_status':'CONNECTION_REQUIRED','message':'공무 네이버웍스 전달 연결 필요'}
 
-def queue(store,key,user,row,period,body):
+def queue(store,key,user,row,period,body,profile=None):
     from .catalog import FORMS
     from .printing import document
     if set(body)!={'form','subject_id','snapshot_id','request_key'}or body['form']not in FORMS or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',body['request_key']):raise ValueError('SIGNATURE_REQUEST_INVALID')
-    snapshot=store.load(key)['data']['assessments'].get(body['form']+':'+body['subject_id'],{}).get('completed')
+    assessment=store.load(key)['data']['assessments'].get(body['form']+':'+body['subject_id'],{});snapshot=assessment.get('completed')
     if not snapshot or snapshot['id']!=body['snapshot_id']:raise ValueError('COMPLETE_FIRST')
+    from .site_profile import enrich
+    snapshot=enrich(snapshot,profile or{},assessment)
     site=row.title.removeprefix('[점검] ').strip();filename=re.sub(r'[\\/:*?"<>|\x00-\x1f]','_',site+'_'+FORMS[body['form']]['title']+'_소장서명용.pdf')
     html=document(body['form'],snapshot,site,period,blind=True);source=hashlib.sha256(html.encode()).hexdigest();payload={**body,'html':html,'source_sha256':source,'public_id':row.public_id,'period':period,'context_id':key,'site':site,'filename':filename,'blind_report_scores':True};now=stamp()
     with closing(connect(store))as c,c:

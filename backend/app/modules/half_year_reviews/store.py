@@ -39,7 +39,10 @@ class ReviewStore:
             if request['revision']>revision:raise Conflict('REVISION_INVALID')
             action=request['action'];body=request['data'];result={};op_meta={}
             if not isinstance(body,dict):raise ValueError('REQUEST_INVALID')
-            if action=='evidence':
+            if action=='site-details':
+                from .site_profile import validate_details
+                data.setdefault('site_details',{}).update(validate_details(body))
+            elif action=='evidence':
                 if set(body)-{'id','checked','note','hold'}or not {'id','checked','note'}<=set(body)or body['id']not in EVIDENCE or type(body['checked'])is not bool or type(body.get('hold',False))is not bool:raise ValueError('EVIDENCE_INVALID')
                 previous=data['evidence'].get(body['id'],{})
                 edit={k:v for k,v in body.items()if k!='id'}
@@ -57,13 +60,16 @@ class ReviewStore:
                 result.update(factual_check(data,action,body,name,actor,stamp))
             elif action in {'walk-start','walk-item','walk-report','walk-guidance'}:
                 result.update(walkthrough.mutate(data,action,body,request['period'],actor,name,stamp,context_meta))
-            elif action=='subject':
+            elif action in {'subject','manager-default'}:
                 if set(body)!={'form','name'}or body['form']not in {'manager','supervisor'}:raise ValueError('SUBJECT_INVALID')
                 target=cleaned(body['name'],40)
                 if not target:raise ValueError('SUBJECT_REQUIRED')
                 if len(data['subjects'][body['form']])>=30:raise ValueError('SUBJECT_LIMIT')
-                if any(s['name']==target for s in data['subjects'][body['form']]):raise ValueError('SUBJECT_EXISTS')
-                subject={'id':uuid.uuid4().hex,'name':target};data['subjects'][body['form']].append(subject);result['subject']=subject
+                existing=next((s for s in data['subjects'][body['form']]if s['name']==target),None)
+                if existing and action=='subject':raise ValueError('SUBJECT_EXISTS')
+                subject=existing or {'id':uuid.uuid4().hex,'name':target}
+                if not existing:data['subjects'][body['form']].append(subject)
+                result['subject']=subject
             elif action in {'assessment','assessment-summary','assessment-comment'}:
                 if action in {'assessment-summary','assessment-comment'}:
                     expected={'form','subject_id','summary','inspection_date'}if action=='assessment-summary'else{'form','subject_id','criterion_id','note','inspection_date'}
@@ -181,13 +187,15 @@ class ReviewStore:
         content=path.read_bytes()
         if len(content)!=meta['bytes']or digest(content)!=meta['sha256']:raise ValueError('FILE_CHANGED')
         return content,meta
-    def export(self,key,form,subject,site,period,expected_snapshot=None):
+    def export(self,key,form,subject,site,period,expected_snapshot=None,profile=None):
         current=self.load(key);assessment=current['data']['assessments'].get(form+':'+subject,{});snapshot=assessment.get('completed')
         if not snapshot:raise ValueError('COMPLETE_FIRST')
         with closing(self.connect())as c:
             prior=c.execute('SELECT * FROM outputs WHERE context_id=? AND snapshot_id=? AND form=?',(key,expected_snapshot or snapshot['id'],form)).fetchone()
             if prior:return dict(prior)
         if expected_snapshot is not None and expected_snapshot!=snapshot['id']:raise Conflict('COMPLETED_VERSION_CHANGED')
+        from .site_profile import enrich
+        snapshot=enrich(snapshot,profile or{},assessment)
         if form=='report':
             photos=[]
             for meta in snapshot['photo_metadata']:

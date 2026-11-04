@@ -5,7 +5,7 @@ export function createSignatureOutput({host,request,bytes,previewPage,session}){
  async function open(c){
   session();dialog?.close();const active=n('dialog');dialog=active;active.className='signature-output-dialog';active.setAttribute('aria-label','소장 서명용 PDF');
   const title=n('h2',c.site+' · 소장 서명용 PDF'),status=n('p','이 PC에서 PDF를 만들도록 요청하고 있습니다.'),close=n('button','닫기'),refresh=n('button','상태 다시 확인'),files=n('div');for(const b of[close,refresh])b.type='button';close.onclick=()=>active.close();status.setAttribute('role','status');active.append(title,close,status,refresh,files);host.append(active);
-  const key=[c.plan,c.period,c.form,c.subject,c.snapshot].join('|');if(!requests.has(key))requests.set(key,crypto.randomUUID());
+  const key=[c.plan,c.period,c.form,c.subject,c.snapshot].join('|');requests.set(key,crypto.randomUUID());
   const path='/plans/'+encodeURIComponent(c.plan)+'/signature-prints',query='?'+new URLSearchParams({period:c.period});let job=null,timer=null,pdfUrl=null,pageUrl=null,pageSequence=0;
   const guard=()=>{session();if(!active.isConnected||!active.open)throw Error('출력 화면이 닫혔습니다.');};
   active.addEventListener('close',()=>{if(timer)clearTimeout(timer);pageSequence++;if(pdfUrl)URL.revokeObjectURL(pdfUrl);if(pageUrl)URL.revokeObjectURL(pageUrl);active.remove();if(dialog===active)dialog=null;},{once:true});active.showModal();

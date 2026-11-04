@@ -35,7 +35,11 @@ def pptx(raw):
                         if cell.get('hMerge')=='1'or cell.get('vMerge')=='1':continue
                         sizes=[number(r,'sz')/100 for r in cell.findall('.//a:rPr',NS)if r.get('sz')]
                         font=min(sizes)if sizes else 9
-                        html+=f'<td colspan="{cell.get("gridSpan","1")}" rowspan="{cell.get("rowSpan","1")}" style="font-size:{font}pt">'+safe(text(cell))+'</td>'
+                        emphasis=cell.find('a:tcPr/a:solidFill/a:srgbClr',NS);extra='background:#fff0d9;font-weight:bold;'if emphasis is not None and emphasis.get('val')=='FFF0D9'else''
+                        paragraph=cell.find('.//a:pPr',NS)
+                        if paragraph is not None and paragraph.get('algn')=='l':extra+='text-align:left;padding-left:2.5mm;'
+                        if '(서명)'in text(cell):extra+='white-space:pre-wrap;'
+                        html+=f'<td colspan="{cell.get("gridSpan","1")}" rowspan="{cell.get("rowSpan","1")}" style="font-size:{font}pt;{extra}">'+safe(text(cell))+'</td>'
                     html+='</tr>'
                 html+='</table>'
             else:
@@ -48,7 +52,7 @@ def pptx(raw):
         pages.append('<article class="slide">'+''.join(shapes)+'</article>')
     return ''.join(pages),f'@page{{size:{width}mm {height}mm;margin:0}}.slide{{width:{width}mm;height:{height}mm;position:relative;break-after:page;overflow:hidden}}.shape{{position:absolute}}.shape table{{height:100%}}.shape td{{padding:.5mm;line-height:1.12;text-align:center}}'
 
-def xlsx(raw):
+def xlsx(raw,site_manager=""):
     import openpyxl
     book=openpyxl.load_workbook(BytesIO(raw),data_only=True);sheet=book['평가표'];merged={};covered=set()
     for rect in sheet.merged_cells.ranges:
@@ -80,7 +84,7 @@ def xlsx(raw):
             html+=f'<td rowspan="{rows}" colspan="{cols}" style="{style}">'+safe(cell.value if cell.value is not None else'')+'</td>'
         html+='</tr>'
     margins=sheet.page_margins;css=f'@page{{size:A4 portrait;margin:{margins.top*25.4}mm {margins.right*25.4}mm {margins.bottom*25.4}mm {margins.left*25.4}mm}}.sheet td{{padding:{.4*scale}mm;line-height:1.1}}.sheet table{{table-layout:fixed}}'
-    book.close();return html+'</table><p class="signature-line">현장소장: ____________________ (서명)</p></article>',css+' .sheet tr{break-inside:avoid}.signature-line{font-size:11pt;text-align:right;margin:8mm 0 0;break-inside:avoid}'
+    book.close();return html+'</table><p class="signature-line">현장소장: '+safe(site_manager)+'    (서명)</p></article>',css+' .sheet tr{break-inside:avoid}.signature-line{font-size:11pt;text-align:right;margin:8mm 0 0;break-inside:avoid}'
 
 def hwpx(raw):
     items=exports.parts(raw);root=E.fromstring(items['Contents/section0.xml']);hp='http://www.hancom.co.kr/hwpml/2011/paragraph';ns={'hp':hp};tables=[]
@@ -120,7 +124,7 @@ def document(form,snapshot,site,period,blind=True):
         comments.append(('총평',summary));snapshot['data']['summary']='총평 별지 참조'
     if form=='report':body,css=pptx(exports.pptx(snapshot,site,snapshot['inspector'],[],period,blind=blind))
     elif form=='law':body,css=hwpx(exports.hwpx(snapshot,site,snapshot['inspector']))
-    else:body,css=xlsx(exports.xlsx(form,snapshot,site,snapshot['inspector']))
+    else:body,css=xlsx(exports.xlsx(form,snapshot,site,snapshot['inspector']),snapshot.get('site_manager',''))
     if comments:
         body+='<article class="comment-appendix"><h1>'+safe(FORMS[form]['title'])+' 코멘트</h1><p>'+safe(site)+' · '+safe(snapshot['data']['inspection_date'])+'</p>'+''.join('<section><h2>'+safe(title)+'</h2><p>'+safe(note)+'</p></section>'for title,note in comments)+'</article>'
         css+='@page comments{size:A4 portrait;margin:16mm}.comment-appendix{page:comments;break-before:page;font-size:11pt;line-height:1.7}.comment-appendix h1{font-size:18pt}.comment-appendix h2{font-size:12pt;break-after:avoid;margin:7mm 0 2mm}.comment-appendix p{white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3;margin:0 0 5mm}.comment-appendix section{break-inside:auto}'

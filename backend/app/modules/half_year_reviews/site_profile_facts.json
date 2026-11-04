@@ -1,0 +1,1214 @@
+{
+  "received_at": "2026-11-04T07:05:17.555562+09:00",
+  "source_sha256": "0aa45bba3a72b27bc81456fef379bfa12a4e6bb1e17016d07bab058f463b7484",
+  "sites": {
+    "22003": {
+      "name": "[1.진흥기업] 서울시교육청신청사 임시전력공사",
+      "manager": "",
+      "contractor": "진흥기업(주)",
+      "amount": 155000000.0,
+      "trade": "임시전력"
+    },
+    "22015": {
+      "name": "[관급] 성남복정1 A-1BL 아파트 전기공사 1공구",
+      "manager": "",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "22022": {
+      "name": "[4.현대엔지니어링-연간] 천안아산역듀클래스오피스텔 임시가설-아산배방2차",
+      "manager": "",
+      "contractor": "현대엔지니어링(주)",
+      "amount": null,
+      "trade": "-"
+    },
+    "22033": {
+      "name": "[2.현대엔지니어링] 부천 소사특별건축구역 주상복합 신축공사",
+      "manager": "",
+      "contractor": "현대엔지니어링(주)",
+      "amount": 6829000000.0,
+      "trade": "전기,통신(배관)"
+    },
+    "22048": {
+      "name": "[4.현대엔지니어링-연간] 광주 월산동 현대지역주택조합 임시전력공사",
+      "manager": "",
+      "contractor": "현대엔지니어링(주)",
+      "amount": null,
+      "trade": ""
+    },
+    "22049": {
+      "name": "[4.현대엔지니어링-연간] 당진 송악물류단지 조성현장 임시가설",
+      "manager": "",
+      "contractor": "현대엔지니어링",
+      "amount": null,
+      "trade": ""
+    },
+    "22052": {
+      "name": "[4.롯데건설] 구리 인창C구역 주택재개발정비사업 중 일반전기공사",
+      "manager": "",
+      "contractor": "롯데건설(주)",
+      "amount": null,
+      "trade": "전기"
+    },
+    "22073": {
+      "name": "[1.대우건설] 파주운정지구 도시지원 4-5,6,7,8,9BL(1단지) 및 4-4BL(2단지) 오피스텔 신축공사",
+      "manager": "",
+      "contractor": "(주)대우건설",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "22074": {
+      "name": "[4.현대건설] 힐스테이트 레이크 송도 4차 전기공사",
+      "manager": "정완근",
+      "contractor": "현대건설(주)",
+      "amount": null,
+      "trade": "전기"
+    },
+    "22075": {
+      "name": "[1.진흥기업] 해링턴 플레이스 감삼 신축공사",
+      "manager": "",
+      "contractor": "진흥기업(주)",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "22079": {
+      "name": "[2.동부건설] 이천 안흥동 주상복합시설사업 전기공사",
+      "manager": "",
+      "contractor": "동부건설",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "22083": {
+      "name": "[4.현대엔지니어링-연간] 전기차 충전소 인프라 구축",
+      "manager": "",
+      "contractor": "현대엔지니어링",
+      "amount": null,
+      "trade": ""
+    },
+    "23005": {
+      "name": "[2.현대산업개발] 광명제4R구역 주택재개발정비사업 일반전기공사-1공구",
+      "manager": "박장섭",
+      "contractor": "에이치디씨현대산업개발 주식회사",
+      "amount": null,
+      "trade": "전기,통신(배관)"
+    },
+    "23010": {
+      "name": "[관급] 청석 거주자우선주차장 및 한누리 공영주차장 복합화사업 소방공사",
+      "manager": "관-노무관리용",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "23013": {
+      "name": "[1.대우건설] 고양향동 지원1BL 지식산업센터 신축공사",
+      "manager": "",
+      "contractor": "(주)대우건설",
+      "amount": null,
+      "trade": "전기,통신(함)"
+    },
+    "23014": {
+      "name": "[2.현대엔지니어링] 상도동 지역주택조합 주상복합 신축사업",
+      "manager": "",
+      "contractor": "현대엔지니어링(주)",
+      "amount": null,
+      "trade": "전기"
+    },
+    "23024": {
+      "name": "[1.우미건설] 오산세교1차 우미린 아파트 전기공사(2공구)",
+      "manager": "",
+      "contractor": "우미건설",
+      "amount": null,
+      "trade": "전기,통신(배관,배선)"
+    },
+    "23035": {
+      "name": "[2.신세계건설] 부산 명지지구 아파텔 신축공사(1,2,5,6BL)",
+      "manager": "",
+      "contractor": "신세계건설",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "23039": {
+      "name": "[2.한라] 인천작전동 APT 신축공사",
+      "manager": "",
+      "contractor": "한라",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "23043": {
+      "name": "[기타] 노무비 정산",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "23044": {
+      "name": "[1.대우건설] 청주 테크노폴리스 S1-1,2BL 주상복합 신축공사",
+      "manager": "김승모",
+      "contractor": "대우건설",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "23048": {
+      "name": "[1.두산건설] 송림3구역 주택재개발 중 전기공사1,2공구",
+      "manager": "",
+      "contractor": "두산건설",
+      "amount": null,
+      "trade": "전기,통신(배관),소방"
+    },
+    "24002": {
+      "name": "[2.동양] 한국건강관리협회 인천지부 신청사 건립 신축공사",
+      "manager": "",
+      "contractor": "동양/건설부문",
+      "amount": null,
+      "trade": "전기"
+    },
+    "24010": {
+      "name": "[4.롯데건설] 검단신도시 101 역세권 공모사업(C9-1BL, C9-2BL)",
+      "manager": "정인근",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": "전기,통신(배관),가설"
+    },
+    "24011": {
+      "name": "[2.쌍용건설] 평택 통복동 주상복합 가설공사",
+      "manager": "",
+      "contractor": "쌍용건설",
+      "amount": null,
+      "trade": ""
+    },
+    "24014": {
+      "name": "[2.쌍용건설] 평택 가재지구(임시동력) 1블럭 공동주택 신축공사",
+      "manager": "",
+      "contractor": "쌍용건설",
+      "amount": null,
+      "trade": "-"
+    },
+    "24016": {
+      "name": "[2.한화건설] 고잔연립9구역 재건축 전기,통신,소방공사",
+      "manager": "최종림",
+      "contractor": "한화건설",
+      "amount": null,
+      "trade": "전기,통신(배관),소방"
+    },
+    "24018": {
+      "name": "[1.DL건설] 전도관구역 주택재개발 정비사업조합(01공구)",
+      "manager": "백대진",
+      "contractor": "디엘건설",
+      "amount": null,
+      "trade": "전기,통신(배관),소방"
+    },
+    "24021": {
+      "name": "[2.금호건설] 대웅제약 마곡연구소 신축공사",
+      "manager": "",
+      "contractor": "금호건설",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "24022": {
+      "name": "[2.신세계건설] 양주 옥정 물류센터 신축공사",
+      "manager": "",
+      "contractor": "신세계건설",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "24023": {
+      "name": "[1.포스코건설] 영종-청라 연결도로(제3연륙교) 건설공사 제2공구 전기 및 통신공사",
+      "manager": "양홍규",
+      "contractor": "포스코건설",
+      "amount": null,
+      "trade": ""
+    },
+    "24024": {
+      "name": "[5.대광건영] 양주회천 A12 대광로제비앙 아파트 신축공사",
+      "manager": "양정훈",
+      "contractor": "대광건영",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "24025": {
+      "name": "[1.대우건설] 청라C18BL 오피스텔 신축공사",
+      "manager": "박명식",
+      "contractor": "대우건설",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "24028": {
+      "name": "[관급] 강원권 국도터널 방재시설 설치공사(1권역)",
+      "manager": "이용권",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "24029": {
+      "name": "[3.DL건설] 인천 검단신도시 AA29BL 공동주택 신축공사",
+      "manager": "박성호",
+      "contractor": "디엘건설",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "24030": {
+      "name": "[2.쌍용건설] 평택 가재지구 1블럭 공동주택 신축공사",
+      "manager": "김성수",
+      "contractor": "쌍용건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "24033": {
+      "name": "[1.대우건설] 장위6구역 주택재개발 정비사업아파트 신축공사",
+      "manager": "문우남",
+      "contractor": "대우건설",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "24036": {
+      "name": "[1.중흥건설] 인천 검단지구 공동주택용지 AB20-2BL 중흥S-클래스 공동주택 신축공사",
+      "manager": "이호준",
+      "contractor": "중흥건설",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "24044": {
+      "name": "[4.롯데건설] 인천 효성지구 도시개발사업 공동주택 3BL",
+      "manager": "김영호",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": "전기,통신(배관)"
+    },
+    "24045": {
+      "name": "[5.한국교직원공제회] The-K 제주호텔 리모델링 공사",
+      "manager": "김충남",
+      "contractor": "한국교직원공제회",
+      "amount": null,
+      "trade": "전기"
+    },
+    "24046": {
+      "name": "[2.서희건설] 평택화양센트럴 지역주택조합 아파트 신축공사",
+      "manager": "박재만",
+      "contractor": "서희건설",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "24048": {
+      "name": "[2.금호건설] 고양장항 B-3BL 공공주택 신축공사",
+      "manager": "이종국",
+      "contractor": "금호건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "24049": {
+      "name": "[관급] 검단중학교 공간재구조화 증개축 소방공사(계속비 공사)",
+      "manager": "",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "24050": {
+      "name": "[4.롯데CM] 롯데백화점 전주점 리뉴얼 공사",
+      "manager": "",
+      "contractor": "롯데CM사업본부",
+      "amount": null,
+      "trade": ""
+    },
+    "25001": {
+      "name": "[2.신세계건설] 스타필드 청라 신축공사 전기공사",
+      "manager": "김태주",
+      "contractor": "신세계건설",
+      "amount": 13440000000.0,
+      "trade": ""
+    },
+    "25002": {
+      "name": "[2.신세계건설] 스타필드 청라 소방전기공사 2공구",
+      "manager": "김용호",
+      "contractor": "신세계건설",
+      "amount": 12954000000.0,
+      "trade": ""
+    },
+    "25006": {
+      "name": "[2.쌍용건설] 양주 삼숭 지역주택조합 일반전기공사",
+      "manager": "김길수",
+      "contractor": "쌍용건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "25008": {
+      "name": "[5.대광로제비앙] 평택 브레인시티 (가칭)도일1초등학교 신축공사",
+      "manager": "",
+      "contractor": "대광로제비앙",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "25009": {
+      "name": "[3.쿠팡] GYS 2FC(경산) 전기공사",
+      "manager": "",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": ""
+    },
+    "25011": {
+      "name": "[1.라온건설] 인천 신흥동3가 주상복합",
+      "manager": "주현덕",
+      "contractor": "라온건설",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "25020": {
+      "name": "[2.동양] 한국건강관리협회 인천지부 신청사 건립 신축공사 기계소방",
+      "manager": "",
+      "contractor": "동양/건설부문",
+      "amount": null,
+      "trade": ""
+    },
+    "25021": {
+      "name": "[2.한화건설] 원당1구역 재개발정비사업",
+      "manager": "오준석",
+      "contractor": "한화건설",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "25022": {
+      "name": "[4.롯데CM] 롯데백화점 노원점 리뉴얼 공사",
+      "manager": "이세환",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "25023": {
+      "name": "[2.한양] 평택브레인시티8BL 공동주택 신축공사",
+      "manager": "홍지수",
+      "contractor": "한양",
+      "amount": null,
+      "trade": "전기, 소방"
+    },
+    "25026": {
+      "name": "[3.쿠팡] INC 26,28,36FC(인천) HVAC 전원공사",
+      "manager": "",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": ""
+    },
+    "25027": {
+      "name": "[3.쿠팡] DAE3,7,8 FC(대구) Ph2 전기공사",
+      "manager": "이용수",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": ""
+    },
+    "25030": {
+      "name": "[5.대광로제비앙] 평택 브레인시티 2블럭",
+      "manager": "",
+      "contractor": "대광건영",
+      "amount": null,
+      "trade": "전기"
+    },
+    "25031": {
+      "name": "[4.롯데건설] 롯데바이오로직스 Project PROVIDENCE",
+      "manager": "한규석",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "25032": {
+      "name": "[1.대우건설] 인천검단 신도시 AA28BL 공동주택 신축공사",
+      "manager": "김기배",
+      "contractor": "대우건설",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "25033": {
+      "name": "[1.부영] 김천혁신 2-1블럭 부영아파트 신축공사",
+      "manager": "김영진",
+      "contractor": "(주)부영주택",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "25034": {
+      "name": "[5.SG신성건설] 판교 SG세계물산 사옥 신축공사",
+      "manager": "김영기",
+      "contractor": "SG신성건설",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "25035": {
+      "name": "[1.두산건설] [전기] 강화2지역 주택조합 전기공사",
+      "manager": "전정환",
+      "contractor": "두산건설",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "25036": {
+      "name": "[5.현대엔지니어링] 현대 오토에버 루첸타워 인테리어 공사",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "25037": {
+      "name": "[관급] 남양주왕숙 A-24BL 아파트 전기공사 4공구",
+      "manager": "김대용",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "25038": {
+      "name": "[6.현대엔지니어링] AutoLand 화성 기아 LW 프로젝트 일반전기공사(도장)",
+      "manager": "윤인수",
+      "contractor": "현대엔지니어링",
+      "amount": null,
+      "trade": ""
+    },
+    "25039": {
+      "name": "[3.쿠팡] CHA6 FC(천안) Ph2 전기공사",
+      "manager": "노진호",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": ""
+    },
+    "25040": {
+      "name": "[관급] 고속국도 제255호선 강진~광주간 전기공사(제2공구)(제1차)",
+      "manager": "박천복",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "25041": {
+      "name": "[4.롯데건설] 롯데바이오로직스 K1 HVAC 전기공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "25042": {
+      "name": "[5.대보건설] 등촌동 청년주택 신축공사",
+      "manager": "정광표",
+      "contractor": "대보건설",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "25043": {
+      "name": "[1.두산건설] [소방] 강화2지역 주택조합 소방공사",
+      "manager": "전정환",
+      "contractor": "두산건설",
+      "amount": null,
+      "trade": "소방"
+    },
+    "25044": {
+      "name": "[1.라온건설] 덕소2구역 주택재개발 정비사업",
+      "manager": "이봉수",
+      "contractor": "라온건설",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "25045": {
+      "name": "[5.롯데건설] 마곡사옥 르웨스트 시티 D동 8-11층 이전공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "25047": {
+      "name": "[1.진흥기업] 영등포 대림동 청년주택 신축공사",
+      "manager": "김영환",
+      "contractor": "진흥기업",
+      "amount": null,
+      "trade": "전기"
+    },
+    "25048": {
+      "name": "[5.동화이앤씨] 금천구 독산동 데이터센터 신축공사",
+      "manager": "노승호",
+      "contractor": "(주)동화이앤씨",
+      "amount": null,
+      "trade": ""
+    },
+    "25049": {
+      "name": "[3.쿠팡] FCs 조명교체 및 난방기 모션센서 설치공사",
+      "manager": "",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": "쿠팡"
+    },
+    "25050": {
+      "name": "[3.쿠팡] GWJ4 FC ACR 전기공사",
+      "manager": "",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": ""
+    },
+    "25052": {
+      "name": "[1.진흥기업] 창원 차단기공장 증설 전기공사",
+      "manager": "이만재",
+      "contractor": "진흥기업",
+      "amount": null,
+      "trade": "전기"
+    },
+    "25053": {
+      "name": "[5.대광로제비앙] 평택브레인시티 공동6BL 대광로제비앙&모아엘가 아파트 신축공사",
+      "manager": "정규청",
+      "contractor": "대광로제비앙",
+      "amount": null,
+      "trade": "전기"
+    },
+    "25054": {
+      "name": "[2.DL이엔씨] 송도워터프런트 우회도로 및 지장물 전기공사",
+      "manager": "정규청",
+      "contractor": "디엘이앤씨",
+      "amount": null,
+      "trade": ""
+    },
+    "25055": {
+      "name": "[1.진흥기업] 여수 학동 주상복합 신축공사 임시전력공사",
+      "manager": "이석두",
+      "contractor": "진흥기업",
+      "amount": null,
+      "trade": ""
+    },
+    "25056": {
+      "name": "[5.CJ대한통운] 미래원 증축 및 대수선 공사",
+      "manager": "김재덕",
+      "contractor": "CJ대한통운",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "25057": {
+      "name": "[4.롯데테크] 롯데바이오로직스 복지동 신축공사 중 전기공사",
+      "manager": "한규석",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "25058": {
+      "name": "[1.대우건설] 강릉비행장현장 특고압 전력 및 통신 지장물 이설공사",
+      "manager": "",
+      "contractor": "대우건설",
+      "amount": null,
+      "trade": ""
+    },
+    "25059": {
+      "name": "[관급] 군포대야미 A-2BL 아파트 전기공사 1공구",
+      "manager": "관-노무관리용",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "25060": {
+      "name": "[1.중흥건설] 전주 에코 17BL 공공주택",
+      "manager": "석영주",
+      "contractor": "중흥건설",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "25061": {
+      "name": "[3.쿠팡] INC 46FC(인천) 전기공사",
+      "manager": "이상민",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": ""
+    },
+    "25062": {
+      "name": "[4.롯데건설] 성환하수처리장 개량 및 증설(BTO-a) 전기 및 계측제어공사",
+      "manager": "이병삼",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "25063": {
+      "name": "[관급] 북측방조제 도로사면 태양광 발전설비 설치공사",
+      "manager": "관-노무관리용",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "25064": {
+      "name": "[5.호반건설] 자양동 임시주차장 전기설비공사",
+      "manager": "",
+      "contractor": "호반건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26001": {
+      "name": "[4.롯데건설-연간] 26년 가설전기공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26002": {
+      "name": "[부현] 김포창고",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26003": {
+      "name": "[5.금강주택] 군포 대야미 B1BL 공동주택 신축공사",
+      "manager": "이혜석",
+      "contractor": "금강주택",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "26004": {
+      "name": "[5.한국토지주택공사] 김포고촌2 A1BL 아파트 소방(전기)시설공사",
+      "manager": "노승호",
+      "contractor": "한국토지주택공사",
+      "amount": null,
+      "trade": ""
+    },
+    "26005": {
+      "name": "[4.롯데컬처웍스] 롯데시네마 노원관 리클라이너관 리뉴얼 전기공사",
+      "manager": "조원호",
+      "contractor": "롯데컬처웍스(주)",
+      "amount": null,
+      "trade": ""
+    },
+    "26006": {
+      "name": "[4.롯데] 롯데백화점 잠실점 리뉴얼 공사",
+      "manager": "조원호",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26007": {
+      "name": "[관급] 몽베르CC 클럽하우스, 북스타트하우스 증축 및 대수선공사",
+      "manager": "별도계약",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26008": {
+      "name": "[2.쌍용건설] 부천 괴안 3D 재개발 일반전기공사",
+      "manager": "이봉래",
+      "contractor": "쌍용건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "26009": {
+      "name": "[1.대우건설] 평택고덕 A56 민간참여 공공주택현장",
+      "manager": "오춘남",
+      "contractor": "대우건설",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "26010": {
+      "name": "[1.진흥기업] 창원 HVDC공장",
+      "manager": "이만재",
+      "contractor": "진흥기업",
+      "amount": null,
+      "trade": ""
+    },
+    "26011": {
+      "name": "[1팀 - 준공현장] - 1팀 준공현장 2026년",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26012": {
+      "name": "[2팀 - 준공현장] - 2팀 준공현장 2026년",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26013": {
+      "name": "[3팀 - 준공현장] - 3팀 준공현장 2026년",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26014": {
+      "name": "[4팀 - 준공현장] - 4팀 준공현장 2026년",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26015": {
+      "name": "[5팀 - 준공현장] - 5팀 준공현장 2026년",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26016": {
+      "name": "[6팀 - 준공현장] - 6팀 준공현장 2026년",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26017": {
+      "name": "[관급 - 준공현장] - 관급 준공현장 2026년",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26018": {
+      "name": "[AS현장-본사] AS현장 및 본사 - 2026",
+      "manager": "맹효덕",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26019": {
+      "name": "[AS현장-천안지점] AS현장 및 천안지점 - 2026",
+      "manager": "노승호",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26020": {
+      "name": "[2.한라] 수원당수 주상복합(M1/M2) 신축공사",
+      "manager": "김명호",
+      "contractor": "한라",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "26021": {
+      "name": "[5.한화호텔앤드리조트] 한화리조트 설악 워터피아 스파동 MCC판넬교체공사",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26022": {
+      "name": "[1.진흥기업] 영주 휴천동 공동주택 신축공사",
+      "manager": "이종우",
+      "contractor": "진흥기업",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "26023": {
+      "name": "[2.신세계건설] 외주팀 임시동력공사(임시동력공사)",
+      "manager": "",
+      "contractor": "신세계건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26024": {
+      "name": "[5.한국토지주택공사] 김포고촌2 A1BL 아파트 소방(기계)시설공사",
+      "manager": "고명래",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26025": {
+      "name": "[3.쿠팡] GYS 2FC(경산) ARC 전기공사",
+      "manager": "강현석",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": ""
+    },
+    "26026": {
+      "name": "[2.신세계건설-연간] 청담 복합시설 (임시동력)",
+      "manager": "",
+      "contractor": "신세계건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26027": {
+      "name": "[1.진흥기업] 여수 학동 주상복합 신축공사 전기 및 소방공사",
+      "manager": "이석두",
+      "contractor": "진흥기업",
+      "amount": null,
+      "trade": "전기,소방"
+    },
+    "26028": {
+      "name": "[5.중앙대학교] 중앙대학교 서울캠퍼스 205관 신축공사",
+      "manager": "최장영",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26029": {
+      "name": "[2.태영건설] 승기공공하수처리시설 현대화사업 중 임시동력공사",
+      "manager": "",
+      "contractor": "태영건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26030": {
+      "name": "[5.대광건영] 25-A-00부대 시설공사(1278) 中 전기통신공사",
+      "manager": "나상섭",
+      "contractor": "대광건영",
+      "amount": null,
+      "trade": ""
+    },
+    "26031": {
+      "name": "[4.롯데건설] 해운대 센텀 복합개발사업(1,2BL) 중 일반전기공사",
+      "manager": "백성모",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": "전기,통신(배관)"
+    },
+    "26032": {
+      "name": "[5.CJ대한통운] 무교다동구역 제 31 지구 도시정비형 재개발사업 업무시설 신축공사",
+      "manager": "이성영",
+      "contractor": "CJ대한통운",
+      "amount": null,
+      "trade": "전기,통신(배관)"
+    },
+    "26033": {
+      "name": "[2.현대산업개발] 운정 아이파크 포레스트 신축공사",
+      "manager": "천인식",
+      "contractor": "에이치디씨현대산업개발",
+      "amount": null,
+      "trade": "전기,통신(배관)"
+    },
+    "26034": {
+      "name": "[4.롯데건설-연간] 시흥시 은행2지구 공동주택 개발사업 중 가설사무실 전기공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26035": {
+      "name": "[4.롯데건설] 백화점 청량리점 신관 인테리어공사 현장 전기,통신,소방 철거공사 1차",
+      "manager": "조원호",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "26036": {
+      "name": "[4.롯데건설-연간] 새만금 지역간 연결도로 건설공사(1공구) 가설사무실 전기공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26038": {
+      "name": "[4.롯데건설-연간] 신림2재정비촉진구역 주택재개발정비사업 중 가설전기공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26039": {
+      "name": "[1.두산건설] 부개4구역 주택재개발 정비사업 신축전기공사 2공구",
+      "manager": "도유훈",
+      "contractor": "두산건설",
+      "amount": null,
+      "trade": "전기,통신(배관)"
+    },
+    "26040": {
+      "name": "[5.고려대학교] 고려대 자연계 중앙광장 전기공사",
+      "manager": "이정재",
+      "contractor": "관급",
+      "amount": null,
+      "trade": "전기"
+    },
+    "26041": {
+      "name": "[2.신세계건설] 스타필드 창원 신축 소방전기공사(1공구)",
+      "manager": "임춘수",
+      "contractor": "신세계건설",
+      "amount": null,
+      "trade": "소방전기"
+    },
+    "26042": {
+      "name": "[1.포스코건설] 서울 신길5동 지역주택조합 공동주택 전기공사(2단지)",
+      "manager": "정해은",
+      "contractor": "포스코건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "26043": {
+      "name": "[4.롯데건설-연간] 전주 전시컨벤션 신축공사(건축) 중 임시동력 및 임시동력 간선공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26044": {
+      "name": "[4.롯데건설-연간] 갈현제1구역 주댁재개발정비사업 중 가설전기공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26045": {
+      "name": "[4.아인의료제단] 아인병원 26년 상반기 동력 증설공사",
+      "manager": "한규석",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26046": {
+      "name": "[2.서희건설] 용인 양지2블럭 지역주택조합 구내가설 전기공사",
+      "manager": "김성수",
+      "contractor": "서희건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26047": {
+      "name": "[5.대보건설] 육군 철원 간부숙소 민간투자 시설사업",
+      "manager": "나상섭",
+      "contractor": "대보건설",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "26048": {
+      "name": "[2.현대산업개발] 시티오씨엘 8단지(공동2블럭)",
+      "manager": "장천식",
+      "contractor": "에이치디씨현대산업개발",
+      "amount": null,
+      "trade": "전기,통신(배관)"
+    },
+    "26049": {
+      "name": "[5.대광건영] 동래사적공원 대광로제비앙 아파트 신축공사",
+      "manager": "양정훈",
+      "contractor": "대광건영",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "26050": {
+      "name": "[1.대우건설] 청라피크원푸르지오 전기설비공사",
+      "manager": "문상훈",
+      "contractor": "대우건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "26051": {
+      "name": "[4.SGC이앤씨] SBL P6프로젝트 OI센터 신축공사",
+      "manager": "정재호",
+      "contractor": "SGC이앤씨",
+      "amount": null,
+      "trade": "전기,통신,소방"
+    },
+    "26052": {
+      "name": "[관급] 중앙공원 활성화 연결 보행녹도사업 전기공사",
+      "manager": "",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "26053": {
+      "name": "[4.롯데건설-연간] 남부내륙철도(김천~거제) 건설사업 제2공구 노반시설 기타공사 중 가설사무실 전기공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": "가설전기"
+    },
+    "26054": {
+      "name": "[4.롯데건설-연간] 삼선5구역 주택재개발정비사업 중 가설사무실(전기)",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": "가설전기"
+    },
+    "26055": {
+      "name": "[3.쿠팡] YAN 5FC(양지) 전기공사",
+      "manager": "백봉진",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": ""
+    },
+    "26056": {
+      "name": "[4.호반건설] 경산 상방공원 1BL 신축공사",
+      "manager": "안남규",
+      "contractor": "호반건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "26057": {
+      "name": "[2.신세계건설-연간] 논현동 신축공사 (임시동력)",
+      "manager": "연간단가",
+      "contractor": "신세계건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26058": {
+      "name": "[4.GS건설] 북오산자이리버블시티 전기공사",
+      "manager": "권혁근",
+      "contractor": "지에스건설",
+      "amount": null,
+      "trade": "전기"
+    },
+    "26059": {
+      "name": "[4.롯데건설-연간] 경기 광주 쌍령공원 민간공원 특례사업 중 가설전기공사",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": "가설전기"
+    },
+    "26060": {
+      "name": "[2.금호건설] 남양주 왕숙2 A1BL 민간참여 공공주택건설사업 - 선공사(전기)",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26061": {
+      "name": "[2.쌍용건설] 구로 한국 SGI 창가국제우호센터 신축공사",
+      "manager": "강두식",
+      "contractor": "쌍용건설",
+      "amount": null,
+      "trade": "전기,통신"
+    },
+    "26062": {
+      "name": "[5.대보건설] 평택 고덕국제계획지구 A-67BL 공동주택 신축공사",
+      "manager": "신진석",
+      "contractor": "대보건설",
+      "amount": null,
+      "trade": "전기,통신(배관),소방"
+    },
+    "26063": {
+      "name": "[6.삼성E&A] 평택 P5 초순수 - 전기",
+      "manager": "장청익",
+      "contractor": "삼성이앤에이",
+      "amount": null,
+      "trade": ""
+    },
+    "26064": {
+      "name": "[6.삼성중공업] 기흥3라인 계통조사",
+      "manager": "김태환",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26065": {
+      "name": "[6.삼성중공업] 기흥SDC연구라인 개보수공사",
+      "manager": "김태환",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26066": {
+      "name": "[2.금호건설] 남양주 왕숙2 A1BL 민간참여 공공주택건설사업 - 선공사(통신)",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26068": {
+      "name": "[3.쿠팡] 2026년 AFDD 교체공사 Ph-2",
+      "manager": "아크소장",
+      "contractor": "쿠팡",
+      "amount": null,
+      "trade": ""
+    },
+    "26069": {
+      "name": "[본사] 안전보건실",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26070": {
+      "name": "[1.우미건설] 수내동 롯데백화점 리모델링 전기공사",
+      "manager": "김충남",
+      "contractor": "우미건설",
+      "amount": null,
+      "trade": "전기,통신(배관)"
+    },
+    "26071": {
+      "name": "[1.포스코건설] 송도G5블록 주상복합 신축공사 11BL 중 전기소방공사",
+      "manager": "이진원",
+      "contractor": "포스코건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26072": {
+      "name": "[2.동부건설] 남양주 왕숙A-25BL 민간참여 공공주택 - 선공사",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26073": {
+      "name": "[3.쿠팡] GMH 3FC(김해) 전기,소방공사",
+      "manager": "강현석",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26074": {
+      "name": "[3.쿠팡] GMH 3FC(김해) 대수선공사 기계소방",
+      "manager": "김경수",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26075": {
+      "name": "[2.동양] 인천구월 AI허브센터 신축공사 중 임시동력공사",
+      "manager": "",
+      "contractor": "동양/건설부문",
+      "amount": null,
+      "trade": ""
+    },
+    "26076": {
+      "name": "[5.이안알앤씨] 호암 이우환 미술관 신축공사",
+      "manager": "백화종",
+      "contractor": "이안알앤씨",
+      "amount": null,
+      "trade": ""
+    },
+    "26077": {
+      "name": "[4.롯데건설] 대구 롯데쇼핑타운 개발계획 신축공사 中 일반전기 및 전력간선공사(2공구)",
+      "manager": "백성모",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26078": {
+      "name": "[4.롯데건설-연간] 이수~과천 지하도로 민간투자사업 중 현장 가설사무실 축조 공사(전기)",
+      "manager": "",
+      "contractor": "롯데건설",
+      "amount": null,
+      "trade": ""
+    },
+    "26079": {
+      "name": "[5.한화호텔앤드리조트] 한화비전 기계사옥 리모델링 공사",
+      "manager": "박정환",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    },
+    "26080": {
+      "name": "[관급] 26-A-00부대 통신공사(1245)",
+      "manager": "",
+      "contractor": "관급",
+      "amount": null,
+      "trade": ""
+    },
+    "26081": {
+      "name": "[1.부영주택] 춘천칠전 부영아파트 10년차 하자종결 공사 중 CCTV공사",
+      "manager": "",
+      "contractor": "",
+      "amount": null,
+      "trade": ""
+    }
+  },
+  "progress": {
+    "inspection:202611:site-6": {
+      "site": "[1.대우건설] 장위6구역 주택재개발 정비사업아파트 신축공사(전기,소방)",
+      "value": 0.71,
+      "date": "2026-09-08"
+    },
+    "inspection:202611:site-5": {
+      "site": "[1.대우건설] 청라C18BL 오피스텔 신축공사(전기,소방,통신)",
+      "value": 0.4,
+      "date": "2026-09-09"
+    },
+    "inspection:202611:site-8": {
+      "site": "[1.대우건설] 청주 테크노폴리스 S1-1,2BL 주상복합 신축공사(전기,소방,통신)",
+      "value": 0.87,
+      "date": "2026-09-08"
+    },
+    "inspection:202611:site-11": {
+      "site": "[1.대우건설] 평택고덕 A56 민간참여 공공주택현장(전기,소방)",
+      "value": 0.04,
+      "date": "2026-09-10"
+    },
+    "inspection:202611:site-9": {
+      "site": "[1.대우건설] 청라피크원푸르지오 전기설비공사",
+      "value": 0.1,
+      "date": "2026-09-10"
+    },
+    "inspection:202611:site-7": {
+      "site": "[1.대우건설] 인천검단 신도시 AA28BL 공동주택 신축공사(전기,소방)",
+      "value": 0.14,
+      "date": "2026-09-09"
+    }
+  }
+}
