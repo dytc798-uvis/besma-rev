@@ -28,7 +28,7 @@ export function replyContextTarget(item){
  return {id:reference.request_id,label:reference.label};
 }
 
-export async function mountWorkRequests(host,{api,download,isCurrent,initialDraft={},onDraft=()=>{},onBack=null,onUseFile=null,useFileMaxBytes=15*1024*1024,onRetry=null}){
+export async function mountWorkRequests(host,{api,download,isCurrent,initialDraft={},receiveOnOpen=null,onDraft=()=>{},onBack=null,onUseFile=null,useFileMaxBytes=15*1024*1024,onRetry=null}){
  let alive=true,workerOnline=false,timer=null,loading=false,loadingHistory=false,sending=false,forceLatest=true,viewEpoch=0,reloadAgain=false,nasIndex=null,photoPreview=null;
  // Bound metadata reads, including adapters that do not settle on abort.
  // Submission/upload/approval writes keep their existing receipt semantics.
@@ -318,7 +318,9 @@ export async function mountWorkRequests(host,{api,download,isCurrent,initialDraf
  catch(e){if(current())message.textContent=e.message+' 입력한 메시지는 그대로 남아 있습니다.';}finally{sending=false;if(current()){send.disabled=cancel.disabled=false;submit.disabled=!conversationReady;photoState();}}
  };}
  drawMaterial();
- host.addEventListener('keydown',closeOverlays);channelState();contextState();void loadContext();await reload();fit();return cleanup;
+ host.addEventListener('keydown',closeOverlays);channelState();contextState();void loadContext();await reload();fit();
+ if(current()&&conversationReady&&receiveOnOpen?.requestKey===requestKey&&/^[a-f0-9]{64}$/.test(receiveOnOpen?.nasFileId||'')&&receiveOnOpen.nasFileId===nasSelection?.nas_file_id&&kind.value==='NAS'&&channel.value==='CHAT'&&!body.value.trim()&&!pendingSubmission&&!inputAttachment&&!resultSelection&&!preparedMonthly&&!siteCode&&!sending&&!uploading)form.requestSubmit();
+ return cleanup;
 }
 
 function createOwnerInbox(panel,{api,download,current}){

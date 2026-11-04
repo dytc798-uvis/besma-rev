@@ -196,6 +196,7 @@ document.addEventListener('click',event=>{const link=event.target?.closest?.('a[
 function workspaceEndpoint(path){return "/workspace"+(context?.user?.role==="SITE"?"/site":"")+"/"+path;}
 let voiceCleanup=null;
 let requestCleanup=null;
+let materialReceive=null;
 async function render(){if(siteWorkspace)return siteWorkspace.render();if(pendingSiteEdit()){history.replaceState(null,'',siteEditingHash);tell('입력한 내용을 먼저 저장하거나 취소해 주세요.');return;}requestCleanup?.();requestCleanup=null;voiceCleanup?.();voiceCleanup=null;fileTransfer?.abort();const g=++generation,key=section();blobUrls.forEach(u=>URL.revokeObjectURL(u));blobUrls=[];document.body.dataset.section=key;document.body.classList.remove('drawer');$('mobile-menu').setAttribute('aria-expanded','false');for(const a of $('menus').querySelectorAll('a'))a.setAttribute('aria-current',a.hash==='#'+key?'page':'false');$('help-top').href='#guide/'+key;$('content').replaceChildren(heading(key));const host=N('div');$('content').append(host);try{
  if(key==='duties')await drawDuties(host,g);else if(key==='risks')await drawRisks(host,g);else if(key==='sites')await drawSites(host,g);else if(key==='contractors')await drawContractors(host,g);else if(key==='guide')await drawGuide(host);
  else if(key==='functional'){requestCleanup=mountFunctionalWorkspace(host,{api,role:context.user.role,initialScope:readView('functional-readiness'),onScope:value=>saveView('functional-readiness',value),isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token});}
@@ -213,8 +214,9 @@ async function render(){if(siteWorkspace)return siteWorkspace.render();if(pendin
  const mod=await import('/assets/weekly-work.js');if(g!==generation)return;const cleanup=await mod.mountWeeklyWork(host,{api,isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token});if(g!==generation)cleanup?.();else requestCleanup=cleanup;
  }
  else if(key==='requests'){
+ const receiveOnOpen=materialReceive;materialReceive=null;
  const mod=await import('/assets/work-requests.js');if(g!==generation)return;
- const cleanup=await mod.mountWorkRequests(host,{api,onRetry:()=>render(),isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token,initialDraft:readView('requests'),onDraft:value=>saveView('requests',value),download:async(rid,file)=>{
+ const cleanup=await mod.mountWorkRequests(host,{api,onRetry:()=>render(),isCurrent:()=>g===generation&&localStorage.getItem('besma_token')===token,initialDraft:readView('requests'),receiveOnOpen,onDraft:value=>saveView('requests',value),download:async(rid,file)=>{
  guard();if(!/^[a-f0-9]{32}$/.test(rid)||!/^[a-f0-9]{32}$/.test(file.id)||!Number.isInteger(file.bytes)||file.bytes<1||file.bytes>(file.input?16:32)*1024*1024)throw Error('파일 정보를 확인해 주세요.');
  const controller=new AbortController(),waitTimer=setTimeout(()=>controller.abort(),60000);let r;try{r=await fetch(API+'/work-requests/'+rid+(file.input?'/inputs/':'/files/')+file.id,{headers:{Authorization:'Bearer '+token},credentials:'omit',redirect:'error',cache:'no-store',signal:controller.signal});}catch{throw Error('파일 연결을 확인하지 못했습니다. 같은 파일을 다시 받아 주세요.');}finally{clearTimeout(waitTimer);}if(!r.ok)throw Error('파일을 받지 못했습니다. 다시 확인해 주세요.');const progress=host.querySelector('.request-send-status');const bytes=await receiveVerifiedFile(r,file,{guard:()=>{guard();if(g!==generation)throw Error('다른 화면으로 이동해 파일 받기를 중단했습니다.');},onProgress:value=>{if(g===generation&&progress)progress.textContent=value.phase==='VERIFYING'?'받은 파일을 확인하고 있습니다.':'파일 받는 중 '+Math.floor(value.loaded/value.total*100)+'% · '+(value.loaded/1048576).toFixed(1)+' / '+(value.total/1048576).toFixed(1)+'MB';}});guard();if(g!==generation)return;
  const url=URL.createObjectURL(new Blob([bytes],{type:file.input&&['image/jpeg','image/png','image/webp'].includes(file.media_type)?file.media_type:'application/octet-stream'}));blobUrls.push(url);if(file.input&&file.preview)return url;const a=N('a');a.href=url;a.download=file.filename;document.body.append(a);a.click();a.remove();
@@ -231,7 +233,8 @@ async function render(){if(siteWorkspace)return siteWorkspace.render();if(pendin
  const cleanup=await mountDocumentMaterials(host,{api,isCurrent:current,initialScope:readView('materials').q!==undefined?readView('materials'):readView('forms'),onScope:value=>saveView('materials',value),canReceive:['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role),receiveForm:(item,button)=>receiveForm(item,g,button),onChoose:async(source,kind)=>{
   guard();if(!current())return;const draft=readView('requests'),same=draft.nasSelection?.scope===source.scope&&draft.nasSelection?.relative_path===source.relative_path;
   if(draft.pendingSubmission||draft.inputAttachment||draft.resultSelection||draft.monthlyHandoff||(draft.channel==='WORK'&&draft.body?.trim())||(!same&&draft.nasSelection&&draft.body?.trim()))throw Error('채팅에서 작성 중인 실적·첨부·자료 요청을 마친 뒤 자료를 선택해 주세요.');
-  saveView('requests',{...draft,kind,channel:'CHAT',nasSelection:source,resultSelection:null,requestKey:crypto.randomUUID(),formReturn:false,materialsReturn:true});location.hash='#requests';
+  const requestKey=crypto.randomUUID();materialReceive=kind==='NAS'&&!draft.body?.trim()&&!draft.siteCode?{requestKey,nasFileId:source.nas_file_id}:null;
+  saveView('requests',{...draft,kind,channel:'CHAT',nasSelection:source,resultSelection:null,requestKey,formReturn:false,materialsReturn:true});location.hash='#requests';
  }});if(current())requestCleanup=cleanup;else cleanup?.();
  if(['HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN','ACCIDENT_ADMIN'].includes(context.user.role))host.append(links([['문서탐색','큰 파일과 전체 문서 확인','/hq-safe/document-explorer']]));
  }
