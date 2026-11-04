@@ -12,18 +12,19 @@ def connect(store):
     c.execute('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,context_id TEXT NOT NULL,owner_id INTEGER NOT NULL,request_key TEXT NOT NULL,source_hash TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,result TEXT,lease_hash TEXT,lease_until REAL NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT "",at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(context_id,owner_id,request_key))');c.commit();return c
 
 def visible(row):
-    p=json.loads(row['payload']);return {'id':row['id'],'status':row['status'],'form':p['form'],'subject_id':p['subject_id'],'snapshot_id':p['snapshot_id'],'filename':p['filename'],'at':row['at'],'updated_at':row['updated_at'],'error':row['error'],'result':json.loads(row['result'])if row['result']else None,'delivery_status':'CONNECTION_REQUIRED','message':'공무 네이버웍스 전달 연결 필요'}
+    p=json.loads(row['payload']);purpose=p.get('purpose','SIGNATURE');return {'id':row['id'],'status':row['status'],'form':p['form'],'subject_id':p['subject_id'],'snapshot_id':p['snapshot_id'],'purpose':purpose,'filename':p['filename'],'at':row['at'],'updated_at':row['updated_at'],'error':row['error'],'result':json.loads(row['result'])if row['result']else None,'delivery_status':'NOT_REQUESTED'if purpose=='REPORT'else'CONNECTION_REQUIRED','message':'대표 보고용'if purpose=='REPORT'else'공무 네이버웍스 전달 연결 필요'}
 
 def queue(store,key,user,row,period,body,profile=None):
     from .catalog import FORMS
     from .printing import document
-    if set(body)!={'form','subject_id','snapshot_id','request_key'}or body['form']not in FORMS or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',body['request_key']):raise ValueError('SIGNATURE_REQUEST_INVALID')
+    purpose=body.get('purpose','SIGNATURE')
+    if set(body)not in [{'form','subject_id','snapshot_id','request_key'},{'form','subject_id','snapshot_id','request_key','purpose'}]or purpose not in {'SIGNATURE','REPORT'}or(purpose=='REPORT'and body.get('form')!='report')or body['form']not in FORMS or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',body['request_key']):raise ValueError('SIGNATURE_REQUEST_INVALID')
     assessment=store.load(key)['data']['assessments'].get(body['form']+':'+body['subject_id'],{});snapshot=assessment.get('completed')
     if not snapshot or snapshot['id']!=body['snapshot_id']:raise ValueError('COMPLETE_FIRST')
     from .site_profile import enrich
     snapshot=enrich(snapshot,profile or{},assessment)
-    site=row.title.removeprefix('[점검] ').strip();filename=re.sub(r'[\\/:*?"<>|\x00-\x1f]','_',site+'_'+FORMS[body['form']]['title']+'_소장서명용.pdf')
-    html=document(body['form'],snapshot,site,period,blind=True);source=hashlib.sha256(html.encode()).hexdigest();payload={**body,'html':html,'source_sha256':source,'public_id':row.public_id,'period':period,'context_id':key,'site':site,'filename':filename,'blind_report_scores':True};now=stamp()
+    site=row.title.removeprefix('[점검] ').strip();filename=re.sub(r'[\\/:*?"<>|\x00-\x1f]','_',site+'_'+FORMS[body['form']]['title']+('_대표보고용.pdf'if purpose=='REPORT'else'_소장서명용.pdf'))
+    html=document(body['form'],snapshot,site,period,blind=purpose!='REPORT');source=hashlib.sha256(html.encode()).hexdigest();payload={**body,'html':html,'source_sha256':source,'public_id':row.public_id,'period':period,'context_id':key,'site':site,'filename':filename,'blind_report_scores':purpose!='REPORT','purpose':purpose};now=stamp()
     with closing(connect(store))as c,c:
         c.execute('BEGIN IMMEDIATE');old=c.execute('SELECT * FROM jobs WHERE context_id=? AND owner_id=? AND request_key=?',(key,user.id,body['request_key'])).fetchone()
         if old:
@@ -31,7 +32,7 @@ def queue(store,key,user,row,period,body,profile=None):
             return visible(old)
         for existing in c.execute('SELECT * FROM jobs WHERE context_id=? AND owner_id=? AND source_hash=? AND status IN ("QUEUED","RENDERING","READY") ORDER BY at DESC LIMIT 100',(key,user.id,source)).fetchall():
             prior=json.loads(existing['payload'])
-            if all(prior.get(k)==body[k]for k in ['form','subject_id','snapshot_id']):return visible(existing)
+            if prior.get('purpose','SIGNATURE')==purpose and all(prior.get(k)==body[k]for k in ['form','subject_id','snapshot_id']):return visible(existing)
         if c.execute('SELECT COUNT(*) FROM jobs WHERE owner_id=? AND status IN ("QUEUED","RENDERING")',(user.id,)).fetchone()[0]>=20:raise ValueError('SIGNATURE_QUEUE_FULL')
         jid=uuid.uuid4().hex;c.execute('INSERT INTO jobs(id,context_id,owner_id,request_key,source_hash,status,payload,at,updated_at)VALUES(?,?,?,?,?,"QUEUED",?,?,?)',(jid,key,user.id,body['request_key'],source,encode(payload),now,now));return visible(c.execute('SELECT * FROM jobs WHERE id=?',(jid,)).fetchone())
 

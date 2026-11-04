@@ -41,7 +41,7 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False,'linked_navigation_version':1,'summary_autosave_version':1,'comment_autosave_version':1,'site_profile_version':1}
+    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False,'linked_navigation_version':1,'summary_autosave_version':1,'comment_autosave_version':1,'site_profile_version':1,'director_report_version':1}
 @router.get('/mobile-pilot/capabilities')
 def mobile_capabilities(db:DbDep,user:Current,response:Response):
     enabled(db,user)
@@ -200,6 +200,7 @@ def blank_template(public_id:str,period:str,form:str,db:DbDep,user:Current):
     return Response(content,media_type='application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(FORMS[form]['title']+'_출력용.'+FORMS[form]['format']),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
 
 class SignatureRequest(BaseModel):
+    purpose:str=Field(default='SIGNATURE',pattern=r'^(SIGNATURE|REPORT)$')
     model_config=ConfigDict(extra='forbid',strict=True)
     request_key:str=Field(pattern=r'^[A-Za-z0-9_-]{8,80}$')
     form:str=Field(pattern=r'^(report|law|manager|supervisor)$')

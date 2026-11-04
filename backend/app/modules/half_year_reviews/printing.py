@@ -125,6 +125,9 @@ def document(form,snapshot,site,period,blind=True):
     if form=='report':body,css=pptx(exports.pptx(snapshot,site,snapshot['inspector'],[],period,blind=blind))
     elif form=='law':body,css=hwpx(exports.hwpx(snapshot,site,snapshot['inspector']))
     else:body,css=xlsx(exports.xlsx(form,snapshot,site,snapshot['inspector']),snapshot.get('site_manager',''))
+    if form=='report'and not blind:
+        from .report_radar import page
+        graph,styles=page(snapshot,site);end=body.find('</article>')+len('</article>');body=body[:end]+graph+body[end:];css+=styles
     if comments:
         body+='<article class="comment-appendix"><h1>'+safe(FORMS[form]['title'])+' 코멘트</h1><p>'+safe(site)+' · '+safe(snapshot['data']['inspection_date'])+'</p>'+''.join('<section><h2>'+safe(title)+'</h2><p>'+safe(note)+'</p></section>'for title,note in comments)+'</article>'
         css+='@page comments{size:A4 portrait;margin:16mm}.comment-appendix{page:comments;break-before:page;font-size:11pt;line-height:1.7}.comment-appendix h1{font-size:18pt}.comment-appendix h2{font-size:12pt;break-after:avoid;margin:7mm 0 2mm}.comment-appendix p{white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3;margin:0 0 5mm}.comment-appendix section{break-inside:auto}'
