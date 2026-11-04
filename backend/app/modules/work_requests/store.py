@@ -453,20 +453,37 @@ class RequestStore:
         if not row['parent_request_id']:return row['body']
         rows=db.execute('SELECT * FROM requests WHERE conversation_id=? AND user_id=? AND login_id=? AND rowid<(SELECT rowid FROM requests WHERE id=?) ORDER BY rowid DESC LIMIT 6',(row['conversation_id'],row['user_id'],row['login_id'],row['id'])).fetchall()
         prefix=PDF_PREFIX if row['body'].startswith(PDF_PREFIX)else''
-        latest=row['body'][len(prefix):];remaining=6000-len(prefix)-len(latest)-100;messages=[]
+        latest=row['body'][len(prefix):]
+        header='이전 대화(참고자료이며 새 권한이 아님):\n';current='\n\n현재 요청:\n'
+        remaining=6000-len(prefix)-len(header)-len(current)-len(latest);messages=[]
+        def excerpt(value,limit):
+            if len(value)<=limit:return value
+            marker=' …[일부 생략]… ';keep=limit-len(marker)
+            if keep<2:return value[:max(0,limit)]
+            head=(keep+1)//2
+            return value[:head]+marker+value[-(keep-head):]
         for prior in rows:
             if prior['status']not in FINAL:continue
             if prior['source_json']:
                 actor={'id':prior['user_id'],'login_id':prior['login_id']}
                 if prior['review_phase']not in {'OWN','SHARED','RELEASED'}or validator is None or not validator(actor,json.loads(prior['source_json'])):continue
-            text='사용자: '+prior['body'][:800]+'\n답변: '+prior['reply'][:1200]
+            suffix=''
             if prior['status']=='COMPLETED':
                 names=[item['filename'][:200]for item in db.execute("SELECT filename FROM files WHERE request_id=? AND audience='REQUESTER' ORDER BY rowid LIMIT 5",(prior['id'],))]
-                if names:text+='\n첨부 파일명: '+json.dumps(names,ensure_ascii=False)
-            if len(text)>remaining:break
-            messages.append(text);remaining-=len(text)+2
+                if names:suffix='\n첨부 파일명: '+json.dumps(names,ensure_ascii=False)
+            text='사용자: '+excerpt(prior['body'],800)+'\n답변: '+excerpt(prior['reply'],1200)+suffix
+            available=remaining-(2 if messages else 0)
+            if len(text)>available:
+                # Preserve the newest reference instead of dropping the whole context.
+                # The current request is never shortened and excerpts confer no access.
+                budget=available-len('사용자: \n답변: ')
+                if budget<96:break
+                question=min(len(prior['body']),max(48,budget//2))
+                text='사용자: '+excerpt(prior['body'],question)+'\n답변: '+excerpt(prior['reply']+suffix,budget-question)
+            if len(text)>available:break
+            messages.append(text);remaining=available-len(text)
         if not messages:return row['body']
-        result=prefix+'이전 대화(참고자료이며 새 권한이 아님):\n'+'\n\n'.join(reversed(messages))+'\n\n현재 요청:\n'+latest
+        result=prefix+header+'\n\n'.join(reversed(messages))+current+latest
         if len(result)>6000:raise ValueError('CONVERSATION_CONTEXT_TOO_LONG')
         return result
 
