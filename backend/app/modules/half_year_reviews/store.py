@@ -64,9 +64,22 @@ class ReviewStore:
                 if len(data['subjects'][body['form']])>=30:raise ValueError('SUBJECT_LIMIT')
                 if any(s['name']==target for s in data['subjects'][body['form']]):raise ValueError('SUBJECT_EXISTS')
                 subject={'id':uuid.uuid4().hex,'name':target};data['subjects'][body['form']].append(subject);result['subject']=subject
-            elif action=='assessment':
+            elif action in {'assessment','assessment-summary','assessment-comment'}:
+                if action in {'assessment-summary','assessment-comment'}:
+                    expected={'form','subject_id','summary','inspection_date'}if action=='assessment-summary'else{'form','subject_id','criterion_id','note','inspection_date'}
+                    if set(body)!=expected:raise ValueError('SUMMARY_INVALID')
+                    kind=body['form'];target=body['subject_id']
+                    if kind not in FORMS:raise ValueError('FORM_INVALID')
+                    saved=data['assessments'].get(kind+':'+target,{}).get('draft',{}).get('data')
+                    answers=json.loads(json.dumps(saved))if saved else{'answers':{},'inspection_date':body['inspection_date'],'photo_ids':[],'improvements':[]}
+                    if action=='assessment-summary':answers['summary']=body['summary']
+                    else:
+                        criterion=body['criterion_id']
+                        if criterion not in {q['id']for q in FORMS[kind]['criteria']}:raise ValueError('CRITERION_INVALID')
+                        answers.setdefault('answers',{}).setdefault(criterion,{'value':None,'note':''})['note']=body['note']
+                    body={'form':kind,'subject_id':target,'answers':answers,'complete':False}
                 if set(body)!={'form','subject_id','answers','complete'}or type(body['complete'])is not bool:raise ValueError('ASSESSMENT_INVALID')
-                if isinstance(request.get('base'),dict):
+                if action=='assessment'and isinstance(request.get('base'),dict):
                     current=data['assessments'].get(body['form']+':'+body['subject_id'],{}).get('draft',{}).get('data')or request['base']
                     body={**body,'answers':merge_edits(request['base'],body['answers'],current)}
                 form=body['form'];subject=body['subject_id'];answers,totals=validate_assessment(form,body['answers'],data['files'],data['subjects'],subject,body['complete']);subject_name=''

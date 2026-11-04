@@ -108,8 +108,21 @@ def hwpx(raw):
     return '<article class="law">'+''.join(tables)+'</article>','@page{size:A4 portrait;margin:12mm}.law{width:186mm}.law td{font-size:9pt;padding:1mm;line-height:1.2}.law-table{margin-bottom:3mm}.law-table tr{break-inside:avoid}'
 
 def document(form,snapshot,site,period,blind=True):
+    from copy import deepcopy
+    snapshot=deepcopy(snapshot);comments=[]
+    for index,criterion in enumerate(FORMS[form]['criteria'],1):
+        answer=snapshot['data']['answers'][criterion['id']];note=answer.get('note','')
+        if len(note)>(30 if form=='law'else 20)or '\n'in note:
+            comments.append((str(index)+'. '+criterion['title'],note))
+            answer['note']='코멘트 별지 '+str(len(comments))+'번 참조'
+    summary=snapshot['data'].get('summary','')
+    if summary and (form=='law'or len(summary)>240 or len(summary.splitlines())>6):
+        comments.append(('총평',summary));snapshot['data']['summary']='총평 별지 참조'
     if form=='report':body,css=pptx(exports.pptx(snapshot,site,snapshot['inspector'],[],period,blind=blind))
     elif form=='law':body,css=hwpx(exports.hwpx(snapshot,site,snapshot['inspector']))
     else:body,css=xlsx(exports.xlsx(form,snapshot,site,snapshot['inspector']))
+    if comments:
+        body+='<article class="comment-appendix"><h1>'+safe(FORMS[form]['title'])+' 코멘트</h1><p>'+safe(site)+' · '+safe(snapshot['data']['inspection_date'])+'</p>'+''.join('<section><h2>'+safe(title)+'</h2><p>'+safe(note)+'</p></section>'for title,note in comments)+'</article>'
+        css+='@page comments{size:A4 portrait;margin:16mm}.comment-appendix{page:comments;break-before:page;font-size:11pt;line-height:1.7}.comment-appendix h1{font-size:18pt}.comment-appendix h2{font-size:12pt;break-after:avoid;margin:7mm 0 2mm}.comment-appendix p{white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3;margin:0 0 5mm}.comment-appendix section{break-inside:auto}'
     title=FORMS[form]['title']+' · '+site
     return '<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; base-uri \'none\'; form-action \'none\'"><title>'+escape(title)+'</title><style>*{box-sizing:border-box}body{margin:0;background:#fff;color:#111;font-family:"Malgun Gothic","Noto Sans CJK KR",sans-serif}table{border-collapse:collapse;table-layout:fixed;width:100%}td{border:.2mm solid #333;vertical-align:middle;overflow-wrap:anywhere}'+css+'@media screen{body{background:#e5e7eb}article{background:#fff;margin:12px auto;box-shadow:0 1px 5px #777}}@media print{article:last-child{break-after:auto}} </style>'+body+'</html>'

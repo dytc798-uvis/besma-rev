@@ -14,7 +14,7 @@ def context_key(row,period):
     return (match.group(1)if match else'plan-'+row.public_id)+'|'+period
 def blank():return {'evidence':{},'subjects':{'manager':[],'supervisor':[]},'assessments':{},'files':[]}
 def cleaned(value,limit):
-    if not isinstance(value,str)or len(value)>limit or re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]',value):raise ValueError('TEXT_INVALID')
+    if not isinstance(value,str)or (limit is not None and len(value)>limit) or re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]',value):raise ValueError('TEXT_INVALID')
     return value.strip()
 def validate_assessment(form,data,files,subjects,subject_id,complete):
     if form not in FORMS or not isinstance(data,dict)or set(data)-{'answers','summary','inspection_date','photo_ids','photo_captions','improvements','entry_mode','paper_file_ids','walkthrough_run_id','signed_table_photo_ids','required_signatures_confirmed','signed_pages_complete'}:raise ValueError('ASSESSMENT_INVALID')
@@ -24,16 +24,14 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
         if subject is None:raise ValueError('SUBJECT_REQUIRED')
     elif subject_id!='site':raise ValueError('SUBJECT_INVALID')
     day=cleaned(data.get('inspection_date',''),10);date.fromisoformat(day)
-    summary=cleaned(data.get('summary',''),240)
-    if len(summary.splitlines())>6:raise ValueError('SUMMARY_TOO_LONG')
+    summary=cleaned(data.get('summary',''),None)
     answers=data.get('answers',{})
     if not isinstance(answers,dict)or set(answers)-{r['id']for r in schema['criteria']}:raise ValueError('ANSWER_INVALID')
     result={};missing=0;score=0
     for criterion in schema['criteria']:
         entry=answers.get(criterion['id'],{})
         if not isinstance(entry,dict)or set(entry)-{'value','note'}:raise ValueError('ANSWER_INVALID')
-        value=entry.get('value');note=cleaned(entry.get('note',''),30 if form=='law'else 20)
-        if len(note.splitlines())>2:raise ValueError('NOTE_TOO_LONG')
+        value=entry.get('value');note=cleaned(entry.get('note',''),None)
         if value is None:missing+=1
         elif schema['scoring']=='THREE_LEVEL':
             if value not in {'EXCELLENT','NORMAL','POOR'}:raise ValueError('SCORE_INVALID')
