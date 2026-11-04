@@ -21,7 +21,7 @@ const node=(tag,text)=>{const n=document.createElement(tag);if(text!=null)n.text
 export function renderEvaluationStatus(host,items,catalog){
  host.replaceChildren();host.style.cssText='margin:12px 0;padding:14px;border:1px solid #cbd5e1;border-radius:8px;background:white;color:#172b4d';
  const title=node('h2','반기 평가 현황');title.style.cssText='margin:0 0 8px;font-size:18px';host.append(title);
- if(host.dataset.periodRange){const range=node('p','조회기간 '+host.dataset.periodRange);range.style.cssText='margin:6px 0;font-size:13px;color:#475569';host.append(range);}
+ if(host.dataset.periodRange){const range=node('p','내 담당 평가 · 조회기간 '+host.dataset.periodRange);range.style.cssText='margin:6px 0;font-size:13px;color:#475569';host.append(range);}
  if(items===null){host.append(node('p','평가 현황을 확인하고 있습니다.'));return;}
  const groups=evaluationStatus(items,catalog);
  if(!groups.length){host.append(node('p','선택한 기간에 조회할 평가계획이 없습니다.'));return;}

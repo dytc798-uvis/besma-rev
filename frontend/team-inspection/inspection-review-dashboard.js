@@ -1,4 +1,4 @@
-import {renderEvaluationStatus} from '/evaluation-status.js?v=2026.11.04.4';
+import {renderEvaluationStatus} from '/evaluation-status.js?v=2026.11.04.5';
 import {openPaperCompletion} from '/paper-completion.js?v=2026.11.03.5';
 const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
 const names={COMPLETED:'완료현장',IN_PROGRESS:'진행중',NOT_STARTED:'미평가현장'},values={EXCELLENT:'우수',NORMAL:'보통',POOR:'미흡',PASS:'적합',FAIL:'부적합',NA:'해당없음'};
@@ -21,7 +21,7 @@ export function createReviewDashboard({api,origin,token,session,user,host,onFilt
  if(!output.children.length)notice.textContent='완료한 평가가 없습니다.';
  }catch(e){if(dialog.isConnected)notice.textContent=e.message;}}
  paint();return{async load(rows,from,to){const id=++generation;status.dataset.periodRange=from+' ~ '+to;ready=false;summary.clear();paint();if(!alive)return;try{const value=await api('/safety-features/half-year-reviews/overview?'+new URLSearchParams({from_date:from,to_date:to}));session();if(!alive||id!==generation)return;const own=new Set(rows.filter(r=>r.owner_user_id===user.id).map(r=>r.public_id));if(!Array.isArray(value.items)||value.items.some(s=>!own.has(s.public_id)||!names[s.status]))throw Error('평가현황 응답을 확인해 주세요.');summary=new Map(value.items.map(s=>[s.public_id,s]));ready=true;paint();}catch(e){if(id===generation){ready=false;paint();throw e;}}},
- setScope(scope){allPlans=scope==='all';controls.hidden=allPlans;controls.style.display=allPlans?'none':'';},
+ setScope(scope){allPlans=scope==='all';status.hidden=allPlans;controls.hidden=allPlans;controls.style.display=allPlans?'none':'';},
  isComplete:row=>summary.get(row.public_id)?.status==='COMPLETED',
  matches:row=>allPlans||filter==='all'||(filter==='pending'?!!summary.get(row.public_id)&&summary.get(row.public_id).status!=='COMPLETED':summary.get(row.public_id)?.status===filter),
  append(row,cell,actions){if(row.owner_user_id!==user.id)return;const info=summary.get(row.public_id),box=node('div',null,'review-site-status');box.append(node('strong',info?names[info.status]+(info.reported_completion?' · 평가자 '+info.reported_completion.inspector:info.paper_completion?' · 수기 평가 PDF 등록':' · 문항 작성 '+info.completed+'/'+info.required):'평가현황 조회 필요'));if(info?.forms.length||info?.paper_completion||info?.reported_completion){for(const item of info.forms)box.append(node('p',scoreText(item)));if(info.paper_completion)actions.append(button('수기 평가 PDF 보기',()=>openPaperCompletion({origin,token,session,plan:row.public_id,period:info.period,completion:info.paper_completion})));actions.append(button('평가내역',()=>history(row)));}cell.append(box);},

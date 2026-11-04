@@ -1,4 +1,4 @@
-import {createReviewDashboard} from '/inspection-review-dashboard.js?v=2026.11.04.4';
+import {createReviewDashboard} from '/inspection-review-dashboard.js?v=2026.11.04.5';
 import {inspectionEntry,inspectionMonth,inspectionPlanId} from '/assets/inspection-work-entry.js';
 import {workReturn} from '/assets/workspace-return.js';
 import {mountHalfYearReview} from '/half-year-editor.js?v=20261101.19';
