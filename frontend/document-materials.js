@@ -17,15 +17,29 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
  for(const[value,label]of[['relevance','관련도순'],['newest','최근 수정순'],['name','파일명순']])order.append(new Option(label,value));order.value=sort;order.setAttribute('aria-label','NAS 자료 정렬');
  const first=N('button','첫 자료부터 보기');first.type='button';first.hidden=true;
  for(const b of[formsTab,nasTab,find,more])b.type='button';tabs.setAttribute('aria-label','자료 위치');tabs.append(formsTab,nasTab);controls.append(input,order,find);note.setAttribute('role','status');note.setAttribute('aria-live','polite');more.hidden=true;host.append(tabs,controls,note,first,list,more);
- let availability=null;
- try{availability=canReceive?await api('/work-requests/availability'):null;}catch{}
- if(!current())return()=>{alive=false;};
- const nasEnabled=canReceive&&availability?.enabled===true&&availability.nas_files===true,formsChat=canReceive&&availability?.enabled===true&&availability.registered_forms===true;
- const status=nasEnabled?createNasSearchStatus({api,isCurrent:current}):null;
- if(status)controls.after(status.element);
- if(tab==='nas'&&!nasEnabled)tab='forms';nasTab.hidden=!nasEnabled;
+ let availabilityPhase=canReceive?'loading':'off',availabilityRequest=0,availabilityController=null,availabilityTimer=null,nasEnabled=false,formsChat=false,status=null,chatAdds=[];
+ const capabilityNote=N('p',null,'top-note'),capabilityRetry=N('button','연결 다시 확인');capabilityNote.setAttribute('role','status');capabilityNote.setAttribute('aria-live','polite');capabilityRetry.type='button';capabilityRetry.hidden=true;capabilityRetry.onclick=()=>void checkAvailability();controls.after(capabilityNote,capabilityRetry);
+ if(!canReceive)tab='forms';
+ function capabilityState(){
+  nasTab.hidden=!canReceive||availabilityPhase==='ready'&&!nasEnabled;nasTab.disabled=availabilityPhase!=='ready'||!nasEnabled;capabilityRetry.hidden=availabilityPhase!=='failed';capabilityNote.hidden=!canReceive||availabilityPhase==='ready'&&nasEnabled&&formsChat;
+  capabilityNote.textContent=availabilityPhase==='loading'?'채팅·NAS 연결 확인 중 · 등록 양식은 계속 이용할 수 있습니다.':availabilityPhase==='failed'?'채팅·NAS 연결을 확인하지 못했습니다. 등록 양식은 계속 이용할 수 있습니다.':!nasEnabled?'NAS 자료 연결이 꺼져 있습니다.':'등록 양식의 채팅 연결이 꺼져 있습니다.';
+ }
+ async function checkAvailability(){
+  if(!current()||!canReceive||availabilityController)return;const attempt=++availabilityRequest,active=new AbortController();availabilityController=active;availabilityPhase='loading';capabilityState();
+  const wait=setTimeout(()=>active.abort(),15000);availabilityTimer=wait;
+  try{
+   const value=await api('/work-requests/availability',{signal:active.signal});if(!current()||attempt!==availabilityRequest)return;
+   if(!value||typeof value.enabled!=='boolean'||value.enabled&&(typeof value.nas_files!=='boolean'||typeof value.registered_forms!=='boolean'))throw Error('자료 연결 확인 필요');
+   availabilityPhase='ready';nasEnabled=value.enabled===true&&value.nas_files===true;formsChat=value.enabled===true&&value.registered_forms===true;
+   if(nasEnabled&&!status){status=createNasSearchStatus({api,isCurrent:current});controls.after(status.element);}
+   capabilityState();
+   if(tab==='nas'&&!nasEnabled){tab='forms';resetReturn();state();void load();}
+   else{state();if(tab==='nas')void load();else if(formsChat)for(const add of chatAdds)add();}
+  }catch{if(current()&&attempt===availabilityRequest){availabilityPhase='failed';capabilityState();if(tab==='nas')message('NAS 연결을 확인한 뒤 같은 조건으로 다시 찾을 수 있습니다.',true);}}
+  finally{clearTimeout(wait);if(availabilityTimer===wait)availabilityTimer=null;if(availabilityController===active)availabilityController=null;}
+ }
  function state(){formsTab.setAttribute('aria-pressed',String(tab==='forms'));nasTab.setAttribute('aria-pressed',String(tab==='nas'));order.hidden=tab!=='nas';if(status)status.element.hidden=tab!=='nas';remember();}
- function invalidate(){clearTimeout(timer);++sequence;controller?.abort();controller=null;loading=false;more.hidden=true;first.hidden=true;items=[];page=null;origins.clear();list.replaceChildren();list.setAttribute('aria-busy','false');}
+ function invalidate(){clearTimeout(timer);++sequence;controller?.abort();controller=null;loading=false;more.hidden=true;first.hidden=true;items=[];page=null;origins.clear();chatAdds=[];list.replaceChildren();list.setAttribute('aria-busy','false');}
  function resetReturn(){selectedPage=null;startOffset=0;selected='';restoreSelection=false;remember();}
  function message(text,error=false){note.textContent=text;note.classList.toggle('error',error);}
  function validNas(item){return item?.scope==='TEAM_SAFETY_NAS'&&item.logical_root_id==='team-safety-nas-z4'&&relative(item.relative_path)&&typeof item.file_name==='string'&&item.file_name.length>0&&item.file_name.length<=255&&!/[\/\\\x00-\x1f]/.test(item.file_name)&&hex(item.nas_file_id)&&integer(item.size)&&item.size>0&&item.size<=32*1024*1024&&item.is_directory===false;}
@@ -51,14 +65,14 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
     row.append(action('파일 받기',b=>choose(item,'NAS',b)),action('내용 질문',b=>choose(item,'SOURCE_QUESTION',b)));
    }else if(canReceive){
     row.append(action('받기',async b=>{if(!current()||loading||choosing)return;selected=key;remember();for(const old of list.children)old.classList.toggle('selected',old===row);await receiveForm(item,b);}));
-    if(formsChat){const b=action('채팅에서 사용',b=>choose(item,'SOURCE_QUESTION',b));b.disabled=integer(item.size_bytes)&&(item.size_bytes===0||item.size_bytes>32*1024*1024);if(b.disabled)b.title=item.size_bytes===0?'내용이 없는 파일입니다.':'채팅에서는32MB 이하 파일을 사용할 수 있습니다.';row.append(b);}
+    const add=()=>{if(!current()||row.dataset.formChat==='1')return;row.dataset.formChat='1';const b=action('채팅에서 사용',b=>choose(item,'SOURCE_QUESTION',b));b.disabled=integer(item.size_bytes)&&(item.size_bytes===0||item.size_bytes>32*1024*1024);if(b.disabled)b.title=item.size_bytes===0?'내용이 없는 파일입니다.':'채팅에서는32MB 이하 파일을 사용할 수 있습니다.';row.append(b);};chatAdds.push(add);if(formsChat)add();
    }
    list.append(row);
   }
   if(restoreSelection){const row=[...list.children].find(x=>x.dataset.materialKey===selected);if(row){restoreSelection=false;row.tabIndex=-1;row.focus({preventScroll:true});row.scrollIntoView({block:'center',behavior:'instant'});}}
  }
  async function load(append=false){
-  if(!current()||loading||choosing)return;if(append&&(!page||!integer(page.next_offset)||page.next_offset<1))return;
+  if(!current()||loading||choosing)return;if(tab==='nas'&&!nasEnabled){message(availabilityPhase==='loading'?'NAS 연결을 확인하고 있습니다.':'NAS 연결을 확인한 뒤 같은 조건으로 다시 찾을 수 있습니다.',availabilityPhase==='failed');return;}if(append&&(!page||!integer(page.next_offset)||page.next_offset<1))return;
   if(!append){invalidate();if(tab==='nas'&&!query.trim()&&sort!=='newest'){message('파일명·폴더명을 입력하거나 최근 수정순을 선택해 주세요.');return;}}
   const epoch=++sequence,sourceTab=tab,queryAtStart=query,orderAtStart=sort;let indexCheck=null,refreshed=false,offset=append?page.next_offset:sourceTab==='nas'&&selectedPage?selectedPage.offset:0,request={q:queryAtStart.trim(),sort:orderAtStart,offset,...(append?{snapshot:page.snapshot}:sourceTab==='nas'&&selectedPage?{snapshot:selectedPage.snapshot}:{})};
   loading=true;controller=new AbortController();const active=controller;list.setAttribute('aria-busy','true');more.disabled=true;message('자료를 찾고 있습니다.');
@@ -99,5 +113,7 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
  input.oninput=()=>{if(!current()||choosing)return;invalidate();query=input.value.slice(0,100);resetReturn();message('자료를 찾고 있습니다.');timer=setTimeout(()=>void load(),180);};
  input.onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();clearTimeout(timer);void load();}};
  order.onchange=()=>{if(choosing)return;invalidate();sort=order.value;resetReturn();void load();};
- state();await load();return()=>{alive=false;invalidate();status?.dispose();};
+ function cleanup(){if(!alive)return;alive=false;availabilityRequest++;availabilityController?.abort();clearTimeout(availabilityTimer);invalidate();status?.dispose();removeEventListener('pagehide',cleanup);removeEventListener('storage',accountChanged);}
+ function accountChanged(event){if(event.key==='besma_token'||event.key===null)cleanup();}
+ addEventListener('pagehide',cleanup);addEventListener('storage',accountChanged);capabilityState();state();void load();if(canReceive)void checkAvailability();return cleanup;
 }
