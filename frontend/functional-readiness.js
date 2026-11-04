@@ -3,11 +3,13 @@ export function drawFunctionalReadiness(host,{data:d,period,historyStatus,role,i
  const N=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;},p=N('section',null,'panel h2-readiness');p.append(N('h2','2026년 하반기 기능인인정제 준비'),N('p','12월 20일 평가 예정','readiness-state'));host.append(p);
  const record=value=>value&&typeof value==='object'&&!Array.isArray(value)?value:{};
  const attendanceInitial=record(initialScope.attendanceScope??(initialScope.scopeView==='history'?{}:initialScope)),historyInitial=record(initialScope.historyScope??(initialScope.scopeView==='attendance'?{}:initialScope));
+ const received=verifiedReceivedPreparation(d),basis=received?received.source_date.replaceAll('-','.')+' 수신자료':'오늘 출역';if(received)d={...d,...received,today_people:received.people};
  const count=v=>Number.isSafeInteger(v)&&v>=0?v.toLocaleString('ko-KR'):'확인 필요',people=v=>Number.isSafeInteger(v)&&v>=0?count(v)+'명':'확인 필요';
- const current=d?.source_current===true&&validAttendanceScope(d),compared=current&&d?.history_comparison?.state==='COMPLETE',counts=N('div',null,'readiness-counts');for(const[label,key]of[['오늘 출역','today_people'],['출역 현장','site_count'],['이전 등급 보유','prior_grade_people'],['신규·이전 미평가','new_or_ungraded_people']]){const item=N('div');item.append(N('strong',current&&(!['prior_grade_people','new_or_ungraded_people'].includes(key)||compared)?count(d[key]):'확인 필요'),N('span',label));counts.append(item);}p.append(counts);
+ const current=(d?.source_current===true||received!==null)&&validAttendanceScope(d),compared=current&&d?.history_comparison?.state==='COMPLETE',counts=N('div',null,'readiness-counts');for(const[label,key]of[[received?'자료 기준 출역':'오늘 출역','today_people'],['출역 현장','site_count'],['이전 등급 보유','prior_grade_people'],['신규·이전 미평가','new_or_ungraded_people']]){const item=N('div');item.append(N('strong',current&&(!['prior_grade_people','new_or_ungraded_people'].includes(key)||compared)?count(d[key]):'확인 필요'),N('span',label));counts.append(item);}p.append(counts);
  if(typeof d?.captured_at==='string'&&Number.isFinite(Date.parse(d.captured_at)))p.append(N('p','ERP '+(d.source_date||'기준일 확인 필요')+' · 수집 '+new Intl.DateTimeFormat('ko-KR',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Seoul'}).format(new Date(d.captured_at)),'small muted'));
+ if(received)p.append(N('p','오늘 출역은 미확인입니다. '+basis+'로 준비 현황을 확인합니다.','readiness-state'));
  if(d?.can_evaluate!==true)p.append(N('p','하반기 평가 개시 전입니다.','readiness-state'));for(const text of Array.isArray(d?.blockers)?d.blockers:[])if(typeof text==='string')p.append(N('p',text,'small'));
- p.append(N('p','오늘 출역을 기준으로 준비합니다. 전 근로자 명부와 평가 대상 전체의 확인은 별도입니다.','small muted'));
+ p.append(N('p',basis+'를 기준으로 준비합니다. 전 근로자 명부와 평가 대상 전체의 확인은 별도입니다.','small muted'));
  const sites=current&&Array.isArray(d.sites)?d.sites:null,seen=new Set();let validSites=!!sites;
  if(sites)for(const site of sites){if(!site||typeof site.code!=='string'||!site.code||site.code.length>100||/[\\/\u0000-\u001f\u007f]/.test(site.code)||seen.has(site.code)||typeof site.name!=='string'){validSites=false;break;}seen.add(site.code);}
  const {history,historySites,verifiedHistory}=verifiedHistoryScope(period,d,historyStatus);
@@ -21,13 +23,13 @@ export function drawFunctionalReadiness(host,{data:d,period,historyStatus,role,i
  for(const text of['현장','오늘 출역','이전 등급','신규·미평가','평가자 계정'])head.append(N('th',text));table.style.color='inherit';const thead=N('thead');thead.append(head);table.append(thead,body);wrap.append(table);details.append(summary,controls,result);
  if(history)details.append(N('p','연결할 기존 평가: '+history.title+' · '+(history.deadline_date||'마감일 확인 필요'),'small muted'));else details.append(N('p','기존 평가기간을 확인해야 현장 이력으로 연결할 수 있습니다.','small muted'));if(history&&!verifiedHistory)details.append(N('p','기존 평가 이력을 다시 확인해 주세요. 현장 검색은 계속 사용할 수 있습니다.','small muted'));details.append(wrap);
  if(canLink){
-  const controls=N('div',null,'tools readiness-tools'),attendanceButton=N('button','오늘 출역 기준 ('+sites.length+')'),historyButton=N('button','기존 평가 이력 ('+historyStatus.sites.filter(x=>x.total>0).length+')'),attendancePanel=N('div'),historyPanel=N('div');controls.setAttribute('role','group');controls.setAttribute('aria-label','평가 확인 범위');attendanceButton.type=historyButton.type='button';attendanceButton.style.minHeight=historyButton.style.minHeight='44px';controls.append(attendanceButton,historyButton);attendancePanel.append(details);
+  const controls=N('div',null,'tools readiness-tools'),attendanceButton=N('button',basis+' 기준 ('+sites.length+')'),historyButton=N('button','기존 평가 이력 ('+historyStatus.sites.filter(x=>x.total>0).length+')'),attendancePanel=N('div'),historyPanel=N('div');controls.setAttribute('role','group');controls.setAttribute('aria-label','평가 확인 범위');attendanceButton.type=historyButton.type='button';attendanceButton.style.minHeight=historyButton.style.minHeight='44px';controls.append(attendanceButton,historyButton);attendancePanel.append(details);
   drawExistingHistory(historyPanel,{history,historyStatus,verifiedHistory,role,initialScope:historyScope,onScope:value=>{historyScope=value;if(scopeView==='history')emitScope();},isCurrent:()=>isCurrent()&&scopeView==='history'});
   function choose(next,save=true){if(!isCurrent())return;scopeView=next;attendancePanel.hidden=next!=='attendance';historyPanel.hidden=next!=='history';attendanceButton.setAttribute('aria-pressed',String(next==='attendance'));historyButton.setAttribute('aria-pressed',String(next==='history'));if(save)emitScope();}
   attendanceButton.onclick=()=>choose('attendance');historyButton.onclick=()=>choose('history');choose(scopeView,false);p.append(controls,attendancePanel,historyPanel);
  }else p.append(details);
  function remember(){if(!isCurrent())return;attendanceScope={periodId,query,filter,selected,open:details.open};if(scopeView==='attendance')emitScope();}
- function draw(){body.replaceChildren();const terms=query.normalize('NFC').trim().toLocaleLowerCase('ko-KR').split(/\s+/).filter(Boolean),rows=sites.filter(site=>terms.every(word=>(site.name+' '+site.code).normalize('NFC').toLocaleLowerCase('ko-KR').includes(word))&&(filter==='all'||site.evaluator_registered!==true));result.textContent='표시 '+rows.length+'개 / 오늘 출역 현장 '+sites.length+'개';
+ function draw(){body.replaceChildren();const terms=query.normalize('NFC').trim().toLocaleLowerCase('ko-KR').split(/\s+/).filter(Boolean),rows=sites.filter(site=>terms.every(word=>(site.name+' '+site.code).normalize('NFC').toLocaleLowerCase('ko-KR').includes(word))&&(filter==='all'||site.evaluator_registered!==true));result.textContent='표시 '+rows.length+'개 / '+basis+' 현장 '+sites.length+'개';
   for(const site of rows){const row=N('tr'),name=N('td');row.dataset.readinessSite=site.code;if(selected===site.code){row.setAttribute('aria-current','true');row.style.boxShadow='inset 3px 0 #b27d31';}
    if(canLink&&historySites.has(site.code)){const a=N('a',site.name);a.href='/hq-safe/functional-eval?'+new URLSearchParams({site:site.code,period_id:String(history.id),from_workspace:'1',return:'/workspace.html#functional'});a.setAttribute('aria-label',site.name+' 기존 평가 이력');a.dataset.readinessHistory=site.code;a.onclick=()=>{selected=site.code;remember();};name.append(a,N('small',' · 기존 평가 이력'));}else name.append(N('strong',site.name));
    row.append(name,N('td',people(site.people)),N('td',compared?people(site.prior_grade_people):'확인 필요'),N('td',compared?people(site.new_or_ungraded_people):'확인 필요'),N('td',site.evaluator_registered===true?'기존 계정 확인 · 담당 배정 점검':'등록·배정 확인 필요'));body.append(row);
@@ -65,4 +67,17 @@ function drawExistingHistory(host,{history,historyStatus,verifiedHistory,role,in
   if(!rows.length){const row=N('tr'),cell=N('td',sites.length?'검색·배정 조건에 맞는 현장이 없습니다.':'이 평가기간의 등록 대상이 없습니다.');cell.colSpan=5;row.append(cell);body.append(row);}
  }
  search.oninput=()=>{query=search.value.slice(0,100);draw();remember();};select.onchange=()=>{filter=select.value;draw();remember();};details.addEventListener('toggle',remember);draw();
+}
+
+function verifiedReceivedPreparation(data){
+ const d=data?.latest_received,date=value=>typeof value==='string'&&/^20\d{2}-(0[1-9]|1[0-2])-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value))&&new Date(value).toISOString().slice(0,10)===value;
+ if(data?.source_current!==false||d?.state!=='VERIFIED'||d.population!=='DAILY_ATTENDANCE'||d.source_current!==false||d.can_evaluate!==false||d.full_worker_population_confirmed!==false||!date(d.source_date)||!date(d.as_of_date)||d.source_date>=d.as_of_date||typeof d.source_sha256!=='string'||!/^([0-9a-f]{64})$/.test(d.source_sha256)||typeof d.captured_at!=='string'||!Number.isFinite(Date.parse(d.captured_at))||!/(Z|[+-]\d{2}:\d{2})$/.test(d.captured_at))return null;
+ if(!validAttendanceScope({...d,today_people:d.people})||d.sites.length>10000)return null;
+ const capturedDay=new Date(Date.parse(d.captured_at)+9*60*60*1000).toISOString().slice(0,10);if(capturedDay<d.source_date||capturedDay>d.as_of_date)return null;
+ const count=value=>Number.isSafeInteger(value)&&value>=0;
+ if(!['COMPLETE','INCOMPLETE'].includes(d.history_comparison?.state))return null;
+ if(d.history_comparison.state==='COMPLETE'){
+  if(!count(d.prior_grade_people)||!count(d.new_or_ungraded_people)||d.prior_grade_people+d.new_or_ungraded_people!==d.people||d.sites.some(site=>!count(site.prior_grade_people)||!count(site.new_or_ungraded_people)||site.prior_grade_people+site.new_or_ungraded_people!==site.people)||d.sites.reduce((sum,site)=>sum+site.prior_grade_people,0)!==d.prior_grade_people)return null;
+ }
+ return d;
 }
