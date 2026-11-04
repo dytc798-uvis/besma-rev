@@ -21,9 +21,11 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
  const capabilityNote=N('p',null,'top-note'),capabilityRetry=N('button','연결 다시 확인');capabilityNote.setAttribute('role','status');capabilityNote.setAttribute('aria-live','polite');capabilityRetry.type='button';capabilityRetry.hidden=true;capabilityRetry.onclick=()=>void checkAvailability();controls.after(capabilityNote,capabilityRetry);
  if(!canReceive)tab='forms';
  function capabilityState(){
-  nasTab.hidden=!canReceive||availabilityPhase==='ready'&&!nasEnabled;nasTab.disabled=availabilityPhase!=='ready'||!nasEnabled;capabilityRetry.hidden=availabilityPhase!=='failed';capabilityNote.hidden=!canReceive||availabilityPhase==='ready'&&nasEnabled&&formsChat;
-  capabilityNote.textContent=availabilityPhase==='loading'?'채팅·NAS 연결 확인 중 · 등록 양식은 계속 이용할 수 있습니다.':availabilityPhase==='failed'?'채팅·NAS 연결을 확인하지 못했습니다. 등록 양식은 계속 이용할 수 있습니다.':!nasEnabled?'NAS 자료 연결이 꺼져 있습니다.':'등록 양식의 채팅 연결이 꺼져 있습니다.';
+  nasTab.hidden=!canReceive||availabilityPhase==='ready'&&!nasEnabled&&tab!=='nas';nasTab.disabled=!nasEnabled;capabilityRetry.hidden=!canReceive||availabilityPhase==='loading'||availabilityPhase==='ready'&&nasEnabled&&formsChat;capabilityNote.hidden=!canReceive||availabilityPhase==='ready'&&nasEnabled&&formsChat;
+  refreshActions();
+  capabilityNote.textContent=availabilityPhase==='loading'?'채팅·NAS 연결 확인 중 · 등록 양식은 계속 이용할 수 있습니다.':availabilityPhase==='failed'?'채팅·NAS 연결을 확인하지 못했습니다. 등록 양식은 계속 이용할 수 있습니다.':!nasEnabled?'지금은 NAS 자료 연결을 사용할 수 없습니다.':'지금은 등록 양식의 채팅 연결을 사용할 수 없습니다.';
  }
+ function refreshActions(){for(const button of list.querySelectorAll('[data-material-capability]'))button.disabled=choosing||button.dataset.materialUnusable==='true'||(button.dataset.materialCapability==='nas'?!nasEnabled:!formsChat);}
  async function checkAvailability(){
   if(!current()||!canReceive||availabilityController)return;const attempt=++availabilityRequest,active=new AbortController();availabilityController=active;availabilityPhase='loading';capabilityState();
   const wait=setTimeout(()=>active.abort(),15000);availabilityTimer=wait;
@@ -33,7 +35,7 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
    availabilityPhase='ready';nasEnabled=value.enabled===true&&value.nas_files===true;formsChat=value.enabled===true&&value.registered_forms===true;
    if(nasEnabled&&!status){status=createNasSearchStatus({api,isCurrent:current});controls.after(status.element);}
    capabilityState();
-   if(tab==='nas'&&!nasEnabled){tab='forms';resetReturn();state();void load();}
+   if(tab==='nas'&&!nasEnabled){state();message('지금은 NAS 자료 연결을 사용할 수 없습니다. 등록 양식은 해당 탭에서 확인할 수 있습니다.',true);}
    else{state();if(tab==='nas')void load();else if(formsChat)for(const add of chatAdds)add();}
   }catch{if(current()&&attempt===availabilityRequest){availabilityPhase='failed';capabilityState();if(tab==='nas')message('NAS 연결을 확인한 뒤 같은 조건으로 다시 찾을 수 있습니다.',true);}}
   finally{clearTimeout(wait);if(availabilityTimer===wait)availabilityTimer=null;if(availabilityController===active)availabilityController=null;}
@@ -44,7 +46,7 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
  function message(text,error=false){note.textContent=text;note.classList.toggle('error',error);}
  function validNas(item){return item?.scope==='TEAM_SAFETY_NAS'&&item.logical_root_id==='team-safety-nas-z4'&&relative(item.relative_path)&&typeof item.file_name==='string'&&item.file_name.length>0&&item.file_name.length<=255&&!/[\/\\\x00-\x1f]/.test(item.file_name)&&hex(item.nas_file_id)&&integer(item.size)&&item.size>0&&item.size<=32*1024*1024&&item.is_directory===false;}
  async function choose(item,kind,button){
-  if(!current()||loading||choosing)return;const epoch=sequence,sourceTab=tab;choosing=true;button.disabled=true;
+  if(!current()||loading||choosing)return;if(tab==='nas'&&!nasEnabled||tab==='forms'&&!formsChat){message('자료 연결을 다시 확인해 주세요.',true);return;}const epoch=sequence,sourceTab=tab;choosing=true;button.disabled=true;
   try{
    let source=item;
    if(sourceTab==='forms'){
@@ -52,7 +54,7 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
     if(source.scope!=='BESMA_REGISTERED_FORM'||source.relative_path!==item.path||source.file_name!==item.name||!hex(source.form_file_id)||!hex(source.approved_content_sha256)||!integer(source.size)||source.size<1||source.size>32*1024*1024)throw Error('선택한 양식의 원본을 확인하지 못했습니다.');
    }else if(!validNas(source))throw Error('자료를 다시 찾아 선택해 주세요.');
    if(!current()||epoch!==sequence)return;selected=keyFor(sourceTab,item);selectedPage=sourceTab==='nas'?origins.get(selected)||null:null;remember();await onChoose(source,kind);
-  }catch(e){if(current()&&epoch===sequence)message(e.message,true);}finally{choosing=false;button.disabled=false;}
+  }catch(e){if(current()&&epoch===sequence)message(e.message,true);}finally{choosing=false;button.disabled=false;refreshActions();}
  }
  function action(label,fn){const b=N('button',label);b.type='button';b.onclick=()=>Promise.resolve().then(()=>fn(b)).catch(e=>{if(current())message(e.message,true);});return b;}
  function draw(){
@@ -62,10 +64,10 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
    row.dataset.materialKey=key;row.append(N('strong',name));const origin=N('details'),summary=N('summary','출처 보기');summary.style.minHeight='44px';origin.append(summary,N('p',(tab==='forms'?'BESMA 등록 양식 · ':'안전보건실 NAS · ')+source,'small muted'));row.append(origin);
    if(tab==='nas'){
     const date=Date.parse(item.modified_at);row.append(N('p',(integer(item.size)?(item.size/1024).toLocaleString('ko-KR',{maximumFractionDigits:1})+'KB':'크기 확인 필요')+' · '+(Number.isFinite(date)?new Date(date).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'수정시각 확인 필요'),'small muted'));
-    row.append(action('파일 받기',b=>choose(item,'NAS',b)),action('내용 질문',b=>choose(item,'SOURCE_QUESTION',b)));
+    const receive=action('파일 받기',b=>choose(item,'NAS',b)),question=action('내용 질문',b=>choose(item,'SOURCE_QUESTION',b));for(const button of[receive,question]){button.dataset.materialCapability='nas';button.disabled=!nasEnabled;}row.append(receive,question);
    }else if(canReceive){
     row.append(action('받기',async b=>{if(!current()||loading||choosing)return;selected=key;remember();for(const old of list.children)old.classList.toggle('selected',old===row);await receiveForm(item,b);}));
-    const add=()=>{if(!current()||row.dataset.formChat==='1')return;row.dataset.formChat='1';const b=action('채팅에서 사용',b=>choose(item,'SOURCE_QUESTION',b));b.disabled=integer(item.size_bytes)&&(item.size_bytes===0||item.size_bytes>32*1024*1024);if(b.disabled)b.title=item.size_bytes===0?'내용이 없는 파일입니다.':'채팅에서는32MB 이하 파일을 사용할 수 있습니다.';row.append(b);};chatAdds.push(add);if(formsChat)add();
+    const add=()=>{if(!current()||row.dataset.formChat==='1')return;row.dataset.formChat='1';const b=action('채팅에서 사용',b=>choose(item,'SOURCE_QUESTION',b));b.dataset.materialCapability='forms';b.disabled=integer(item.size_bytes)&&(item.size_bytes===0||item.size_bytes>32*1024*1024);b.dataset.materialUnusable=String(b.disabled);if(b.disabled)b.title=item.size_bytes===0?'내용이 없는 파일입니다.':'채팅에서는32MB 이하 파일을 사용할 수 있습니다.';row.append(b);};chatAdds.push(add);if(formsChat)add();
    }
    list.append(row);
   }
