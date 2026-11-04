@@ -15,7 +15,7 @@ function validHistory(d){
 export function mountFunctionalWorkspace(host,{api,role,initialScope={},onScope=()=>{},isCurrent=()=>true}){
  const N=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
  if(!readers.has(role)&&!editors.has(role))return()=>{};
- let alive=true,scope=initialScope;const current=()=>alive&&isCurrent(),parts={};
+ let alive=true,scope=initialScope,preparationRender=0;const current=()=>alive&&isCurrent(),parts={};
  if(editors.has(role)){const nav=N('nav',null,'section-links');nav.setAttribute('aria-label','평가 업무');for(const[title,desc,href]of entryLinks){const a=N('a',null,'section-link'),copy=N('span');a.href=href;copy.append(N('strong',title),N('small',desc));a.append(copy,N('em','↗'));nav.append(a);}host.append(nav);}
  else host.append(N('p','본사 조회 계정입니다. 평가 입력·승인은 지정된 담당자가 진행합니다.','top-note'));
  host.append(N('div','기능·안전 평가기준과 기존 평가·서명 이력을 유지합니다.','info-strip'));
@@ -31,8 +31,8 @@ export function mountFunctionalWorkspace(host,{api,role,initialScope={},onScope=
   box.append(N('h2',d.period.title+' · 기존 평가 현황'));for(const[type,label]of[['FUNCTIONAL','기능'],['SAFETY','안전']]){box.append(N('p',label+' 평가  '+['S','A','B','C'].map(grade=>grade+' '+(d.grades.find(x=>x.eval_type===type&&x.grade_code===grade)?.count??0)+'명').join('  /  ')));}
  }
  function renderPreparation(){
-  const cell=parts.preparation;if(cell.phase!=='ready'){status('preparation');return;}const box=cell.box,active=document.activeElement,focused=box.contains(active)?{id:active.id,label:active.getAttribute('aria-label'),start:active.selectionStart,end:active.selectionEnd}:null;
-  box.replaceChildren();box.setAttribute('aria-busy','false');drawFunctionalReadiness(box,{data:cell.value,period:parts.overview.phase==='ready'?parts.overview.value.period:null,historyStatus:parts.history.phase==='ready'?parts.history.value:null,role,initialScope:scope,onScope:value=>{if(current()){scope=value;onScope(value);}},isCurrent:current});
+  const render=++preparationRender,renderCurrent=()=>current()&&render===preparationRender;const cell=parts.preparation;if(cell.phase!=='ready'){status('preparation');return;}const box=cell.box,active=document.activeElement,focused=box.contains(active)?{id:active.id,label:active.getAttribute('aria-label'),start:active.selectionStart,end:active.selectionEnd}:null;
+  box.replaceChildren();box.setAttribute('aria-busy','false');drawFunctionalReadiness(box,{data:cell.value,period:parts.overview.phase==='ready'?parts.overview.value.period:null,historyStatus:parts.history.phase==='ready'?parts.history.value:null,role,initialScope:scope,onScope:value=>{if(renderCurrent()){scope=value;onScope(value);}},isCurrent:renderCurrent});
   if(focused){const target=[...box.querySelectorAll('input,select')].find(e=>focused.id?e.id===focused.id:e.getAttribute('aria-label')===focused.label);if(target){target.focus({preventScroll:true});if(typeof focused.start==='number'&&target.setSelectionRange)try{target.setSelectionRange(focused.start,focused.end);}catch{}}}
  }
  function renderHistory(){
