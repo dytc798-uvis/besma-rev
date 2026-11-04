@@ -60,14 +60,13 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
  async function load(append=false){
   if(!current()||loading||choosing)return;if(append&&(!page||!integer(page.next_offset)||page.next_offset<1))return;
   if(!append){invalidate();if(tab==='nas'&&!query.trim()&&sort!=='newest'){message('파일명·폴더명을 입력하거나 최근 수정순을 선택해 주세요.');return;}}
-  const epoch=++sequence,sourceTab=tab,queryAtStart=query,orderAtStart=sort;let refreshed=false,offset=append?page.next_offset:sourceTab==='nas'&&selectedPage?selectedPage.offset:0,request={q:queryAtStart.trim(),sort:orderAtStart,offset,...(append?{snapshot:page.snapshot}:sourceTab==='nas'&&selectedPage?{snapshot:selectedPage.snapshot}:{})};
+  const epoch=++sequence,sourceTab=tab,queryAtStart=query,orderAtStart=sort;let indexCheck=null,refreshed=false,offset=append?page.next_offset:sourceTab==='nas'&&selectedPage?selectedPage.offset:0,request={q:queryAtStart.trim(),sort:orderAtStart,offset,...(append?{snapshot:page.snapshot}:sourceTab==='nas'&&selectedPage?{snapshot:selectedPage.snapshot}:{})};
   loading=true;controller=new AbortController();const active=controller;list.setAttribute('aria-busy','true');more.disabled=true;message('자료를 찾고 있습니다.');
   try{
    let data;
    if(sourceTab==='forms')data=await api('/workspace/forms?q='+encodeURIComponent(queryAtStart),{signal:active.signal});
    else{
-    const index=await status.refresh();if(!current()||epoch!==sequence)return;
-    if(index.phase==='missing'){message(status.emptyMessage(''),true);return;}
+    indexCheck=status.refresh();
     try{data=await api('/work-requests/nas/search',{method:'POST',body:JSON.stringify(request),signal:active.signal});}
     catch(error){
      if(error.status!==409||!request.snapshot||active.signal.aborted||!current()||epoch!==sequence)throw error;
@@ -79,6 +78,7 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
    }
    if(!current()||epoch!==sequence)return;
    if(!Array.isArray(data.items))throw Error('자료 목록을 확인하지 못했습니다. 다시 찾아 주세요.');
+   if(sourceTab==='nas'&&!data.items.length){await indexCheck;if(!current()||epoch!==sequence)return;}
    if(sourceTab==='forms'){
     if(typeof data.source!=='string'||data.items.some(x=>!relative(x.path)||!x.path.startsWith('base/')||typeof x.name!=='string'||!x.name||x.name.length>255))throw Error('등록 양식의 출처를 확인하지 못했습니다.');
     items=data.items;message(items.length+'개 자료 · '+data.source);
@@ -91,7 +91,7 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
    }
    if(sourceTab==='nas'&&restoreSelection&&selected&&!items.some(item=>keyFor('nas',item)===selected))note.textContent+=page.next_offset!==null?' · 이전 선택자료는 현재 범위에 없습니다. 자료 더 보기로 확인해 주세요.':' · 이전 선택자료를 새 목록에서 확인하지 못했습니다.';
    draw();if(!items.length)list.append(N('p',sourceTab==='forms'?'검색 결과가 없습니다.':page.next_offset!==null?'현재 범위에 선택할 자료가 없습니다. 자료 더 보기로 확인해 주세요.':page.unavailable_count?'자료는 검색됐지만32MB를 넘어 채팅으로 받을 수 없습니다. NAS 원본은 그대로 보관되어 있습니다.':status.emptyMessage('조건에 맞는 자료를 찾지 못했습니다.'),'empty'));
-  }catch(e){if(current()&&epoch===sequence){items=[];page=null;more.hidden=true;first.hidden=true;if(e.status===409)resetReturn();list.replaceChildren(action('다시 찾기',()=>load()));message(e.name==='AbortError'?'자료 조회를 중단했습니다. 다시 찾아 주세요.':e.status===429?'검색 요청이 많습니다. 잠시 후 다시 찾아 주세요.':e.status===409?'검색 자료가 갱신됐습니다. 처음부터 다시 찾아 주세요.':e.message,true);}}
+  }catch(e){if(sourceTab==='nas'&&indexCheck)await indexCheck;if(current()&&epoch===sequence){items=[];page=null;more.hidden=true;first.hidden=true;if(e.status===409)resetReturn();list.replaceChildren(action('다시 찾기',()=>load()));message(e.name==='AbortError'?'자료 조회를 중단했습니다. 다시 찾아 주세요.':sourceTab==='nas'&&status.getState().phase==='missing'?status.emptyMessage(''):e.status===429?'검색 요청이 많습니다. 잠시 후 다시 찾아 주세요.':e.status===409?'검색 자료가 갱신됐습니다. 처음부터 다시 찾아 주세요.':e.message,true);}}
   finally{if(controller===active)controller=null;if(current()&&epoch===sequence){loading=false;list.setAttribute('aria-busy','false');more.disabled=false;}}
  }
  function switchTab(next){if(choosing||next===tab||next==='nas'&&!nasEnabled)return;invalidate();tab=next;resetReturn();state();void load();}
