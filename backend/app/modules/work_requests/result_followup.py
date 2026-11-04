@@ -7,7 +7,7 @@ from pydantic import BaseModel,ConfigDict,Field
 from .store import Conflict,MAX_ORIGINAL_BYTES
 PREFIX='OWNER_RESULT_FOLLOWUP_V1:'
 CAP='OWNER_SOURCE_CHOICES_V2'
-EXTENSIONS={'.txt','.pdf','.docx','.xlsx','.pptx','.hwp','.hwpx','.csv'}
+EXTENSIONS={'.txt','.pdf','.docx','.xlsx','.pptx','.hwp','.hwpx','.csv','.xls','.zip'}
 REFERENCE=re.compile(r'(?:방금\s*(?:만든|수정한|받은|작성한)?|[이그]\s*)\s*(?:파일|안내문|문서|자료|사본)')
 NATURAL_REFERENCE=re.compile(r'(?<![가-힣A-Za-z0-9])(?:[이그]|해당|방금\s*(?:설명한|확인한|읽은|본))\s*(기준서?|절차서?|계획서|지침서|보고서|평가표|점검표|명부|명단|내용|본문)(?=$|[\s,.!?？]|은|는|이|가|을|를|의|에|로|으로|와|과|도|만|부터|까지|대로|중|내)')
 
