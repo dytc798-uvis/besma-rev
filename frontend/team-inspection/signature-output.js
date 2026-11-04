@@ -4,8 +4,8 @@ export function createSignatureOutput({host,request,bytes,previewPage,session}){
  const requests=new Map();let dialog=null;
  async function open(c){
   session();dialog?.close();const active=n('dialog');dialog=active;active.className='signature-output-dialog';active.setAttribute('aria-label','소장 서명용 PDF');
-  const report=c.purpose==='REPORT',purpose=report?'REPORT':'SIGNATURE';active.setAttribute('aria-label',report?'대표 보고용 PDF':'소장 서명용 PDF');
-  const title=n('h2',c.site+(report?' · 대표 보고용 PDF':' · 소장 서명용 PDF')),status=n('p','이 PC에서 PDF를 만들도록 요청하고 있습니다.'),close=n('button','닫기'),refresh=n('button','상태 다시 확인'),files=n('div');for(const b of[close,refresh])b.type='button';close.onclick=()=>active.close();status.setAttribute('role','status');active.append(title,close,status,refresh,files);host.append(active);
+  const report=c.purpose==='REPORT',signing=!report&&['report','law'].includes(c.form),purpose=report?'REPORT':'SIGNATURE';active.setAttribute('aria-label',report?'대표 보고용 PDF':signing?'소장 서명용 PDF':'평가서 PDF');
+  const title=n('h2',c.site+(report?' · 대표 보고용 PDF':signing?' · 소장 서명용 PDF':' · 평가서 PDF')),status=n('p','이 PC에서 PDF를 만들도록 요청하고 있습니다.'),close=n('button','닫기'),refresh=n('button','상태 다시 확인'),files=n('div');for(const b of[close,refresh])b.type='button';close.onclick=()=>active.close();status.setAttribute('role','status');active.append(title,close,status,refresh,files);host.append(active);
   const key=[c.plan,c.period,c.form,c.subject,c.snapshot,purpose].join('|');requests.set(key,crypto.randomUUID());
   const path='/plans/'+encodeURIComponent(c.plan)+'/signature-prints',query='?'+new URLSearchParams({period:c.period});let job=null,timer=null,pdfUrl=null,pageUrl=null,pageSequence=0;
   const guard=()=>{session();if(!active.isConnected||!active.open)throw Error('출력 화면이 닫혔습니다.');};
@@ -25,10 +25,10 @@ export function createSignatureOutput({host,request,bytes,previewPage,session}){
   async function paint(value){
    if(!active.isConnected)return;job=value;
    if(value.status==='READY'){
-    status.textContent=report?'대표 보고용 PDF 생성 완료':'서명용 PDF 생성 완료 · 공무 네이버웍스 전달 연결 필요';files.replaceChildren();const view=n('button','PDF 보기'),download=n('button','PDF 파일 받기');view.type=download.type='button';
+    status.textContent=report?'대표 보고용 PDF 생성 완료':signing?'서명용 PDF 생성 완료 · 공무 네이버웍스 전달 연결 필요':'평가서 PDF 생성 완료';files.replaceChildren();const view=n('button','PDF 보기'),download=n('button','PDF 파일 받기');view.type=download.type='button';
     view.onclick=()=>showPages(value).catch(e=>{if(active.isConnected)status.textContent=e.message;});
     download.onclick=async()=>{try{guard();if(!pdfUrl){const raw=await bytes(path+'/'+value.id+'/file'+query);guard();if(await digest(raw)!==value.result.sha256||raw.byteLength!==value.result.bytes)throw Error('생성된 PDF를 다시 확인해 주세요.');pdfUrl=URL.createObjectURL(new Blob([raw],{type:'application/pdf'}));}const a=n('a');a.href=pdfUrl;a.download=value.filename;a.click();}catch(e){if(active.isConnected)status.textContent=e.message;}};
-    files.append(view,download);if(!report)files.append(n('p','공무에게 전달해 소장 서명을 받아 주세요.'));return;
+    files.append(view,download);if(signing)files.append(n('p','공무에게 전달해 소장 서명을 받아 주세요.'));return;
    }
    if(value.status==='FAILED'){requests.delete(key);status.textContent='PDF 생성 실패 · 다시 출력 요청해 주세요.';return;}
    status.textContent=value.status==='RENDERING'?'이 PC에서 PDF를 만들고 있습니다.':'이 PC의 PDF 생성 대기 중입니다.';timer=setTimeout(poll,2500);
