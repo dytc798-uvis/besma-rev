@@ -67,7 +67,7 @@ class DiscoveryQuery(BaseModel):
 
 class WorkerCapabilities(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
-    capabilities: list[Literal['NAS_ORIGINAL_V1','NAS_REVIEW_V1','NAS_EDIT_V1','GENERATED_PDF_V1','UPLOADED_IMAGE_V1','REQUEST_SOURCE_LOOKUP_V1','NAS_SOURCE_CREATE_V1','NAS_WORKBOOK_EDIT_V1','OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2','UPLOADED_IMAGE_SOURCE_V1','REGISTERED_FORM_SOURCE_V1']]=Field(default_factory=list,max_length=12)
+    capabilities: list[Literal['NAS_ORIGINAL_V1','NAS_REVIEW_V1','NAS_EDIT_V1','GENERATED_PDF_V1','UPLOADED_IMAGE_V1','REQUEST_SOURCE_LOOKUP_V1','NAS_SOURCE_CREATE_V1','NAS_WORKBOOK_EDIT_V1','OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2','UPLOADED_IMAGE_SOURCE_V1','REGISTERED_FORM_SOURCE_V1','OPERATIONAL_CONTEXT_V1']]=Field(default_factory=list,max_length=13)
 
 
 class InputImageRead(BaseModel):
@@ -228,7 +228,7 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             if error.status_code==404:return result({'enabled':False})
             raise
         from .input_images import available
-        return result({'enabled':True,'original_max_bytes':MAX_ORIGINAL_BYTES,'analysis_max_bytes':MAX_BYTES,'question_retry':True,'owner_result_followup':bool(identity['owner']and config().source_lookup_enabled and config().owner_result_followup_enabled),'owner_source_choices':bool(identity['owner']and config().source_lookup_enabled),'owner_choices_allowed_sources':['NAS','PC']if config().nas_files_enabled else['PC'],'scope_exempt':identity['owner'],'nas_files':bool(config().nas_files_enabled and nas and nas.available(user)),'source_edit':bool(config().nas_files_enabled and nas and nas.available(user)),'workbook_edit':bool(config().workbook_edit_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_choices':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_lookup':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_generation':bool(config().source_generation_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'image_source_comparison':bool(config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'input_images':available(store_provider()),'registered_forms_enabled':bool(config().registered_forms_enabled and forms.member_valid(identity)),'registered_forms':bool(config().registered_forms_enabled and forms.member_valid(identity)and form_worker_ready()),'naver_delivery':bool(config().naver_delivery_enabled and identity['owner'])})
+        return result({'enabled':True,'original_max_bytes':MAX_ORIGINAL_BYTES,'analysis_max_bytes':MAX_BYTES,'question_retry':True,'operational_context':bool(config().source_lookup_enabled),'owner_result_followup':bool(identity['owner']and config().source_lookup_enabled and config().owner_result_followup_enabled),'owner_source_choices':bool(identity['owner']and config().source_lookup_enabled),'owner_choices_allowed_sources':['NAS','PC']if config().nas_files_enabled else['PC'],'scope_exempt':identity['owner'],'nas_files':bool(config().nas_files_enabled and nas and nas.available(user)),'source_edit':bool(config().nas_files_enabled and nas and nas.available(user)),'workbook_edit':bool(config().workbook_edit_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_choices':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_lookup':bool(config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'source_generation':bool(config().source_generation_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'image_source_comparison':bool(config().image_source_comparison_enabled and config().source_lookup_enabled and config().nas_files_enabled and nas and nas.available(user)),'input_images':available(store_provider()),'registered_forms_enabled':bool(config().registered_forms_enabled and forms.member_valid(identity)),'registered_forms':bool(config().registered_forms_enabled and forms.member_valid(identity)and form_worker_ready()),'naver_delivery':bool(config().naver_delivery_enabled and identity['owner'])})
 
     def form_worker_ready():
         queue=store_provider()
@@ -385,9 +385,10 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
 
     @router.post('/worker/claim')
     def claim(body:WorkerCapabilities=Body(default=WorkerCapabilities()),user=Depends(worker),db=Depends(store)):
-        capabilities=[c for c in body.capabilities if c in {'GENERATED_PDF_V1','UPLOADED_IMAGE_V1','OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2',FORM_CAP}or config().nas_files_enabled]
+        capabilities=[c for c in body.capabilities if c in {'GENERATED_PDF_V1','UPLOADED_IMAGE_V1','OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2','OPERATIONAL_CONTEXT_V1',FORM_CAP}or config().nas_files_enabled]
         if not config().registered_forms_enabled:capabilities=[c for c in capabilities if c!=FORM_CAP]
         if not config().source_generation_enabled:capabilities=[c for c in capabilities if c!='NAS_SOURCE_CREATE_V1']
+        if not config().source_lookup_enabled:capabilities=[c for c in capabilities if c!='OPERATIONAL_CONTEXT_V1']
         if not config().source_lookup_enabled:capabilities=[c for c in capabilities if c not in {'OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2'}]
         if not config().workbook_edit_enabled:capabilities=[c for c in capabilities if c!='NAS_WORKBOOK_EDIT_V1']
         if not config().owner_result_followup_enabled:capabilities=[c for c in capabilities if c!='OWNER_SOURCE_CHOICES_V2']
@@ -433,11 +434,19 @@ def create_router(auth, config_provider, store_provider, eligible_provider, nas=
             live_status=halfyear_answer(item)if not item.get('input_attachments')else None
             grounded=live_status or (answer(grounded_item,nas_answer,file_names,ui_features,lambda:consent_context(requester,item['id']))if not item.get('input_attachments')else None)
             if grounded is not None:item['grounded_reply']=grounded
-            if config().source_lookup_enabled and config().nas_files_enabled and 'REQUEST_SOURCE_LOOKUP_V1'in capabilities and item['kind']=='QUESTION'and not item.get('source')and not item.get('input_attachments')and grounded is None:item['source_lookup_available']=True;item['source_choices_available']=True
+            if grounded is None and 'OPERATIONAL_CONTEXT_V1'in capabilities and config().source_lookup_enabled and not selected_result:
+                from .system_context import context_for
+                allowed=any(a['id']==requester['id']and a['login_id']==requester['login_id']for a in eligible_provider())
+                try:system=context_for(item,authorized=allowed)
+                except (OSError,ValueError,KeyError,sqlite3.Error):system=None
+                if system is not None:item['system_context']=system
+
+            if config().source_lookup_enabled and config().nas_files_enabled and 'REQUEST_SOURCE_LOOKUP_V1'in capabilities and item['kind']=='QUESTION'and not item.get('source')and not item.get('input_attachments')and grounded is None and not item.get('system_context'):item['source_lookup_available']=True;item['source_choices_available']=True
         if item is not None and item['scope_exempt']and {'OWNER_SOURCE_CHOICES_V1','OWNER_SOURCE_CHOICES_V2'}&set(capabilities):
             from .owner_source_choices import state as owner_choice_state
             with db.connection()as connection:proposal,selected=owner_choice_state(connection,item['id'])
-            if selected and live_status is None:item['owner_source_choice_id']=selected;item.pop('grounded_reply',None)
+            if selected and live_status is None:
+                item['owner_source_choice_id']=selected;item.pop('grounded_reply',None);item.pop('system_context',None)
         if item is not None and 'OWNER_SOURCE_CHOICES_V2'in capabilities:
             with db.connection()as connection:
                 # Account/index/UI questions keep their grounded response even when a
