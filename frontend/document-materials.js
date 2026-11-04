@@ -60,7 +60,7 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
  async function load(append=false){
   if(!current()||loading||choosing)return;if(append&&(!page||!integer(page.next_offset)||page.next_offset<1))return;
   if(!append){invalidate();if(tab==='nas'&&!query.trim()&&sort!=='newest'){message('파일명·폴더명을 입력하거나 최근 수정순을 선택해 주세요.');return;}}
-  const epoch=++sequence,sourceTab=tab,queryAtStart=query,orderAtStart=sort,offset=append?page.next_offset:sourceTab==='nas'&&selectedPage?selectedPage.offset:0,request={q:queryAtStart.trim(),sort:orderAtStart,offset,...(append?{snapshot:page.snapshot}:sourceTab==='nas'&&selectedPage?{snapshot:selectedPage.snapshot}:{})};
+  const epoch=++sequence,sourceTab=tab,queryAtStart=query,orderAtStart=sort;let refreshed=false,offset=append?page.next_offset:sourceTab==='nas'&&selectedPage?selectedPage.offset:0,request={q:queryAtStart.trim(),sort:orderAtStart,offset,...(append?{snapshot:page.snapshot}:sourceTab==='nas'&&selectedPage?{snapshot:selectedPage.snapshot}:{})};
   loading=true;controller=new AbortController();const active=controller;list.setAttribute('aria-busy','true');more.disabled=true;message('자료를 찾고 있습니다.');
   try{
    let data;
@@ -68,7 +68,14 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
    else{
     const index=await status.refresh();if(!current()||epoch!==sequence)return;
     if(index.phase==='missing'){message(status.emptyMessage(''),true);return;}
-    data=await api('/work-requests/nas/search',{method:'POST',body:JSON.stringify(request),signal:active.signal});
+    try{data=await api('/work-requests/nas/search',{method:'POST',body:JSON.stringify(request),signal:active.signal});}
+    catch(error){
+     if(error.status!==409||!request.snapshot||active.signal.aborted||!current()||epoch!==sequence)throw error;
+     append=false;offset=0;request={q:queryAtStart.trim(),sort:orderAtStart,offset:0};refreshed=true;
+     selectedPage=null;startOffset=0;restoreSelection=!!selected;items=[];page=null;origins.clear();list.replaceChildren();more.hidden=true;first.hidden=true;remember();
+     message('검색목록이 갱신되어 같은 조건으로 다시 찾고 있습니다.');
+     data=await api('/work-requests/nas/search',{method:'POST',body:JSON.stringify(request),signal:active.signal});
+    }
    }
    if(!current()||epoch!==sequence)return;
    if(!Array.isArray(data.items))throw Error('자료 목록을 확인하지 못했습니다. 다시 찾아 주세요.');
@@ -80,8 +87,9 @@ export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={}
     if(!append)startOffset=offset;
     const merged=new Map((append?items:[]).map(x=>[keyFor('nas',x),x]));for(const item of data.items){const key=keyFor('nas',item);merged.set(key,item);origins.set(key,{offset,snapshot:data.snapshot});}items=[...merged.values()];
     page={...data,unavailable_count:data.unavailable_count+(append?page.unavailable_count:0),excluded_count:data.excluded_count+(append?page.excluded_count:0)};
-    message('검색 일치 '+data.total_count.toLocaleString()+'건 중 '+(startOffset?(startOffset+1).toLocaleString()+'–':'')+data.scanned_count.toLocaleString()+'건 확인 · 선택 가능 '+items.length+'개'+(page.unavailable_count?' · 32MB 초과 '+page.unavailable_count+'개':'')+(page.excluded_count?' · 이용 제한 '+page.excluded_count+'개':''));more.hidden=data.next_offset===null;first.hidden=startOffset===0;
+    message((refreshed?'검색목록이 갱신되어 같은 조건으로 다시 찾았습니다. ':'')+'검색 일치 '+data.total_count.toLocaleString()+'건 중 '+(startOffset?(startOffset+1).toLocaleString()+'–':'')+data.scanned_count.toLocaleString()+'건 확인 · 선택 가능 '+items.length+'개'+(page.unavailable_count?' · 32MB 초과 '+page.unavailable_count+'개':'')+(page.excluded_count?' · 이용 제한 '+page.excluded_count+'개':''));more.hidden=data.next_offset===null;first.hidden=startOffset===0;
    }
+   if(sourceTab==='nas'&&restoreSelection&&selected&&!items.some(item=>keyFor('nas',item)===selected))note.textContent+=page.next_offset!==null?' · 이전 선택자료는 현재 범위에 없습니다. 자료 더 보기로 확인해 주세요.':' · 이전 선택자료를 새 목록에서 확인하지 못했습니다.';
    draw();if(!items.length)list.append(N('p',sourceTab==='forms'?'검색 결과가 없습니다.':page.next_offset!==null?'현재 범위에 선택할 자료가 없습니다. 자료 더 보기로 확인해 주세요.':page.unavailable_count?'자료는 검색됐지만32MB를 넘어 채팅으로 받을 수 없습니다. NAS 원본은 그대로 보관되어 있습니다.':status.emptyMessage('조건에 맞는 자료를 찾지 못했습니다.'),'empty'));
   }catch(e){if(current()&&epoch===sequence){items=[];page=null;more.hidden=true;first.hidden=true;if(e.status===409)resetReturn();list.replaceChildren(action('다시 찾기',()=>load()));message(e.name==='AbortError'?'자료 조회를 중단했습니다. 다시 찾아 주세요.':e.status===429?'검색 요청이 많습니다. 잠시 후 다시 찾아 주세요.':e.status===409?'검색 자료가 갱신됐습니다. 처음부터 다시 찾아 주세요.':e.message,true);}}
   finally{if(controller===active)controller=null;if(current()&&epoch===sequence){loading=false;list.setAttribute('aria-busy','false');more.disabled=false;}}
