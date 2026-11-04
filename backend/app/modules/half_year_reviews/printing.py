@@ -84,9 +84,9 @@ def xlsx(raw,site_manager=""):
             html+=f'<td rowspan="{rows}" colspan="{cols}" style="{style}">'+safe(cell.value if cell.value is not None else'')+'</td>'
         html+='</tr>'
     margins=sheet.page_margins;css=f'@page{{size:A4 portrait;margin:{margins.top*25.4}mm {margins.right*25.4}mm {margins.bottom*25.4}mm {margins.left*25.4}mm}}.sheet td{{padding:{.4*scale}mm;line-height:1.1}}.sheet table{{table-layout:fixed}}'
-    book.close();return html+'</table><p class="signature-line">현장소장: '+safe(site_manager)+'    (서명)</p></article>',css+' .sheet tr{break-inside:avoid}.signature-line{font-size:11pt;text-align:right;margin:8mm 0 0;break-inside:avoid}'
+    book.close();return html+'</table></article>',css+' .sheet tr{break-inside:avoid}'
 
-def hwpx(raw):
+def hwpx(raw,summary=""):
     items=exports.parts(raw);root=E.fromstring(items['Contents/section0.xml']);hp='http://www.hancom.co.kr/hwpml/2011/paragraph';ns={'hp':hp};tables=[]
     for table_index,table in enumerate(root.findall('.//hp:tbl',ns)):
         rows={};columns={}
@@ -109,7 +109,8 @@ def hwpx(raw):
             if table_index>0 and row_index==1:html+='</thead>'
         if table_index>0 and len(rows)>2:html+='</tbody>'
         tables.append(html+'</table>')
-    return '<article class="law">'+''.join(tables)+'</article>','@page{size:A4 portrait;margin:12mm}.law{width:186mm}.law td{font-size:9pt;padding:1mm;line-height:1.2}.law-table{margin-bottom:3mm}.law-table tr{break-inside:avoid}'
+    ending=('<section class="law-summary"><h2>총평</h2><p>'+safe(summary)+'</p></section>')if summary else''
+    return '<article class="law">'+''.join(tables)+ending+'</article>','@page{size:A4 portrait;margin:12mm}.law{width:186mm}.law td{font-size:9pt;padding:1mm;line-height:1.2}.law-table{margin-bottom:3mm}.law-table tr{break-inside:avoid}.law-summary{margin-top:4mm;break-inside:avoid}.law-summary h2{font-size:11pt;margin:0 0 2mm;break-after:avoid}.law-summary p{font-size:10pt;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3}'
 
 def document(form,snapshot,site,period,blind=True):
     from copy import deepcopy
@@ -120,10 +121,10 @@ def document(form,snapshot,site,period,blind=True):
             comments.append((str(index)+'. '+criterion['title'],note))
             answer['note']='코멘트 별지 '+str(len(comments))+'번 참조'
     summary=snapshot['data'].get('summary','')
-    if summary and (form=='law'or len(summary)>240 or len(summary.splitlines())>6):
+    if summary and form!='law'and (len(summary)>240 or len(summary.splitlines())>6):
         comments.append(('총평',summary));snapshot['data']['summary']='총평 별지 참조'
     if form=='report':body,css=pptx(exports.pptx(snapshot,site,snapshot['inspector'],[],period,blind=blind))
-    elif form=='law':body,css=hwpx(exports.hwpx(snapshot,site,snapshot['inspector']))
+    elif form=='law':body,css=hwpx(exports.hwpx(snapshot,site,snapshot['inspector']),summary)
     else:body,css=xlsx(exports.xlsx(form,snapshot,site,snapshot['inspector']),snapshot.get('site_manager',''))
     if form=='report'and not blind:
         from .report_radar import page

@@ -88,7 +88,11 @@ class ReviewStore:
                 if action=='assessment'and isinstance(request.get('base'),dict):
                     current=data['assessments'].get(body['form']+':'+body['subject_id'],{}).get('draft',{}).get('data')or request['base']
                     body={**body,'answers':merge_edits(request['base'],body['answers'],current)}
-                form=body['form'];subject=body['subject_id'];answers,totals=validate_assessment(form,body['answers'],data['files'],data['subjects'],subject,body['complete']);subject_name=''
+                form=body['form'];subject=body['subject_id'];previous=data['assessments'].get(form+':'+subject,{}).get('draft',{});previous_text=previous.get('data',{}).get('summary','')
+                # Empty prose from a stale full-form client must not erase saved text.
+                # Intentional clearing is handled by the dedicated summary action.
+                if action=='assessment'and previous_text and isinstance(body['answers'],dict)and isinstance(body['answers'].get('summary',''),str)and not body['answers'].get('summary','').strip():body={**body,'answers':{**body['answers'],'summary':previous_text}}
+                answers,totals=validate_assessment(form,body['answers'],data['files'],data['subjects'],subject,body['complete']);subject_name=''
                 day=answers['inspection_date'];actual_period=day[:4]+('-H1'if int(day[5:7])<=6 else'-H2')
                 if actual_period!=request['period']:raise ValueError('DATE_PERIOD_MISMATCH')
                 if form in {'manager','supervisor'}:subject_name=next(s['name']for s in data['subjects'][form]if s['id']==subject)
@@ -98,7 +102,10 @@ class ReviewStore:
                         if assessment_key!=form+':'+subject and set(answers['signed_table_photo_ids'])&set(prior.get('completed',{}).get('data',{}).get('signed_table_photo_ids',[])):
                             raise ValueError('SIGNED_PHOTO_ALREADY_USED')
                 assessment=data['assessments'].setdefault(form+':'+subject,{})
-                draft={'criterion_evidence':walkthrough.criterion_evidence(data,form,subject),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};assessment['draft']=draft
+                draft={'criterion_evidence':walkthrough.criterion_evidence(data,form,subject),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};text_times=json.loads(json.dumps(previous.get('text_saved_at',{})))
+                if action=='assessment-summary'or answers['summary']or previous_text!=answers['summary']:text_times['summary']=stamp
+                if action=='assessment-comment':text_times.setdefault('comments',{})[request['data']['criterion_id']]=stamp
+                draft['text_saved_at']=text_times;assessment['draft']=draft
                 if body['complete']:
                     complete={**draft,'id':uuid.uuid4().hex,'revision':revision+1,'evidence':data['evidence'].copy(),'monthly_sources':[dict(r)for r in data.get('monthly_sources',[])if r['active']],'photo_metadata':[{**f,'caption':answers['photo_captions'].get(f['id'],f['caption'])}for f in data['files']if f['id']in answers['photo_ids']]};complete['inspection_run']=selected_run;assessment['completed']=complete;result['completed_id']=complete['id']
                 result['assessment']=assessment

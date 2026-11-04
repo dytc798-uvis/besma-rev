@@ -80,6 +80,12 @@ def hwpx(snapshot,site,inspector):
     for criterion in FORMS['law']['criteria']:
         answer=data['answers'][criterion['id']];row=criterion['row'];table=criterion['table'];value=answer['value'];note=answer['note']
         fill(tc(table,row,4),('해당없음: 'if value=='NA'else'')+note);fill(tc(table,row,5),'✓'if value=='PASS'else'');fill(tc(table,row,6),'✓'if value=='FAIL'else'')
+    if data.get('summary'):
+        seed=root.findall('hp:p',ns)[-1];next_id=max([int(p.get('id','0'))for p in root.iter('{'+uri+'}p')if p.get('id','0').isdigit()]+[0])+1
+        for content in ['총평',*data['summary'].splitlines()]:
+            paragraph=deepcopy(seed);paragraph.set('id',str(next_id));paragraph.set('paraPrIDRef','0');paragraph.set('pageBreak','0');next_id+=1
+            for child in list(paragraph):paragraph.remove(child)
+            run=E.SubElement(paragraph,'{'+uri+'}run',{'charPrIDRef':'0'});E.SubElement(run,'{'+uri+'}t').text=content;root.append(paragraph)
     items['Contents/section0.xml']=E.tostring(root,encoding='utf-8',xml_declaration=True);items['Preview/PrvText.txt']='\n'.join(root.itertext()).encode('utf-8')
     return pack(items,True)
 def pptx(snapshot,site,inspector,photos,period,blind=False):
@@ -110,12 +116,13 @@ def pptx(snapshot,site,inspector,photos,period,blind=False):
         if note:
             target=cell(summary,12,criterion['row'],3);prior=''.join(target.itertext());text(target,prior+'  '+note)
     items['ppt/slides/slide3.xml']=xml(summary)
-    improvement=E.fromstring(items['ppt/slides/slide4.xml']);rows=[];text(shape(improvement,7),'개선요구')
+    improvement=E.fromstring(items['ppt/slides/slide4.xml']);rows=data['improvements'];text(shape(improvement,7),'개선요구'+(' '+str(len(rows))+'건'if rows else''))
     for target in shape(improvement,8).findall('.//a:tr',NS)[1:]:
         for slot in target.findall('a:tc',NS):text(slot,'')
     for i,row in enumerate(rows,1):
+        text(cell(improvement,8,i,0),str(i))
         for col,key in enumerate(['finding','action','owner','due'],1):text(cell(improvement,8,i,col),row[key])
-    items['ppt/slides/slide4.xml']=xml(improvement);confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,1,3),''if blind else f'{score:g} / 100점');text(cell(confirm,7,2,1),'');text(cell(confirm,7,2,3),'');text(cell(confirm,9,0,0),data.get('summary',''));text(cell(confirm,11,0,1),inspector+'    (서명)');text(cell(confirm,11,0,3),snapshot.get('site_manager','')+'    (서명)')
+    items['ppt/slides/slide4.xml']=xml(improvement);confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,1,3),''if blind else f'{score:g} / 100점');text(cell(confirm,7,2,1),rows[0]['finding']if len(rows)==1 else(str(len(rows))+'건 (개선요구사항 참조)'if rows else''));text(cell(confirm,7,2,3),'');text(cell(confirm,9,0,0),data.get('summary',''));text(cell(confirm,11,0,1),inspector+'    (서명)');text(cell(confirm,11,0,3),snapshot.get('site_manager','')+'    (서명)')
     for col in [1,3]:
         target=cell(confirm,11,0,col)
         for paragraph in target.findall('.//a:p',NS):

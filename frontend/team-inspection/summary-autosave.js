@@ -2,12 +2,15 @@ export function createSummaryAutosave({owner,context,canSave,save,notify,delay=1
  const prefix='besma-review-summary-v1:'+encodeURIComponent(owner)+':',states=new Map();let timer=null,working=null,dead=false;
  const state=key=>{if(!states.has(key))states.set(key,{});return states.get(key);};
  const storageKey=key=>prefix+encodeURIComponent(key);
+ const savedKey=key=>prefix+'saved:'+encodeURIComponent(key);
+ function archive(key,text){if(!text?.trim())return;try{localStorage.setItem(savedKey(key),JSON.stringify({key,text,base:text,at:Date.now(),kind:'saved'}));}catch{}}
+ function savedBackup(key){try{const r=JSON.parse(localStorage.getItem(savedKey(key))||'null');return r&&r.key===key&&typeof r.text==='string'&&r.text.trim()&&Number.isFinite(r.at)&&Date.now()-r.at>=0&&Date.now()-r.at<30*86400000?r:null;}catch{return null;}}
  function read(key){try{const r=JSON.parse(localStorage.getItem(storageKey(key))||'null');return r&&r.key===key&&typeof r.text==='string'&&typeof r.base==='string'&&Number.isFinite(r.at)&&Date.now()-r.at>=0&&Date.now()-r.at<30*86400000?r:null;}catch{return null;}}
  function preserve(key,text,base){const s=state(key);try{localStorage.setItem(storageKey(key),JSON.stringify({key,text,base,at:Date.now()}));s.local=true;}catch{s.local=false;}return s;}
  function schedule(){clearTimeout(timer);if(!dead)timer=setTimeout(()=>void flush(),delay);}
- function recover(key,server){const r=read(key);if(!r)return null;if(r.text.trim()===server){try{localStorage.removeItem(storageKey(key));}catch{}return null;}const s=state(key);s.candidate=r;s.local=true;if(r.base===server){s.dirty=true;s.candidate=null;schedule();return r.text;}return null;}
+ function recover(key,server){const r=read(key);if(!r){const backup=!server.trim()&&savedBackup(key);if(backup){const s=state(key);s.candidate=backup;s.local=true;}return null;}if(r.text.trim()===server){archive(key,r.text);try{localStorage.removeItem(storageKey(key));}catch{}return null;}const s=state(key);s.candidate=r;s.local=true;if(r.base===server){s.dirty=true;s.candidate=null;schedule();return r.text;}return null;}
  function input(text){const c=context();if(!c)return;const s=preserve(c.key,text,c.serverSummary);s.dirty=true;s.error='';s.candidate=null;notify();schedule();}
- function confirmed(key,text,at){const s=state(key),c=context();s.at=at;s.error='';const local=c?.key===key?c.summary:read(key)?.text;
+ function confirmed(key,text,at){const s=state(key),c=context();s.at=at;s.error='';archive(key,text);const local=c?.key===key?c.summary:read(key)?.text;
   if(local?.trim()===text){s.dirty=false;s.candidate=null;try{localStorage.removeItem(storageKey(key));}catch{}}
   else if(local!=null){preserve(key,local,text);s.dirty=true;schedule();}
  }
