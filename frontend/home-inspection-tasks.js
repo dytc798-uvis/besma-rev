@@ -24,8 +24,8 @@ export function createHomeInspectionTasks({anchor,api,token,onNavigate,onSummary
    if(!Array.isArray(value.items)||value.items.length>2000)throw Error('점검계획의 조회 범위를 확인해야 합니다.');
    const seen=new Set();for(const row of value.items){if(!inspectionPlanId(row.public_id)||seen.has(row.public_id)||row.owner_user_id!==user.id||!date(row.scheduled_date)||row.due_date!=null&&(!date(row.due_date)||row.due_date<row.scheduled_date)||typeof row.title!=='string'||!['PLANNED','IN_PROGRESS','ON_HOLD','COMPLETED'].includes(row.status))throw Error('점검계획의 담당·현장·기간을 확인해야 합니다.');seen.add(row.public_id);}
    const rows=value.items.filter(r=>!r.archived&&['PLANNED','IN_PROGRESS','ON_HOLD'].includes(r.status)).sort((a,b)=>(a.due_date||a.scheduled_date).localeCompare(b.due_date||b.scheduled_date)||a.public_id.localeCompare(b.public_id));
-   onSummary({state:'VERIFIED',count:rows.length,scope:start+' ~ '+end+' 본인 점검'});
    const overdue=rows.filter(row=>(row.due_date||row.scheduled_date)<today).length;
+   onSummary({state:'VERIFIED',count:rows.length,overdue,scope:start+' ~ '+end+' 본인 점검'});
    host.replaceChildren(n('summary','내 점검 · '+rows.length+'건'+(overdue?' · 예정일 지남 '+overdue+'건':'')),n('small','본인의 미완료 점검과 14일 이내 예정 · 조회 '+start+' ~ '+end));
    const controls=n('div');controls.className='document-task-controls';
    const searchGroup=n('div'),searchLabel=n('label','현장·주소 검색'),search=n('input');search.id='home-inspection-query';searchLabel.htmlFor=search.id;search.type='search';search.maxLength=100;search.placeholder='현장명·주소';search.value=state.query;searchGroup.append(searchLabel,search);

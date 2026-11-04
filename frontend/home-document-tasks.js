@@ -31,7 +31,7 @@ export function createHomeDocumentTasks({anchor,api,token,onNavigate,onSummary=(
    host.append(node('summary','관급 문서 확인 필요'),node('p',model.state==='FORBIDDEN'?'관급 문서 조회 권한을 확인해 주세요.':model.state==='AUTH_REQUIRED'?'로그인 후 확인해 주세요.':'관급 문서 현황을 불러오지 못했습니다.'));
    if(!['FORBIDDEN','AUTH_REQUIRED'].includes(model.state)){host.append(periodControls());const retry=node('button','다시 확인');retry.type='button';retry.onclick=()=>latest&&refresh(latest.home,latest.role);host.append(retry);}remember();return;
   }
-  onSummary({state:'VERIFIED',count:model.tasks.length,unknown:model.unknown.length,scope:month+' 관급공사 취합 원장'});
+  onSummary({state:'VERIFIED',count:model.tasks.length,unknown:model.unknown.length,overdue:model.tasks.filter(x=>x.overdue===true).length,scope:month+' 관급공사 취합 원장'});
   const missing=model.tasks.filter(x=>x.status==='NOT_SUBMITTED').length,review=model.tasks.filter(x=>['SUBMITTED','IN_REVIEW','UNDER_REVIEW','RESUBMITTED'].includes(x.status)).length,rejected=model.tasks.filter(x=>x.status==='REJECTED').length;
   host.append(node('summary','관급 문서 확인 '+model.tasks.length+'건 · 미확인 '+model.unknown.length+'건'),periodControls(),node('p',month+' · 미제출 '+missing+' · 검토 '+review+' · 반려 '+rejected));
   mountDocumentTaskView(host,{tasks:model.tasks,unknown:model.unknown,month,sites:home.sites,state,buildHref:(task,value)=>governmentTaskHref(task,value,'/company.html'),onChange:remember,onNavigate:()=>{remember();onNavigate();},current:()=>current()&&pass===sequence});
