@@ -3,7 +3,7 @@ export function restoreDocumentTaskView(value){return {filter:FILTERS.includes(v
 export function documentTaskKey(row,month,unknown=false){return JSON.stringify([month,row.siteCode,row.documentCode||'',row.period||'',row.instanceId||null,unknown]);}
 export function mountDocumentTaskView(container,{tasks,unknown,month,sites,state,buildHref,onChange,onNavigate,current}){
  const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};
- const rows=[...tasks.map(item=>({item,unknown:false})),...unknown.map(item=>({item,unknown:true}))];
+ let rows=[...tasks.map(item=>({item,unknown:false})),...unknown.map(item=>({item,unknown:true}))];
  const name=row=>row.siteName||sites.find(site=>site.code===row.siteCode)?.name||'현장 확인';
  const criteria=[['all','전체',()=>true],['overdue','기한 초과',r=>!r.unknown&&r.item.overdue===true],['missing','미제출',r=>!r.unknown&&r.item.status==='NOT_SUBMITTED'],['review','검토',r=>!r.unknown&&['SUBMITTED','IN_REVIEW','UNDER_REVIEW','RESUBMITTED'].includes(r.item.status)],['rejected','반려',r=>!r.unknown&&r.item.status==='REJECTED'],['unknown','확인 필요',r=>r.unknown]];
  if(!rows.some(r=>documentTaskKey(r.item,month,r.unknown)===state.selected))state.selected='';
@@ -21,4 +21,11 @@ export function mountDocumentTaskView(container,{tasks,unknown,month,sites,state
   if(!filtered.length)list.append(node('li',rows.length?'현재 검색·상태 조건에 맞는 문서가 없습니다.':'현재 취합월의 확인된 대상에서 미제출·검토·반려 문서가 없습니다.'));
  }
  input.oninput=()=>{if(!current())return;state.query=input.value.slice(0,100);render();onChange();};select.onchange=()=>{if(!current())return;state.filter=FILTERS.includes(select.value)?select.value:'all';render();onChange();};render();
+ return {update(next){
+  ({tasks,unknown,month,sites,state,buildHref,onChange,onNavigate,current}=next);
+  rows=[...tasks.map(item=>({item,unknown:false})),...unknown.map(item=>({item,unknown:true}))];
+  if(!rows.some(r=>documentTaskKey(r.item,month,r.unknown)===state.selected))state.selected='';
+  for(const [index,[,label,predicate]]of criteria.entries())select.options[index].textContent=label+' ('+rows.filter(predicate).length+')';
+  if(input.value!==state.query)input.value=state.query;if(select.value!==state.filter)select.value=state.filter;render();
+ }};
 }
