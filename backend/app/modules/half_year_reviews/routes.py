@@ -85,6 +85,14 @@ def read(public_id:str,period:str,db:DbDep,user:Current):
     try:
         row,key=selected(db,user,public_id,period);return {**store().load(key),'paper_jobs':jobs.listing(store(),key),'site_name':row.title.removeprefix('[점검] ').strip(),'period':period,'plan_revision':row.revision,'site_profile':profile_for(db,row,key)}
     except(ValueError,KeyError,OSError)as e:fail(e)
+@router.get('/plans/{public_id}/visit-info')
+def visit_info(public_id:str,period:str,db:DbDep,user:Current,response:Response):
+    try:
+        row,key=selected(db,user,public_id,period);profile=profile_for(db,row,key)
+        response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+        return {'address':profile.get('visit_address',''),'contacts':profile.get('visit_contacts',[])}
+    except(ValueError,KeyError,OSError)as e:fail(e)
+
 @router.get('/plans/{public_id}/monthly-sources')
 def monthly_candidates(public_id:str,period:str,db:DbDep,user:Current,response:Response):
     try:

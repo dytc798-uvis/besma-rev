@@ -9,10 +9,14 @@ def unique(values):return list(dict.fromkeys(str(v).strip()for v in values if v 
 def joined(values):return ' / '.join(unique(values))
 
 def resolve(db,row,overrides=None):
-    sources=resolve_sources(db,row);directory={s['code']:s for s in directory_snapshot().get('sites',[])};f=facts();managers=[];safety=[];contractors=[];trades=[];amounts=[];complete=bool(sources);seen_contracts=set()
+    sources=resolve_sources(db,row);directory={s['code']:s for s in directory_snapshot().get('sites',[])};f=facts();managers=[];safety=[];contractors=[];trades=[];amounts=[];complete=bool(sources);seen_contracts=set();visit_contacts=[];visit_addresses=[]
     for site in sources:
         item=directory.get(site.site_code,{});erp=item.get('erp',{});current=f['sites'].get(site.site_code,{})
-        contacts=item.get('contacts',[]);role_names=[c.get('name')for c in contacts if '소장'in c.get('role','')]
+        contacts=item.get('contacts',[]);visit_addresses.append(item.get('address')or getattr(site,'address',None))
+        for contact in contacts:
+            allowed={k:str(contact.get(k)or'').strip()for k in ['name','role','phone','rank','label']}
+            if allowed not in visit_contacts:visit_contacts.append(allowed)
+        role_names=[c.get('name')for c in contacts if '소장'in c.get('role','')]
         # Site.site_manager historically contains a clerk on several contracts.
         managers.extend(unique([current.get('manager')]or role_names)if current.get('manager')else unique(role_names or [getattr(site,'manager_name',None)]))
         safety.extend(c.get('name')for c in contacts if '안전'in c.get('role',''))
@@ -37,6 +41,7 @@ def resolve(db,row,overrides=None):
     if p and normalized(p.get('site'))==normalized(name_for(row)):
         progress=f'{p["value"]*100:g}%';as_of=p.get('date')or''
     result={'site_manager':joined(names),'manager_default':names[0]if len(names)==1 else'','safety_staff':joined(safety),'contractor':joined(contractors),'trade':joined(trades),'construction_amount':amount,'progress':progress,'progress_date':as_of}
+    result['visit_contacts']=visit_contacts;result['visit_address']=joined(visit_addresses)
     for k,v in (overrides or{}).items():
         if k in FIELDS:result[k]=v
     if 'site_manager'in(overrides or{}):result['manager_default']=result['site_manager']if len(result['site_manager'])<=40 else''

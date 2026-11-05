@@ -33,8 +33,15 @@ def summarize(data):
     reported=data.get('reported_completion')
     # Administrative completion is recorded separately from answers and uploaded evidence.
     if not isinstance(reported,dict)or reported.get('status')!='COMPLETED'or not reported.get('inspector')or not reported.get('inspection_date')or not reported.get('id'):reported=None
+    form_status={}
+    for kind in CATALOG['order']:
+        subjects=data.get('subjects',{}).get(kind,[])if FORMS[kind].get('needs_subject')else[{'id':'site'}]
+        required_kind=max(1,len(subjects));records=[assessments.get(kind+':'+person['id'],{})for person in subjects]
+        done_kind=sum(bool(a.get('completed'))and a.get('draft',{}).get('data')==a['completed']['data']for a in records)
+        prior_kind=kind=='law'and prior is not None
+        form_status[kind]={'completed':bool(paper or reported or prior_kind or done_kind==required_kind),'required':required_kind,'written':done_kind,'started':bool(prior_kind or any(a.get('draft')for a in records))}
     return {'status':'COMPLETED'if paper or reported else'IN_PROGRESS'if active else'NOT_STARTED',
-        'completed':completed,'required':required,'forms':forms,'paper_completion':paper,'reported_completion':reported,'prior_assessments':{'law':prior}if prior else{},'screen_completed':bool(completed==required and required and not any(f.get('source_type')=='PRIOR_PDF'for f in forms))}
+        'form_status':form_status,'completed':completed,'required':required,'forms':forms,'paper_completion':paper,'reported_completion':reported,'prior_assessments':{'law':prior}if prior else{},'screen_completed':bool(completed==required and required and not any(f.get('source_type')=='PRIOR_PDF'for f in forms))}
 
 def summaries(root,rows):
     targets=[(r,r.scheduled_date.strftime('%Y')+('-H1'if r.scheduled_date.month<=6 else'-H2'))for r in rows]
