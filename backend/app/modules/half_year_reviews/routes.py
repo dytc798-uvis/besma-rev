@@ -24,7 +24,7 @@ class Change(BaseModel):
     revision:int=Field(ge=0)
     base:dict|None=None
     period:str=Field(pattern=r'^20\d{2}-H[12]$')
-    action:str=Field(pattern=r'^(evidence|subject|assessment|assessment-summary|assessment-comment|site-details|manager-default|prior-assessment|caption|parse|apply_parse|monthly-link|monthly-links|monthly-unlink|walk-start|walk-item|walk-report|walk-guidance|criterion-check|evidence-photo)$')
+    action:str=Field(pattern=r'^(evidence|subject|assessment|assessment-summary|assessment-comment|assessment-improvements|site-details|manager-default|prior-assessment|caption|parse|apply_parse|monthly-link|monthly-links|monthly-unlink|walk-start|walk-item|walk-report|walk-guidance|criterion-check|evidence-photo)$')
     data:dict
 def enabled(db,user):
     if os.environ.get('BESMA_HALF_YEAR_REVIEWS_ENABLED','').casefold()not in {'1','true'}:raise HTTPException(404,'반기평가를 준비하고 있습니다.')

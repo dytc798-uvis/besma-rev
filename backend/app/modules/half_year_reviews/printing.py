@@ -120,6 +120,13 @@ def document(form,snapshot,site,period,blind=True):
         if len(note)>(30 if form=='law'else 20)or '\n'in note:
             comments.append((str(index)+'. '+criterion['title'],note))
             answer['note']='코멘트 별지 '+str(len(comments))+'번 참조'
+    if form=='report':
+        for index,item in enumerate(snapshot['data'].get('improvements',[]),1):
+            long=any(len(item.get(k,''))>40 or len(item.get(k,'').splitlines())>2 for k in ['finding','action'])
+            if long:
+                comments.append(('개선조치 요청 '+str(index),'개선 필요사항: '+item.get('finding','')+'\n\n요청 내용: '+item.get('action','')+'\n\n담당자: '+item.get('owner','')+'\n조치기한: '+item.get('due','')))
+                item['finding']='개선조치 요청 '+str(index)
+                item['action']='별지 '+str(len(comments))+'번 참조'
     summary=snapshot['data'].get('summary','')
     if summary and form!='law'and (len(summary)>240 or len(summary.splitlines())>6):
         comments.append(('총평',summary));snapshot['data']['summary']='총평 별지 참조'

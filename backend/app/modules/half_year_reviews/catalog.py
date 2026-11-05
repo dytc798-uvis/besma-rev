@@ -54,7 +54,7 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
     clean_improvements=[]
     for item in improvements:
         if not isinstance(item,dict)or set(item)-{'finding','action','owner','due'}:raise ValueError('IMPROVEMENTS_INVALID')
-        clean_improvements.append({key:cleaned(item.get(key,''),40 if key in {'finding','action'}else 15)for key in ['finding','action','owner','due']})
+        clean_improvements.append({key:cleaned(item.get(key,''),None if key in {'finding','action'}else 15)for key in ['finding','action','owner','due']})
     entry_mode=data.get('entry_mode','SCREEN')
     if entry_mode not in {'SCREEN','PAPER','PAPER_PDF'}:raise ValueError('ENTRY_MODE_INVALID')
     paper_ids=data.get('paper_file_ids',[])

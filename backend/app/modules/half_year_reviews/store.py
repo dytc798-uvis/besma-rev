@@ -70,15 +70,18 @@ class ReviewStore:
                 subject=existing or {'id':uuid.uuid4().hex,'name':target}
                 if not existing:data['subjects'][body['form']].append(subject)
                 result['subject']=subject
-            elif action in {'assessment','assessment-summary','assessment-comment'}:
-                if action in {'assessment-summary','assessment-comment'}:
-                    expected={'form','subject_id','summary','inspection_date'}if action=='assessment-summary'else{'form','subject_id','criterion_id','note','inspection_date'}
+            elif action in {'assessment','assessment-summary','assessment-comment','assessment-improvements'}:
+                if action in {'assessment-summary','assessment-comment','assessment-improvements'}:
+                    expected={'form','subject_id','improvements','inspection_date'}if action=='assessment-improvements'else({'form','subject_id','summary','inspection_date'}if action=='assessment-summary'else{'form','subject_id','criterion_id','note','inspection_date'})
                     if set(body)!=expected:raise ValueError('SUMMARY_INVALID')
                     kind=body['form'];target=body['subject_id']
                     if kind not in FORMS:raise ValueError('FORM_INVALID')
                     saved=data['assessments'].get(kind+':'+target,{}).get('draft',{}).get('data')
                     answers=json.loads(json.dumps(saved))if saved else{'answers':{},'inspection_date':body['inspection_date'],'photo_ids':[],'improvements':[]}
-                    if action=='assessment-summary':answers['summary']=body['summary']
+                    if action=='assessment-improvements':
+                        if kind!='report'or target!='site':raise ValueError('FORM_INVALID')
+                        answers['improvements']=body['improvements']
+                    elif action=='assessment-summary':answers['summary']=body['summary']
                     else:
                         criterion=body['criterion_id']
                         if criterion not in {q['id']for q in FORMS[kind]['criteria']}:raise ValueError('CRITERION_INVALID')
@@ -105,6 +108,7 @@ class ReviewStore:
                 draft={'criterion_evidence':walkthrough.criterion_evidence(data,form,subject),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};text_times=json.loads(json.dumps(previous.get('text_saved_at',{})))
                 if action=='assessment-summary'or answers['summary']or previous_text!=answers['summary']:text_times['summary']=stamp
                 if action=='assessment-comment':text_times.setdefault('comments',{})[request['data']['criterion_id']]=stamp
+                if action=='assessment-improvements':text_times['improvements']=stamp
                 draft['text_saved_at']=text_times;assessment['draft']=draft
                 if body['complete']:
                     complete={**draft,'id':uuid.uuid4().hex,'revision':revision+1,'evidence':data['evidence'].copy(),'monthly_sources':[dict(r)for r in data.get('monthly_sources',[])if r['active']],'photo_metadata':[{**f,'caption':answers['photo_captions'].get(f['id'],f['caption'])}for f in data['files']if f['id']in answers['photo_ids']]};complete['inspection_run']=selected_run;assessment['completed']=complete;result['completed_id']=complete['id']

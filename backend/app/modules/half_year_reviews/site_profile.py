@@ -63,6 +63,7 @@ def enrich(snapshot,profile,assessment=None):
         # Later saved prose is printable only with the same evaluated grades.
         if set(old)==set(new)and all(old[k].get('value')==new[k].get('value')for k in old):
             value['data']['summary']=draft['data'].get('summary','')
+            value['data']['improvements']=deepcopy(draft['data'].get('improvements',[]))
             for k in old:old[k]['note']=new[k].get('note','')
     if value.get('form')=='manager'and not value.get('subject_name'):value['subject_name']=profile.get('manager_default','')
     return value
