@@ -47,3 +47,21 @@ def write(root, key, actor, position, expected, device, sequence):
         c.execute('INSERT OR REPLACE INTO devices VALUES(?,?,?,?)', (key, actor, device, sequence))
         c.commit()
         return {'version': value['version']+1, 'position': position, 'accepted': True}
+
+
+PRESENCE_TTL = 45
+
+def presence(root, key, actor, device, device_type, mode):
+    """Heartbeat contains no assessment text and only returns this owner's peers."""
+    import re
+    if not re.fullmatch(r'[0-9a-f-]{36}',device)or device_type not in {'PC','PHONE'}or mode not in {'AUTO','SOLO','PAIRED'}:
+        raise ValueError('NAVIGATION_INVALID')
+    root=Path(root);root.mkdir(mode=0o700,parents=True,exist_ok=True);path=root/'navigation.sqlite3';now=time.time()
+    with closing(sqlite3.connect(path,timeout=5))as c:
+        path.chmod(0o600);c.row_factory=sqlite3.Row
+        c.execute('CREATE TABLE IF NOT EXISTS presence(context TEXT,actor INTEGER,device TEXT,device_type TEXT,mode TEXT,seen REAL,PRIMARY KEY(context,actor,device))')
+        c.execute('BEGIN IMMEDIATE')
+        c.execute('INSERT INTO presence VALUES(?,?,?,?,?,?)ON CONFLICT(context,actor,device)DO UPDATE SET device_type=excluded.device_type,mode=excluded.mode,seen=excluded.seen',(key,actor,device,device_type,mode,now))
+        rows=c.execute("SELECT device,device_type FROM presence WHERE context=?AND actor=?AND device!=?AND device_type!=?AND mode!='SOLO'AND seen>=?",(key,actor,device,device_type,now-PRESENCE_TTL)).fetchall()
+        c.execute('DELETE FROM presence WHERE seen<?',(now-300,));c.commit()
+        return {'peers':[dict(r)for r in rows],'expires_after':PRESENCE_TTL}

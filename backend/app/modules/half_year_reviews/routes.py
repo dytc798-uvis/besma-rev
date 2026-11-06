@@ -278,6 +278,19 @@ class NavigationRequest(BaseModel):
     device:str=Field(pattern=r'^[0-9a-f-]{36}$')
     sequence:int=Field(ge=1,le=9007199254740991)
 
+class NavigationPresenceRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    device:str=Field(pattern=r'^[0-9a-f-]{36}$')
+    device_type:str=Field(pattern=r'^(PC|PHONE)$')
+    mode:str=Field(pattern=r'^(AUTO|SOLO|PAIRED)$')
+
+@router.post('/plans/{public_id}/navigation/presence')
+def navigation_presence(public_id:str,period:str,body:NavigationPresenceRequest,db:DbDep,user:Current,response:Response):
+    from . import navigation
+    row,key=selected(db,user,public_id,period)
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    return navigation.presence(store().root,key,user.id,body.device,body.device_type,body.mode)
+
 @router.get('/plans/{public_id}/navigation')
 def navigation_read(public_id:str,period:str,db:DbDep,user:Current,response:Response):
     from . import navigation

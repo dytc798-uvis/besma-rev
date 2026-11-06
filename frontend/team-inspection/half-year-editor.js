@@ -1,7 +1,7 @@
 import {signingBundleButton} from '/signature-bundle.js?v=2026.11.06.11';
 import {createImprovementRequest} from '/improvement-request.js?v=2026.11.05.16';
 import {createSummaryAutosave} from '/summary-autosave.js?v=2026.11.04.1';
-import {createLinkedNavigation} from '/linked-navigation.js?v=2026.11.03.21';
+import {createLinkedNavigation} from '/linked-navigation.js?v=2026.11.06.17';
 import {createSignatureOutput} from '/signature-output.js?v=2026.11.03.14';
 import {createCriterionConfirmation} from '/criterion-confirmation.js?v=2026.11.03.14';
 import {createFieldOutbox} from '/local-photo-queue.js?v=2026.11.03.10';
@@ -40,7 +40,7 @@ export async function mountHalfYearReview({origin,token,session,user,workspace,p
  const scope=()=>'/plans/'+encodeURIComponent(row.public_id),query=()=>'?'+new URLSearchParams({period});
  criterionConfirmation=createCriterionConfirmation({host:heading,body,get:()=>({state,catalog,form,subject,busy,answers:currentDraft().data.answers}),change:mutate,onNavigate:publishCriterion,save:async()=>!currentDraft().changed||!!await saveAssessment(false),notice:text=>notice.textContent=text,jump:async target=>{if(phonePilot?.pending()||busy)return;await fieldOutbox.settled();if(currentDraft().changed&&!await saveAssessment(false))return;rememberSubject();form=target.form;subject=target.subject;criterionViews.set(draftKey(),'all');renderForm();updateStatus();phonePilot?.goTo(target.criterion);requestAnimationFrame(()=>body.querySelector('[data-criterion="'+target.criterion+'"]')?.scrollIntoView({block:'start'}));publishCriterion(target.criterion);}});
 
- const linkedNavigation=createLinkedNavigation({enabled:features.linked_navigation_version===1,host:heading,request,
+ const linkedNavigation=createLinkedNavigation({enabled:features.linked_navigation_version===1,host:heading,request,getPosition:()=>{const criterion=body.querySelector('.hyr-criterion:not([hidden])')?.dataset.criterion;return criterion&&state?{form,subject,criterion}:null;},
   context:()=>alive&&!panel.hidden&&state&&row?{key:row.public_id+'|'+period,path:scope()+'/navigation'+query()}:null,
   blocked:()=>busy||assessmentSaving||summaryAutosave.pending()||[...commentAutosaves.values()].some(c=>c.pending())||!!materialsRequest||phonePilot?.pending()||walkthrough?.photoPending()||panel.classList.contains('hyr-utilities-open')||!!panel.querySelector('dialog[open]')||panel.contains(document.activeElement)&&document.activeElement.matches('input,textarea,[contenteditable=true]'),
   apply:async target=>{
