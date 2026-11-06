@@ -37,6 +37,9 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
         if not isinstance(entry,dict)or set(entry)-{'value','note'}:raise ValueError('ANSWER_INVALID')
         value=entry.get('value');note=cleaned(entry.get('note',''),None)
         if value is None:missing+=1
+        elif form=='report'and type(value)is int:
+            if not 0<=value<=criterion['max_score']:raise ValueError('SCORE_INVALID')
+            score+=value
         elif criterion.get('scoring',schema['scoring'])=='THREE_LEVEL':
             if value not in {'EXCELLENT','NORMAL','POOR'}:raise ValueError('SCORE_INVALID')
             score+=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[value]
@@ -85,7 +88,7 @@ def report_schema(snapshot=None):
 
 def criterion_points(criterion,value):
     if value is None:raise ValueError('COMPLETE_FIRST')
-    if criterion.get('scoring')=='POINTS'and not isinstance(value,str):
+    if not isinstance(value,str):
         if type(value)is not int or not 0<=value<=criterion['max_score']:raise ValueError('SCORE_INVALID')
         return value
     return criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[value]

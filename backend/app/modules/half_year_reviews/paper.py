@@ -26,8 +26,10 @@ def validate(value,form,pages):
         if not isinstance(row,dict)or set(row)!={'id','value','note','confidence','page','observed'}or row['id']not in criteria or row['id']in seen:raise ValueError('PARSE_ANSWERS_INVALID')
         seen.add(row['id']);v=row['value'];scoring=criteria[row['id']].get('scoring',FORMS[form]['scoring'])
         if v is not None:
-            if scoring=='POINTS'and(type(v)is not int or not 0<=v<=criteria[row['id']]['max_score']):raise ValueError('PARSE_SCORE_INVALID')
-            if scoring=='THREE_LEVEL'and v not in {'EXCELLENT','NORMAL','POOR'}:raise ValueError('PARSE_SCORE_INVALID')
+            manual=form=='report'and type(v)is int
+            if manual and not 0<=v<=criteria[row['id']]['max_score']:raise ValueError('PARSE_SCORE_INVALID')
+            if scoring=='POINTS'and not manual and(type(v)is not int or not 0<=v<=criteria[row['id']]['max_score']):raise ValueError('PARSE_SCORE_INVALID')
+            if scoring=='THREE_LEVEL'and not manual and v not in {'EXCELLENT','NORMAL','POOR'}:raise ValueError('PARSE_SCORE_INVALID')
             if scoring=='COMPLIANCE'and v not in {'PASS','FAIL','NA'}:raise ValueError('PARSE_VERDICT_INVALID')
         if type(row['confidence'])not in {float,int}or not 0<=row['confidence']<=1 or type(row['page'])is not int or row['page']not in pages:raise ValueError('PARSE_REFERENCE_INVALID')
         note=cleaned(row['note'],30 if form=='law'else 20);observed=cleaned(row['observed'],160)
