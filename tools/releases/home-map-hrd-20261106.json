@@ -2,7 +2,7 @@
   "base_commit": "0255ab84c8aac2cd5e291a6c5ff857e60cd37611",
   "source_deployment": "dpl_CpFhZDN5kzD4F8ReZ55UHCczFb4Y",
   "source_hashes": {
-    "frontend/company-home.js": "6926dcf6b772fd5cafca21f1e80917797232bc127cfc9ae9d1ef8fed574179e4",
+    "frontend/company-home.js": "5c35f994420ff599c6aef7d72b6918a58b38862c5cbfcb400d058697b206852c",
     "frontend/map-search.css": "34564eb31b91ae45f0af48313411c70d5169050849814376c8f730b778c598a8",
     "frontend/hrd-entry.js": "94b2170dd5391cdd06c314971bc22183a869fe7e7fb6eb58c4f1f6410b7a5278",
     "frontend/hrd-entry.css": "4bd3a1cedcc6d07c41214dc4d4dfa8a2324006af76c268b9de2f97abc5795031",
@@ -186,13 +186,13 @@
     "static/assets/company-home-b111bba73ee0.js": "b111bba73ee07e8b226cb61415e5ec76bfa28c64a02bd832a782288058a8366c",
     "static/assets/company-home-b49dee856caa.js": "b49dee856caae7ad9d08dcc4af3bb9d8b7b502547a8d219ced4774b12df5e562",
     "static/assets/company-home-b5a9ac3546f6.js": "b5a9ac3546f6a53aafdea4ed6a7a0cb9a27119baca06987b7402863ce11dcae8",
+    "static/assets/company-home-bc2e69fb6f18.js": "bc2e69fb6f18eeafdc5555d0cf76b677c8146673a1d10a85e13ccc885f20198b",
     "static/assets/company-home-bc98391e1156.js": "bc98391e1156a603b7c82295c993479881d113859c5359a35f535285634cfbcd",
     "static/assets/company-home-be88c3059981.js": "be88c305998181414e335581fd7ac85d1fcee9e184469ab9fc7084fbf780b96d",
     "static/assets/company-home-c51dad809dc6.js": "c51dad809dc6cd2b6acbe8e8e28b6bf09e49ba835479f6ba85cd6e392922f225",
     "static/assets/company-home-c7a597744125.js": "c7a5977441254467d7d691b0a54e35bbd3513b46ada7dc1bd415abdc38ee55d3",
     "static/assets/company-home-d2298d6c7654.js": "d2298d6c76541730b424813ea77fc2f864d5a85aeb15e0dabc95cefdb72734d2",
     "static/assets/company-home-d6d58b01856f.js": "d6d58b01856f2c184b819de460106a15f541708e4efb4c8112152d60682ab648",
-    "static/assets/company-home-daf37dadbf8b.js": "daf37dadbf8b81d252a15f4b7676a0f782dc61cde89ca447b08f8c818211a8dd",
     "static/assets/company-home-deafbf7d0e7e.js": "deafbf7d0e7eb12f1a4cc389a9c4edaa22dfbc8ecb149ff5cb6720d5ce195b2d",
     "static/assets/company-home-deb7bcbfc0ad.js": "deb7bcbfc0ad6cf374f82257f4cfdc43226169d0f3496256adda0e0deb55829a",
     "static/assets/company-home-f04d4b9dd85a.js": "f04d4b9dd85a4f8b4b0d06534d8e379c450b67dcf3d66affadae4bf2b69b6828",
@@ -642,7 +642,7 @@
     "static/BESMA_USER_GUIDE.md": "71e8719f6f2c17555f8f0f7e071fe6eec164506023c7d2f929c1c619929f9b66",
     "static/branding/full-logo.png": "4f582da0a45b6bb4ac573508722b7e5a40f99bb188cd1a225154e722dab0b7be",
     "static/branding/only-logo.png": "d9de95b7cccaf618cb6d0a03ff4d66add8450d6c313b481599ed9d8ea6aa90f6",
-    "static/company.html": "7def40b61b698555f86b2c042669fc13ab0b8c8e8a4cfebb0d1a50432aedc5aa",
+    "static/company.html": "59cd4f50815c3a160d954757edd82463aab90c2375ab02ea5977f58b7e1e377e",
     "static/criterion-confirmation.js": "390016ce8adf8f67540f3fcc87f9c7d46c77c6742e14e8ff1f0727fc17ca282c",
     "static/document-sign.html": "9e613c06e84ac74efae671ebb1d398a692651dfa05840298691320f4d8f39932",
     "static/evaluation-closeout.js": "e9264f8420aca4b39a118fe1387f41ffdb534859ad81a9c0bda376b3be7c2f26",
@@ -804,11 +804,12 @@
     "static/workspace.html"
   ],
   "new_assets": [
-    "static/assets/company-home-daf37dadbf8b.js",
+    "static/assets/company-home-bc2e69fb6f18.js",
     "static/assets/hrd-entry-4bd3a1cedcc6.css",
     "static/assets/hrd-entry-54479f7f83f5.js",
     "static/assets/map-search-34564eb31b91.css",
     "static/hrd.html"
   ],
-  "no_backend_or_DB_change": true
+  "no_backend_or_DB_change": true,
+  "left_task_shortcut_card_removed": true
 }
