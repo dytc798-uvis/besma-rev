@@ -14,15 +14,15 @@ def connect(store):
 def visible(row):
     p=json.loads(row['payload']);purpose=p.get('purpose','SIGNATURE');return {'id':row['id'],'status':row['status'],'form':p['form'],'subject_id':p['subject_id'],'snapshot_id':p['snapshot_id'],'purpose':purpose,'filename':p['filename'],'at':row['at'],'updated_at':row['updated_at'],'error':row['error'],'result':json.loads(row['result'])if row['result']else None,'delivery_status':'NOT_REQUESTED','message':'공무 전달용: 다운로드하여 웍스에 첨부해 주세요.'if purpose!='REPORT'and p['form']in {'report','law'}else'평가서 다운로드'}
 
-def queue(store,key,user,row,period,body,profile=None):
+def queue(store,key,user,row,period,body,profile=None,*,prepared_snapshot=None):
     from .catalog import FORMS
     from .printing import document
     purpose=body.get('purpose','SIGNATURE')
     if set(body)not in [{'form','subject_id','snapshot_id','request_key'},{'form','subject_id','snapshot_id','request_key','purpose'}]or purpose not in {'SIGNATURE','REPORT'}or(purpose=='REPORT'and body.get('form')!='report')or body['form']not in FORMS or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',body['request_key']):raise ValueError('SIGNATURE_REQUEST_INVALID')
-    assessment=store.load(key)['data']['assessments'].get(body['form']+':'+body['subject_id'],{});snapshot=assessment.get('completed')
+    assessment=store.load(key)['data']['assessments'].get(body['form']+':'+body['subject_id'],{});snapshot=prepared_snapshot if prepared_snapshot is not None else assessment.get('completed')
     if not snapshot or snapshot['id']!=body['snapshot_id']:raise ValueError('COMPLETE_FIRST')
     from .site_profile import enrich
-    snapshot=enrich(snapshot,profile or{},assessment)
+    snapshot=enrich(snapshot,profile or{},None if prepared_snapshot is not None else assessment)
     site=row.title.removeprefix('[점검] ').strip();filename=re.sub(r'[\\/:*?"<>|\x00-\x1f]','_',site+'_'+FORMS[body['form']]['title']+('_대표보고용.pdf'if purpose=='REPORT'else'_소장서명용.pdf'if body['form']in {'report','law'}else'_평가서.pdf'))
     html=document(body['form'],snapshot,site,period,blind=purpose!='REPORT');source=hashlib.sha256(html.encode()).hexdigest();payload={**body,'html':html,'source_sha256':source,'public_id':row.public_id,'period':period,'context_id':key,'site':site,'filename':filename,'blind_report_scores':False,'purpose':purpose};now=stamp()
     with closing(connect(store))as c,c:
