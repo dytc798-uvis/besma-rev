@@ -1,0 +1,3 @@
+
+# Verified release outputs must retain byte-exact content on every platform.
+tools/releases/public-ux-20261106-output/** -text
