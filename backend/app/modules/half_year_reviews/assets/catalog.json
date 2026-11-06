@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "order": [
     "report",
     "law",
@@ -170,6 +170,10 @@
     {
       "id": "site_photos",
       "label": "현장 점검사진"
+    },
+    {
+      "id": "risk_ongoing",
+      "label": "상시 위험성평가표 (월 1회 이상)"
     }
   ],
   "forms": {
@@ -192,11 +196,11 @@
         {
           "id": "p02",
           "group": "위험성평가",
-          "title": "정기 위험성평가",
-          "description": "최초평가 다음 연도부터 매년 1회",
+          "title": "상시 위험성평가",
+          "description": "월 1회 이상",
           "max_score": 5,
           "evidence": [
-            "risk_regular"
+            "risk_ongoing"
           ],
           "row": 2
         },

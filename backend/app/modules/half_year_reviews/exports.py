@@ -3,7 +3,7 @@ from xml.etree import ElementTree as E
 from copy import deepcopy
 import zipfile,io,hashlib,re,posixpath
 from xml.sax.saxutils import escape
-from .catalog import ASSETS,CATALOG,FORMS
+from .catalog import ASSETS,CATALOG,FORMS,report_schema
 from app.modules.inspection_reports.pptx_report import make_report,NS,text,cell,shape,xml
 def template(name):
     data=(ASSETS/name).read_bytes()
@@ -102,7 +102,9 @@ def pptx(snapshot,site,inspector,photos,period,blind=False):
     items['ppt/slides/slide2.xml']=xml(overview)
     summary=E.fromstring(items['ppt/slides/slide3.xml']);score=snapshot['result']['score']
     text(shape(summary,8),''if blind else f'{score:g}');text(cell(summary,12,19,5),''if blind else f'{score:g}')
-    for criterion in FORMS['report']['criteria']:
+    for criterion in report_schema(snapshot)['criteria']:
+        if snapshot.get('criteria_version',1)>=2:
+            text(cell(summary,12,criterion['row'],2),criterion['title']);text(cell(summary,12,criterion['row'],3),criterion['description']);text(cell(summary,12,criterion['row'],4),str(criterion['max_score']))
         level=data['answers'][criterion['id']]['value'];points=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[level];text(cell(summary,12,criterion['row'],5),('미흡'if points<=1 else'')if blind else f'{points:g}')
         if blind and points<=1:
             for target in shape(summary,12).findall('.//a:tr',NS)[criterion['row']].findall('a:tc',NS):

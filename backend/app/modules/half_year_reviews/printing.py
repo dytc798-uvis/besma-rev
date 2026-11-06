@@ -4,7 +4,7 @@ from xml.etree import ElementTree as E
 from io import BytesIO
 import base64,posixpath
 from . import exports
-from .catalog import FORMS
+from .catalog import FORMS,report_schema
 
 A='http://schemas.openxmlformats.org/drawingml/2006/main'
 P='http://schemas.openxmlformats.org/presentationml/2006/main'
@@ -115,7 +115,7 @@ def hwpx(raw,summary=""):
 def document(form,snapshot,site,period,blind=True):
     from copy import deepcopy
     snapshot=deepcopy(snapshot);comments=[]
-    for index,criterion in enumerate(FORMS[form]['criteria'],1):
+    for index,criterion in enumerate((report_schema(snapshot)if form=='report'else FORMS[form])['criteria'],1):
         answer=snapshot['data']['answers'][criterion['id']];note=answer.get('note','')
         if len(note)>(30 if form=='law'else 20)or '\n'in note:
             comments.append((str(index)+'. '+criterion['title'],note))

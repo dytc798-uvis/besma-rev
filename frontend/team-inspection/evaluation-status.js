@@ -7,7 +7,7 @@ export function evaluationStatus(items,catalog){
   const g=groups.get(item.period);
   if(!g.plans.has(item.public_id)){g.plans.add(item.public_id);if(Object.hasOwn(g.states,item.status))g.states[item.status]++;}
   for(const form of item.forms||[]){
-   if(form.source_type==='PRIOR_PDF'||!form.snapshot_id||!catalog.forms[form.form])continue;
+   if(form.draft_changed||form.source_type==='PRIOR_PDF'||!form.snapshot_id||!catalog.forms[form.form])continue;
    const key=String(form.form)+':'+form.snapshot_id;if(g.seen.has(key))continue;g.seen.add(key);
    if(!g.forms.has(form.form))g.forms.set(form.form,{form:form.form,count:0,scores:[],fail:0,pass:0,na:0});
    const r=g.forms.get(form.form);r.count++;

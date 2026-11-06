@@ -67,3 +67,10 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
     if type(signed_flag)is not bool or type(pages_flag)is not bool or not isinstance(signed,list)or len(signed)>10 or any(not isinstance(p,str)for p in signed)or len(set(signed))!=len(signed)or not set(signed)<=signed_known:raise ValueError('SIGNED_PHOTO_INVALID')
     if complete and missing:raise ValueError('UNREVIEWED_ITEMS_REMAIN')
     return {'answers':result,'summary':summary,'inspection_date':day,'photo_ids':photos,'photo_captions':captions,'improvements':clean_improvements,'entry_mode':entry_mode,'paper_file_ids':paper_ids,'walkthrough_run_id':run_id,'signed_table_photo_ids':signed,'required_signatures_confirmed':signed_flag,'signed_pages_complete':pages_flag}, {'missing':missing,'score':score if not missing and schema['scoring']!='COMPLIANCE'else None,'graded':len(schema['criteria'])-missing}
+
+
+def report_schema(snapshot=None):
+    """Keep historical completed forms tied to their original criterion text."""
+    if snapshot is not None and snapshot.get("criteria_version",1)<2:
+        return json.loads((ASSETS/"report-criteria-v1.json").read_text("utf8"))
+    return FORMS["report"]

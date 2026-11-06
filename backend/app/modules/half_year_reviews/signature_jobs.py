@@ -12,7 +12,7 @@ def connect(store):
     c.execute('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,context_id TEXT NOT NULL,owner_id INTEGER NOT NULL,request_key TEXT NOT NULL,source_hash TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,result TEXT,lease_hash TEXT,lease_until REAL NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT "",at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(context_id,owner_id,request_key))');c.commit();return c
 
 def visible(row):
-    p=json.loads(row['payload']);purpose=p.get('purpose','SIGNATURE');return {'id':row['id'],'status':row['status'],'form':p['form'],'subject_id':p['subject_id'],'snapshot_id':p['snapshot_id'],'purpose':purpose,'filename':p['filename'],'at':row['at'],'updated_at':row['updated_at'],'error':row['error'],'result':json.loads(row['result'])if row['result']else None,'delivery_status':'NOT_REQUESTED'if purpose=='REPORT'else'CONNECTION_REQUIRED','message':'대표 보고용'if purpose=='REPORT'else'공무 네이버웍스 전달 연결 필요'}
+    p=json.loads(row['payload']);purpose=p.get('purpose','SIGNATURE');return {'id':row['id'],'status':row['status'],'form':p['form'],'subject_id':p['subject_id'],'snapshot_id':p['snapshot_id'],'purpose':purpose,'filename':p['filename'],'at':row['at'],'updated_at':row['updated_at'],'error':row['error'],'result':json.loads(row['result'])if row['result']else None,'delivery_status':'NOT_REQUESTED','message':'공무 전달용: 다운로드하여 웍스에 첨부해 주세요.'if purpose!='REPORT'and p['form']in {'report','law'}else'평가서 다운로드'}
 
 def queue(store,key,user,row,period,body,profile=None):
     from .catalog import FORMS

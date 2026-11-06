@@ -37,7 +37,7 @@ class ReviewStore:
                 return json.loads(replay['result'])
             row=c.execute('SELECT * FROM contexts WHERE id=?',(key,)).fetchone();revision=row['revision']if row else 0;data=json.loads(row['data'])if row else blank()
             if request['revision']>revision:raise Conflict('REVISION_INVALID')
-            action=request['action'];body=request['data'];result={};op_meta={}
+            action=request['action'];body=dict(request['data'])if isinstance(request['data'],dict)else request['data'];result={};op_meta={}
             if not isinstance(body,dict):raise ValueError('REQUEST_INVALID')
             if action=='site-details':
                 from .site_profile import validate_details
@@ -71,6 +71,7 @@ class ReviewStore:
                 if not existing:data['subjects'][body['form']].append(subject)
                 result['subject']=subject
             elif action in {'assessment','assessment-summary','assessment-comment','assessment-improvements'}:
+                if action=='assessment'and body.get('form')=='report'and body.pop('criteria_version',None)!=CATALOG['version']:raise ValueError('CRITERIA_UPDATED')
                 if action in {'assessment-summary','assessment-comment','assessment-improvements'}:
                     expected={'form','subject_id','improvements','inspection_date'}if action=='assessment-improvements'else({'form','subject_id','summary','inspection_date'}if action=='assessment-summary'else{'form','subject_id','criterion_id','note','inspection_date'})
                     if set(body)!=expected:raise ValueError('SUMMARY_INVALID')
@@ -105,7 +106,7 @@ class ReviewStore:
                         if assessment_key!=form+':'+subject and set(answers['signed_table_photo_ids'])&set(prior.get('completed',{}).get('data',{}).get('signed_table_photo_ids',[])):
                             raise ValueError('SIGNED_PHOTO_ALREADY_USED')
                 assessment=data['assessments'].setdefault(form+':'+subject,{})
-                draft={'criterion_evidence':walkthrough.criterion_evidence(data,form,subject),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};text_times=json.loads(json.dumps(previous.get('text_saved_at',{})))
+                draft={'criteria_version':CATALOG['version'],'criterion_evidence':walkthrough.criterion_evidence(data,form,subject),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};text_times=json.loads(json.dumps(previous.get('text_saved_at',{})))
                 if action=='assessment-summary'or answers['summary']or previous_text!=answers['summary']:text_times['summary']=stamp
                 if action=='assessment-comment':text_times.setdefault('comments',{})[request['data']['criterion_id']]=stamp
                 if action=='assessment-improvements':text_times['improvements']=stamp

@@ -14,7 +14,7 @@ def summarize(data):
         for subject in subjects:
             saved=assessments.get(form+':'+subject['id'],{});snapshot=saved.get('completed')
             if snapshot:
-                completed+=1
+                completed+=int(saved.get('draft',{}).get('data')==snapshot['data'])
                 answers=snapshot['data'].get('answers',{})
                 forms.append({'form':form,'subject_id':subject['id'],'subject_name':snapshot.get('subject_name',''),
                     'snapshot_id':snapshot['id'],'at':snapshot['at'],'inspection_date':snapshot['data']['inspection_date'],
