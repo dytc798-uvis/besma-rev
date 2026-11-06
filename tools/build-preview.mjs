@@ -5,13 +5,14 @@ import {createHash} from 'node:crypto';
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const manifest=JSON.parse(await fs.readFile(path.join(repo,'tools/releases/preview-inputs-20261106.json'),'utf8'));
 const hash=b=>createHash('sha256').update(b).digest('hex');
+async function sourceBytes(n){const b=await fs.readFile(path.join(repo,n));return /\.(?:js|mjs|cjs|css|html|json|svg|md|txt)$/.test(n)?Buffer.from(b.toString('utf8').replaceAll('\r\n','\n')):b;}
 const safe=s=>typeof s==='string'&&!s.includes('\\')&&!s.startsWith('/')&&!s.split('/').some(x=>!x||x==='.'||x==='..')&&!s.includes(':');
 async function walk(root,prefix=''){const a=[];for(const x of await fs.readdir(root,{withFileTypes:true})){if(x.isSymbolicLink())throw Error('SYMLINK_INPUT');const n=prefix+x.name;if(x.isDirectory())a.push(...await walk(path.join(root,x.name),n+'/'));else a.push(n);}return a;}
 if(process.env.VERCEL_ENV&&process.env.VERCEL_ENV!=='preview')throw Error('PREVIEW_ONLY_BUILD');
 const actual=(await walk(path.join(repo,'frontend'))).filter(x=>x!=='vercel.json'&&!x.startsWith('.vercel/')&&!x.startsWith('.preview-build-')).map(x=>'frontend/'+x).sort();
 const expected=Object.keys(manifest.source_inputs).sort();
 if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error('SOURCE_FILE_SET_CHANGED: refresh verified preview inputs');
-for(const n of expected){if(!safe(n)||hash(await fs.readFile(path.join(repo,n)))!==manifest.source_inputs[n])throw Error('SOURCE_INPUT_CHANGED: '+n);}
+for(const n of expected){if(!safe(n)||hash(await sourceBytes(n))!==manifest.source_inputs[n])throw Error('SOURCE_INPUT_CHANGED: '+n);}
 const names=manifest.files.map(x=>x.path);
 if(names.some(n=>!safe(n))||new Set(names.map(n=>n.toLowerCase())).size!==names.length)throw Error('INVALID_OUTPUT_PATHS');
 if(manifest.baseline_origin!=='https://www.besma.co.kr')throw Error('INVALID_BASELINE_ORIGIN');
