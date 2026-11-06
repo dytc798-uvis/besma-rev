@@ -8,7 +8,7 @@ import {createFieldOutbox} from '/local-photo-queue.js?v=2026.11.03.10';
 import {createEvaluationCloseout} from '/evaluation-closeout.js?v=2026.11.03.10';
 import {mountPaperCompletion,openPaperCompletion} from '/paper-completion.js?v=2026.11.03.5';
 import {createMobileReviewPilot} from '/mobile-review-pilot.js?v=2026.11.03.4';
-import {openCompletedPrint} from '/inspection-review-dashboard.js?v=2026.11.03.3';
+import {openCompletedPrint} from '/inspection-review-dashboard.js?v=2026.11.06.15';
 import {createPaperSourcePreview} from '/assets/paper-source-preview.js';
 import {createEvaluationChat} from '/assets/evaluation-chat.js';
 import {createInspectionWalkthrough} from '/inspection-walkthrough.js?v=2026.11.03.2';
