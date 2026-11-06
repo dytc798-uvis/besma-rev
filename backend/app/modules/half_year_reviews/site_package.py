@@ -35,10 +35,10 @@ def build(store,key,site,period,profile):
                 add('결과표',name,raw)
     else:
         for meta in data['files']:
-            if meta['evidence_id']=='paper_assessment':add('결과표',meta['filename'],store.file(key,meta['id'])[0])
+            if meta['evidence_id']in {'paper_assessment','paper_completion'}:add('결과표',meta['filename'],store.file(key,meta['id'])[0])
         if not any('/결과표/'in p for p in members):raise ValueError('PACKAGE_INCOMPLETE')
     for meta in data['files']:
-        if meta['evidence_id']=='paper_assessment':continue
+        if meta['evidence_id']in {'paper_assessment','paper_completion'}:continue
         add('증빙자료',meta['filename'],store.file(key,meta['id'])[0])
     if current['revision']!=store.load(key)['revision']:raise Conflict('PACKAGE_CHANGED')
     out=BytesIO()
