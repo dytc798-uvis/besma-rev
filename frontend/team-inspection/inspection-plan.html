@@ -7,7 +7,7 @@
 <body><main>
 
 
-<header><div><a href="/">‹ BESMA</a><h1>안전보건 점검계획</h1><p id="identity">로그인을 확인하고 있습니다.</p></div><span id="version">2026.11.03.3</span></header>
+<header><div><a href="/">‹ BESMA</a><h1>안전보건 점검계획</h1><p id="identity">로그인을 확인하고 있습니다.</p></div><span id="version">2026.11.06.7</span></header>
 
 
 <p id="notice" role="status"></p>
@@ -37,6 +37,7 @@
 <section id="inspection-report-panel" hidden></section>
 
 
+<dialog id="reschedule"><form id="reschedule-form"><h2>점검일 변경</h2><p id="reschedule-site"></p><p id="reschedule-before"></p><label>변경할 점검일 <input id="reschedule-date" type="date" required></label><p id="reschedule-overlap" role="status"></p><p id="reschedule-notice" role="alert"></p><div class="actions"><button type="button" id="reschedule-close" class="secondary">닫기</button><button type="submit" id="reschedule-save">변경 저장</button></div></form></dialog>
 <dialog id="editor"><form id="edit-form"><h2>점검계획 수정</h2><p id="edit-owner"></p><label>현장명 <input id="title" maxlength="300" required></label><div class="pair"><label>예정일 <input id="start" type="date" required></label><label>종료일 <input id="end" type="date"></label></div><label>상태 <select id="status"><option value="PLANNED">예정</option><option value="IN_PROGRESS">진행</option><option value="ON_HOLD">보류</option><option value="COMPLETED">완료</option></select></label><label>협의 내용·현장 정보 <textarea id="detail" rows="9" maxlength="20000"></textarea></label><p id="edit-notice" role="alert"></p><div class="actions"><button type="button" id="edit-close" class="secondary">닫기</button><button id="save" type="submit">저장</button></div></form></dialog>
 
 
