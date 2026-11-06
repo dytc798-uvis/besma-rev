@@ -91,6 +91,7 @@ def xlsx(form,snapshot,site,inspector):
         elif isinstance(value,(int,float)):changes[address]=('', '<v>'+str(value)+'</v>')
         else:changes[address]=(' t="inlineStr"','<is><t xml:space="preserve">'+escape(str(value))+'</t></is>')
     data=snapshot['data'];day=data['inspection_date'];subject=snapshot.get('subject_name')or(snapshot.get('site_manager','')if form=='manager'else'')
+    if form=='supervisor':subject=subject.replace(' / ','\n')
     for address,value in ({'B2':site,'P2':day,'U2':subject,'Y2':inspector+' (인)'}if form=='manager'else{'C2':site,'M2':day,'S2':subject,'Y2':inspector+' (인)'}).items():setcell(address,value)
     for criterion in schema['criteria']:
         if form=='manager'and criterion['id']=='m19':setcell('M'+str(criterion['row']),criterion['description'])

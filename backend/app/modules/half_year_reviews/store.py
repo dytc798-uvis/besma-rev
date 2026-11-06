@@ -4,7 +4,7 @@ from pathlib import Path
 import sqlite3,json,hashlib,uuid,re,io,zipfile,os
 from .catalog import CATALOG,FORMS,EVIDENCE,blank,cleaned,validate_assessment,Conflict
 from app.modules.inspection_reports.pptx_report import normalize_photo
-from . import exports,jobs,monthly_sources,walkthrough
+from . import exports,jobs,monthly_sources,walkthrough,supervisor_group
 from .concurrent import merge_edits,confirm_evidence
 digest=lambda value:hashlib.sha256(value).hexdigest()
 encoded=lambda value:json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
@@ -20,12 +20,12 @@ class ReviewStore:
     def load(self,key):
         with closing(self.connect())as c:
             row=c.execute('SELECT * FROM contexts WHERE id=?',(key,)).fetchone()
-            return {'revision':row['revision'],'data':json.loads(row['data'])}if row else{'revision':0,'data':blank()}
+            return supervisor_group.project({'revision':row['revision'],'data':json.loads(row['data'])}if row else{'revision':0,'data':blank()})
     def receipt(self,key,actor,request_key):
         with closing(self.connect())as c:
             row=c.execute('SELECT result FROM receipts WHERE context_id=? AND request_key=? AND actor_id=?',(key,request_key,actor)).fetchone()
             if row is None:raise KeyError('RECEIPT_MISSING')
-            return json.loads(row['result'])
+            return supervisor_group.project(json.loads(row['result']))
     def mutate(self,key,actor,name,request,attachment=None,context_meta=None):
         if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',request['request_key']):raise ValueError('REQUEST_KEY_INVALID')
         canonical={**{k:v for k,v in request.items()if k!='base'or v is not None},'attachment_sha256':digest(attachment[0])if attachment else None};payload_sha=digest(encoded(canonical).encode());stamp=datetime.now(timezone.utc).isoformat();new_path=None
@@ -34,7 +34,7 @@ class ReviewStore:
             replay=c.execute('SELECT payload_sha256,result FROM receipts WHERE context_id=? AND request_key=? AND actor_id=?',(key,request['request_key'],actor)).fetchone()
             if replay:
                 if replay['payload_sha256']!=payload_sha:raise Conflict('REQUEST_CHANGED')
-                return json.loads(replay['result'])
+                return supervisor_group.project(json.loads(replay['result']))
             row=c.execute('SELECT * FROM contexts WHERE id=?',(key,)).fetchone();revision=row['revision']if row else 0;data=json.loads(row['data'])if row else blank()
             if request['revision']>revision:raise Conflict('REVISION_INVALID')
             action=request['action'];body=dict(request['data'])if isinstance(request['data'],dict)else request['data'];result={};op_meta={}
@@ -63,6 +63,17 @@ class ReviewStore:
                 result.update(factual_check(data,action,body,name,actor,stamp))
             elif action in {'walk-start','walk-item','walk-report','walk-guidance'}:
                 result.update(walkthrough.mutate(data,action,body,request['period'],actor,name,stamp,context_meta))
+            elif action=='supervisor-roster':
+                if set(body)!={'names'}or not isinstance(body['names'],list)or not 1<=len(body['names'])<=30:raise ValueError('SUBJECT_REQUIRED')
+                names=list(dict.fromkeys(cleaned(name,40)for name in body['names']))
+                if any(not name for name in names):raise ValueError('SUBJECT_REQUIRED')
+                prior=data['subjects']['supervisor'];group=supervisor_group.subject(data)
+                if group:data['supervisor_group_id']=group['id']
+                roster=[next((p for p in prior if p['name']==name),None)or{'id':uuid.uuid4().hex,'name':name}for name in names]
+                if prior!=roster:
+                    data.setdefault('supervisor_roster_history',[]).append({'members':prior,'at':stamp,'actor_id':actor,'by':name})
+                    data['subjects']['supervisor']=roster
+                if not group:data['supervisor_group_id']=roster[0]['id']
             elif action in {'subject','manager-default'}:
                 if set(body)!={'form','name'}or body['form']not in {'manager','supervisor'}:raise ValueError('SUBJECT_INVALID')
                 target=cleaned(body['name'],40)
@@ -71,7 +82,9 @@ class ReviewStore:
                 existing=next((s for s in data['subjects'][body['form']]if s['name']==target),None)
                 if existing and action=='subject':raise ValueError('SUBJECT_EXISTS')
                 subject=existing or {'id':uuid.uuid4().hex,'name':target}
-                if not existing:data['subjects'][body['form']].append(subject)
+                if not existing:
+                    if body['form']=='supervisor'and supervisor_group.subject(data):data.setdefault('supervisor_group_id',supervisor_group.subject(data)['id'])
+                    data['subjects'][body['form']].append(subject)
                 result['subject']=subject
             elif action in {'assessment','assessment-summary','assessment-comment','assessment-improvements'}:
                 if action=='assessment'and body.get('form')=='report'and body.pop('criteria_version',None)!=CATALOG['version']:raise ValueError('CRITERIA_UPDATED')
@@ -99,10 +112,11 @@ class ReviewStore:
                 # Empty prose from a stale full-form client must not erase saved text.
                 # Intentional clearing is handled by the dedicated summary action.
                 if action=='assessment'and previous_text and isinstance(body['answers'],dict)and isinstance(body['answers'].get('summary',''),str)and not body['answers'].get('summary','').strip():body={**body,'answers':{**body['answers'],'summary':previous_text}}
-                answers,totals=validate_assessment(form,body['answers'],data['files'],data['subjects'],subject,body['complete']);subject_name=''
+                answers,totals=validate_assessment(form,body['answers'],data['files'],supervisor_group.project_data(data)['subjects'],subject,body['complete']);subject_name=''
                 day=answers['inspection_date'];actual_period=day[:4]+('-H1'if int(day[5:7])<=6 else'-H2')
                 if actual_period!=request['period']:raise ValueError('DATE_PERIOD_MISMATCH')
-                if form in {'manager','supervisor'}:subject_name=next(s['name']for s in data['subjects'][form]if s['id']==subject)
+                if form=='supervisor':subject_name=supervisor_group.subject(data)['name']
+                elif form=='manager':subject_name=next(s['name']for s in data['subjects'][form]if s['id']==subject)
                 selected_run=walkthrough.assessment_run(data,answers.get('walkthrough_run_id',''),day,(context_meta or{}).get('public_id'))
                 if body['complete']:
                     for assessment_key,prior in data['assessments'].items():
@@ -135,7 +149,7 @@ class ReviewStore:
                 result['parse_job']=jobs.queue(c,key,data,actor,name,body,context_meta,request['period'],stamp)
             elif action=='apply_parse':
                 job,answers,check=jobs.apply(c,key,data,body)
-                clean,totals=validate_assessment(job['form'],answers,data['files'],data['subjects'],job['subject_id'],False)
+                clean,totals=validate_assessment(job['form'],answers,data['files'],supervisor_group.project_data(data)['subjects'],job['subject_id'],False)
                 assessment=data['assessments'].setdefault(job['form']+':'+job['subject_id'],{})
                 assessment['draft']={'data':clean,'result':totals,'subject_name':job['subject_name'],'inspector':name,'actor_id':actor,'at':stamp,'paper_job_id':body['job_id']}
                 result['parse_check']=check
@@ -189,7 +203,7 @@ class ReviewStore:
             try:
                 revision+=1;c.execute('INSERT INTO contexts VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,data=excluded.data',(key,revision,encoded(data)))
                 op_meta={'request':request,'result':result};c.execute('INSERT INTO events(context_id,revision,actor_id,at,action,data)VALUES(?,?,?,?,?,?)',(key,revision,actor,stamp,action,encoded(op_meta)))
-                response={'revision':revision,'data':data,**result};c.execute('INSERT INTO receipts VALUES(?,?,?,?,?)',(key,request['request_key'],actor,payload_sha,encoded(response)));c.commit();return response
+                response={'revision':revision,'data':data,**result};c.execute('INSERT INTO receipts VALUES(?,?,?,?,?)',(key,request['request_key'],actor,payload_sha,encoded(response)));c.commit();return supervisor_group.project(response)
             except Exception:
                 c.rollback()
                 if new_path:new_path.unlink(missing_ok=True)
@@ -205,10 +219,11 @@ class ReviewStore:
     def export(self,key,form,subject,site,period,expected_snapshot=None,profile=None):
         current=self.load(key);assessment=current['data']['assessments'].get(form+':'+subject,{});snapshot=assessment.get('completed')
         if not snapshot:raise ValueError('COMPLETE_FIRST')
-        with closing(self.connect())as c:
-            prior=c.execute('SELECT * FROM outputs WHERE context_id=? AND snapshot_id=? AND form=?',(key,expected_snapshot or snapshot['id'],form)).fetchone()
-            if prior:return dict(prior)
         if expected_snapshot is not None and expected_snapshot!=snapshot['id']:raise Conflict('COMPLETED_VERSION_CHANGED')
+        if form=='supervisor':snapshot={**snapshot,'id':digest((snapshot['id']+'|'+snapshot.get('subject_name','')).encode())[:32]}
+        with closing(self.connect())as c:
+            prior=c.execute('SELECT * FROM outputs WHERE context_id=? AND snapshot_id=? AND form=?',(key,snapshot['id'],form)).fetchone()
+            if prior:return dict(prior)
         from .site_profile import enrich
         snapshot=enrich(snapshot,profile or{},assessment)
         if form=='report':

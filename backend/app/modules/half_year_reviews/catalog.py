@@ -19,7 +19,11 @@ def cleaned(value,limit):
 def validate_assessment(form,data,files,subjects,subject_id,complete):
     if form not in FORMS or not isinstance(data,dict)or set(data)-{'answers','summary','inspection_date','photo_ids','photo_captions','improvements','entry_mode','paper_file_ids','walkthrough_run_id','signed_table_photo_ids','required_signatures_confirmed','signed_pages_complete'}:raise ValueError('ASSESSMENT_INVALID')
     schema=FORMS[form]
-    if schema.get('needs_subject'):
+    if form=='supervisor':
+        from .supervisor_group import subject as grouped
+        group=grouped({'subjects':subjects})
+        if group is None or subject_id!=group['id']:raise ValueError('SUBJECT_REQUIRED')
+    elif schema.get('needs_subject'):
         subject=next((r for r in subjects[form]if r['id']==subject_id),None)
         if subject is None:raise ValueError('SUBJECT_REQUIRED')
     elif subject_id!='site':raise ValueError('SUBJECT_INVALID')

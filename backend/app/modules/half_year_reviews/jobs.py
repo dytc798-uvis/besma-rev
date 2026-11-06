@@ -2,7 +2,7 @@ from contextlib import closing
 from datetime import datetime,timezone
 import copy,hashlib,json,secrets,time,uuid
 from .catalog import FORMS,Conflict,validate_assessment
-from . import paper
+from . import paper,supervisor_group
 
 def encoded(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'))
 def ensure(c):
@@ -17,7 +17,9 @@ def listing(store,key):
 def queue(c,key,data,actor,name,body,meta,period,stamp):
     ensure(c)
     if set(body)!={'form','subject_id','file_id'}or body['form']not in FORMS or meta is None:raise ValueError('PARSE_REQUEST_INVALID')
-    form=body['form'];subject=body['subject_id'];target=next((s['name']for s in data['subjects'].get(form,[])if s['id']==subject),'')
+    from .supervisor_group import project_data
+    grouped=project_data(data)
+    form=body['form'];subject=body['subject_id'];target=next((s['name']for s in grouped['subjects'].get(form,[])if s['id']==subject),'')
     if FORMS[form].get('needs_subject')and not target or not FORMS[form].get('needs_subject')and subject!='site':raise ValueError('SUBJECT_REQUIRED')
     file=next((f for f in data['files']if f['id']==body['file_id']and f['extension']=='.pdf'),None)
     if file is None:raise ValueError('PDF_REQUIRED')
@@ -72,7 +74,7 @@ def finish(store,jid,lease,value,pages,source_sha,error,allowed):
         transcription=paper.validate(value,job['form'],set(range(1,pages+1)))
         current=c.execute('SELECT * FROM contexts WHERE id=?',(row['context_id'],)).fetchone();data=json.loads(current['data']);answers,check=paper.merge(transcription,job,data)
         if check['applied']:
-            clean,totals=validate_assessment(job['form'],answers,data['files'],data['subjects'],job['subject_id'],False)
+            clean,totals=validate_assessment(job['form'],answers,data['files'],supervisor_group.project_data(data)['subjects'],job['subject_id'],False)
             assessment=data['assessments'].setdefault(job['form']+':'+job['subject_id'],{});assessment['draft']={'data':clean,'result':totals,'subject_name':job['subject_name'],'inspector':job['requester_name'],'actor_id':row['requester_id'],'at':stamp,'paper_job_id':jid}
             revision=current['revision']+1;c.execute('UPDATE contexts SET revision=?,data=? WHERE id=?',(revision,encoded(data),row['context_id']));c.execute('INSERT INTO events(context_id,revision,actor_id,at,action,data)VALUES(?,?,?,?,?,?)',(row['context_id'],revision,row['requester_id'],stamp,'paper_transcription',encoded({'job_id':jid,'source_sha256':source_sha,'check':check})))
         result={'transcription':transcription,**check};status='NEEDS_REVIEW'if check['pending']or not check['applied']else'READY'

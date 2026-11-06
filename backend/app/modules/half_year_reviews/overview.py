@@ -5,6 +5,8 @@ import json,sqlite3
 from .catalog import CATALOG,FORMS,context_key
 
 def summarize(data):
+    from .supervisor_group import project_data
+    data=project_data(data)
     forms=[];completed=0;required=0
     assessments=data.get('assessments',{})
     for form in CATALOG['order']:
