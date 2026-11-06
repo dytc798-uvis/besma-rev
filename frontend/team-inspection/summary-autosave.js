@@ -18,7 +18,7 @@ export function createSummaryAutosave({owner,context,canSave,save,notify,delay=1
   if(dead)return false;if(working)return working;const c=context();if(!c||!state(c.key).dirty)return true;
   if(!canSave()){schedule();return false;}const s=state(c.key);s.saving=true;notify();
   working=(async()=>{try{const result=await save({...c});if(!result)throw Error('총평 저장을 확인하지 못했습니다.');confirmed(c.key,result.summary,result.at);return true;}
-   catch(e){s.error=e.message||'서버 연결을 확인해 주세요.';s.dirty=true;return false;}
+   catch(e){s.error=e.message||'인터넷 연결을 확인해 주세요.';s.dirty=true;return false;}
    finally{s.saving=false;working=null;notify();}})();return working;
  }
  function status(){const c=context();if(!c)return{};const s=state(c.key);return{...s,dirty:s.dirty===true||c.summary.trim()!==c.serverSummary,at:s.at||c.serverAt};}
