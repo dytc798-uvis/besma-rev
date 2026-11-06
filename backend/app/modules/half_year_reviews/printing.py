@@ -14,11 +14,30 @@ def text(node,tag='{'+A+'}p',leaf='{'+A+'}t'):
 def safe(value):return escape(str(value if value is not None else'')).replace('\n','<br>')
 def number(node,key,default=0):return float(node.get(key,default))if node is not None else default
 
+def improvement_page(root):
+    from .exports import shape
+    source=shape(root,8).find('.//a:tbl',NS);columns=source.findall('a:tblGrid/a:gridCol',NS);total=sum(number(c,'w')for c in columns)or 1
+    table='<table><colgroup>'+''.join(f'<col style="width:{100*number(c,"w")/total}%">'for c in columns)+'</colgroup>'
+    rows=source.findall('a:tr',NS);filled=[i for i,row in enumerate(rows)if i and text(row).strip()]
+    if filled:rows=rows[:max(filled)+1]
+    for index,row in enumerate(rows):
+        if index==0:table+='<thead>'
+        elif index==1:table+='</thead><tbody>'
+        table+='<tr>'
+        for cell in row.findall('a:tc',NS):
+            if cell.get('hMerge')=='1'or cell.get('vMerge')=='1':continue
+            tag='th'if index==0 else'td';table+=f'<{tag} colspan="{cell.get("gridSpan","1")}" rowspan="{cell.get("rowSpan","1")}">'+safe(text(cell))+f'</{tag}>'
+        table+='</tr>'
+    table+='</tbody></table>'
+    return '<article class="improvement-page"><h1>'+safe(text(shape(root,7)))+'</h1>'+table+'</article>'
+
+
 def pptx(raw):
     items=exports.parts(raw);presentation=E.fromstring(items['ppt/presentation.xml']);size=presentation.find('p:sldSz',NS)
     width=number(size,'cx')/36000;height=number(size,'cy')/36000;pages=[]
     for index in [1,2,3,4,6]:
         root=E.fromstring(items[f'ppt/slides/slide{index}.xml']);shapes=[]
+        if index==4:pages.append(improvement_page(root));continue
         for node in root.findall('p:cSld/p:spTree/*',NS):
             xfrm=node.find('p:xfrm',NS)if node.tag=='{'+P+'}graphicFrame'else node.find('p:spPr/a:xfrm',NS)
             if xfrm is None:continue
@@ -50,7 +69,7 @@ def pptx(raw):
                 html=f'<div style="font-size:{font}pt;white-space:pre-wrap">'+escape(value)+'</div>'
             shapes.append('<div class="shape" style="'+style+'">'+html+'</div>')
         pages.append('<article class="slide">'+''.join(shapes)+'</article>')
-    return ''.join(pages),f'@page{{size:{width}mm {height}mm;margin:0}}.slide{{width:{width}mm;height:{height}mm;position:relative;break-after:page;overflow:hidden}}.shape{{position:absolute}}.shape table{{height:100%}}.shape td{{padding:.5mm;line-height:1.12;text-align:center}}'
+    return ''.join(pages),f'@page{{size:{width}mm {height}mm;margin:0}}.slide{{width:{width}mm;height:{height}mm;position:relative;break-after:page;overflow:hidden}}.shape{{position:absolute}}.shape table{{height:100%}}.shape td{{padding:.5mm;line-height:1.12;text-align:center}}@page improvements{{size:{width}mm {height}mm;margin:16mm}}.improvement-page{{page:improvements;break-before:page;break-after:page;width:{width-32}mm;font-size:10pt;line-height:1.5}}.improvement-page h1{{font-size:23pt;margin:0 0 12mm;break-after:avoid}}.improvement-page table{{width:100%;table-layout:fixed}}.improvement-page th,.improvement-page td{{border:.2mm solid #333;padding:2mm;vertical-align:top;white-space:pre-wrap;overflow-wrap:anywhere}}.improvement-page thead{{display:table-header-group}}.improvement-page tr{{height:14mm;break-inside:auto}}'
 
 def xlsx(raw,site_manager=""):
     import openpyxl
@@ -120,13 +139,6 @@ def document(form,snapshot,site,period,blind=True):
         if len(note)>(30 if form=='law'else 20)or '\n'in note:
             comments.append((str(index)+'. '+criterion['title'],note))
             answer['note']='코멘트 별지 '+str(len(comments))+'번 참조'
-    if form=='report':
-        for index,item in enumerate(snapshot['data'].get('improvements',[]),1):
-            long=any(len(item.get(k,''))>40 or len(item.get(k,'').splitlines())>2 for k in ['finding','action'])
-            if long:
-                comments.append(('개선조치 요청 '+str(index),'개선 필요사항: '+item.get('finding','')+'\n\n요청 내용: '+item.get('action','')+'\n\n담당자: '+item.get('owner','')+'\n조치기한: '+item.get('due','')))
-                item['finding']='개선조치 요청 '+str(index)
-                item['action']='별지 '+str(len(comments))+'번 참조'
     summary=snapshot['data'].get('summary','')
     if summary and form!='law'and (len(summary)>240 or len(summary.splitlines())>6):
         comments.append(('총평',summary));snapshot['data']['summary']='총평 별지 참조'

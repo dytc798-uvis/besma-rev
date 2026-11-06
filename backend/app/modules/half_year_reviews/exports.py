@@ -180,7 +180,7 @@ def pptx(snapshot,site,inspector,photos,period,blind=False):
     for i,row in enumerate(rows,1):
         text(cell(improvement,8,i,0),str(i))
         for col,key in enumerate(['finding','action','owner','due'],1):text(cell(improvement,8,i,col),row[key])
-    items['ppt/slides/slide4.xml']=xml(improvement);confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,1,3),''if score is None else f'{score:g} / 100점');text(cell(confirm,7,2,1),rows[0]['finding']if len(rows)==1 else(str(len(rows))+'건 (개선요구사항 참조)'if rows else''));text(cell(confirm,7,2,3),'');text(cell(confirm,9,0,0),data.get('summary',''));text(cell(confirm,11,0,1),inspector+'    (서명)');text(cell(confirm,11,0,3),snapshot.get('site_manager','')+'    (서명)')
+    items['ppt/slides/slide4.xml']=xml(improvement);confirm=E.fromstring(items['ppt/slides/slide6.xml']);text(cell(confirm,7,1,3),''if score is None else f'{score:g} / 100점');text(cell(confirm,7,2,1),rows[0]['finding']if len(rows)==1 and len(rows[0]['finding'])<=80 else(str(len(rows))+'건 (개선요구사항 참조)'if rows else''));text(cell(confirm,7,2,3),'');text(cell(confirm,9,0,0),data.get('summary',''));text(cell(confirm,11,0,1),inspector+'    (서명)');text(cell(confirm,11,0,3),snapshot.get('site_manager','')+'    (서명)')
     for col in [1,3]:
         target=cell(confirm,11,0,col)
         for paragraph in target.findall('.//a:p',NS):

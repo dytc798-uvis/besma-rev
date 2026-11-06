@@ -10,28 +10,32 @@ def encoded(value):return json.dumps(value,ensure_ascii=False,sort_keys=True,sep
 def sha(raw):return hashlib.sha256(raw).hexdigest()
 
 def prepare(store,key,row,period,user,profile):
-    state=store.load(key);snapshots={};missing=[]
+    state=store.load(key);snapshots={};missing=[];eligible=True
     for form in ['report','law']:
         record=state['data']['assessments'].get(form+':site',{});source=record.get('draft')or record.get('completed')or{}
+        completed=record.get('completed');eligible=eligible and bool(completed and record.get('draft',{}).get('data')==completed.get('data'))
         version=source.get('criteria_version',CATALOG['version']);schema=report_schema({'criteria_version':version})if form=='report'else FORMS[form]
         data=deepcopy(source.get('data')or{});data.setdefault('inspection_date',row.scheduled_date.isoformat());data.setdefault('summary','');data.setdefault('photo_ids',[]);data.setdefault('photo_captions',{});data.setdefault('improvements',[]);data.setdefault('answers',{})
         for q in schema['criteria']:data['answers'].setdefault(q['id'],{'value':None,'note':''})
         normalized,result=validate_assessment(form,data,state['data']['files'],state['data']['subjects'],'site',False)
         unanswered=[str(i)+'. '+q['title']for i,q in enumerate(schema['criteria'],1)if normalized['answers'][q['id']]['value']is None]
-        if unanswered:missing.append({'label':schema['title']+' '+str(len(unanswered))+'개 항목 작성','items':unanswered})
+        if unanswered:eligible=False;missing.append({'label':schema['title']+' '+str(len(unanswered))+'개 항목 작성','items':unanswered})
         if not normalized.get('summary','').strip():missing.append({'label':schema['title']+' 총평 작성','items':[]})
         if unanswered and form=='report':result['score']=None
         snapshot={**source,'form':form,'criteria_version':version,'inspector':source.get('inspector')or user.name,'data':normalized,'result':result}
         snapshot['id']=sha(encoded(snapshot).encode())[:32];snapshots[form]=snapshot
     if not profile.get('site_manager'):missing.append({'label':'현장소장 이름 입력','items':[]})
     fingerprint=sha(encoded({'key':key,'snapshots':snapshots,'profile':profile}).encode())
-    return {'fingerprint':fingerprint,'missing':missing,'snapshots':snapshots}
+    return {'eligible':eligible,'fingerprint':fingerprint,'missing':missing,'snapshots':snapshots}
 
-def public(prepared):return {k:prepared[k]for k in ['fingerprint','missing']}
+def public(prepared):return {k:prepared[k]for k in ['eligible','fingerprint','missing']}
 
 def queue(store,key,user,row,period,body,profile):
     if set(body)!={'request_key','fingerprint','allow_incomplete'}or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}',body['request_key'])or type(body['allow_incomplete'])is not bool:raise ValueError('SIGNATURE_REQUEST_INVALID')
     prepared=prepare(store,key,row,period,user,profile)
+    if not prepared['eligible']:
+        from fastapi import HTTPException
+        raise HTTPException(422,'반기평가와 법령점검표를 모두 작성 완료한 뒤 다운로드해 주세요.')
     if body['fingerprint']!=prepared['fingerprint']:raise Conflict('SIGNATURE_SOURCE_CHANGED')
     if prepared['missing']and not body['allow_incomplete']:raise ValueError('SIGNATURE_INCOMPLETE_CONFIRM')
     jid=sha((key+'|'+str(user.id)+'|'+body['request_key']).encode())[:32];folder=store.root/'signature-bundles';folder.mkdir(mode=0o700,exist_ok=True);path=folder/(jid+'.json')
