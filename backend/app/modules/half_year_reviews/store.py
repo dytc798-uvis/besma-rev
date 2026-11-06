@@ -39,7 +39,10 @@ class ReviewStore:
             if request['revision']>revision:raise Conflict('REVISION_INVALID')
             action=request['action'];body=dict(request['data'])if isinstance(request['data'],dict)else request['data'];result={};op_meta={}
             if not isinstance(body,dict):raise ValueError('REQUEST_INVALID')
-            if action=='site-details':
+            if action=='prepare-defaults':
+                from .prepared_defaults import apply
+                result['prepared_defaults']=apply(data,key,request['period'],body,actor,name,stamp)
+            elif action=='site-details':
                 from .site_profile import validate_details
                 data.setdefault('site_details',{}).update(validate_details(body))
             elif action=='evidence':

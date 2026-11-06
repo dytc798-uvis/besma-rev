@@ -1,7 +1,7 @@
 import {createPublicationCopy} from '/publication-copy.js?v=2026.11.01.19';
 import {createMobileCamera} from '/inspection-mobile-camera.js?v=2026.11.01.19';
 const GROUPS=[
- ['위험성평가·전날과 당일 이행',['risk_initial','risk_regular','risk_minutes','tbm','daily_inspection','risk_actions']],
+ ['위험성평가·전날과 당일 이행',['risk_initial','risk_ongoing','risk_minutes','tbm','daily_inspection','risk_actions']],
  ['조직·선임·역할',['policy','organization','rules','manager_appointment','manager_training','manager_employment','safety_appointment','safety_qualification','supervisor_appointment']],
  ['교육·TBM',['education_plan','education_regular','education_special','supervisor_training']],
  ['의견청취·협의체·원청 지적',['worker_channel','worker_ledger','council','authority_order']],

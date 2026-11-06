@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "order": [
     "report",
     "law",
@@ -9,171 +9,332 @@
   "evidence": [
     {
       "id": "policy",
-      "label": "안전보건방침·목표 및 전파 기록"
+      "label": "안전보건방침·목표 및 전파 기록",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "organization",
-      "label": "현장조직도·업무분장표"
+      "label": "현장조직도·업무분장표",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "조직·선임 변경자료"
     },
     {
       "id": "manager_appointment",
-      "label": "안전보건관리책임자 선임계"
+      "label": "안전보건관리책임자 선임계",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "조직·선임 변경자료"
     },
     {
       "id": "manager_training",
-      "label": "안전보건관리책임자 직무교육 이수증"
+      "label": "안전보건관리책임자 직무교육 이수증",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "manager_employment",
-      "label": "안전보건관리책임자 재직증명서"
+      "label": "안전보건관리책임자 재직증명서",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "safety_appointment",
-      "label": "안전관리자 선임계"
+      "label": "안전관리자 선임계",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "조직·선임 변경자료"
     },
     {
       "id": "safety_qualification",
-      "label": "안전관리자 자격증·직무교육·재직증명서"
+      "label": "안전관리자 자격증·직무교육·재직증명서",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "supervisor_appointment",
-      "label": "관리감독자 지정서"
+      "label": "관리감독자 지정서",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "조직·선임 변경자료"
     },
     {
       "id": "risk_initial",
-      "label": "최초 위험성평가표"
+      "label": "최초 위험성평가표",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
     },
     {
       "id": "risk_regular",
-      "label": "정기 위험성평가표"
+      "label": "정기 위험성평가표 (기존 자료)",
+      "mode": "ARCHIVE",
+      "active": false,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "risk_minutes",
-      "label": "위험성평가 회의록"
+      "label": "위험성평가 회의록",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
     },
     {
       "id": "risk_actions",
-      "label": "위험성평가 개선조치·결과 전달 기록"
+      "label": "위험성평가 개선조치·결과 전달 기록",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
     },
     {
       "id": "daily_inspection",
-      "label": "현장소장·관리감독자 안전점검표"
+      "label": "현장소장·관리감독자 안전점검표",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "점검·조치 기록"
     },
     {
       "id": "worker_channel",
-      "label": "근로자 의견청취 창구 게시"
+      "label": "근로자 의견청취 창구 게시",
+      "mode": "ONSITE",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "worker_ledger",
-      "label": "근로자 의견청취 관리대장·개선 기록"
+      "label": "근로자 의견청취 관리대장·개선 기록",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
     },
     {
       "id": "emergency_plan",
-      "label": "현장 비상사태 대응계획"
+      "label": "현장 비상사태 대응계획",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "비상대응·훈련 자료"
     },
     {
       "id": "emergency_roles",
-      "label": "비상 업무분장표·연락망"
+      "label": "비상 업무분장표·연락망",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "비상대응·훈련 자료"
     },
     {
       "id": "emergency_drill",
-      "label": "비상훈련보고서·교육일지"
+      "label": "비상훈련보고서·교육일지",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "비상대응·훈련 자료"
     },
     {
       "id": "report_flow",
-      "label": "사고보고 절차도·보고체계"
+      "label": "사고보고 절차도·보고체계",
+      "mode": "ONSITE",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "education_plan",
-      "label": "안전보건교육계획"
+      "label": "안전보건교육계획",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "tbm",
-      "label": "TBM·일일 안전회의 기록"
+      "label": "TBM·일일 안전회의 기록",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
     },
     {
       "id": "education_regular",
-      "label": "정기안전보건교육일지"
+      "label": "근로자 정기안전보건교육일지",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
     },
     {
       "id": "education_special",
-      "label": "특별안전교육일지"
+      "label": "특별안전교육일지",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
     },
     {
       "id": "msds",
-      "label": "MSDS 게시·교육 기록"
+      "label": "MSDS·교육 기록",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "기제출자료 사용"
     },
     {
       "id": "supervisor_training",
-      "label": "관리감독자 교육 이수증"
+      "label": "관리감독자 교육 이수증",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "health",
-      "label": "건강진단 결과표·사후관리 기록"
+      "label": "건강진단 결과표·사후관리 기록",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "environment",
-      "label": "작업환경측정·결과 교육 기록"
+      "label": "작업환경측정·결과 교육 기록",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "budget",
-      "label": "산업안전보건관리비 계상·사용 명세서"
+      "label": "산업안전보건관리비 계상·사용 명세서",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
     },
     {
       "id": "work_plan",
-      "label": "작업계획서·사전조사 기록"
+      "label": "작업계획서·사전조사 기록",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "rules",
-      "label": "안전보건관리규정·법령요지 게시"
+      "label": "안전보건관리규정·법령요지 게시",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "accident_report",
-      "label": "사고보고서·산업재해조사표"
+      "label": "사고보고서·산업재해조사표",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "accident_actions",
-      "label": "재발방지대책·이행 기록"
+      "label": "재발방지대책·이행 기록",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "protective_cert",
-      "label": "보호구·장비 인증서·검사합격증"
+      "label": "보호구·장비 인증서·검사합격증",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "protective_use",
-      "label": "보호구 지급·점검·착용교육 기록"
+      "label": "보호구 지급·점검·착용교육 기록",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "equipment",
-      "label": "기계·기구·안전시설 점검 기록"
+      "label": "기계·기구·안전시설 점검 기록",
+      "mode": "ONSITE",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "authority_order",
-      "label": "행정기관 개선·시정 명령 이행자료"
+      "label": "행정기관 개선·시정 명령 이행자료",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "council",
-      "label": "안전보건협의체 회의·참석 기록"
+      "label": "안전보건협의체 회의·참석 기록",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "rest",
-      "label": "휴게시설 설치·점검 기록"
+      "label": "휴게시설 설치·점검 기록",
+      "mode": "ONSITE",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "construction_plan",
-      "label": "건설기술진흥법 안전관리계획·교육"
+      "label": "건설기술진흥법 안전관리계획·교육",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "fire",
-      "label": "현장·사무실 소방시설 자체점검"
+      "label": "현장·사무실 소방시설 자체점검",
+      "mode": "ONSITE",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "site_photos",
-      "label": "현장 점검사진"
+      "label": "현장 점검사진",
+      "mode": "PHOTO",
+      "active": true,
+      "preparation": "현장에서 확인"
     },
     {
       "id": "risk_ongoing",
-      "label": "상시 위험성평가표 (월 1회 이상)"
+      "label": "상시 위험성평가표 (월 1회 이상)",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
+    },
+    {
+      "id": "risk_procedure",
+      "label": "위험성평가 절차서",
+      "mode": "ONSITE",
+      "active": true,
+      "preparation": "현장에서 확인"
+    },
+    {
+      "id": "education_hire",
+      "label": "채용 시·작업내용 변경 시 안전보건교육일지",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "기제출자료 사용"
+    },
+    {
+      "id": "law_evaluation",
+      "label": "법규준수 평가·개선 기록",
+      "mode": "DOCUMENT",
+      "active": true,
+      "preparation": "점검·조치 기록"
+    },
+    {
+      "id": "contractor_inspection",
+      "label": "원청 점검 지적사항·조치결과",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "점검·조치 기록"
+    },
+    {
+      "id": "operator_qualification",
+      "label": "건설기계 조종자 면허·교육 이수증",
+      "mode": "CONDITIONAL",
+      "active": true,
+      "preparation": "현장에서 확인"
     }
   ],
   "forms": {
@@ -289,12 +450,14 @@
           "id": "p10",
           "group": "종사자의견청취",
           "title": "유해·위험 요인 개선",
-          "description": "근로자 의견청취 관리대장",
+          "description": "취합된 근로자 의견 1건당 1점 (최대 5점)",
           "max_score": 5,
           "evidence": [
             "worker_ledger"
           ],
-          "row": 10
+          "row": 10,
+          "scoring": "POINTS",
+          "guidance": "의견 없음·공란·중복 건은 제외합니다. 자동 산출 점수와 근거를 확인하고 필요한 경우 점수를 수정합니다."
         },
         {
           "id": "p11",
@@ -327,7 +490,8 @@
           "evidence": [
             "emergency_drill"
           ],
-          "row": 13
+          "row": 13,
+          "guidance": "비상훈련은 사진이 없어도 서명지와 부현전기 참여가 명시된 기록이 있으면 인정합니다."
         },
         {
           "id": "p14",
@@ -349,7 +513,8 @@
           "evidence": [
             "education_regular"
           ],
-          "row": 15
+          "row": 15,
+          "guidance": "정기교육은 근로자 정기교육입니다. TBM일지로 대신하지 않습니다."
         },
         {
           "id": "p16",
@@ -361,7 +526,8 @@
             "education_special",
             "msds"
           ],
-          "row": 16
+          "row": 16,
+          "guidance": "MSDS교육은 정기교육일지에 교육 내용과 대상 물질이 기재되어 있으면 인정하며, 별도 MSDS교육일지도 인정합니다."
         },
         {
           "id": "p17",
@@ -451,7 +617,8 @@
             "emergency_plan",
             "emergency_roles",
             "emergency_drill"
-          ]
+          ],
+          "guidance": "비상훈련은 사진이 없어도 서명지와 부현전기 참여가 명시된 기록이 있으면 인정합니다."
         },
         {
           "id": "m10",
@@ -462,7 +629,9 @@
           "row": 10,
           "evidence": [
             "daily_inspection",
-            "rules"
+            "rules",
+            "law_evaluation",
+            "contractor_inspection"
           ]
         },
         {
@@ -500,7 +669,8 @@
             "tbm",
             "education_regular",
             "education_special"
-          ]
+          ],
+          "guidance": "정기교육은 근로자 정기교육입니다. TBM일지로 대신하지 않습니다."
         },
         {
           "id": "m14",
@@ -547,7 +717,8 @@
             "accident_report",
             "risk_actions",
             "education_regular"
-          ]
+          ],
+          "guidance": "정기교육은 근로자 정기교육입니다. TBM일지로 대신하지 않습니다."
         },
         {
           "id": "m18",
@@ -564,14 +735,15 @@
           "id": "m19",
           "group": "9. 위험성평가의 실시",
           "title": "사업장 위험성평가 절차 및 이행관리",
-          "description": "▣ 사업장 위험성평가 절차 및 이행관리\n- 위험성평가 절차서 게시 : 1점\n- 위험성평가표(최초, 정기,상시) 작성 및 승인 : 2점\n- 위험성평가 개선조치 시행 : 2점\n- 위험성 평가 결과 및 조치사항 전달 : 2점",
+          "description": "▣ 사업장 위험성평가 절차 및 이행관리\n- 위험성평가 절차서 게시 : 1점\n- 위험성평가표(최초, 상시) 작성 및 승인 : 2점\n- 위험성평가 개선조치 시행 : 2점\n- 위험성 평가 결과 및 조치사항 전달 : 2점",
           "max_score": 7,
           "row": 19,
           "evidence": [
             "risk_initial",
-            "risk_regular",
+            "risk_ongoing",
             "risk_minutes",
-            "risk_actions"
+            "risk_actions",
+            "risk_procedure"
           ]
         },
         {
@@ -632,7 +804,8 @@
           "evidence": [
             "protective_use",
             "education_regular"
-          ]
+          ],
+          "guidance": "정기교육은 근로자 정기교육입니다. TBM일지로 대신하지 않습니다."
         },
         {
           "id": "s07",
@@ -669,7 +842,8 @@
             "emergency_plan",
             "emergency_roles",
             "emergency_drill"
-          ]
+          ],
+          "guidance": "비상훈련은 사진이 없어도 서명지와 부현전기 참여가 명시된 기록이 있으면 인정합니다."
         },
         {
           "id": "s10",
@@ -738,7 +912,7 @@
           "row": 15,
           "evidence": [
             "risk_initial",
-            "risk_regular",
+            "risk_ongoing",
             "risk_minutes"
           ]
         },
@@ -765,7 +939,8 @@
             "risk_actions",
             "tbm",
             "education_regular"
-          ]
+          ],
+          "guidance": "정기교육은 근로자 정기교육입니다. TBM일지로 대신하지 않습니다."
         }
       ],
       "template": "5. 관리감독자 평가표.xlsx",
@@ -801,8 +976,9 @@
           "row": 3,
           "evidence": [
             "risk_initial",
-            "risk_regular",
-            "worker_ledger"
+            "risk_ongoing",
+            "worker_ledger",
+            "risk_procedure"
           ]
         },
         {
@@ -842,7 +1018,8 @@
           "evidence": [
             "emergency_plan",
             "emergency_drill"
-          ]
+          ],
+          "guidance": "비상훈련은 사진이 없어도 서명지와 부현전기 참여가 명시된 기록이 있으면 인정합니다."
         },
         {
           "id": "l06",
@@ -881,7 +1058,8 @@
             "rules",
             "organization",
             "budget",
-            "education_plan"
+            "education_plan",
+            "law_evaluation"
           ]
         },
         {
@@ -944,7 +1122,8 @@
           "row": 6,
           "evidence": [
             "msds"
-          ]
+          ],
+          "guidance": "MSDS교육은 정기교육일지에 교육 내용과 대상 물질이 기재되어 있으면 인정하며, 별도 MSDS교육일지도 인정합니다."
         },
         {
           "id": "l14",
@@ -959,8 +1138,9 @@
             "education_regular",
             "education_special",
             "supervisor_training",
-            "tbm"
-          ]
+            "education_hire"
+          ],
+          "guidance": "정기교육은 근로자 정기교육입니다. TBM일지로 대신하지 않습니다."
         },
         {
           "id": "l15",
@@ -984,9 +1164,10 @@
           "row": 9,
           "evidence": [
             "risk_initial",
-            "risk_regular",
+            "risk_ongoing",
             "risk_minutes",
-            "risk_actions"
+            "risk_actions",
+            "risk_procedure"
           ]
         },
         {
@@ -1011,7 +1192,8 @@
           "row": 11,
           "evidence": [
             "work_plan",
-            "equipment"
+            "equipment",
+            "operator_qualification"
           ]
         },
         {
@@ -1231,5 +1413,33 @@
     "5. 관리감독자 평가표.xlsx": "c93bbee61b47001977976037b280b54db76253510a8b240938b41c634ff851d2",
     "law.hwpx": "7347fc8525539e49d768091e49455ee97dcafd7b36affc374dfa1a0834684fc6",
     "반기평가표.pptx": "34d870f4bb9b33c63c6c3c05b0bb67410126066ed2b7aa866801829d7521482d"
-  }
+  },
+  "evidence_guidance": "추가 준비는 조직·선임 변경자료, 비상대응·훈련 자료, 점검·조치 기록의 3묶음입니다. 이미 제출한 자료는 다시 받지 않습니다. 나머지 자료와 게시물·시설은 현장에서 확인합니다.",
+  "preparation_bundles": [
+    {
+      "title": "조직·선임 변경자료",
+      "evidence_ids": [
+        "manager_appointment",
+        "organization",
+        "safety_appointment",
+        "supervisor_appointment"
+      ]
+    },
+    {
+      "title": "비상대응·훈련 자료",
+      "evidence_ids": [
+        "emergency_drill",
+        "emergency_plan",
+        "emergency_roles"
+      ]
+    },
+    {
+      "title": "점검·조치 기록",
+      "evidence_ids": [
+        "contractor_inspection",
+        "daily_inspection",
+        "law_evaluation"
+      ]
+    }
+  ]
 }

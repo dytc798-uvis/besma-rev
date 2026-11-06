@@ -2,17 +2,16 @@
 from collections import OrderedDict
 from html import escape
 import math
-from .catalog import FORMS
+from .catalog import FORMS,report_schema,criterion_points
 
 LABELS=['위험성평가','안전조직','의견청취','비상대응','안전교육','건강검진']
 def display_percent(value):return f'{value:.1f}'.rstrip('0').rstrip('.')+'%'
 def values(snapshot):
     groups=OrderedDict();levels={'EXCELLENT':1,'NORMAL':.5,'POOR':0}
-    for q in FORMS['report']['criteria']:
+    for q in report_schema(snapshot)['criteria']:
         answer=snapshot['data']['answers'].get(q['id'],{}).get('value')
-        if answer not in levels:raise ValueError('COMPLETE_FIRST')
         group=groups.setdefault(q['group'],{'name':q['group'],'score':0,'max_score':0})
-        group['score']+=q['max_score']*levels[answer];group['max_score']+=q['max_score']
+        group['score']+=criterion_points(q,answer);group['max_score']+=q['max_score']
     rows=list(groups.values())
     if len(rows)!=6:raise ValueError('RADAR_DOMAINS_CHANGED')
     for row,label in zip(rows,LABELS):row.update(label=label,percent=row['score']/row['max_score']*100)

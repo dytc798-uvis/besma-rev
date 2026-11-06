@@ -33,12 +33,13 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
         if not isinstance(entry,dict)or set(entry)-{'value','note'}:raise ValueError('ANSWER_INVALID')
         value=entry.get('value');note=cleaned(entry.get('note',''),None)
         if value is None:missing+=1
-        elif schema['scoring']=='THREE_LEVEL':
+        elif criterion.get('scoring',schema['scoring'])=='THREE_LEVEL':
             if value not in {'EXCELLENT','NORMAL','POOR'}:raise ValueError('SCORE_INVALID')
             score+=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[value]
-        elif schema['scoring']=='POINTS':
-            if type(value)is not int or not 0<=value<=criterion['max_score']:raise ValueError('SCORE_INVALID')
-            score+=value
+        elif criterion.get('scoring',schema['scoring'])=='POINTS':
+            if form=='report'and criterion['id']=='p10'and value in {'EXCELLENT','NORMAL','POOR'}:score+=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[value]
+            elif type(value)is not int or not 0<=value<=criterion['max_score']:raise ValueError('SCORE_INVALID')
+            else:score+=value
         elif value not in {'PASS','FAIL','NA'}or value=='NA'and not note:raise ValueError('VERDICT_INVALID')
         result[criterion['id']]={'value':value,'note':note}
     photos=data.get('photo_ids',[])
@@ -73,4 +74,14 @@ def report_schema(snapshot=None):
     """Keep historical completed forms tied to their original criterion text."""
     if snapshot is not None and snapshot.get("criteria_version",1)<2:
         return json.loads((ASSETS/"report-criteria-v1.json").read_text("utf8"))
+    if snapshot is not None and snapshot.get("criteria_version",1)<3:
+        return json.loads((ASSETS/"report-criteria-v2.json").read_text("utf8"))
     return FORMS["report"]
+
+
+def criterion_points(criterion,value):
+    if value is None:raise ValueError('COMPLETE_FIRST')
+    if criterion.get('scoring')=='POINTS'and not isinstance(value,str):
+        if type(value)is not int or not 0<=value<=criterion['max_score']:raise ValueError('SCORE_INVALID')
+        return value
+    return criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[value]

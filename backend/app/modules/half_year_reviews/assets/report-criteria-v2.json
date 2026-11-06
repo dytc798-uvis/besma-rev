@@ -1,0 +1,210 @@
+{
+  "title": "반기평가",
+  "format": "pptx",
+  "scoring": "THREE_LEVEL",
+  "criteria": [
+    {
+      "id": "p01",
+      "group": "위험성평가",
+      "title": "최초 위험성평가",
+      "description": "‘26/6/1 이전 : 착공 후 한달 내\n‘26/6/1 이후 : 첫 작업 시작 전까지",
+      "max_score": 10,
+      "evidence": [
+        "risk_initial"
+      ],
+      "row": 1
+    },
+    {
+      "id": "p02",
+      "group": "위험성평가",
+      "title": "상시 위험성평가",
+      "description": "월 1회 이상",
+      "max_score": 5,
+      "evidence": [
+        "risk_ongoing"
+      ],
+      "row": 2
+    },
+    {
+      "id": "p03",
+      "group": "위험성평가",
+      "title": "위험성평가 회의록",
+      "description": "위험성평가 회의록",
+      "max_score": 5,
+      "evidence": [
+        "risk_minutes"
+      ],
+      "row": 3
+    },
+    {
+      "id": "p04",
+      "group": "위험성평가",
+      "title": "유해·위험 요인 개선",
+      "description": "현장소장 점검표, 관리감독자 점검표",
+      "max_score": 5,
+      "evidence": [
+        "daily_inspection",
+        "risk_actions"
+      ],
+      "row": 4
+    },
+    {
+      "id": "p05",
+      "group": "현장 안전조직",
+      "title": "현장조직도",
+      "description": "현장조직도, 업무분장표",
+      "max_score": 5,
+      "evidence": [
+        "organization"
+      ],
+      "row": 5
+    },
+    {
+      "id": "p06",
+      "group": "현장 안전조직",
+      "title": "안전보건관리책임자\n선임계",
+      "description": "선임계, 직무교육 이수증, 재직증명서",
+      "max_score": 5,
+      "evidence": [
+        "manager_appointment",
+        "manager_training",
+        "manager_employment"
+      ],
+      "row": 6
+    },
+    {
+      "id": "p07",
+      "group": "현장 안전조직",
+      "title": "안전관리자 선임계",
+      "description": "선임계, 자격증, 직무교육 이수증, 재직증명서",
+      "max_score": 5,
+      "evidence": [
+        "safety_appointment",
+        "safety_qualification"
+      ],
+      "row": 7
+    },
+    {
+      "id": "p08",
+      "group": "현장 안전조직",
+      "title": "관리감독자 지정서",
+      "description": "관리감독자 지정서",
+      "max_score": 5,
+      "evidence": [
+        "supervisor_appointment"
+      ],
+      "row": 8
+    },
+    {
+      "id": "p09",
+      "group": "종사자의견청취",
+      "title": "종사자 의견청취\n채널 설치",
+      "description": "의견청취 창구 게시(소통함, QR 등)",
+      "max_score": 5,
+      "evidence": [
+        "worker_channel"
+      ],
+      "row": 9
+    },
+    {
+      "id": "p10",
+      "group": "종사자의견청취",
+      "title": "유해·위험 요인 개선",
+      "description": "근로자 의견청취 관리대장",
+      "max_score": 5,
+      "evidence": [
+        "worker_ledger"
+      ],
+      "row": 10
+    },
+    {
+      "id": "p11",
+      "group": "비상대응체계",
+      "title": "현장 비상사태대응매뉴얼",
+      "description": "비상사태 대비계획",
+      "max_score": 5,
+      "evidence": [
+        "emergency_plan"
+      ],
+      "row": 11
+    },
+    {
+      "id": "p12",
+      "group": "비상대응체계",
+      "title": "비상시 업무분장\n및 비상연락망",
+      "description": "비상 업무분장표, 비상연락망",
+      "max_score": 5,
+      "evidence": [
+        "emergency_roles"
+      ],
+      "row": 12
+    },
+    {
+      "id": "p13",
+      "group": "비상대응체계",
+      "title": "비상사태훈련보고서\n및 교육일지",
+      "description": "비상훈련보고서, 교육일지(반기 1회)",
+      "max_score": 7,
+      "evidence": [
+        "emergency_drill"
+      ],
+      "row": 13
+    },
+    {
+      "id": "p14",
+      "group": "비상대응체계",
+      "title": "비상시 대응요령",
+      "description": "사고보고 절차도 게시",
+      "max_score": 5,
+      "evidence": [
+        "report_flow"
+      ],
+      "row": 14
+    },
+    {
+      "id": "p15",
+      "group": "안전교육",
+      "title": "정기안전교육",
+      "description": "정기안전보건교육일지",
+      "max_score": 5,
+      "evidence": [
+        "education_regular"
+      ],
+      "row": 15
+    },
+    {
+      "id": "p16",
+      "group": "안전교육",
+      "title": "특별안전교육",
+      "description": "특별안전교육일지, MSDS 교육일지",
+      "max_score": 10,
+      "evidence": [
+        "education_special",
+        "msds"
+      ],
+      "row": 16
+    },
+    {
+      "id": "p17",
+      "group": "안전교육",
+      "title": "관리감독자교육",
+      "description": "관리감독자 교육 이수증",
+      "max_score": 5,
+      "evidence": [
+        "supervisor_training"
+      ],
+      "row": 17
+    },
+    {
+      "id": "p18",
+      "group": "건강검진",
+      "title": "배치전, 특수건강검진",
+      "description": "배치전·특수 건강진단 결과표",
+      "max_score": 3,
+      "evidence": [
+        "health"
+      ],
+      "row": 18
+    }
+  ]
+}

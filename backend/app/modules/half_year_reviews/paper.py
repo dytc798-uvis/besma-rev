@@ -1,13 +1,14 @@
 """Strict PDF transcription contract. A transcription never completes an evaluation."""
 from datetime import date
 import copy,re
-from .catalog import FORMS,cleaned
+from .catalog import FORMS,cleaned,criterion_points
 
 def schema(form=None):
     fields={'form':{'type':'string','enum':list(FORMS)+['unknown']},'site_name':{'type':'string'},'subject_name':{'type':'string'},'inspection_date':{'type':'string'},'summary':{'type':'string'},'total_score':{'type':['number','null']},'answers':{'type':'array','items':{'type':'object','additionalProperties':False,'properties':{'id':{'type':'string'},'value':{'type':['string','integer','null']},'note':{'type':'string'},'confidence':{'type':'number'},'page':{'type':'integer'},'observed':{'type':'string'}},'required':['id','value','note','confidence','page','observed']}}}
     if form in FORMS:
         scoring=FORMS[form]['scoring'];fields['answers']['items']['properties']['id']={'type':'string','enum':[c['id']for c in FORMS[form]['criteria']]}
         fields['answers']['items']['properties']['value']=({'type':['integer','null']}if scoring=='POINTS'else{'type':['string','null'],'enum':(['EXCELLENT','NORMAL','POOR',None]if scoring=='THREE_LEVEL'else['PASS','FAIL','NA',None])})
+    if form=='report':fields['answers']['items']['properties']['value']={'type':['string','integer','null']}
     return {'type':'object','additionalProperties':False,'properties':fields,'required':list(fields)}
 
 def normalize(s):return re.sub(r'[^가-힣A-Za-z0-9]','',s).casefold()
@@ -23,7 +24,7 @@ def validate(value,form,pages):
     if not isinstance(answers,list)or len(answers)>len(criteria):raise ValueError('PARSE_ANSWERS_INVALID')
     for row in answers:
         if not isinstance(row,dict)or set(row)!={'id','value','note','confidence','page','observed'}or row['id']not in criteria or row['id']in seen:raise ValueError('PARSE_ANSWERS_INVALID')
-        seen.add(row['id']);v=row['value'];scoring=FORMS[form]['scoring']
+        seen.add(row['id']);v=row['value'];scoring=criteria[row['id']].get('scoring',FORMS[form]['scoring'])
         if v is not None:
             if scoring=='POINTS'and(type(v)is not int or not 0<=v<=criteria[row['id']]['max_score']):raise ValueError('PARSE_SCORE_INVALID')
             if scoring=='THREE_LEVEL'and v not in {'EXCELLENT','NORMAL','POOR'}:raise ValueError('PARSE_SCORE_INVALID')
@@ -46,7 +47,7 @@ def merge(result,job,data,selected=None,confirm_identity=False):
         if len(rows)!=len(schema['criteria'])or any(r['value']is None for r in rows):total_ok=False
         else:
             maxima={r['id']:r['max_score']for r in schema['criteria']}
-            actual=sum(r['value']if schema['scoring']=='POINTS'else maxima[r['id']]*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[r['value']]for r in rows)
+            actual=sum(r['value']if schema['scoring']=='POINTS'else criterion_points(next(q for q in schema['criteria']if q['id']==r['id']),r['value'])for r in rows)
             total_ok=abs(actual-result['total_score'])<.001
     automatic=selected is None
     allowed=not mismatched and total_ok and day_ok and(identity or confirm_identity)
