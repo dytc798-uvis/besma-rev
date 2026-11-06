@@ -157,6 +157,7 @@ def pptx(snapshot,site,inspector,photos,period,blind=False):
     items['ppt/slides/slide2.xml']=xml(overview)
     summary=E.fromstring(items['ppt/slides/slide3.xml']);score=snapshot['result']['score']
     text(shape(summary,8),f'{score:g}');text(cell(summary,12,19,5),f'{score:g}')
+    text(shape(summary,17),'')
     for criterion in report_schema(snapshot)['criteria']:
         if snapshot.get('criteria_version',1)>=2:
             text(cell(summary,12,criterion['row'],2),criterion['title']);text(cell(summary,12,criterion['row'],3),criterion['description']);text(cell(summary,12,criterion['row'],4),str(criterion['max_score']))
