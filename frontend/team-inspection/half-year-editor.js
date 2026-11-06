@@ -105,7 +105,7 @@ export async function mountHalfYearReview({origin,token,session,user,workspace,p
  const improvementRequest=createImprovementRequest({host:panel,owner:origin+'|'+user.id,get:()=>{
   const assessments=structuredClone(state.data.assessments);const prefix=row.public_id+'|'+period+'|';
   for(const[key,draft]of drafts)if(key.startsWith(prefix)){const parts=key.slice(prefix.length).split('|'),id=parts.join(':');assessments[id]={...assessments[id],draft:{...assessments[id]?.draft,data:structuredClone(draft.data)}};}
-  return{plan:row.public_id,period,site:row.title.replace(/^\[점검\] /,''),catalog,assessments,subjects:state.data.subjects,date:currentDraft().data.inspection_date};
+  return{plan:row.public_id,period,site:row.title.replace(/^\[점검\] /,''),catalog,assessments,subjects:state.data.subjects,evidence:state.data.evidence,date:currentDraft().data.inspection_date};
  },save:async(rows,target)=>{
   session();if(!alive||busy||assessmentSaving||row.public_id!==target.plan||period!==target.period)throw Error('현재 현장 저장이 끝난 뒤 다시 시도해 주세요.');
   const requestKey=crypto.randomUUID(),payload={request_key:requestKey,revision:state.revision,period,action:'assessment-improvements',data:{form:'report',subject_id:'site',inspection_date:target.date,improvements:rows}};
