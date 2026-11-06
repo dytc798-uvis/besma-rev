@@ -24,7 +24,7 @@ def queue(store,key,user,row,period,body,profile=None):
     from .site_profile import enrich
     snapshot=enrich(snapshot,profile or{},assessment)
     site=row.title.removeprefix('[점검] ').strip();filename=re.sub(r'[\\/:*?"<>|\x00-\x1f]','_',site+'_'+FORMS[body['form']]['title']+('_대표보고용.pdf'if purpose=='REPORT'else'_소장서명용.pdf'if body['form']in {'report','law'}else'_평가서.pdf'))
-    html=document(body['form'],snapshot,site,period,blind=purpose!='REPORT');source=hashlib.sha256(html.encode()).hexdigest();payload={**body,'html':html,'source_sha256':source,'public_id':row.public_id,'period':period,'context_id':key,'site':site,'filename':filename,'blind_report_scores':purpose!='REPORT','purpose':purpose};now=stamp()
+    html=document(body['form'],snapshot,site,period,blind=purpose!='REPORT');source=hashlib.sha256(html.encode()).hexdigest();payload={**body,'html':html,'source_sha256':source,'public_id':row.public_id,'period':period,'context_id':key,'site':site,'filename':filename,'blind_report_scores':False,'purpose':purpose};now=stamp()
     with closing(connect(store))as c,c:
         c.execute('BEGIN IMMEDIATE');old=c.execute('SELECT * FROM jobs WHERE context_id=? AND owner_id=? AND request_key=?',(key,user.id,body['request_key'])).fetchone()
         if old:
