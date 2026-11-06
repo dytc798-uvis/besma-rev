@@ -170,9 +170,6 @@ def pptx(snapshot,site,inspector,photos,period,blind=False):
                     if prior.tag in {'{'+NS['a']+'}solidFill','{'+NS['a']+'}noFill'}:prop.remove(prior)
                 fill=E.SubElement(prop,'{'+NS['a']+'}solidFill');E.SubElement(fill,'{'+NS['a']+'}srgbClr',{'val':'FFF0D9'})
                 for run in target.findall('.//a:rPr',NS):run.set('b','1')
-        note=data['answers'][criterion['id']]['note']
-        if note:
-            target=cell(summary,12,criterion['row'],3);prior=''.join(target.itertext());text(target,prior+'  '+note)
     items['ppt/slides/slide3.xml']=xml(summary)
     improvement=E.fromstring(items['ppt/slides/slide4.xml']);rows=data['improvements'];text(shape(improvement,7),'개선요구'+(' '+str(len(rows))+'건'if rows else''))
     for target in shape(improvement,8).findall('.//a:tr',NS)[1:]:
