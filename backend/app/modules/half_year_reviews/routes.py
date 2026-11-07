@@ -40,13 +40,14 @@ def profile_for(db,row,key):return site_profile.resolve(db,row,store().load(key)
 def selected(db,user,public_id,period):
     enabled(db,user);row=mobile_pilot.own_plan(db,user,public_id)if mobile_pilot.allowed(user)else plan(db,user,public_id);return row,context_key(row,period)
 def fail(error):
+    if str(error)=='TEST_RESET':raise HTTPException(409,'시험 기록을 초기화했습니다. 현장 목록으로 돌아가 해당 현장을 다시 열어 주세요.')
     if isinstance(error,Conflict):raise HTTPException(409,'다른 화면에서 자료가 변경되었습니다. 입력 내용을 보존했으니 새로 확인해 주세요.')
     if isinstance(error,KeyError):raise HTTPException(404,'이 현장·반기의 자료를 찾을 수 없습니다.')
     messages={'PACKAGE_TOO_LARGE':'자료가 많아 한 번에 묶을 수 없습니다. 평가서와 증빙자료를 나누어 받아 주세요.','PACKAGE_INCOMPLETE':'4종 평가와 지정서에 등록한 관리감독자 평가를 마친 뒤 현장 자료를 받을 수 있습니다.','CRITERIA_UPDATED':'평가항목이 바뀌었습니다. 작성내용을 보관한 뒤 화면을 새로 열어 주세요.','SITE_DETAILS_INVALID':'공정률은 0~100 사이 숫자로 입력하고 기준일을 확인해 주세요.','SUMMARY_TOO_LONG':'총평은 240자·6줄 이내로 작성해 주세요.','PDF_PREVIEW_UNAVAILABLE':'원문을 미리 볼 수 없습니다. 원본 파일을 받아 확인해 주세요.','PDF_PREVIEW_SOURCE_CHANGED':'원문 파일 확인이 필요합니다. 다시 조회해 주세요.','SIGNED_TABLE_REQUIRED':'해당 최종 평가표 사진을 업로드하고 원본 기준 서명·전체 쪽 확인을 체크해 주세요.','WALK_FOUR_FORMS_REQUIRED':'4종 각각의 최종 평가표 사진 업로드·확인을 먼저 완료해 주세요.','WALK_REPORT_URL_INVALID':'네이버웍스 게시글 주소를 확인해 주세요.','SIGNED_PHOTO_ALREADY_USED':'다른 평가표에 사용한 사진입니다. 이 평가표 사진을 따로 연결해 주세요.','WALK_REASON_REQUIRED':'해당없음 사유를 입력해 주세요.','WALK_DATE_MISMATCH':'점검기록과 평가일이 다릅니다. 점검일과 연결 기록을 확인해 주세요.','MONTHLY_SOURCE_INVALID':'이 현장·반기의 취합자료를 다시 선택해 주세요.','MONTHLY_SOURCE_LIMIT':'연결할 수 있는 취합자료 수를 넘었습니다.','UNREVIEWED_ITEMS_REMAIN':'아직 입력하지 않은 평가 문항을 확인해 주세요.','SIGNATURE_INCOMPLETE_CONFIRM':'아직 작성하지 않은 부분이 있습니다. 확인 후 다운로드해 주세요.','SIGNATURE_SOURCE_CHANGED':'평가내용이 변경되었습니다. 다시 확인한 뒤 다운로드해 주세요.','COMPLETE_FIRST':'평가 항목을 입력하고 완료 저장한 뒤 받을 수 있습니다.','SUBJECT_REQUIRED':'평가대상자를 먼저 추가해 주세요.','SUBJECT_EXISTS':'이미 등록된 평가대상자입니다.','NOTE_TOO_LONG':'비고는 두 줄 이내로 짧게 입력해 주세요.','VERDICT_INVALID':'해당없음 사유와 적합 여부를 확인해 주세요.','SCORE_INVALID':'평가표의 배점 범위 안에서 점수를 입력해 주세요.','TEMPLATE_CHANGED':'평가표 원본이 변경되어 확인이 필요합니다.','DATE_PERIOD_MISMATCH':'점검일이 선택한 반기와 다릅니다.','PDF_REQUIRED':'수기로 작성한 평가 PDF 파일을 선택해 주세요.','PARSE_REVIEW_REQUIRED':'현장·대상자·점검일·합계와 판독 내용을 확인해 주세요.'}
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False,'linked_navigation_version':1,'summary_autosave_version':1,'comment_autosave_version':1,'grade_autosave_version':1,'site_profile_version':1,'director_report_version':1,'collection_defaults_version':1}
+    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False,'linked_navigation_version':1,'summary_autosave_version':1,'comment_autosave_version':1,'grade_autosave_version':1,'field_activity_version':1,'site_profile_version':1,'director_report_version':1,'collection_defaults_version':1}
 @router.get('/mobile-pilot/capabilities')
 def mobile_capabilities(db:DbDep,user:Current,response:Response):
     enabled(db,user)
@@ -359,3 +360,50 @@ def signing_bundle_file(public_id:str,bundle_id:str,period:str,db:DbDep,user:Cur
         raw=bundle.merged(store(),key,user.id,bundle_id)
         return Response(raw,media_type='application/pdf',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(status['filename']),'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff'})
     except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
+
+
+class ActivityRequest(BaseModel):
+    model_config=ConfigDict(extra='forbid',strict=True)
+    action:str=Field(pattern=r'^(START|HEARTBEAT|STOP)$')
+    device:str=Field(pattern=r'^[0-9a-f-]{36}$')
+
+def activity_reader(db,user):
+    enabled(db,user)
+    from app.modules.safety_features.team_schedule_routes import _member_or_403
+    _member_or_403(db,user)
+    if not user.is_active or str(getattr(user.role,'value',user.role))not in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}:raise HTTPException(403,'현장 평가 현황을 조회할 권한이 없습니다.')
+
+@router.get('/team-activity')
+def team_activity(db:DbDep,user:Current,response:Response):
+    activity_reader(db,user)
+    from . import activity
+    from app.modules.safety_features.team_schedule_models import TeamScheduleItem
+    from app.modules.safety_features.inspection_plan import INSPECTION_SOURCE,schedule_owner_id
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    items=[]
+    for uid in sorted(activity.INSPECTORS):
+        person=db.get(User,uid)
+        if not person or not person.is_active or str(getattr(person.role,'value',person.role))!='HQ_SAFE':continue
+        item={'inspector_id':uid,'inspector_name':person.name,'state':'IDLE'};current=activity.read(store().root,uid)
+        if current:
+            row=db.query(TeamScheduleItem).filter_by(public_id=current['plan']).first()
+            if row is not None and row.source==INSPECTION_SOURCE and row.archived_at is None and schedule_owner_id(row)==uid:
+                item.update(state=current['state'],site_name=row.title.removeprefix('[점검] ').strip(),plan_id=row.public_id,period=current['context'].split('|')[-1],last_seen=current['seen'],started_at=current['started'])
+        items.append(item)
+    return {'items':items,'heartbeat_expiry_seconds':activity.HEARTBEAT_TTL}
+
+@router.get('/plans/{public_id}/activity')
+def own_activity(public_id:str,period:str,db:DbDep,user:Current,response:Response):
+    row,key=selected(db,user,public_id,period)
+    from . import activity
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    value=activity.read(store().root,user.id)
+    return {'state':value['state'],'active':True,'last_seen':value['seen']}if value and value['context']==key else{'state':'IDLE','active':False}
+
+@router.post('/plans/{public_id}/activity')
+def change_activity(public_id:str,period:str,body:ActivityRequest,db:DbDep,user:Current,response:Response):
+    row,key=selected(db,user,public_id,period)
+    from . import activity
+    if user.id not in activity.INSPECTORS or not user.is_active or str(getattr(user.role,'value',user.role))!='HQ_SAFE':raise HTTPException(403,'현장 평가 담당자를 확인해 주세요.')
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    return activity.change(store().root,user.id,row.public_id,key,body.action,body.device)

@@ -31,6 +31,8 @@ class ReviewStore:
         canonical={**{k:v for k,v in request.items()if k!='base'or v is not None},'attachment_sha256':digest(attachment[0])if attachment else None};payload_sha=digest(encoded(canonical).encode());stamp=datetime.now(timezone.utc).isoformat();new_path=None
         with closing(self.connect())as c:
             c.execute('BEGIN IMMEDIATE')
+            reset_row=c.execute('SELECT revision,data FROM contexts WHERE id=?',(key,)).fetchone()
+            if reset_row and request['revision']<json.loads(reset_row['data']).get('test_reset',{}).get('revision',0):raise ValueError('TEST_RESET')
             replay=c.execute('SELECT payload_sha256,result FROM receipts WHERE context_id=? AND request_key=? AND actor_id=?',(key,request['request_key'],actor)).fetchone()
             if replay:
                 if replay['payload_sha256']!=payload_sha:raise Conflict('REQUEST_CHANGED')
