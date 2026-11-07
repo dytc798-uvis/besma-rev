@@ -1,0 +1,7 @@
+{
+  "target": "static/company.html",
+  "before": "</body>",
+  "insert": "<script type=\"module\" src=\"/company-evaluation-activity.js?v=2026.11.07.8\"></script>",
+  "preserve_all_other_bytes": true,
+  "baseline_sha256": "dbe8a3cafcc3a512688d6a1353367f2bc191bc81ffa03629de35587e28d50ef8"
+}
