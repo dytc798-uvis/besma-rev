@@ -1,9 +1,9 @@
-export function createSummaryAutosave({owner,context,canSave,save,notify,delay=1000}){
+export function createSummaryAutosave({owner,context,canSave,save,notify,delay=1000,persistSaved=true}){
  const prefix='besma-review-summary-v1:'+encodeURIComponent(owner)+':',states=new Map();let timer=null,working=null,dead=false;
  const state=key=>{if(!states.has(key))states.set(key,{});return states.get(key);};
  const storageKey=key=>prefix+encodeURIComponent(key);
  const savedKey=key=>prefix+'saved:'+encodeURIComponent(key);
- function archive(key,text){if(!text?.trim())return;try{localStorage.setItem(savedKey(key),JSON.stringify({key,text,base:text,at:Date.now(),kind:'saved'}));}catch{}}
+ function archive(key,text){if(!persistSaved||!text?.trim())return;try{localStorage.setItem(savedKey(key),JSON.stringify({key,text,base:text,at:Date.now(),kind:'saved'}));}catch{}}
  function savedBackup(key){try{const r=JSON.parse(localStorage.getItem(savedKey(key))||'null');return r&&r.key===key&&typeof r.text==='string'&&r.text.trim()&&Number.isFinite(r.at)&&Date.now()-r.at>=0&&Date.now()-r.at<30*86400000?r:null;}catch{return null;}}
  function read(key){try{const r=JSON.parse(localStorage.getItem(storageKey(key))||'null');return r&&r.key===key&&typeof r.text==='string'&&typeof r.base==='string'&&Number.isFinite(r.at)&&Date.now()-r.at>=0&&Date.now()-r.at<30*86400000?r:null;}catch{return null;}}
  function preserve(key,text,base){const s=state(key);try{localStorage.setItem(storageKey(key),JSON.stringify({key,text,base,at:Date.now()}));s.local=true;}catch{s.local=false;}return s;}

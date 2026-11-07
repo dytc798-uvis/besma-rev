@@ -86,15 +86,16 @@ class ReviewStore:
                     if body['form']=='supervisor'and supervisor_group.subject(data):data.setdefault('supervisor_group_id',supervisor_group.subject(data)['id'])
                     data['subjects'][body['form']].append(subject)
                 result['subject']=subject
-            elif action in {'assessment','assessment-summary','assessment-comment','assessment-improvements'}:
+            elif action in {'assessment','assessment-summary','assessment-comment','assessment-improvements','assessment-score'}:
                 if action=='assessment'and body.get('form')=='report'and body.pop('criteria_version',None)!=CATALOG['version']:raise ValueError('CRITERIA_UPDATED')
-                if action in {'assessment-summary','assessment-comment','assessment-improvements'}:
-                    expected={'form','subject_id','improvements','inspection_date'}if action=='assessment-improvements'else({'form','subject_id','summary','inspection_date'}if action=='assessment-summary'else{'form','subject_id','criterion_id','note','inspection_date'})
+                if action in {'assessment-summary','assessment-comment','assessment-improvements','assessment-score'}:
+                    expected={'form','subject_id','improvements','inspection_date'}if action=='assessment-improvements'else({'form','subject_id','summary','inspection_date'}if action=='assessment-summary'else{'form','subject_id','criterion_id','value'if action=='assessment-score'else'note','inspection_date'})
                     if set(body)!=expected:raise ValueError('SUMMARY_INVALID')
                     kind=body['form'];target=body['subject_id']
                     if kind not in FORMS:raise ValueError('FORM_INVALID')
                     saved=data['assessments'].get(kind+':'+target,{}).get('draft',{}).get('data')
                     answers=json.loads(json.dumps(saved))if saved else{'answers':{},'inspection_date':body['inspection_date'],'photo_ids':[],'improvements':[]}
+                    if action=='assessment-score'and kind=='report'and data['assessments'].get(kind+':'+target,{}).get('draft',{}).get('criteria_version',1)<2:answers.get('answers',{}).pop('p02',None)
                     if action=='assessment-improvements':
                         if kind!='report'or target!='site':raise ValueError('FORM_INVALID')
                         answers['improvements']=body['improvements']
@@ -102,7 +103,8 @@ class ReviewStore:
                     else:
                         criterion=body['criterion_id']
                         if criterion not in {q['id']for q in FORMS[kind]['criteria']}:raise ValueError('CRITERION_INVALID')
-                        answers.setdefault('answers',{}).setdefault(criterion,{'value':None,'note':''})['note']=body['note']
+                        field='value'if action=='assessment-score'else'note'
+                        answers.setdefault('answers',{}).setdefault(criterion,{'value':None,'note':''})[field]=body[field]
                     body={'form':kind,'subject_id':target,'answers':answers,'complete':False}
                 if set(body)!={'form','subject_id','answers','complete'}or type(body['complete'])is not bool:raise ValueError('ASSESSMENT_INVALID')
                 if action=='assessment'and isinstance(request.get('base'),dict):

@@ -62,6 +62,6 @@ def presence(root, key, actor, device, device_type, mode):
         c.execute('CREATE TABLE IF NOT EXISTS presence(context TEXT,actor INTEGER,device TEXT,device_type TEXT,mode TEXT,seen REAL,PRIMARY KEY(context,actor,device))')
         c.execute('BEGIN IMMEDIATE')
         c.execute('INSERT INTO presence VALUES(?,?,?,?,?,?)ON CONFLICT(context,actor,device)DO UPDATE SET device_type=excluded.device_type,mode=excluded.mode,seen=excluded.seen',(key,actor,device,device_type,mode,now))
-        rows=c.execute("SELECT device,device_type FROM presence WHERE context=?AND actor=?AND device!=?AND device_type!=?AND mode!='SOLO'AND seen>=?",(key,actor,device,device_type,now-PRESENCE_TTL)).fetchall()
+        rows=c.execute("SELECT device,device_type FROM presence WHERE context=?AND actor=?AND device!=?AND mode!='SOLO'AND seen>=?",(key,actor,device,now-PRESENCE_TTL)).fetchall()
         c.execute('DELETE FROM presence WHERE seen<?',(now-300,));c.commit()
         return {'peers':[dict(r)for r in rows],'expires_after':PRESENCE_TTL}

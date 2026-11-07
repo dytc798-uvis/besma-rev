@@ -42,8 +42,8 @@ export function relatedAnswers({catalog,form,criterion,assessments}){
  return rows.sort((a,b)=>b.rank-a.rank||catalog.order.indexOf(a.form)-catalog.order.indexOf(b.form)||a.number-b.number);
 }
 export function renderRelated(host,rows,{jump,notice}){
- const signature=JSON.stringify(rows);if(host.dataset.signature===signature)return;host.dataset.signature=signature;host.replaceChildren();host.hidden=!rows.length;if(!rows.length)return;
- const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};host.append(node('strong','다른 평가에서 입력한 내용'));
+ const signature=JSON.stringify(rows);if(host.dataset.signature===signature)return;const expanded=host.querySelector('.related-answer-more')?.open===true;host.dataset.signature=signature;host.replaceChildren();host.hidden=!rows.length;if(!rows.length)return;
+ const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;};host.append(node('strong','확인내용'));
  const add=(parent,row)=>{const item=node('article',null,'related-answer');item.dataset.relatedSource=row.key;item.append(node('strong',row.form_title+' '+row.number+'번 · '+row.title),node('p','이전 평가: '+row.score,'related-answer-score'));if(row.note.trim())item.append(node('p',row.note,'related-answer-note'));const open=node('button','이 평가 문항 보기');open.type='button';open.setAttribute('aria-label',row.form_title+' '+row.number+'번 보기');open.onclick=()=>Promise.resolve(jump(row)).catch(e=>notice(e.message));item.append(open);parent.append(item);};
- rows.slice(0,2).forEach(r=>add(host,r));if(rows.length>2){const more=node('details',null,'related-answer-more');more.append(node('summary','다른 입력 '+(rows.length-2)+'개 더보기'));rows.slice(2).forEach(r=>add(more,r));host.append(more);}
+ const first=rows.find(r=>r.note.trim())||rows[0],brief=first.note.trim()||first.form_title+' '+first.number+'번 · '+first.score;host.append(node('p',brief.replace(/\s+/g,' ').slice(0,140)+(brief.replace(/\s+/g,' ').length>140?'…':''),'related-answer-brief'));const more=node('details',null,'related-answer-more');more.open=expanded;more.append(node('summary','관련 평가·근거 보기 ('+rows.length+')'));rows.forEach(r=>add(more,r));host.append(more);
 }
