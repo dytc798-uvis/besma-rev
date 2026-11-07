@@ -1,4 +1,30 @@
 const names={EXCELLENT:'우수',NORMAL:'보통',POOR:'미흡',PASS:'적합',FAIL:'부적합',NA:'해당없음'};
+// Only comparable checks share a grade. A generic equipment/inspection file
+// cannot establish every separate on-site legal duty.
+const comparable=[
+ ['p01','p02','p03','p04','m19','s13','s15','s16','l02','l16'],
+ ['p05','p06','p07','p08','m06','l03','l09','l10','l11'],
+ ['p11','p12','p13','m09','s09','l05'],
+ ['p03','p09','p10','m20','m21','l04'],
+ ['p15','p16','p17','m13','l13','l14'],
+ ['m16','l06']
+];
+export function evidenceDefaults({catalog,form,assessments,evidence={},answers={},blocked=new Set()}){
+ const schema=catalog.forms[form],result={};
+ for(const q of schema.criteria){
+  if(answers[q.id]?.value!=null||blocked.has(q.id))continue;
+  const allowed=new Set(comparable.filter(g=>g.includes(q.id)).flat());
+  if(!allowed.size)continue;
+  const sources=relatedAnswers({catalog,form,criterion:q,assessments}).filter(r=>allowed.has(r.criterion)&&r.value!=null&&r.value!=='NA');
+  const full=r=>{const c=catalog.forms[r.form].criteria.find(c=>c.id===r.criterion);return r.value==='PASS'||r.value==='EXCELLENT'||typeof r.value==='number'&&Number.isInteger(r.value)&&r.value===c.max_score;};
+  // A conflicting partial/poor verdict still needs the evaluator's decision.
+  if(!sources.length||sources.some(r=>!full(r)))continue;
+  const covered=new Set(sources.flatMap(r=>r.evidence));
+  if(q.evidence.some(id=>evidence[id]?.hold===true||!covered.has(id)&&evidence[id]?.checked!==true))continue;
+  result[q.id]={value:schema.scoring==='COMPLIANCE'?'PASS':q.max_score,sources:sources.map(r=>({form:r.form,criterion:r.criterion,number:r.number,title:r.form_title})),supplemental:q.evidence.filter(id=>!covered.has(id))};
+ }
+ return result;
+}
 export function relatedAnswers({catalog,form,criterion,assessments}){
  const rows=[];
  for(const[key,record]of Object.entries(assessments||{})){
