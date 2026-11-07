@@ -20,7 +20,9 @@ export function evidenceDefaults({catalog,form,assessments,evidence={},answers={
   // A conflicting partial/poor verdict still needs the evaluator's decision.
   if(!sources.length||sources.some(r=>!full(r)))continue;
   const covered=new Set(sources.flatMap(r=>r.evidence));
-  if(q.evidence.some(id=>evidence[id]?.hold===true||!covered.has(id)&&evidence[id]?.checked!==true))continue;
+  // Notes/files mark an evidence row checked, even when the note reports a gap.
+  // Only a full graded counterpart can cover a target requirement.
+  if(q.evidence.some(id=>evidence[id]?.hold===true||!covered.has(id)))continue;
   result[q.id]={value:schema.scoring==='COMPLIANCE'?'PASS':q.max_score,sources:sources.map(r=>({form:r.form,criterion:r.criterion,number:r.number,title:r.form_title})),supplemental:q.evidence.filter(id=>!covered.has(id))};
  }
  return result;
