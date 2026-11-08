@@ -3,7 +3,7 @@ import {signingBundleButton} from '/signature-bundle.js?v=2026.11.06.11';
 import {createReviewDashboard} from '/inspection-review-dashboard.js?v=2026.11.06.16';
 import {inspectionEntry,inspectionMonth,inspectionPlanId} from '/assets/inspection-work-entry.js';
 import {workReturn} from '/assets/workspace-return.js';
-import {mountHalfYearReview} from '/half-year-editor.js?v=20261101.19';
+import {mountHalfYearReview} from '/half-year-editor.js?v=2026.11.09.2';
 
 
 import {mountInspectionReport} from '/inspection-report-editor.js?v=20261030.1';
