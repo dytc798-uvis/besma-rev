@@ -1,0 +1,8 @@
+{
+  "baseline_deployment": "dpl_A8kXZ6KHDSWkNNrCyzskcXUEKWHk",
+  "company_home_asset": "assets/company-home-bfdac1499639.js",
+  "company_home_sha256": "bfdac14996393245fdd15f416a86a15a314c0a2b7a3926536a3e95ffe77b2256",
+  "map_asset": "assets/company-map-4a86b75c3665.js",
+  "map_sha256": "4a86b75c366541c8349e468eae867aa929aa977d7fcc681d1a3c5a091634b485",
+  "change": "Replace only the company-home import of original mountMap with the office wrapper. Original map implementation, site data and all other imports remain unchanged."
+}

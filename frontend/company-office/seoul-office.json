@@ -1,0 +1,14 @@
+{
+  "name": "부현전기 서울사업소",
+  "address": "서울특별시 영등포구 가마산로48길 16, 신풍프라자 4층",
+  "telephone": "02-848-8804",
+  "longitude": 126.90122105674523,
+  "latitude": 37.50148569505714,
+  "representative": "김홍수",
+  "address_source": "http://www.boohyun.kr/bbs/page.php?hid=location",
+  "portrait_source": "http://www.boohyun.kr/bbs/page.php?hid=ceo",
+  "portrait_image_source": "http://www.boohyun.kr/thema/Thema013/img/ceo_img.png",
+  "coordinates_source": "https://t1.kakaocdn.net/roughmap/29f86.json",
+  "coordinates_conversion": "Official embedded map WCONGNAMUL placeX/placeY divided by 2.5, EPSG:5181 to EPSG:4326",
+  "not_an_evaluation_site": true
+}
