@@ -4,10 +4,11 @@ export function insideRegions(point,features){return features.some(f=>polygons(f
 export function regionBounds(features){const pairs=features.flatMap(f=>polygons(f).flatMap(r=>r.flatMap(p=>p))),xs=pairs.map(p=>p[0]),ys=pairs.map(p=>p[1]);return [[Math.min(...xs),Math.min(...ys)],[Math.max(...xs),Math.max(...ys)]];}
 export function mainlandFeatures(features){const area=ring=>Math.abs(ring.reduce((sum,p,i)=>{const q=ring[(i+1)%ring.length];return sum+p[0]*q[1]-q[0]*p[1];},0));return features.map(f=>({...f,geometry:{type:'Polygon',coordinates:polygons(f).reduce((a,b)=>area(a[0])>=area(b[0])?a:b)}}));}
 export function fitRegionCamera(map,features,{pitch=35,padding=32}={}){
+ const edges=typeof padding==='number'?{top:padding,bottom:padding,left:padding,right:padding}:padding;
  const bounds=regionBounds(features);map.fitBounds(bounds,{padding,maxZoom:11,bearing:0,pitch,duration:0});
  const points=features.flatMap(f=>polygons(f).flatMap(r=>r[0])),canvas=map.getCanvas();
  // fitBounds uses a flat bounding box. Check the tilted projection as well.
- for(let i=0;i<30;i++){const projected=points.map(p=>map.project(p));if(projected.every(p=>p.x>=padding&&p.x<=canvas.clientWidth-padding&&p.y>=padding&&p.y<=canvas.clientHeight-padding))break;const zoom=map.getZoom();if(zoom<=map.getMinZoom())break;map.jumpTo({zoom:Math.max(map.getMinZoom(),zoom-.1)});}
+ for(let i=0;i<30;i++){const projected=points.map(p=>map.project(p));if(projected.every(p=>p.x>=edges.left&&p.x<=canvas.clientWidth-edges.right&&p.y>=edges.top&&p.y<=canvas.clientHeight-edges.bottom))break;const zoom=map.getZoom();if(zoom<=map.getMinZoom())break;map.jumpTo({zoom:Math.max(map.getMinZoom(),zoom-.1)});}
  return {center:map.getCenter().toArray(),zoom:map.getZoom(),pitch:map.getPitch(),bearing:map.getBearing()};
 }
 export function createRegionLock(map){
@@ -19,7 +20,7 @@ export function createRegionLock(map){
  }
  map.on('move',enforce);
  function clear(){focus=null;lastAllowed=null;map.setMinZoom(originalMin);map.setMaxBounds(originalBounds);map.getSource('region-focus-mask').setData(empty);map.getSource('region-focus-outline').setData(empty);}
- function set(features,{name='서울',pitch=35,fit=true}={}){clear();const bounds=regionBounds(features),anchor=[126.978,37.5665];if(!features.length||!insideRegions(anchor,features))return false;const prior={center:map.getCenter().toArray(),zoom:map.getZoom(),pitch:map.getPitch(),bearing:map.getBearing()},camera=fitRegionCamera(map,features,{pitch});focus={name,features,anchor,bounds,overviewZoom:camera.zoom};lastAllowed=anchor;if(camera&&Number.isFinite(camera.zoom))map.setMinZoom(Math.max(originalMin,camera.zoom));if(!fit)map.jumpTo(prior);
+ function set(features,{name='서울',pitch=35,padding=32,fit=true}={}){clear();const bounds=regionBounds(features),anchor=[126.978,37.5665];if(!features.length||!insideRegions(anchor,features))return false;const prior={center:map.getCenter().toArray(),zoom:map.getZoom(),pitch:map.getPitch(),bearing:map.getBearing()},camera=fitRegionCamera(map,features,{pitch,padding});focus={name,features,anchor,bounds,overviewZoom:camera.zoom};lastAllowed=anchor;if(camera&&Number.isFinite(camera.zoom))map.setMinZoom(Math.max(originalMin,camera.zoom));if(!fit)map.jumpTo(prior);
   const outer=[[112,20],[148,20],[148,51],[112,51],[112,20]],holes=features.flatMap(f=>polygons(f).map(p=>p[0])).map(ring=>{const area=ring.reduce((sum,p,i)=>{const q=ring[(i+1)%ring.length];return sum+p[0]*q[1]-q[0]*p[1];},0);return area>0?[...ring].reverse():ring;});map.getSource('region-focus-mask').setData({type:'FeatureCollection',features:[{type:'Feature',properties:{},geometry:{type:'Polygon',coordinates:[outer,...holes]}}]});map.getSource('region-focus-outline').setData({type:'FeatureCollection',features});
   enforce();return true;
  }
