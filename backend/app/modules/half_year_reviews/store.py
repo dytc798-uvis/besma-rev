@@ -127,7 +127,7 @@ class ReviewStore:
                         if assessment_key!=form+':'+subject and set(answers['signed_table_photo_ids'])&set(prior.get('completed',{}).get('data',{}).get('signed_table_photo_ids',[])):
                             raise ValueError('SIGNED_PHOTO_ALREADY_USED')
                 assessment=data['assessments'].setdefault(form+':'+subject,{})
-                draft={'criteria_version':CATALOG['version'],'criterion_evidence':walkthrough.criterion_evidence(data,form,subject),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};text_times=json.loads(json.dumps(previous.get('text_saved_at',{})))
+                draft={**({'evaluation_scope_version':1}if form=='manager'else{}),'criteria_version':CATALOG['version'],'criterion_evidence':walkthrough.criterion_evidence(data,form,subject),'data':answers,'result':totals,'subject_name':subject_name,'inspector':name,'actor_id':actor,'at':stamp};text_times=json.loads(json.dumps(previous.get('text_saved_at',{})))
                 if action=='assessment-summary'or answers['summary']or previous_text!=answers['summary']:text_times['summary']=stamp
                 if action=='assessment-comment':text_times.setdefault('comments',{})[request['data']['criterion_id']]=stamp
                 if action=='assessment-improvements':text_times['improvements']=stamp

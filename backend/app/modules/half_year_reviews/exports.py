@@ -96,11 +96,17 @@ def xlsx(form,snapshot,site,inspector):
     for criterion in schema['criteria']:
         if form=='manager'and criterion['id']=='m19':setcell('M'+str(criterion['row']),criterion['description'])
         answer=data['answers'][criterion['id']];setcell('X'+str(criterion['row']),answer['value']);setcell('Y'+str(criterion['row']),answer['note'])
+    scoped=form=='manager'and snapshot.get('evaluation_scope_version')==1
+    if scoped:
+        setcell('M10','▣ 일일 안전점검 및 법규준수 평가 (본사평가 7점)\n현장에서는 법규이행 자료를 확인하지 않음')
+        if snapshot['result'].get('headquarters_pending'):
+            setcell('X10','');setcell('Y10','본사평가 대기 (7점)')
     score=snapshot['result']['score'];total=schema['total_cell']
     existing=root.find(".//s:c[@r='"+total+"']/s:f",ns)
-    if existing is not None:setcell(total,None,formula=existing.text,cache=score)
+    if scoped and snapshot['result'].get('headquarters_pending'):setcell(total,'본사평가 대기')
+    elif existing is not None:setcell(total,None,formula=existing.text,cache=score)
     else:setcell(total,score)
-    setcell(schema['summary_cell'],data['summary'])
+    setcell(schema['summary_cell'],(('현장평가 '+str(snapshot['result']['field_score'])+'/93점 · 본사평가 7점 대기\n')if scoped and snapshot['result'].get('headquarters_pending')else'')+data['summary'])
     seen=set()
     def patch(match):
         raw=match.group(0);opening=raw.split('>',1)[0];address=re.search(r'\br="([A-Z]+\d+)"',opening).group(1)

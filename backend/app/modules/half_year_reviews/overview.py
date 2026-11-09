@@ -21,6 +21,7 @@ def summarize(data):
                 forms.append({'form':form,'subject_id':subject['id'],'subject_name':snapshot.get('subject_name',''),
                     'snapshot_id':snapshot['id'],'at':snapshot['at'],'inspection_date':snapshot['data']['inspection_date'],
                     'score':snapshot.get('result',{}).get('score'),
+                    **({k:snapshot.get('result',{}).get(k)for k in ['headquarters_pending','field_score','field_max_score']}if form=='manager'else{}),
                     'verdicts':{v:sum(a.get('value')==v for a in answers.values())for v in ['PASS','FAIL','NA']}if schema['scoring']=='COMPLIANCE'else None,
                     'draft_changed':saved.get('draft',{}).get('data')!=snapshot['data']})
     prior=data.get('prior_assessments',{}).get('law')

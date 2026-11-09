@@ -31,12 +31,14 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
     summary=cleaned(data.get('summary',''),None)
     answers=data.get('answers',{})
     if not isinstance(answers,dict)or set(answers)-{r['id']for r in schema['criteria']}:raise ValueError('ANSWER_INVALID')
-    result={};missing=0;score=0
+    result={};missing=0;score=0;field_score=0;headquarters_pending=False
     for criterion in schema['criteria']:
         entry=answers.get(criterion['id'],{})
         if not isinstance(entry,dict)or set(entry)-{'value','note'}:raise ValueError('ANSWER_INVALID')
         value=entry.get('value');note=cleaned(entry.get('note',''),None)
-        if value is None:missing+=1
+        if value is None:
+            if form=='manager'and criterion.get('evaluation_scope')=='HEADQUARTERS':headquarters_pending=True
+            else:missing+=1
         elif form=='report'and type(value)is int:
             if not 0<=value<=criterion['max_score']:raise ValueError('SCORE_INVALID')
             score+=value
@@ -49,6 +51,7 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
             else:score+=value
         elif value not in {'PASS','FAIL','NA'}or value=='NA'and not note:raise ValueError('VERDICT_INVALID')
         result[criterion['id']]={'value':value,'note':note}
+        if form=='manager'and criterion.get('evaluation_scope')!='HEADQUARTERS'and type(value)is int:field_score+=value
     photos=data.get('photo_ids',[])
     if not isinstance(photos,list)or len(photos)>24 or len(set(photos))!=len(photos)or any(not isinstance(p,str)for p in photos):raise ValueError('PHOTOS_INVALID')
     known={r['id']for r in files if r['kind']=='image'}
@@ -74,7 +77,7 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
     signed_known={r['id']for r in files if r['kind']=='image'and r['evidence_id']=='paper_assessment'}
     if type(signed_flag)is not bool or type(pages_flag)is not bool or not isinstance(signed,list)or len(signed)>10 or any(not isinstance(p,str)for p in signed)or len(set(signed))!=len(signed)or not set(signed)<=signed_known:raise ValueError('SIGNED_PHOTO_INVALID')
     if complete and missing:raise ValueError('UNREVIEWED_ITEMS_REMAIN')
-    return {'answers':result,'summary':summary,'inspection_date':day,'photo_ids':photos,'photo_captions':captions,'improvements':clean_improvements,'entry_mode':entry_mode,'paper_file_ids':paper_ids,'walkthrough_run_id':run_id,'signed_table_photo_ids':signed,'required_signatures_confirmed':signed_flag,'signed_pages_complete':pages_flag}, {'missing':missing,'score':score if not missing and schema['scoring']!='COMPLIANCE'else None,'graded':len(schema['criteria'])-missing}
+    return {'answers':result,'summary':summary,'inspection_date':day,'photo_ids':photos,'photo_captions':captions,'improvements':clean_improvements,'entry_mode':entry_mode,'paper_file_ids':paper_ids,'walkthrough_run_id':run_id,'signed_table_photo_ids':signed,'required_signatures_confirmed':signed_flag,'signed_pages_complete':pages_flag}, {'missing':missing,'score':score if not missing and not headquarters_pending and schema['scoring']!='COMPLIANCE'else None,'graded':len([q for q in schema['criteria']if q.get('evaluation_scope')!='HEADQUARTERS'])-missing,**({'field_score':field_score,'field_max_score':93,'headquarters_pending':headquarters_pending,'headquarters_score':result['m10']['value'],'max_score':100}if form=='manager'else{})}
 
 
 def report_schema(snapshot=None):
