@@ -48,6 +48,8 @@ def output(store,key,owner,jid):
     return raw,meta
 
 def claim(store,allowed):
+    from .weekly_pdf import window_open
+    if not window_open():return None
     with closing(connect(store))as c,c:
         c.execute('BEGIN IMMEDIATE');now=time.time();c.execute('UPDATE jobs SET status=CASE WHEN attempts<3 THEN "QUEUED" ELSE "FAILED" END,error="RENDER_INTERRUPTED" WHERE status="RENDERING" AND lease_until<?',(now,))
         for row in c.execute('SELECT * FROM jobs WHERE status="QUEUED" ORDER BY at LIMIT 100').fetchall():

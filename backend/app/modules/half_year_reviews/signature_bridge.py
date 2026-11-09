@@ -14,6 +14,12 @@ def handle(value):
                 if not user or not user.is_active:return False
                 row,key=selected(db,user,p['public_id'],p['period']);return key==p['context_id']
             except Exception:return False
+        if value=={'action':'prepare-weekly'}:
+            from .weekly_pdf import prepare
+            return prepare(db,store())
+        if value=={'action':'finalize-weekly'}:
+            from .weekly_pdf import finalize
+            return finalize(store())
         if value=={'action':'claim'}:return {'item':signature_jobs.claim(store(),allowed)}
         if set(value)=={'action','id','lease','content','error'}and value['action']=='finish':
             return signature_jobs.finish(store(),value['id'],value['lease'],base64.b64decode(value['content'],validate=True),value['error'],allowed)

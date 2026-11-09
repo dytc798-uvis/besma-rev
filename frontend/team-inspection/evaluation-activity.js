@@ -10,7 +10,7 @@ export function createFieldActivity({host,context,api,enabled}){
  const valid=()=>{const c=context();return enabled&&c?.visible&&c.plan&&c.period?c:null;};
  const path=c=>'/plans/'+encodeURIComponent(c.plan)+'/activity?'+new URLSearchParams({period:c.period});
  const key=c=>c.plan+'|'+c.period;
- function paint(){const c=valid();box.hidden=!c||!!c.completed&&!started;label.textContent=error||(isDemo?'가상현장 · 시연용':active?'현장 평가 중 · 팀에 표시됨':state==='CHECK_REQUIRED'?'평가 연결 확인 필요':'평가 선택 시 시작');label.style.color=active?'#17613e':'#46565e';button.hidden=isDemo||!started;button.disabled=busy;}
+ function paint(){const c=valid();box.hidden=!c||!!c.completed&&!started;label.textContent=error||(isDemo?'가상현장 · 시연용':active?'평가 중':state==='CHECK_REQUIRED'?'평가 연결 확인 필요':'평가 선택 시 시작');label.style.color=active?'#17613e':'#46565e';button.hidden=isDemo||!started;button.disabled=busy;}
  async function send(action,c,selection='LEGACY'){return api(path(c),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,device:mine,surface:phoneSurface()?'PHONE':'PC',selection})});}
  function adopt(v){isDemo=v.demo===true;state=v.state||'IDLE';started=v.active===true;active=state==='ACTIVE';error='';}
  async function refresh(){if(dead)return;const c=valid();if(!c){box.hidden=true;current='';active=false;started=false;return;}const id=key(c);if(id!==current){current=id;active=false;started=false;isDemo=false;state='IDLE';error='';}if(busy){paint();return;}busy=true;paint();try{let v=await api(path(c));if(dead||current!==id)return;if(v.active&&!document.hidden)v=await send('HEARTBEAT',c);if(dead||current!==id)return;adopt(v);}catch{active=false;error='평가 현황을 확인하지 못했습니다.';}finally{busy=false;paint();}}

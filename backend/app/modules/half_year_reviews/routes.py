@@ -57,7 +57,7 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False,'linked_navigation_version':1,'summary_autosave_version':1,'comment_autosave_version':1,'grade_autosave_version':1,'field_activity_version':3,'site_profile_version':1,'director_report_version':1,'collection_defaults_version':1}
+    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False,'linked_navigation_version':1,'summary_autosave_version':1,'comment_autosave_version':1,'grade_autosave_version':1,'field_activity_version':3,'site_profile_version':1,'director_report_version':1,'collection_defaults_version':1,'weekly_pdf_version':1}
 @router.get('/mobile-pilot/capabilities')
 def mobile_capabilities(db:DbDep,user:Current,response:Response):
     enabled(db,user)
@@ -101,6 +101,44 @@ def read(public_id:str,period:str,db:DbDep,user:Current):
     try:
         row,key=selected(db,user,public_id,period);defaults=collection_defaults_for(db,row,period);return {**store().load(key),'paper_jobs':jobs.listing(store(),key),'site_name':row.title.removeprefix('[점검] ').strip(),'period':period,'plan_revision':row.revision,'site_profile':profile_for(db,row,key),'collection_defaults':defaults,'opinion_default':defaults['opinion']}
     except(ValueError,KeyError,OSError)as e:fail(e)
+
+@router.get('/plans/{public_id}/preview/{form}/{subject_id}')
+def preview_assessment(public_id:str,form:str,subject_id:str,period:str,db:DbDep,user:Current):
+    from copy import deepcopy
+    from .catalog import validate_assessment
+    from .printing import document
+    try:
+        row,key=selected(db,user,public_id,period);state=store().load(key)
+        if form not in FORMS:raise KeyError('FORM_MISSING')
+        saved=state['data']['assessments'].get(form+':'+subject_id,{})
+        source=deepcopy(saved.get('draft')or saved.get('completed')or{})
+        data=source.get('data')or{'answers':{},'inspection_date':row.scheduled_date.isoformat(),'summary':'','photo_ids':[]}
+        data,result=validate_assessment(form,data,state['data']['files'],state['data']['subjects'],subject_id,False)
+        name=next((p['name']for p in state['data']['subjects'].get(form,[])if p['id']==subject_id),'')if form=='manager'else''
+        snapshot={**source,'form':form,'criteria_version':source.get('criteria_version',CATALOG['version']),'evaluation_scope_version':1,'data':data,'result':result,'subject_name':name,'inspector':source.get('inspector')or user.name}
+        snapshot=site_profile.enrich(snapshot,profile_for(db,row,key))
+        html=document(form,snapshot,row.title.removeprefix('[점검] ').strip(),period,blind=bool(result['missing']))
+        return Response(html,media_type='text/html',headers={'Cache-Control':'private, no-store','Vary':'Authorization','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"})
+    except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
+
+@router.get('/plans/{public_id}/weekly-pdf')
+def weekly_pdf_result(public_id:str,period:str,db:DbDep,user:Current,response:Response):
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    import hashlib
+    from . import signature_bundle,weekly_pdf
+    row,key=selected(db,user,public_id,period);prepared=signature_bundle.prepare(store(),key,row,period,user,profile_for(db,row,key))
+    folder=store().root/'signature-bundles'
+    for path in sorted(folder.glob('*.json'),key=lambda p:p.stat().st_mtime,reverse=True):
+        if path.name.endswith('.result.json'):continue
+        value=json.loads(path.read_text('utf8'))
+        if value.get('owner')!=user.id or value.get('context_id')!=key or value.get('fingerprint')!=prepared['fingerprint']:continue
+        target=folder/(value['id']+'.pdf');proof=folder/(value['id']+'.result.json')
+        if target.exists()and proof.exists():
+            meta=json.loads(proof.read_text());raw=target.read_bytes()
+            if len(raw)!=meta['bytes']or hashlib.sha256(raw).hexdigest()!=meta['sha256']:raise HTTPException(422,'파일을 다시 확인해 주세요.')
+            return {'ready':True,'id':value['id'],'filename':value['filename'],'result':meta,'missing':value.get('missing',[])}
+    return {'ready':False,'scheduled_for':weekly_pdf.next_run()}
+
 @router.get('/plans/{public_id}/visit-info')
 def visit_info(public_id:str,period:str,db:DbDep,user:Current,response:Response):
     try:

@@ -95,7 +95,7 @@ def with_site_confirmation(items,part,form,name):
     add_style('fonts','<font><sz val="12"/><name val="맑은 고딕"/></font>',font_id)
     add_style('cellXfs','<xf numFmtId="0" fontId="'+str(font_id)+'" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',style_id)
     items['xl/styles.xml']=styles.encode('utf8')
-    label='현장소장 확인 : '+str(name or'')+'    ____________ (서명)'
+    label='현장소장 확인 : '+str(name or'')+' (인)'
     row='<row r="'+str(footer)+'" ht="24" customHeight="1"><c r="A'+str(footer)+'" s="'+str(style_id)+'" t="inlineStr"><is><t xml:space="preserve">'+escape(label)+'</t></is></c></row>'
     if prior is not None:
         if any(c.find('s:v',ns)is not None or c.find('s:is',ns)is not None for c in prior):raise ValueError('SIGNATURE_FOOTER_OCCUPIED')
