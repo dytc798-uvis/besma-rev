@@ -1,9 +1,9 @@
 import {isPhoneDevice} from '/evaluation-device.js?v=2026.11.07.2';
 import {signingBundleButton} from '/signature-bundle.js?v=2026.11.06.13';
-import {createReviewDashboard} from '/inspection-review-dashboard.js?v=2026.11.09.7';
+import {createReviewDashboard} from '/inspection-review-dashboard.js?v=2026.11.09.11';
 import {inspectionEntry,inspectionMonth,inspectionPlanId} from '/assets/inspection-work-entry-ef50e3143442.js';
 import {workReturn} from '/assets/workspace-return-168d2b6032ac.js';
-import {mountHalfYearReview} from '/half-year-editor.js?v=2026.11.09.7';
+import {mountHalfYearReview} from '/half-year-editor.js?v=2026.11.09.11';
 
 
 import {mountInspectionReport} from '/inspection-report-editor.js?v=20261030.1';
