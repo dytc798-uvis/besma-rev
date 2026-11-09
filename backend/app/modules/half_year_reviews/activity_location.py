@@ -18,7 +18,9 @@ def points(sources,directory,registered):
     return found
 
 def location(db,row):
-    from app.modules.inspection_reports.site_identity import resolve_sources,directory_snapshot
+    from app.modules.inspection_reports.site_identity import resolve_sources
+    from app.modules.site_directory import catalog
     from app.modules.workspace_home import location_records
-    directory={s['code']:s for s in directory_snapshot().get('sites',[])}
+    data,items=catalog(db)
+    directory={s['code']:s for s in items}
     return {'locations':points(resolve_sources(db,row),directory,location_records()),'radius_m':1000}
