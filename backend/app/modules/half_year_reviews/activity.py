@@ -15,6 +15,10 @@ def _db(root,write=False):
     else:
         p.parent.mkdir(parents=True,exist_ok=True,mode=0o700);c=sqlite3.connect(p,timeout=5);p.chmod(0o600)
         c.executescript('CREATE TABLE IF NOT EXISTS sessions(actor INTEGER PRIMARY KEY,plan TEXT,context TEXT,started REAL,ended REAL);CREATE TABLE IF NOT EXISTS devices(actor INTEGER,device TEXT,seen REAL,PRIMARY KEY(actor,device));')
+    if write and 'phone_seen'not in {r[1]for r in c.execute('PRAGMA table_info(sessions)')}:
+        try:c.execute('ALTER TABLE sessions ADD COLUMN phone_seen REAL');c.commit()
+        except sqlite3.OperationalError:
+            if 'phone_seen'not in {r[1]for r in c.execute('PRAGMA table_info(sessions)')}:raise
     c.row_factory=sqlite3.Row
     return c
 
@@ -24,10 +28,12 @@ def read(root,actor,now=None):
     with closing(c):
         r=c.execute('SELECT s.*,MAX(d.seen) AS seen FROM sessions s LEFT JOIN devices d ON d.actor=s.actor WHERE s.actor=? GROUP BY s.actor',(actor,)).fetchone()
         if not r or r['ended']is not None or now-r['started']>SESSION_TTL:return None
-        return {**dict(r),'state':'ACTIVE'if r['seen']is not None and 0<=now-r['seen']<=HEARTBEAT_TTL else'CHECK_REQUIRED'}
+        phone=r['phone_seen']if 'phone_seen'in r.keys()else None
+        return {**dict(r),'seen':phone,'state':'WAITING_PHONE'if phone is None else'ACTIVE'if 0<=now-phone<=HEARTBEAT_TTL else'CHECK_REQUIRED'}
 
-def change(root,actor,plan,context,action,device,now=None):
+def change(root,actor,plan,context,action,device,now=None,surface='UNKNOWN'):
     if actor not in INSPECTORS:raise ValueError('ACTIVITY_NOT_ALLOWED')
+    if surface not in {'PHONE','PC','UNKNOWN'}:raise ValueError('ACTIVITY_INVALID')
     if action not in {'START','HEARTBEAT','STOP'}or not re.fullmatch(r'[0-9a-f-]{36}',device):raise ValueError('ACTIVITY_INVALID')
     now=time.time()if now is None else now
     with closing(_db(root,True))as c:
@@ -35,11 +41,13 @@ def change(root,actor,plan,context,action,device,now=None):
         if action=='START':
             same=old and old['ended']is None and old['context']==context and now-old['started']<=SESSION_TTL
             if not same:c.execute('DELETE FROM devices WHERE actor=?',(actor,))
-            c.execute('INSERT INTO sessions VALUES(?,?,?,?,NULL)ON CONFLICT(actor)DO UPDATE SET plan=excluded.plan,context=excluded.context,started=excluded.started,ended=NULL',(actor,plan,context,old['started']if same else now))
+            phone=old['phone_seen']if same else None
+            c.execute('INSERT INTO sessions(actor,plan,context,started,ended,phone_seen)VALUES(?,?,?,?,NULL,?)ON CONFLICT(actor)DO UPDATE SET plan=excluded.plan,context=excluded.context,started=excluded.started,ended=NULL,phone_seen=excluded.phone_seen',(actor,plan,context,old['started']if same else now,phone))
         elif not old or old['ended']is not None or old['context']!=context or now-old['started']>SESSION_TTL:
             c.rollback();return {'state':'IDLE','active':False}
         if action=='STOP':c.execute('UPDATE sessions SET ended=? WHERE actor=?',(now,actor))
         else:c.execute('INSERT INTO devices VALUES(?,?,?)ON CONFLICT(actor,device)DO UPDATE SET seen=excluded.seen',(actor,device,now))
+        if action!='STOP'and surface=='PHONE':c.execute('UPDATE sessions SET phone_seen=? WHERE actor=?',(now,actor))
         c.commit()
     r=read(root,actor,now)
     return {'state':r['state']if r else'IDLE','active':r is not None,'last_seen':r['seen']if r else None}
