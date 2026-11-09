@@ -1,3 +1,4 @@
+from . import demo
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
@@ -36,9 +37,18 @@ def collection_defaults_for(db,row,period):
     try:return for_plan(db,row,period)
     except (HTTPException,OSError,ValueError,TypeError,KeyError):return {'state':'UNAVAILABLE','sources':[],'fingerprint':None,'opinion':{'state':'CHECK_REQUIRED','count':None,'score':None,'sources':[]}}
 
-def profile_for(db,row,key):return site_profile.resolve(db,row,store().load(key)['data'].get('site_details',{}))
+def profile_for(db,row,key):
+    if demo.is_demo(row):
+        return {**site_profile.resolve(db,row,{'site_manager':'가상 소장','safety_staff':'가상 안전담당','contractor':'시연 원청사','trade':'전기공사','construction_amount':'시연용','progress':'50%'}),**store().load(key)['data'].get('site_details',{})}
+    return site_profile.resolve(db,row,store().load(key)['data'].get('site_details',{}))
 def selected(db,user,public_id,period):
-    enabled(db,user);row=mobile_pilot.own_plan(db,user,public_id)if mobile_pilot.allowed(user)else plan(db,user,public_id);return row,context_key(row,period)
+    enabled(db,user)
+    if public_id==demo.PUBLIC_ID:
+        from app.modules.safety_features.team_schedule_models import TeamScheduleItem
+        row=db.query(TeamScheduleItem).filter_by(public_id=public_id).first()
+        if not demo.is_demo(row) or user.id!=demo.OWNER or row.archived_at is not None:raise HTTPException(404,'본인 점검계획을 찾을 수 없습니다.')
+    else:row=mobile_pilot.own_plan(db,user,public_id)if mobile_pilot.allowed(user)else plan(db,user,public_id)
+    return row,context_key(row,period)
 def fail(error):
     if str(error)=='TEST_RESET':raise HTTPException(409,'시험 기록을 초기화했습니다. 현장 목록으로 돌아가 해당 현장을 다시 열어 주세요.')
     if isinstance(error,Conflict):raise HTTPException(409,'다른 화면에서 자료가 변경되었습니다. 입력 내용을 보존했으니 새로 확인해 주세요.')
@@ -68,9 +78,9 @@ def overview(db:DbDep,user:Current,response:Response,from_date:date,to_date:date
     if mobile_pilot.allowed(user):rows=mobile_pilot.rows(db,user,from_date,to_date)
     else:
         value=list_team_schedule_items(db,user,from_date,to_date,False,False,True,True)
-        rows=[plan(db,user,item['public_id'])for item in value['items']]
+        rows=[selected(db,user,item['public_id'],str(item['scheduled_date'])[:4]+'-H2')[0]for item in value['items']]
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
-    return {'items':summaries(store().root,rows)}
+    return {'items':[{**item,'is_demo':demo.is_demo(row)}for row,item in zip(rows,summaries(store().root,rows))]}
 
 @router.get('/plans/{public_id}/print/{form}/{subject_id}')
 def print_assessment(public_id:str,form:str,subject_id:str,period:str,snapshot_id:str,db:DbDep,user:Current):
@@ -403,6 +413,7 @@ def own_activity(public_id:str,period:str,db:DbDep,user:Current,response:Respons
     row,key=selected(db,user,public_id,period)
     from . import activity
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    if demo.is_demo(row):return demo.activity_value()
     value=activity.read(store().root,user.id)
     return {'state':value['state'],'active':True,'last_seen':value['seen']}if value and value['context']==key else{'state':'IDLE','active':False}
 
@@ -412,6 +423,7 @@ def change_activity(public_id:str,period:str,body:ActivityRequest,db:DbDep,user:
     from . import activity
     if user.id not in activity.INSPECTORS or not user.is_active or str(getattr(user.role,'value',user.role))!='HQ_SAFE':raise HTTPException(403,'현장 평가 담당자를 확인해 주세요.')
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    if demo.is_demo(row):return demo.activity_value()
     return activity.change(store().root,user.id,row.public_id,key,body.action,body.device,surface=body.surface,selection=body.selection)
 
 
@@ -435,7 +447,8 @@ def map_pending(db:DbDep,user:Current,response:Response,from_date:date,to_date:d
     if mobile_pilot.allowed(user):rows=mobile_pilot.rows(db,user,from_date,to_date)
     else:
         value=list_team_schedule_items(db,user,from_date,to_date,False,False,True,True)
-        rows=[plan(db,user,item['public_id'])for item in value['items']]
+        rows=[selected(db,user,item['public_id'],str(item['scheduled_date'])[:4]+'-H2')[0]for item in value['items']]
+    rows=[row for row in rows if not demo.is_demo(row)]
     data,_=catalog(db);aliases=data.get('aliases',{})
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
     def codes(row):

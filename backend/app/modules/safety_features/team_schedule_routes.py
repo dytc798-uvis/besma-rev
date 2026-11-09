@@ -631,8 +631,12 @@ def list_team_schedule_items(
     )
     if not include_archived:
         query = query.filter(TeamScheduleItem.archived_at.is_(None))
+    from app.modules.half_year_reviews.demo import SOURCE as DEMO_SOURCE, KEY as DEMO_KEY, PUBLIC_ID as DEMO_ID, OWNER as DEMO_OWNER
+    own_demo = and_(TeamScheduleItem.source == DEMO_SOURCE, TeamScheduleItem.client_item_key == DEMO_KEY, TeamScheduleItem.public_id == DEMO_ID, TeamScheduleItem.assigned_user_id == current_user.id, TeamScheduleItem.created_by_user_id == current_user.id, current_user.id == DEMO_OWNER)
     if inspection_only:
-        query = query.filter(TeamScheduleItem.source == INSPECTION_SOURCE)
+        query = query.filter(or_(TeamScheduleItem.source == INSPECTION_SOURCE, own_demo) if mine_only else TeamScheduleItem.source == INSPECTION_SOURCE)
+    else:
+        query = query.filter(TeamScheduleItem.source != DEMO_SOURCE)
     if mine_only:
         query = query.filter(or_(
             and_(TeamScheduleItem.source == INSPECTION_SOURCE, TeamScheduleItem.assigned_user_id == current_user.id),
@@ -649,7 +653,7 @@ def list_team_schedule_items(
     counts = dict(db.query(TeamCollaborationComment.schedule_item_id, func.count(TeamCollaborationComment.id))
                   .filter(TeamCollaborationComment.schedule_item_id.in_([row.id for row in rows]))
                   .group_by(TeamCollaborationComment.schedule_item_id).all()) if rows else {}
-    return {"items": [{**_serialize_item(row, names, current_user.id), "comment_count": counts.get(row.id, 0)} for row in rows]}
+    return {"items": [{**_serialize_item(row, names, current_user.id), "is_demo": row.source == DEMO_SOURCE, "comment_count": counts.get(row.id, 0)} for row in rows]}
 
 
 @router.get("/inspection-trip-draft")
