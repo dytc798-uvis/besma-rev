@@ -4,7 +4,7 @@ export function createSignatureOutput({host,request,bytes,previewPage,session}){
  const requests=new Map();let dialog=null;
  async function open(c){
   session();dialog?.close();const active=n('dialog');dialog=active;active.className='signature-output-dialog';active.setAttribute('aria-label','소장 서명용 PDF');
-  const report=c.purpose==='REPORT',signing=!report&&['report','law'].includes(c.form),purpose=report?'REPORT':'SIGNATURE';active.setAttribute('aria-label',report?'대표 보고용 PDF':signing?'소장 서명용 PDF':'평가서 PDF');
+  const report=c.purpose==='REPORT',signing=!report,purpose=report?'REPORT':'SIGNATURE';active.setAttribute('aria-label',report?'대표 보고용 PDF':signing?'소장 서명용 PDF':'평가서 PDF');
   const title=n('h2',c.site+(report?' · 대표 보고용 PDF':signing?' · 소장 서명용 PDF':' · 평가서 PDF')),status=n('p','평가서를 준비하고 있습니다.'),close=n('button','닫기'),refresh=n('button','상태 다시 확인'),files=n('div');for(const b of[close,refresh])b.type='button';close.onclick=()=>active.close();status.setAttribute('role','status');active.append(title,close,status,refresh,files);host.append(active);
   const key=[c.plan,c.period,c.form,c.subject,c.snapshot,purpose].join('|');requests.set(key,crypto.randomUUID());
   const path='/plans/'+encodeURIComponent(c.plan)+'/signature-prints',query='?'+new URLSearchParams({period:c.period});let job=null,timer=null,pdfUrl=null,pageUrl=null,pageSequence=0,downloadStarted=false;
@@ -28,7 +28,7 @@ export function createSignatureOutput({host,request,bytes,previewPage,session}){
     status.textContent=report?'대표 보고용 평가서를 만들었습니다.':signing?'소장 서명용 평가서를 만들었습니다.':'평가서를 만들었습니다.';files.replaceChildren();const view=n('button','PDF 보기'),download=n('button','다운로드');view.type=download.type='button';
     view.onclick=()=>showPages(value).catch(e=>{if(active.isConnected)status.textContent=e.message;});
     download.onclick=async()=>{try{guard();if(!pdfUrl){const raw=await bytes(path+'/'+value.id+'/file'+query);guard();if(await digest(raw)!==value.result.sha256||raw.byteLength!==value.result.bytes)throw Error('생성된 PDF를 다시 확인해 주세요.');pdfUrl=URL.createObjectURL(new Blob([raw],{type:'application/pdf'}));}const a=n('a');a.href=pdfUrl;a.download=value.filename;a.click();}catch(e){if(active.isConnected)status.textContent=e.message;}};
-    files.append(view,download);if(signing)files.append(n('p','공무 전달용입니다. 다운로드한 파일을 웍스에 첨부해 주세요.'));if(c.download&&!downloadStarted){downloadStarted=true;await download.onclick();}return;
+    files.append(view,download);if(signing)files.append(n('p','서명 요청은 월요일에 공무에게 전송해 주세요.'));if(c.download&&!downloadStarted){downloadStarted=true;await download.onclick();}return;
    }
    if(value.status==='FAILED'){requests.delete(key);status.textContent='평가서를 만들지 못했습니다. 출력하기를 다시 눌러 주세요.';return;}
    status.textContent=value.status==='RENDERING'?'평가서를 만들고 있습니다.':'평가서 작성을 기다리고 있습니다.';timer=setTimeout(poll,2500);

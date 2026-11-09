@@ -80,6 +80,35 @@ def without_approval(items):
         if path.startswith('xl/media/')and path not in referenced:items.pop(path)
     return items
 
+def with_site_confirmation(items,part,form,name):
+    """One site-manager acknowledgement on each personal evaluation; no approval box."""
+    footer=31 if form=='manager'else 26
+    source=items[part].decode('utf8');ns={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+    root=E.fromstring(source);prior=root.find("s:sheetData/s:row[@r='"+str(footer)+"']",ns)
+    styles=items['xl/styles.xml'].decode('utf8');fonts=E.fromstring(styles).find('s:fonts',ns);formats=E.fromstring(styles).find('s:cellXfs',ns);font_id=len(fonts);style_id=len(formats)
+    def add_style(tag,node,count):
+        nonlocal styles
+        styles=re.sub(r'<'+tag+r'\b[^>]*>.*?</'+tag+'>',lambda m:re.sub(r'count="\d+"','count="'+str(count+1)+'"',m[0],1).replace('</'+tag+'>',node+'</'+tag+'>'),styles,count=1,flags=re.S)
+    add_style('fonts','<font><sz val="12"/><name val="맑은 고딕"/></font>',font_id)
+    add_style('cellXfs','<xf numFmtId="0" fontId="'+str(font_id)+'" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>',style_id)
+    items['xl/styles.xml']=styles.encode('utf8')
+    label='현장소장 확인 : '+str(name or'')+'    ____________ (서명)'
+    row='<row r="'+str(footer)+'" ht="24" customHeight="1"><c r="A'+str(footer)+'" s="'+str(style_id)+'" t="inlineStr"><is><t xml:space="preserve">'+escape(label)+'</t></is></c></row>'
+    if prior is not None:
+        if any(c.find('s:v',ns)is not None or c.find('s:is',ns)is not None for c in prior):raise ValueError('SIGNATURE_FOOTER_OCCUPIED')
+        source=re.sub(r'<row\b(?=[^>]*\br="'+str(footer)+r'")[^>]*>.*?</row>',row,source,flags=re.S)
+    else:source=source.replace('</sheetData>',row+'</sheetData>')
+    merged='A'+str(footer)+':Y'+str(footer)
+    def merge(m):
+        old=m[0];count=int(re.search(r'count="(\d+)"',old)[1]);return re.sub(r'count="\d+"','count="'+str(count+1)+'"',old,1).replace('</mergeCells>','<mergeCell ref="'+merged+'"/></mergeCells>')
+    source=re.sub(r'<mergeCells\b[^>]*>.*?</mergeCells>',merge,source,flags=re.S)
+    source=re.sub(r'(<dimension\b[^>]*ref=")[^"]+("[^>]*/>)',r'\g<1>A1:Y'+str(footer)+r'\2',source)
+    items[part]=source.encode('utf8')
+    book=items['xl/workbook.xml'].decode('utf8')
+    book=re.sub(r'(<definedName\b[^>]*name="_xlnm.Print_Area"[^>]*>)([^<]*평가표[^<]*)(</definedName>)',lambda m:m[1]+re.sub(r'\$Y\$\d+','$Y$'+str(footer),m[2])+m[3],book)
+    items['xl/workbook.xml']=book.encode('utf8');return items
+
+
 def xlsx(form,snapshot,site,inspector):
     schema=FORMS[form];items=parts(template(schema['template']));uri='http://schemas.openxmlformats.org/spreadsheetml/2006/main';ns={'s':uri};q=lambda tag:'{'+uri+'}'+tag
     workbook=E.fromstring(items['xl/workbook.xml']);sheet_ref=next(s for s in workbook.find('s:sheets',ns)if s.get('name')=='평가표');rid=sheet_ref.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
@@ -118,7 +147,7 @@ def xlsx(form,snapshot,site,inspector):
     source=items[part].decode('utf-8');source=re.sub(r'<c\b[^>]*?/\s*>|<c\b[^>]*?>.*?</c>',patch,source,flags=re.S)
     if seen!=set(changes):raise ValueError('TEMPLATE_INPUT_CELL_MISSING')
     items[part]=source.encode('utf-8')
-    return pack(without_approval(items))
+    return pack(with_site_confirmation(without_approval(items),part,form,snapshot.get('site_manager')or(subject if form=='manager'else'')))
 def hwpx(snapshot,site,inspector):
     items=parts(template('law.hwpx'));uri='http://www.hancom.co.kr/hwpml/2011/paragraph';ns={'hp':uri};root=E.fromstring(items['Contents/section0.xml']);tables=root.findall('.//hp:tbl',ns)
     def tc(table,row,col):

@@ -12,7 +12,7 @@ def connect(store):
     c.execute('CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,context_id TEXT NOT NULL,owner_id INTEGER NOT NULL,request_key TEXT NOT NULL,source_hash TEXT NOT NULL,status TEXT NOT NULL,payload TEXT NOT NULL,result TEXT,lease_hash TEXT,lease_until REAL NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT "",at TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(context_id,owner_id,request_key))');c.commit();return c
 
 def visible(row):
-    p=json.loads(row['payload']);purpose=p.get('purpose','SIGNATURE');return {'id':row['id'],'status':row['status'],'form':p['form'],'subject_id':p['subject_id'],'snapshot_id':p['snapshot_id'],'purpose':purpose,'filename':p['filename'],'at':row['at'],'updated_at':row['updated_at'],'error':row['error'],'result':json.loads(row['result'])if row['result']else None,'delivery_status':'NOT_REQUESTED','message':'공무 전달용: 다운로드하여 웍스에 첨부해 주세요.'if purpose!='REPORT'and p['form']in {'report','law'}else'평가서 다운로드'}
+    p=json.loads(row['payload']);purpose=p.get('purpose','SIGNATURE');return {'id':row['id'],'status':row['status'],'form':p['form'],'subject_id':p['subject_id'],'snapshot_id':p['snapshot_id'],'purpose':purpose,'filename':p['filename'],'at':row['at'],'updated_at':row['updated_at'],'error':row['error'],'result':json.loads(row['result'])if row['result']else None,'delivery_status':'NOT_REQUESTED','message':'서명 요청은 월요일에 공무에게 전송해 주세요.'if purpose!='REPORT'else'평가서 다운로드'}
 
 def queue(store,key,user,row,period,body,profile=None,*,prepared_snapshot=None):
     from .catalog import FORMS
@@ -23,7 +23,7 @@ def queue(store,key,user,row,period,body,profile=None,*,prepared_snapshot=None):
     if not snapshot or snapshot['id']!=body['snapshot_id']:raise ValueError('COMPLETE_FIRST')
     from .site_profile import enrich
     snapshot=enrich(snapshot,profile or{},None if prepared_snapshot is not None else assessment)
-    site=row.title.removeprefix('[점검] ').strip();filename=re.sub(r'[\\/:*?"<>|\x00-\x1f]','_',site+'_'+FORMS[body['form']]['title']+('_대표보고용.pdf'if purpose=='REPORT'else'_소장서명용.pdf'if body['form']in {'report','law'}else'_평가서.pdf'))
+    site=row.title.removeprefix('[점검] ').strip();filename=re.sub(r'[\\/:*?"<>|\x00-\x1f]','_',site+'_'+FORMS[body['form']]['title']+('_대표보고용.pdf'if purpose=='REPORT'else'_소장서명용.pdf'if purpose=='SIGNATURE'else'_평가서.pdf'))
     html=document(body['form'],snapshot,site,period,blind=purpose!='REPORT');source=hashlib.sha256(html.encode()).hexdigest();payload={**body,'html':html,'source_sha256':source,'public_id':row.public_id,'period':period,'context_id':key,'site':site,'filename':filename,'blind_report_scores':False,'purpose':purpose};now=stamp()
     with closing(connect(store))as c,c:
         c.execute('BEGIN IMMEDIATE');old=c.execute('SELECT * FROM jobs WHERE context_id=? AND owner_id=? AND request_key=?',(key,user.id,body['request_key'])).fetchone()
