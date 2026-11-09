@@ -3,7 +3,7 @@ const G=path.resolve(__dirname,'..'),base=path.resolve(process.argv[2]),dest=pat
 const baseline='dpl_4xCKgnB3WmDFUFxkHYdQJMCiouU5';
 function files(dir,p=''){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(f=>f.isDirectory()?files(path.join(dir,f.name),p+f.name+'/'):[{path:p+f.name,sha256:sha(fs.readFileSync(path.join(dir,f.name))),bytes:fs.statSync(path.join(dir,f.name)).size}]);}
 assert(!fs.existsSync(dest),'OUTPUT_ALREADY_EXISTS');
-fs.mkdirSync(path.join(dest,'.vercel'),{recursive:true});fs.cpSync(path.join(base,'.vercel/output'),path.join(dest,'.vercel/output'),{recursive:true});fs.copyFileSync(path.join(base,'.vercel/project.json'),path.join(dest,'.vercel/project.json'));
+fs.mkdirSync(path.join(dest,'frontend'),{recursive:true});fs.mkdirSync(path.join(dest,'.vercel'),{recursive:true});fs.cpSync(path.join(base,'.vercel/output'),path.join(dest,'.vercel/output'),{recursive:true});fs.copyFileSync(path.join(base,'.vercel/project.json'),path.join(dest,'.vercel/project.json'));
 const O=path.join(dest,'.vercel/output'),S=path.join(O,'static'),before=files(O);
 assert.equal(sha(fs.readFileSync(path.join(S,'local-photo-queue.js'))),'92ac890075792e03e2b857320bc6f4ef2a1f367d8bbf268d4d529956ee55b692');
 const code=esbuild.transformSync(fs.readFileSync(path.join(G,'frontend/team-inspection/local-photo-queue.js'),'utf8'),{loader:'js',target:'es2022',minify:true}).code;
