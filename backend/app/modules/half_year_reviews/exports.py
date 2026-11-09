@@ -25,7 +25,10 @@ def template_bundle():
     for form in order:
         schema=FORMS[form];name=schema['title']+'_출력용.'+schema['format']
         if name in files or '/'in name or '\\'in name:raise ValueError('TEMPLATE_CHANGED')
-        files[name]=template(schema.get('template','반기평가표.pptx'))
+        if form in {'manager','supervisor'}:
+            blank={'blank_template':True,'subject_name':'','data':{'answers':{q['id']:{'value':None,'note':''}for q in schema['criteria']},'inspection_date':'','summary':''},'result':{'score':None}}
+            files[name]=xlsx(form,blank,'','')
+        else:files[name]=template(schema.get('template','반기평가표.pptx'))
     return pack(files)
 def without_approval(items):
     # Approval blocks are embedded pictures/camera objects, not worksheet cell text.
@@ -116,16 +119,17 @@ def xlsx(form,snapshot,site,inspector):
     if not part.startswith('xl/worksheets/'):raise ValueError('TEMPLATE_SHEET_INVALID')
     root=E.fromstring(items[part]);changes={}
     def setcell(address,value,formula=None,cache=None):
+        if value is None and not formula:value=''
         if formula:changes[address]=('', '<f>'+escape(formula)+'</f><v>'+str(cache)+'</v>')
         elif isinstance(value,(int,float)):changes[address]=('', '<v>'+str(value)+'</v>')
         else:changes[address]=(' t="inlineStr"','<is><t xml:space="preserve">'+escape(str(value))+'</t></is>')
     data=snapshot['data'];day=data['inspection_date'];subject=snapshot.get('subject_name')or(snapshot.get('site_manager','')if form=='manager'else'')
-    if form=='supervisor':subject=subject.replace(' / ','\n')
+    if form=='supervisor':subject='';setcell('Q2','')
     for address,value in ({'B2':site,'P2':day,'U2':subject,'Y2':inspector+' (인)'}if form=='manager'else{'C2':site,'M2':day,'S2':subject,'Y2':inspector+' (인)'}).items():setcell(address,value)
     for criterion in schema['criteria']:
         if form=='manager'and criterion['id']=='m19':setcell('M'+str(criterion['row']),criterion['description'])
         answer=data['answers'][criterion['id']];setcell('X'+str(criterion['row']),answer['value']);setcell('Y'+str(criterion['row']),answer['note'])
-    scoped=form=='manager'and snapshot.get('evaluation_scope_version')==1
+    scoped=form=='manager'and(snapshot.get('evaluation_scope_version')==1 or snapshot.get('blank_template'))
     if scoped:
         setcell('M10','▣ 일일 안전점검 및 법규준수 평가 (본사평가 7점)\n현장에서는 법규이행 자료를 확인하지 않음')
         if snapshot['result'].get('headquarters_pending'):
@@ -133,6 +137,7 @@ def xlsx(form,snapshot,site,inspector):
     score=snapshot['result']['score'];total=schema['total_cell']
     existing=root.find(".//s:c[@r='"+total+"']/s:f",ns)
     if scoped and snapshot['result'].get('headquarters_pending'):setcell(total,'본사평가 대기')
+    elif score is None:setcell(total,'')
     elif existing is not None:setcell(total,None,formula=existing.text,cache=score)
     else:setcell(total,score)
     setcell(schema['summary_cell'],(('현장평가 '+str(snapshot['result']['field_score'])+'/93점 · 본사평가 7점 대기\n')if scoped and snapshot['result'].get('headquarters_pending')else'')+data['summary'])
@@ -146,6 +151,16 @@ def xlsx(form,snapshot,site,inspector):
     # including prefixes referenced by mc:Ignorable and extension metadata.
     source=items[part].decode('utf-8');source=re.sub(r'<c\b[^>]*?/\s*>|<c\b[^>]*?>.*?</c>',patch,source,flags=re.S)
     if seen!=set(changes):raise ValueError('TEMPLATE_INPUT_CELL_MISSING')
+    if form=='supervisor':
+        def header_merge(match):
+            block=match[0]
+            for area in ['M2:P2','Q2:R2','S2:V2']:
+                old='<mergeCell ref="'+area+'"/>'
+                if old not in block:raise ValueError('TEMPLATE_INPUT_CELL_MISSING')
+                block=block.replace(old,'')
+            count=int(re.search(r'count="(\d+)"',block)[1]);block=re.sub(r'count="\d+"','count="'+str(count-2)+'"',block,1)
+            return block.replace('</mergeCells>','<mergeCell ref="M2:V2"/></mergeCells>')
+        source=re.sub(r'<mergeCells\b[^>]*>.*?</mergeCells>',header_merge,source,flags=re.S)
     items[part]=source.encode('utf-8')
     return pack(with_site_confirmation(without_approval(items),part,form,snapshot.get('site_manager')or(subject if form=='manager'else'')))
 def hwpx(snapshot,site,inspector):

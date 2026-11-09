@@ -45,6 +45,16 @@ def queue(store,key,user,row,period,body,profile):
         raise HTTPException(422,'4종 평가를 모두 작성 완료한 뒤 다운로드해 주세요.')
     if body['fingerprint']!=prepared['fingerprint']:raise Conflict('SIGNATURE_SOURCE_CHANGED')
     if prepared['missing']and not body['allow_incomplete']:raise ValueError('SIGNATURE_INCOMPLETE_CONFIRM')
+    folder=store.root/'signature-bundles'
+    if folder.exists():
+        for existing in sorted(folder.glob('*.json'),key=lambda p:p.stat().st_mtime,reverse=True)[:200]:
+            if existing.name.endswith('.result.json'):continue
+            try:prior=json.loads(existing.read_text('utf8'))
+            except (OSError,ValueError):continue
+            if not isinstance(prior,dict):continue
+            if prior.get('owner')==user.id and prior.get('context_id')==key and prior.get('fingerprint')==prepared['fingerprint']:
+                current=status(store,key,user.id,prior['id'])
+                if current['status']in {'READY','RENDERING'}:return current
     jid=sha((key+'|'+str(user.id)+'|'+body['request_key']).encode())[:32];folder=store.root/'signature-bundles';folder.mkdir(mode=0o700,exist_ok=True);path=folder/(jid+'.json')
     if path.exists():
         prior=load(store,key,user.id,jid)
@@ -80,7 +90,7 @@ def status(store,key,owner,jid):
     result=None
     if state=='READY':
         raw=merged(store,key,owner,jid);result={'sha256':sha(raw),'bytes':len(raw)}
-    return {'id':jid,'status':state,'filename':value['filename'],'missing':value['missing'],'result':result,'delivery_status':'NOT_REQUESTED','request_on':value.get('request_on'),'request_weekday':value.get('request_weekday','MONDAY')}
+    return {'id':jid,'status':state,'filename':value['filename'],'missing':value['missing'],'result':result,'completed_parts':sum(j['status']=='READY'for j in jobs),'total_parts':len(jobs),'delivery_status':'NOT_REQUESTED','request_on':value.get('request_on'),'request_weekday':value.get('request_weekday','MONDAY')}
 
 def merged(store,key,owner,jid):
     value=load(store,key,owner,jid);target=store.root/'signature-bundles'/(jid+'.pdf')

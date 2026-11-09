@@ -66,6 +66,7 @@ class ReviewStore:
             elif action in {'walk-start','walk-item','walk-report','walk-guidance'}:
                 result.update(walkthrough.mutate(data,action,body,request['period'],actor,name,stamp,context_meta))
             elif action=='supervisor-roster':
+                raise ValueError('SUPERVISOR_SITE_ONLY')
                 if set(body)!={'names'}or not isinstance(body['names'],list)or not 1<=len(body['names'])<=30:raise ValueError('SUBJECT_REQUIRED')
                 names=list(dict.fromkeys(cleaned(name,40)for name in body['names']))
                 if any(not name for name in names):raise ValueError('SUBJECT_REQUIRED')
@@ -78,6 +79,7 @@ class ReviewStore:
                 if not group:data['supervisor_group_id']=roster[0]['id']
             elif action in {'subject','manager-default'}:
                 if set(body)!={'form','name'}or body['form']not in {'manager','supervisor'}:raise ValueError('SUBJECT_INVALID')
+                if body['form']=='supervisor':raise ValueError('SUPERVISOR_SITE_ONLY')
                 target=cleaned(body['name'],40)
                 if not target:raise ValueError('SUBJECT_REQUIRED')
                 if len(data['subjects'][body['form']])>=30:raise ValueError('SUBJECT_LIMIT')
