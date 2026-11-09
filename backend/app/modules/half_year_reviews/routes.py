@@ -421,3 +421,24 @@ def activity_location(public_id:str,period:str,db:DbDep,user:Current,response:Re
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
     from .activity_location import location
     return location(db,row)
+
+
+@router.get('/map-pending')
+def map_pending(db:DbDep,user:Current,response:Response,from_date:date,to_date:date):
+    from app.modules.safety_features.team_schedule_routes import list_team_schedule_items
+    from app.modules.inspection_reports.site_identity import resolve_sources,canonical
+    from app.modules.site_directory import catalog
+    from app.core.datetime_utils import kst_today
+    from .overview import summaries
+    from .map_plans import pending
+    enabled(db,user)
+    if mobile_pilot.allowed(user):rows=mobile_pilot.rows(db,user,from_date,to_date)
+    else:
+        value=list_team_schedule_items(db,user,from_date,to_date,False,False,True,True)
+        rows=[plan(db,user,item['public_id'])for item in value['items']]
+    data,_=catalog(db);aliases=data.get('aliases',{})
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    def codes(row):
+        return [c for source in resolve_sources(db,row)if(c:=canonical(source.site_code,aliases))]
+    try:return pending(rows,summaries(store().root,rows),str(kst_today()),codes)
+    except ValueError:raise HTTPException(503,'평가 현황을 확인하지 못했습니다. 다시 눌러 주세요.')
