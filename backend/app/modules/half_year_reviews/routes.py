@@ -47,7 +47,7 @@ def fail(error):
     raise HTTPException(422,messages.get(str(error),'입력 내용과 첨부자료를 확인해 주세요.'))
 @router.get('/capabilities')
 def capabilities(db:DbDep,user:Current):
-    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False,'linked_navigation_version':1,'summary_autosave_version':1,'comment_autosave_version':1,'grade_autosave_version':1,'field_activity_version':2,'site_profile_version':1,'director_report_version':1,'collection_defaults_version':1}
+    enabled(db,user);return {'enabled':True,'concurrent_merge_version':1,'inline_evidence_photos':True,'catalog':CATALOG,'shared_by':'site_and_half_year','max_file_bytes':15*1024*1024,'photo_long_edge':1600,'mobile_photo_version':1,'walkthrough_version':1,'signed_table_completion':False,'question_completion_version':1,'print_preview_version':1,'overview_version':1,'paper_completion_version':1,'prior_assessment_version':1,'evaluation_first_version':1,'shared_criterion_evidence_version':1,'mobile_review_pilot':mobile_pilot.allowed(user),'monthly_batch_links_version':1,'template_bundle_version':1,'pdf_preview_version':1,'field_outbox_version':1,'guidance_version':1,'criterion_check_version':1,'evidence_only_photos':True,'signature_output_version':1,'signature_delivery_connected':False,'linked_navigation_version':1,'summary_autosave_version':1,'comment_autosave_version':1,'grade_autosave_version':1,'field_activity_version':3,'site_profile_version':1,'director_report_version':1,'collection_defaults_version':1}
 @router.get('/mobile-pilot/capabilities')
 def mobile_capabilities(db:DbDep,user:Current,response:Response):
     enabled(db,user)
@@ -278,12 +278,14 @@ class NavigationRequest(BaseModel):
     version:int=Field(ge=0)
     device:str=Field(pattern=r'^[0-9a-f-]{36}$')
     surface:str=Field(default='UNKNOWN',pattern=r'^(PHONE|PC|UNKNOWN)$')
+    selection:str=Field(default='LEGACY',pattern=r'^(NEARBY|CONFIRMED|LEGACY)$')
     sequence:int=Field(ge=1,le=9007199254740991)
 
 class NavigationPresenceRequest(BaseModel):
     model_config=ConfigDict(extra='forbid',strict=True)
     device:str=Field(pattern=r'^[0-9a-f-]{36}$')
     surface:str=Field(default='UNKNOWN',pattern=r'^(PHONE|PC|UNKNOWN)$')
+    selection:str=Field(default='LEGACY',pattern=r'^(NEARBY|CONFIRMED|LEGACY)$')
     device_type:str=Field(pattern=r'^(PC|PHONE)$')
     mode:str=Field(pattern=r'^(AUTO|SOLO|PAIRED)$')
 
@@ -369,6 +371,7 @@ class ActivityRequest(BaseModel):
     action:str=Field(pattern=r'^(START|HEARTBEAT|STOP)$')
     device:str=Field(pattern=r'^[0-9a-f-]{36}$')
     surface:str=Field(default='UNKNOWN',pattern=r'^(PHONE|PC|UNKNOWN)$')
+    selection:str=Field(default='LEGACY',pattern=r'^(NEARBY|CONFIRMED|LEGACY)$')
 
 def activity_reader(db,user):
     enabled(db,user)
@@ -409,4 +412,12 @@ def change_activity(public_id:str,period:str,body:ActivityRequest,db:DbDep,user:
     from . import activity
     if user.id not in activity.INSPECTORS or not user.is_active or str(getattr(user.role,'value',user.role))!='HQ_SAFE':raise HTTPException(403,'현장 평가 담당자를 확인해 주세요.')
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
-    return activity.change(store().root,user.id,row.public_id,key,body.action,body.device,surface=body.surface)
+    return activity.change(store().root,user.id,row.public_id,key,body.action,body.device,surface=body.surface,selection=body.selection)
+
+
+@router.get('/plans/{public_id}/activity-location')
+def activity_location(public_id:str,period:str,db:DbDep,user:Current,response:Response):
+    row,key=selected(db,user,public_id,period)
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    from .activity_location import location
+    return location(db,row)
