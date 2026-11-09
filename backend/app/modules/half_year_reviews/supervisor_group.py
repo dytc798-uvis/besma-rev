@@ -17,10 +17,10 @@ def subject(data):
 
 def project_data(data):
     value=deepcopy(data);people=members(data);group=subject(data);value.pop('supervisor_members',None);value.setdefault('subjects',{})['supervisor']=[group]
-    if group:
-        record=value.get('assessments',{}).get('supervisor:'+group['id'],{})
+    for key,record in value.get('assessments',{}).items():
+        if not key.startswith('supervisor:'):continue
         for kind in ['draft','completed']:
-            if record.get(kind):record[kind]['subject_name']=group['name']
+            if record.get(kind):record[kind]['subject_name']=''
     return value
 
 def project(response):
