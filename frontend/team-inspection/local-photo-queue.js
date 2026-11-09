@@ -2,7 +2,7 @@
 const DB='besma-field-outbox-v1',STORE='jobs';
 const n=(tag,text)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;return e;};
 export function createFieldOutbox({host,owner,api:rawApi,prepare,validate,onSaved=()=>{},onChange=()=>{}}){
- let db=null,dead=false,running=false,lockHeld=false,items=[],writes=Promise.resolve(),error='',timer=null;
+ let db=null,dead=false,running=false,lockHeld=false,flushing=false,flushPending=false,forcePending=false,items=[],writes=Promise.resolve(),error='',timer=null;
  const api=async(path,options={})=>{validate();const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),options.method==='POST'?45000:12000);try{return await rawApi(path,{...options,signal:controller.signal});}finally{clearTimeout(timeout);}};
  const lease=crypto.randomUUID(),box=n('details'),summary=n('summary'),list=n('div'),message=n('p');box.className='field-outbox';box.append(summary,message,list);host.append(box);
  const ready=new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>{const s=r.result.createObjectStore(STORE,{keyPath:'id'});s.createIndex('owner','owner');};r.onerror=()=>reject(r.error);r.onsuccess=()=>{db=r.result;resolve();};});
@@ -35,7 +35,17 @@ export function createFieldOutbox({host,owner,api:rawApi,prepare,validate,onSave
  }
  function verified(job,value){if(!value?.data||!Number.isInteger(value.revision))return false;if(job.kind==='note')return typeof value.data.evidence?.[job.evidence]?.note==='string'&&typeof job.note==='string'&&value.data.evidence[job.evidence].note.trim()===job.note.trim();const f=value.file,p=value.field_photo;return f?.kind==='image'&&f.evidence_id===job.evidence&&/^[a-f0-9]{64}$/.test(f.sha256)&&f.bytes>0&&(!job.criterion||(p?.file_id===f.id&&p.criterion_id===job.criterion&&p.evidence_id===job.evidence));}
  async function runFlush(force=false){if(dead||running||navigator.onLine===false)return;running=true;try{await writes;await refresh();for(const item of items){if(dead)break;if(!force&&item.retryAt>Date.now())continue;const job=await claim(item);if(!job)continue;try{const value=await send(job);validate();if(value?.reset_discarded){await remove(job.id);continue;}if(!verified(job,value))throw Error('전송 결과를 확인하고 있습니다.');await remove(job.id);await Promise.resolve(onSaved(job,value)).catch(()=>{});error='';}catch(e){job.error=[401,403].includes(e.status)?'로그인·현장 권한 확인 필요':e.status===413?'사진 용량 확인 필요':'연결·저장 확인 대기';job.retries=(job.retries||0)+1;job.retryAt=Date.now()+([401,403,404,413,422].includes(e.status)?300000:e.status===429?60000:Math.min(300000,15000*2**Math.min(4,job.retries-1)));job.leaseUntil=0;job.leaseOwner='';if(e.status===409){job.attempt=null;job.retryAt=Date.now()+1000;}await put(job);if(!e.status||e.status>=500||[401,403,429].includes(e.status))break;}}}catch(e){error='임시보관 확인 실패 · 사진을 파일로 보관해 주세요.';}finally{running=false;await refresh().catch(()=>notify());}}
- async function flush(force=false){if(navigator.locks?.request)return navigator.locks.request('besma-field-outbox:'+owner,{ifAvailable:true},async lock=>{if(!lock)return;lockHeld=true;try{await runFlush(force);}finally{lockHeld=false;}});return runFlush(force);}
+ async function flush(force=false){
+  if(dead)return;
+  if(flushing){flushPending=true;forcePending=forcePending||force;return;}
+  flushing=true;
+  try{do{
+   flushPending=false;
+   if(navigator.locks?.request)await navigator.locks.request('besma-field-outbox:'+owner,{ifAvailable:true},async lock=>{if(!lock)return;lockHeld=true;try{await runFlush(force);}finally{lockHeld=false;}});
+   else await runFlush(force);
+   force=forcePending;forcePending=false;
+  }while(flushPending&&!dead&&navigator.onLine!==false);}finally{flushing=false;}
+ }
  const online=()=>void flush(true),focus=()=>{if(document.visibilityState!=='hidden')void flush();};addEventListener('online',online);addEventListener('focus',focus);document.addEventListener('visibilitychange',focus);const interval=setInterval(()=>void flush(),15000);ready.then(()=>refresh()).then(()=>flush(true)).catch(()=>{error='휴대폰 임시보관을 사용할 수 없습니다. 사진 파일을 보관해 주세요.';notify();});
  return{addPhoto,scheduleNote,flush,whenReady:()=>ready.then(refresh),settled:()=>writes,notes:(plan,period)=>new Map(items.filter(j=>j.kind==='note'&&j.plan===plan&&j.period===period).map(j=>[j.evidence,j.note])),count:(plan,period)=>items.filter(j=>j.plan===plan&&j.period===period).length,dispose(){dead=true;clearTimeout(timer);clearInterval(interval);removeEventListener('online',online);removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);box.remove();ready.then(()=>{if(!running)db.close();}).catch(()=>{});}};
 }
