@@ -6,7 +6,7 @@ const integer=value=>Number.isSafeInteger(value)&&value>=0;
 const keyFor=(tab,item)=>tab==='forms'?item.path:item.logical_root_id+'\n'+item.relative_path;
 
 export async function mountDocumentMaterials(host,{api,isCurrent,initialScope={},onScope=()=>{},canReceive=false,receiveForm,onChoose}){
- host.dataset.documentMaterials='';const style=N('style');style.textContent='[data-document-materials] [hidden]{display:none!important}[data-document-materials] .policy-item{min-width:0;overflow-wrap:anywhere}[data-document-materials] .tools input{min-width:0;width:100%}';host.append(style);
+ host.dataset.documentMaterials='';const style=N('style');style.textContent='[data-document-materials] [hidden]{display:none!important}[data-document-materials] .policy-item{min-width:0;overflow-wrap:anywhere}[data-document-materials] .top-note.error{backdrop-filter:none;-webkit-backdrop-filter:none;color:#fff0d7;background:#573827;border:1px solid #d6a374;border-radius:7px;padding:10px 12px;font-size:14px;line-height:1.6}[data-document-materials] .tools input{min-width:0;width:100%}';host.append(style);
  let composing=false;
  let alive=true,sequence=0,timer,controller=null,selectionController=null,loading=false,choosing=false,items=[],page=null;
  const current=()=>alive&&host.isConnected&&isCurrent();
