@@ -10,17 +10,23 @@ def select(available):
         elif category=='safety-cost':ids=['budget']
         elif category=='theme':ids=['daily_inspection']
         elif category=='legal-training':
-            # Reference category is known; content still requires the criterion check.
-            ids=['education_regular','education_special','msds','education_hire','tbm']
-            if '관리감독자'in name:ids=['supervisor_training']
+            # Filename clues select references only; category alone proves no training type.
+            normalized=re.sub(r'\s+','',name).casefold()
+            if '관리감독자'in normalized:ids=['supervisor_training']
+            else:
+                for words,evidence in [(('정기교육',),'education_regular'),(('특별교육',),'education_special'),(('msds','물질안전보건'),'msds'),(('채용시','신규채용','신규교육'),'education_hire'),(('tbm','작업전안전회의'),'tbm')]:
+                    if any(word in normalized for word in words):ids.append(evidence)
         elif category=='risk':
             kind=source.get('document_facts',{}).get('assessment_kind')
             if kind=='INITIAL':ids=['risk_initial']
-            elif kind in {'CONTINUOUS','OCCASIONAL'}:ids=['risk_ongoing','risk_minutes','risk_actions']
+            elif kind in {'CONTINUOUS','OCCASIONAL'}:ids=['risk_ongoing']
             elif kind=='REGULAR':continue
-            elif '상시'in name or '수시'in name:ids=['risk_ongoing','risk_minutes','risk_actions']
+            elif '상시'in name or '수시'in name:ids=['risk_ongoing']
             elif '최초'in name:ids=['risk_initial']
             else:continue
+        if category=='risk'and ids:
+            if '회의'in name:ids.append('risk_minutes')
+            if '개선'in name or '조치'in name:ids.append('risk_actions')
         for evidence in ids:
             rank=(source.get('month',''),source.get('first_seen',''),source['id'])
             prior=selected.get(evidence)
