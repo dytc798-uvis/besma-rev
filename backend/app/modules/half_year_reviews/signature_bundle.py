@@ -31,7 +31,7 @@ def prepare(store,key,row,period,user,profile):
         snapshot={**source,'form':form,'subject_id':subject,'criteria_version':version,'inspector':source.get('inspector')or user.name,'data':normalized,'result':result}
         snapshot['id']=sha(encoded(snapshot).encode())[:32];snapshots[form]=snapshot
     if not profile.get('site_manager'):missing.append({'label':'현장소장 이름 입력','items':[]})
-    fingerprint=sha(encoded({'key':key,'snapshots':snapshots,'profile':profile,'layout_version':'2026.11.09.16'}).encode())
+    fingerprint=sha(encoded({'key':key,'snapshots':snapshots,'profile':profile,'layout_version':'2026.11.11.1'}).encode())
     days=[date.fromisoformat(s['data']['inspection_date'])for s in snapshots.values()];today=datetime.now(ZoneInfo('Asia/Seoul')).date();earliest=max(max(days,default=today)+timedelta(days=1),today);request_on=earliest+timedelta(days=(0-earliest.weekday())%7)
     return {'eligible':eligible and len(snapshots)==4,'fingerprint':fingerprint,'missing':missing,'snapshots':snapshots,'request_on':request_on.isoformat(),'request_weekday':'MONDAY'}
 

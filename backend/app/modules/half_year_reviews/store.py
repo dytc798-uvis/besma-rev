@@ -54,6 +54,8 @@ class ReviewStore:
                 if isinstance(request.get('base'),dict):edit=merge_edits(request['base'],edit,{k:previous.get(k,False if k in {'checked','hold'}else '')for k in ['checked','note','hold']})
                 note=cleaned(edit['note'],160);hold=edit.get('hold',False)
                 data['evidence'][body['id']]={'checked':bool(edit['checked']or note),'hold':hold,'note':note,'by':name,'at':stamp}
+                from .evidence_notes import refresh_existing
+                refresh_existing(data,stamp)
             elif action=='monthly-link':
                 result['monthly_source']=monthly_sources.link(data,key,request['period'],body,actor,name,stamp)
             elif action=='monthly-links':
@@ -118,6 +120,8 @@ class ReviewStore:
                 # Empty prose from a stale full-form client must not erase saved text.
                 # Intentional clearing is handled by the dedicated summary action.
                 if action=='assessment'and previous_text and isinstance(body['answers'],dict)and isinstance(body['answers'].get('summary',''),str)and not body['answers'].get('summary','').strip():body={**body,'answers':{**body['answers'],'summary':previous_text}}
+                from .evidence_notes import apply as apply_material_comments
+                apply_material_comments(data,form,subject,body['answers'],stamp)
                 answers,totals=validate_assessment(form,body['answers'],data['files'],supervisor_group.project_data(data)['subjects'],subject,body['complete']);subject_name=''
                 day=answers['inspection_date'];actual_period=day[:4]+('-H1'if int(day[5:7])<=6 else'-H2')
                 if actual_period!=request['period']:raise ValueError('DATE_PERIOD_MISMATCH')

@@ -28,7 +28,11 @@ def template_bundle():
         if form in {'manager','supervisor'}:
             blank={'blank_template':True,'subject_name':'','data':{'answers':{q['id']:{'value':None,'note':''}for q in schema['criteria']},'inspection_date':'','summary':''},'result':{'score':None}}
             files[name]=xlsx(form,blank,'','')
-        else:files[name]=template(schema.get('template','반기평가표.pptx'))
+        else:
+            raw=template(schema.get('template','반기평가표.pptx'))
+            if form=='report':
+                report_parts=parts(raw);remove_report_photo_sheet(report_parts);raw=pack(report_parts)
+            files[name]=raw
     return pack(files)
 def without_approval(items):
     # Approval blocks are embedded pictures/camera objects, not worksheet cell text.
@@ -196,6 +200,7 @@ def hwpx(snapshot,site,inspector):
 def pptx(snapshot,site,inspector,photos,period,blind=False):
     # Keep the legacy layout flag; signature copies now disclose all numeric scores.
     template_path=Path(__file__).parents[1]/'inspection_reports/assets/반기평가표.pptx';data=snapshot['data'];fields={'site_name':site,'inspection_date':data['inspection_date'],'inspector':inspector,'summary':data['summary'],'evaluation_period':period.replace('-H1','년 상반기').replace('-H2','년 하반기')}
+    photos=[]  # Photos remain evidence; the report has no photo appendix.
     if photos:items=parts(make_report(template_path.read_bytes(),fields,photos))
     else:
         from datetime import date
@@ -236,4 +241,23 @@ def pptx(snapshot,site,inspector,photos,period,blind=False):
             if prop is None:prop=E.Element('{'+NS['a']+'}pPr');paragraph.insert(0,prop)
             prop.set('algn','l');prop.set('marL','90000')
     items['ppt/slides/slide6.xml']=xml(confirm)
+    remove_report_photo_sheet(items)
     return pack(items)
+
+
+def remove_report_photo_sheet(items):
+    # Generated copies only. The original template and stored photos stay intact.
+    rels='ppt/_rels/presentation.xml.rels';root=E.fromstring(items[rels])
+    removed={r.get('Id')for r in root if r.get('Type','').endswith('/slide')and posixpath.basename(r.get('Target',''))=='slide5.xml'}
+    for r in list(root):
+        if r.get('Id')in removed:root.remove(r)
+    items[rels]=E.tostring(root,encoding='utf-8',xml_declaration=True)
+    presentation=E.fromstring(items['ppt/presentation.xml']);ids=presentation.find('{http://schemas.openxmlformats.org/presentationml/2006/main}sldIdLst')
+    for node in list(ids):
+        if node.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')in removed:ids.remove(node)
+    items['ppt/presentation.xml']=E.tostring(presentation,encoding='utf-8',xml_declaration=True)
+    types=E.fromstring(items['[Content_Types].xml'])
+    for node in list(types):
+        if node.get('PartName')=='/ppt/slides/slide5.xml':types.remove(node)
+    items['[Content_Types].xml']=E.tostring(types,encoding='utf-8',xml_declaration=True)
+    items.pop('ppt/slides/slide5.xml',None);items.pop('ppt/slides/_rels/slide5.xml.rels',None)
