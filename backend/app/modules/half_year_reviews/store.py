@@ -122,6 +122,8 @@ class ReviewStore:
                 if action=='assessment'and previous_text and isinstance(body['answers'],dict)and isinstance(body['answers'].get('summary',''),str)and not body['answers'].get('summary','').strip():body={**body,'answers':{**body['answers'],'summary':previous_text}}
                 from .evidence_notes import apply as apply_material_comments
                 apply_material_comments(data,form,subject,body['answers'],stamp)
+                from .headquarters import seed as seed_headquarters
+                seed_headquarters(data,form,body['answers'])
                 answers,totals=validate_assessment(form,body['answers'],data['files'],supervisor_group.project_data(data)['subjects'],subject,body['complete']);subject_name=''
                 day=answers['inspection_date'];actual_period=day[:4]+('-H1'if int(day[5:7])<=6 else'-H2')
                 if actual_period!=request['period']:raise ValueError('DATE_PERIOD_MISMATCH')

@@ -510,4 +510,9 @@ def aggregate_scores(db:DbDep,user:Current,response:Response,period:str='2026-H2
     rows=[r for r in rows if r.source=='INSPECTION_PLAN'and r.archived_at is None]
     path=store().root/('aggregate-monthly-'+period+'.json');monthly=json.loads(path.read_text('utf8'))if path.exists()else{}
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
-    return {**summary(store(),rows,period,monthly),'scope':'전체 현장'if user.id==96 else'내 담당 현장'}
+    result=summary(store(),rows,period,monthly)
+    annual_path=store().root/('annual-ranking-'+period[:4]+'.json')
+    if period.endswith('H2')and annual_path.exists():
+        from .annual_scores import summary as annual_summary
+        result['annual']=annual_summary(result['items'],json.loads(annual_path.read_text('utf8')),user.id==96)
+    return {**result,'scope':'전체 현장'if user.id==96 else'내 담당 현장'}
