@@ -123,7 +123,7 @@ def request_now(store,key,owner,jid):
             row=c.execute('SELECT * FROM jobs WHERE id=? AND context_id=? AND owner_id=?',(part['id'],key,owner)).fetchone()
             if row is None:raise KeyError('SIGNATURE_MISSING')
             payload=json.loads(row['payload']);assert payload['context_id']==key
-            if row['status']=='QUEUED'and payload.get('on_demand')is not True:
+            if row['status']in {'QUEUED','RENDERING'}and payload.get('on_demand')is not True:
                 payload['on_demand']=True
                 c.execute('UPDATE jobs SET payload=?,updated_at=? WHERE id=?',(encoded(payload),signature_jobs.stamp(),row['id']))
         c.commit()
