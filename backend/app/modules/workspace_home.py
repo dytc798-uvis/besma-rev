@@ -69,6 +69,7 @@ def location_records():
 
 def active_sites(db,attendance,user=None):
     from app.modules.site_directory import catalog
+    from app.modules.workspace_site_lifecycle import load_rows,lifecycle
     from app.modules.documents.active_site_scope import active_site_codes
     from app.modules.document_explorer.government_access import is_government_site_record
     data,items=catalog(db);aliases=data.get('aliases',{})
@@ -76,14 +77,15 @@ def active_sites(db,attendance,user=None):
     rows={str(r['site_code']):dict(r) for r in db.execute(text('SELECT id,site_code,site_name,contract_type,status,end_date FROM sites')).mappings()}
     for alias,code in aliases.items():
         if code not in rows and alias in rows:rows[code]=rows[alias]
+    master=load_rows(ROOT.parent/'site-directory'/'erp-site-master.json')
     today=str(kst_today());current=attendance if attendance and attendance['date']==today else None
     counts={s['code']:s['people'] for s in current['sites'] if s.get('code')} if current else {}
     loc=location_records();photos=photo_records();managers=manager_registry(ROOT);result=[]
     for site in items:
         if annual_unit_contract(site):continue
         code=site['code'];row=rows.get(code,{})
-        current_active=(code in active or str(row.get('status') or '').upper()=='ACTIVE') and not(row.get('end_date') and str(row['end_date'])<today) and '준공' not in site['name'] and str(row.get('status') or '').upper() not in {'COMPLETED','CLOSED','INACTIVE'}
-        if not(current_active or counts.get(code,0)>0):continue
+        life=lifecycle(site,row,master.get(code),today,code in active,counts.get(code,0)>0)
+        if not life['display']:continue
         if not site['name'] or re.fullmatch(r'[\d\s.,_-]+',site['name']):continue
         address=site.get('address') or '';point=loc.get(code,{})
         lat,lon=site.get('latitude'),site.get('longitude');precision='registered' if lat is not None and lon is not None else 'unresolved'
@@ -94,7 +96,7 @@ def active_sites(db,attendance,user=None):
         if site_region=='주소 확인 중':site_region=bound_location_region(address,point,lat,lon) or site_region
         portrait=verified_manager_photo(site,ROOT,managers) if getattr(getattr(user,'role',None),'value',getattr(user,'role',None))=='HQ_SAFE' else None
         result.append({'code':code,'name':site['name'],'address':address,'region':site_region,'latitude':lat,'longitude':lon,'location_precision':precision,'manager_photo':portrait['metadata'] if portrait else None,'today_people':counts.get(code) if current else None,
-                       'is_government':classification,'photo':verified_photo(code,photos),'map_visible':map_exclusion(site['name']) is None,'map_exclusion_reason':map_exclusion(site['name']),**home_site_fields(site,user)})
+                       'is_government':classification,'photo':verified_photo(code,photos),'map_visible':map_exclusion(site['name']) is None,'map_exclusion_reason':map_exclusion(site['name']),'planned_end_date':life['planned_end_date'],'document_handover':life['document_handover'],'completion_confirmed':life['completion_confirmed'],'site_master_received_at':life['received_at'],**home_site_fields(site,user)})
     return result
 
 def readiness_identity_scope(attendance):

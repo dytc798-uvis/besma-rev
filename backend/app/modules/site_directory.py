@@ -48,7 +48,8 @@ def response(value):return JSONResponse(value,headers={'Cache-Control':'private,
 
 def snapshot():
  if not DATA.is_file():raise HTTPException(503,'현장 정보를 준비하고 있습니다.')
- return json.loads(DATA.read_text(encoding='utf-8'))
+ from app.modules.workspace_site_lifecycle import merge_directory
+ return merge_directory(json.loads(DATA.read_text(encoding='utf-8')),DATA.parent/'erp-site-master.json')
 
 def favorites(db,user_id):
  return [r[0] for r in db.execute(text('SELECT site_code FROM site_directory_favorites WHERE user_id=:uid ORDER BY created_at,site_code'),{'uid':user_id})]
