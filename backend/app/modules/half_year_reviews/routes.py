@@ -392,7 +392,7 @@ def signing_bundle_queue(public_id:str,period:str,body:SigningBundleRequest,db:D
     from . import signature_bundle as bundle
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
     try:
-        row,key=selected(db,user,public_id,period);return bundle.queue(store(),key,user,row,period,body.model_dump(),profile_for(db,row,key))
+        row,key=selected(db,user,public_id,period);queued=bundle.queue(store(),key,user,row,period,body.model_dump(),profile_for(db,row,key));return bundle.request_now(store(),key,user.id,queued['id'])
     except(ValueError,KeyError,OSError,TypeError)as e:fail(e)
 
 @router.get('/plans/{public_id}/signature-bundle/{bundle_id}')

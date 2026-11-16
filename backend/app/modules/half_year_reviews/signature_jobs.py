@@ -49,11 +49,12 @@ def output(store,key,owner,jid):
 
 def claim(store,allowed):
     from .weekly_pdf import window_open
-    if not window_open():return None
+    weekly_allowed=window_open()
     with closing(connect(store))as c,c:
         c.execute('BEGIN IMMEDIATE');now=time.time();c.execute('UPDATE jobs SET status=CASE WHEN attempts<3 THEN "QUEUED" ELSE "FAILED" END,error="RENDER_INTERRUPTED" WHERE status="RENDERING" AND lease_until<?',(now,))
         for row in c.execute('SELECT * FROM jobs WHERE status="QUEUED" ORDER BY at LIMIT 100').fetchall():
             p=json.loads(row['payload'])
+            if not weekly_allowed and p.get('on_demand')is not True:continue
             if not allowed(row['owner_id'],p):continue
             lease=secrets.token_hex(32);c.execute('UPDATE jobs SET status="RENDERING",lease_hash=?,lease_until=?,attempts=attempts+1,error="",updated_at=? WHERE id=?',(hashlib.sha256(lease.encode()).hexdigest(),now+180,stamp(),row['id']));return {'id':row['id'],'lease':lease,'payload':p}
     return None

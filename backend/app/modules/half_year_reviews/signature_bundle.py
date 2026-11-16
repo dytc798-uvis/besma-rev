@@ -112,3 +112,19 @@ def merged(store,key,owner,jid):
         if not 100<len(raw)<=30*1024*1024:raise ValueError('PDF_INVALID')
         target.write_bytes(raw);target.chmod(0o600);proof.write_text(encoded({'sha256':sha(raw),'bytes':len(raw),'pages':pages}));proof.chmod(0o600)
         return raw
+
+
+def request_now(store,key,owner,jid):
+    """Promote only this authenticated, fully prepared bundle for prompt rendering."""
+    value=load(store,key,owner,jid)
+    with signature_jobs.connect(store)as c:
+        c.execute('BEGIN IMMEDIATE')
+        for part in value['jobs']:
+            row=c.execute('SELECT * FROM jobs WHERE id=? AND context_id=? AND owner_id=?',(part['id'],key,owner)).fetchone()
+            if row is None:raise KeyError('SIGNATURE_MISSING')
+            payload=json.loads(row['payload']);assert payload['context_id']==key
+            if row['status']=='QUEUED'and payload.get('on_demand')is not True:
+                payload['on_demand']=True
+                c.execute('UPDATE jobs SET payload=?,updated_at=? WHERE id=?',(encoded(payload),signature_jobs.stamp(),row['id']))
+        c.commit()
+    return status(store,key,owner,jid)
