@@ -47,11 +47,11 @@ def validate_assessment(form,data,files,subjects,subject_id,complete):
             score+=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[value]
         elif criterion.get('scoring',schema['scoring'])=='POINTS':
             if form=='report'and criterion['id']=='p10'and value in {'EXCELLENT','NORMAL','POOR'}:score+=criterion['max_score']*{'EXCELLENT':1,'NORMAL':.5,'POOR':0}[value]
-            elif type(value)is not int or not 0<=value<=criterion['max_score']:raise ValueError('SCORE_INVALID')
+            elif (type(value)is not int and not (form in {'manager','supervisor'}and type(value)is float and math.isfinite(value)and value*2==int(value*2)))or not 0<=value<=criterion['max_score']:raise ValueError('SCORE_INVALID')
             else:score+=value
         elif value not in {'PASS','FAIL','NA'}or value=='NA'and not note:raise ValueError('VERDICT_INVALID')
         result[criterion['id']]={'value':value,'note':note}
-        if form=='manager'and criterion.get('evaluation_scope')!='HEADQUARTERS'and type(value)is int:field_score+=value
+        if form=='manager'and criterion.get('evaluation_scope')!='HEADQUARTERS'and type(value)in {int,float}:field_score+=value
     photos=data.get('photo_ids',[])
     if not isinstance(photos,list)or len(photos)>24 or len(set(photos))!=len(photos)or any(not isinstance(p,str)for p in photos):raise ValueError('PHOTOS_INVALID')
     known={r['id']for r in files if r['kind']=='image'}

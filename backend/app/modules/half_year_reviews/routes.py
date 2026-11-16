@@ -493,3 +493,21 @@ def map_pending(db:DbDep,user:Current,response:Response,from_date:date,to_date:d
         return [c for source in resolve_sources(db,row)if(c:=canonical(source.site_code,aliases))]
     try:return pending(rows,summaries(store().root,rows),str(kst_today()),codes)
     except ValueError:raise HTTPException(503,'평가 현황을 확인하지 못했습니다. 다시 눌러 주세요.')
+
+
+@router.get('/aggregate-scores')
+def aggregate_scores(db:DbDep,user:Current,response:Response,period:str='2026-H2'):
+    from app.modules.safety_features.team_schedule_routes import list_team_schedule_items
+    from .aggregate_scores import summary
+    enabled(db,user);period_value(period)
+    start=date(int(period[:4]),7 if period.endswith('H2')else 1,1);end=date(start.year,12 if period.endswith('H2')else 6,31 if period.endswith('H2')else 30)
+    if mobile_pilot.allowed(user):rows=mobile_pilot.rows(db,user,start,end)
+    else:
+        value=list_team_schedule_items(db,user,start,end,False,False,True,user.id!=96)
+        from app.modules.safety_features.team_schedule_models import TeamScheduleItem
+        visible={item['public_id']for item in value['items']}
+        rows=db.query(TeamScheduleItem).filter(TeamScheduleItem.public_id.in_(visible)).all()if visible else[]
+    rows=[r for r in rows if r.source=='INSPECTION_PLAN'and r.archived_at is None]
+    path=store().root/('aggregate-monthly-'+period+'.json');monthly=json.loads(path.read_text('utf8'))if path.exists()else{}
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization'
+    return {**summary(store(),rows,period,monthly),'scope':'전체 현장'if user.id==96 else'내 담당 현장'}

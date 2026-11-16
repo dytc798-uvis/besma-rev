@@ -131,26 +131,45 @@ def hwpx(raw,summary=""):
     ending=('<section class="law-summary"><h2>총평</h2><p>'+safe(summary)+'</p></section>')if summary else''
     return '<article class="law">'+''.join(tables)+ending+'</article>','@page{size:A4 portrait;margin:12mm}.law{width:186mm}.law td{font-size:9pt;padding:1mm;line-height:1.2}.law-table{margin-bottom:3mm}.law-table tr{break-inside:avoid}.law-summary{margin-top:4mm;border:.2mm solid #333;padding:3mm;break-inside:avoid}.law-summary h2{font-size:11pt;margin:0 0 2mm;break-after:avoid}.law-summary p{font-size:10pt;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3}'
 
+def compact_for_print(value,limit=100):
+    """Shorten only the printable copy; keep the stored assessment untouched."""
+    import re
+    source=re.sub(r'\s+',' ',str(value or'')).strip()
+    if not source or len(source)<=limit:return source
+    if ':'in source and re.search(r'\.(?:pdf|xlsx|hwp|jpg|png)',source.split(':',1)[0],re.I):source=source.split(':',1)[1].strip()
+    only_receipts=source.startswith('취합자료')and bool(re.search(r'\.(pdf|xlsx|hwp|jpg|png)\s*$',source,re.I))and not re.search(r'미흡|누락|필요|미비|없음|확인\.',source)
+    if only_receipts:
+        labels=[label for label in ['정기교육','특별교육','관리감독자교육','MSDS','위험성평가','테마점검','의견청취','관리대장','업무분장','조직도']if label in source]
+        months=list(dict.fromkeys(re.findall(r'2026-(\d{2})',source)))
+        if labels:return ('·'.join(str(int(m))for m in months)+'월 'if months else'')+'·'.join(labels[:3])+' 자료 제출'
+    source=re.sub(r'^취합자료\s*:\s*','',source)
+    for before,after in [('기수신 ','제출 '),('추가적으로 ',''),('관련하여 ',''),('확인할 수 있음','확인'),('확인하였음','확인'),('확인되었습니다','확인'),('작성할 필요가 있음','작성 필요'),('보관할 필요가 있음','보관 필요'),('진행하고 있음','진행 중'),('실시하고 있음','실시 중'),('되어 있음','됨')]:source=source.replace(before,after)
+    if len(source)<=limit:return source
+    sentences=[part.strip(' ·.;')for part in re.split(r'(?<=[가-힣])[.!?]\s+|\s*[→]\s*',source)if part.strip(' ·.;')]
+    if len(sentences)==1:sentences=[part.strip()for part in re.split(r',(?=\s*[가-힣])',source)if part.strip()]
+    issue=re.compile(r'미흡|누락|미비|부족|필요|권고|요함|미작성|미실시|미시행|없음|없으|남아|보완|추가 확인|불일치')
+    selected=[part for part in sentences if issue.search(part)]or sentences;result=[]
+    for part in selected:
+        if result and len(' · '.join(result+[part]))>limit:continue
+        result.append(part)
+        if len(result)==2:break
+    return ' · '.join(result)or source
+
+
 def document(form,snapshot,site,period,blind=True):
     from copy import deepcopy
-    snapshot=deepcopy(snapshot);comments=[]
-    for index,criterion in enumerate((report_schema(snapshot)if form=='report'else FORMS[form])['criteria'],1):
-        answer=snapshot['data']['answers'][criterion['id']];note=answer.get('note','')
-        if form=='report':continue
-        if len(note)>(30 if form=='law'else 20)or '\n'in note:
-            comments.append((str(index)+'. '+criterion['title'],note))
-            answer['note']='코멘트 별지 '+str(len(comments))+'번 참조'
-    summary=snapshot['data'].get('summary','')
-    if summary and form!='law'and (len(summary)>240 or len(summary.splitlines())>6):
-        comments.append(('총평',summary));snapshot['data']['summary']='총평 별지 참조'
+    snapshot=deepcopy(snapshot)
+    if form!='report':
+        for criterion in FORMS[form]['criteria']:
+            answer=snapshot['data']['answers'][criterion['id']]
+            answer['note']=compact_for_print(answer.get('note',''),80 if form=='law'else 60)
+    snapshot['data']['summary']=compact_for_print(snapshot['data'].get('summary',''),360)
+    summary=snapshot['data']['summary']
     if form=='report':body,css=pptx(exports.pptx(snapshot,site,snapshot['inspector'],[],period,blind=blind))
     elif form=='law':body,css=hwpx(exports.hwpx(snapshot,site,snapshot['inspector']),summary)
     else:body,css=xlsx(exports.xlsx(form,snapshot,site,snapshot['inspector']),snapshot.get('site_manager',''))
     if form=='report'and not blind:
         from .report_radar import page
         graph,styles=page(snapshot,site);end=body.find('</article>')+len('</article>');body=body[:end]+graph+body[end:];css+=styles
-    if comments:
-        body+='<article class="comment-appendix"><h1>'+safe(FORMS[form]['title'])+' 코멘트</h1><p>'+safe(site)+' · '+safe(snapshot['data']['inspection_date'])+'</p>'+''.join('<section><h2>'+safe(title)+'</h2><p>'+safe(note)+'</p></section>'for title,note in comments)+'</article>'
-        css+='@page comments{size:A4 portrait;margin:16mm}.comment-appendix{page:comments;break-before:page;font-size:11pt;line-height:1.7}.comment-appendix h1{font-size:18pt}.comment-appendix h2{font-size:12pt;break-after:avoid;margin:7mm 0 2mm}.comment-appendix p{white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3;margin:0 0 5mm}.comment-appendix section{break-inside:auto}'
     title=FORMS[form]['title']+' · '+site
     return '<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:; base-uri \'none\'; form-action \'none\'"><title>'+escape(title)+'</title><style>*{box-sizing:border-box}body{margin:0;background:#fff;color:#111;font-family:"Malgun Gothic","Noto Sans CJK KR",sans-serif}table{border-collapse:collapse;table-layout:fixed;width:100%}td{border:.2mm solid #333;vertical-align:middle;overflow-wrap:anywhere}'+css+'@media screen{body{background:#e5e7eb}article{background:#fff;margin:12px auto;box-shadow:0 1px 5px #777}}@media print{article:last-child{break-after:auto}} </style>'+body+'</html>'
