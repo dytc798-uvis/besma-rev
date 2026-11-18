@@ -19,6 +19,16 @@ def saved(data,kind):
  if not complete:return None,False
  record=max(complete,key=lambda r:r['completed']['at']);return record['completed'],record.get('draft',{}).get('data')==record['completed']['data']
 
+def confirmation_status(data):
+ confirmation=data.get('score_confirmation')or{};snapshots=confirmation.get('snapshot_ids')or{}
+ if confirmation.get('status')not in {'CONFIRMED','PARTIAL'}or {k.split(':')[0]for k in snapshots}!={'report','law','manager','supervisor'}:return None
+ source=confirmation.get('file',{})
+ if not any(f.get('id')==source.get('id')and f.get('sha256')==source.get('sha256')and f.get('extension')=='.pdf'for f in data.get('files',[])):return None
+ for key,sid in snapshots.items():
+  record=data.get('assessments',{}).get(key,{})
+  if record.get('completed',{}).get('id')!=sid or record.get('draft',{}).get('data')!=record.get('completed',{}).get('data'):return None
+ return confirmation['status']
+
 def row_scores(data,monthly):
  data=project_data(data);scores={};states=[];headquarters_pending=False
  for kind in ['report','manager','supervisor','law']:
@@ -35,7 +45,10 @@ def row_scores(data,monthly):
  field=[scores.get(k)for k in ['report','monthly','supervisor','law']]+[scores.get('manager_field')*.2 if scores.get('manager_field')is not None else None];scores['field_total']=rounded(sum(field))if all_written and all(v is not None for v in field)else None
  reported=bool(data.get('paper_completion')or data.get('reported_completion'));started=any(v.get('draft',{}).get('result',{}).get('graded',0)>0 for v in data.get('assessments',{}).values())
  state='평가 완료'if all_written else'완료·점수 미등록'if reported else'평가 중'if started else'평가 전'
- return {'scores':scores,'state':state,'written':all_written,'headquarters_pending':headquarters_pending,'monthly':{'received':monthly['received'],'required':monthly['required']}if monthly else None}
+ confirmed=confirmation_status(data)if all_written else None
+ if confirmed=='CONFIRMED':state='점수 확정'
+ elif confirmed=='PARTIAL':state='법령점검표 서명 보완'
+ return {'scores':scores,'state':state,'score_confirmed':confirmed=='CONFIRMED','written':all_written,'headquarters_pending':headquarters_pending,'monthly':{'received':monthly['received'],'required':monthly['required']}if monthly else None}
 
 def rank(items,key,out):
  scores=[r['scores'][key]for r in items if r['scores'][key]is not None]
