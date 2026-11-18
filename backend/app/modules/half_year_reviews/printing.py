@@ -129,7 +129,7 @@ def hwpx(raw,summary=""):
         if table_index>0 and len(rows)>2:html+='</tbody>'
         tables.append(html+'</table>')
     ending=('<section class="law-summary"><h2>총평</h2><p>'+safe(summary)+'</p></section>')if summary else''
-    return '<article class="law">'+''.join(tables)+ending+'</article>','@page{size:A4 portrait;margin:12mm}.law{width:186mm}.law td{font-size:9pt;padding:1mm;line-height:1.2}.law-table{margin-bottom:3mm}.law-table tr{break-inside:avoid}.law-summary{margin-top:4mm;border:.2mm solid #333;padding:3mm;break-inside:avoid}.law-summary h2{font-size:11pt;margin:0 0 2mm;break-after:avoid}.law-summary p{font-size:10pt;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3}'
+    return '<article class="law">'+''.join(tables)+ending+'</article>','@page{size:A4 landscape;margin:12mm}.law{width:273mm}.law td{font-size:9pt;padding:.7mm;line-height:1.15}.law-table{margin-bottom:3mm}.law-table tr{break-inside:avoid}.law-summary{margin-top:4mm;border:.2mm solid #333;padding:3mm;break-inside:avoid}.law-summary h2{font-size:11pt;margin:0 0 2mm;break-after:avoid}.law-summary p{font-size:10pt;line-height:1.5;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;orphans:3;widows:3}'
 
 def compact_for_print(value,limit=100):
     """Shorten only the printable copy; keep the stored assessment untouched."""
