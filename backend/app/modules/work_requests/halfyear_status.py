@@ -8,6 +8,17 @@ FOLLOWUP = re.compile(r'^\s*(?:(?:그럼|그러면|그중)\s*)?(?:(?:20\d{2})\s*
 NAME_ONLY = re.compile(r'^\s*(?:파일(?:이|은)?\s*(?:아니라|말고)\s*)?(?:완료(?:된)?\s*)?현장(?:명|\s*이름)(?:만|을|들|은|는)?\s*(?:(?:나열|알려|보여)(?:해|해줘|해\s*주세요|줘|주세요)?)?[?.!？\s]*$')
 
 
+def status_text(text):
+    # File-transfer intent is separate from the status being requested. A
+    # negated delivery clause and a receipt-only exclusion do not request bytes.
+    from .answer_preference import answer_only_requested
+    if not answer_only_requested(text):
+        return None
+    text = re.sub(r"(?:PDF|파일|문서|평가표)\s*(?:이|가|은|는)?\s*(?:접수|제출|업로드)(?:만)?\s*(?:된|한|완료된)?\s*(?:현장(?:은|을|이)?|건(?:은|을|이)?)?\s*(?:제외(?:하고|해|해줘)?|빼(?:고|줘)?|말고)", " ", text, flags=re.I)
+    text = re.sub(r"(?:원본|파일|첨부|다운로드)(?:은|는|을|를|도)?\s*(?:(?:보내|전달|첨부|다운로드|받|하|해|주)(?:지)?\s*)?(?:말(?:고|아|아줘)?|마(?:[.!?]|$)|안\s*해도\s*(?:돼|됨)|필요\s*없(?:어|고|어요)?|불필요(?:해)?|하지\s*않(?:아|고)?)", " ", text, flags=re.I)
+    return text
+
+
 def query(body, today=None):
     if not isinstance(body, str) or len(body) > 6000:
         return None
@@ -16,7 +27,8 @@ def query(body, today=None):
     prior, separator, current = body.rpartition(marker)
     if not separator:
         current = body
-    if (EXPLICIT_FILE.search(current) and not NAME_ONLY.fullmatch(current)) or '기능인' in current or '인정제' in current:
+    filtered = status_text(current)
+    if filtered is None or (EXPLICIT_FILE.search(filtered) and not NAME_ONLY.fullmatch(current)) or '기능인' in current or '인정제' in current:
         return None
     root = current
     history = []
@@ -26,7 +38,8 @@ def query(body, today=None):
         history = [m[1] for m in re.finditer(r'(?:^|\n)사용자: (.*?)\n답변: ', prior, re.S)]
         root = None
         for previous in reversed(history):
-            if (EXPLICIT_FILE.search(previous) and not NAME_ONLY.fullmatch(previous)) or '기능인' in previous or '인정제' in previous:
+            filtered_previous = status_text(previous)
+            if filtered_previous is None or (EXPLICIT_FILE.search(filtered_previous) and not NAME_ONLY.fullmatch(previous)) or '기능인' in previous or '인정제' in previous:
                 return None
             if TOPIC.search(previous) and re.search(r'현장|완료|현황|어디|몇', previous):
                 root = previous
@@ -43,6 +56,7 @@ def query(body, today=None):
         turns.append(current)
     year, half = today.year, 1 if today.month <= 6 else 2
     mode = 'all'
+    scope = None
     for text in turns:
         years = set(re.findall(r'(?<!\d)(20\d{2})(?!\d)', text))
         halves = set(re.findall(r'([상하])반기', text))
@@ -58,7 +72,14 @@ def query(body, today=None):
             mode = 'completed'
         elif '전체' in text or '현황' in text:
             mode = 'all'
-    return {'year': year, 'half': half, 'mode': mode, 'clarify': False}
+        if re.search(r'(?:내|나의|제|저의)\s*(?:담당|점검|평가)', text):
+            scope = 'mine'
+        elif '전체' in text or '모든' in text:
+            scope = 'all'
+    result = {'year': year, 'half': half, 'mode': mode, 'clarify': False}
+    if scope:
+        result['scope'] = scope
+    return result
 
 
 def read_rows(requester, year, half):
@@ -81,11 +102,54 @@ def read_rows(requester, year, half):
         rows = value['items']
         if len(rows) > 500 or {r['public_id'] for r in rows} != set(names):
             raise ValueError('REVIEW_SCOPE_CHANGED')
-        own_rows = [{**r, 'title': names[r['public_id']]} for r in rows]
+        own_rows = [{**r, 'title': names[r['public_id']], 'assigned_to_requester': True} for r in rows]
         # Team calendar already permits these names/statuses. Do not read another
         # inspector's private assessments or infer completion from a missing form.
         visible = list_team_schedule_items(db, user, start, end, False, False, True, False)
-        return include_visible_completions(own_rows, visible['items'], year, half)
+        rows = include_visible_completions(own_rows, visible['items'], year, half)
+        # Use the same public score/status projection already authorized by the
+        # screen. This does not open another evaluator's answers or attachments.
+        from fastapi import HTTPException
+        from app.modules.half_year_reviews.routes import aggregate_scores
+        try:
+            public = aggregate_scores(db, user, Response(), f'{year}-H{half}')
+        except HTTPException as error:
+            if error.status_code not in {403, 404}:
+                raise
+            return rows
+        return include_public_status(rows, public, year, half)
+
+
+def include_public_status(rows, public, year, half):
+    if not isinstance(public, dict) or public.get('period') != f'{year}-H{half}' or not isinstance(public.get('items'), list) or len(public['items']) > 500:
+        raise ValueError('REVIEW_PUBLIC_SCOPE_CHANGED')
+    result = {row['public_id']: dict(row) for row in rows}
+    if len(result) != len(rows):
+        raise ValueError('DUPLICATE_VISIBLE_PLAN')
+    seen = set()
+    completed = {'평가 완료', '점수 확정', '법령점검표 서명 보완'}
+    for item in public['items']:
+        key = item.get('public_id')
+        if not isinstance(key, str) or key in seen:
+            raise ValueError('DUPLICATE_PUBLIC_PLAN')
+        seen.add(key)
+        if key not in result:
+            continue
+        if type(item.get('written')) is not bool or not isinstance(item.get('state'), str):
+            raise ValueError('REVIEW_PUBLIC_STATUS_INVALID')
+        row = result[key]
+        if item['written'] and item['state'] in completed:
+            row.update(status='COMPLETED', screen_completed=True, public_state=item['state'])
+        elif not item['written'] and item['state'] == '완료·점수 미등록':
+            row.update(status='COMPLETED', public_state=item['state'])
+        elif row['status'] == 'UNVERIFIED' and not item['written']:
+            if item['state'] == '평가 중':
+                row.update(status='IN_PROGRESS')
+            elif item['state'] == '평가 전':
+                row.update(status='NOT_STARTED')
+        # Unknown or inconsistent public status stays unverified. Never infer
+        # completion from a total, a grade, or the mere presence of a score.
+    return list(result.values())
 
 
 def include_visible_completions(own_rows, plans, year, half):
@@ -107,11 +171,12 @@ def include_visible_completions(own_rows, plans, year, half):
         if plan['status'] != 'COMPLETED':
             result[key] = {'public_id': key, 'period': f'{year}-H{half}',
                            'title': plan['title'], 'status': 'UNVERIFIED',
-                           'screen_completed': False}
+                           'screen_completed': False, 'assigned_to_requester': bool(existing and existing.get('assigned_to_requester'))}
             continue
         result[key] = {'public_id': key, 'period': f'{year}-H{half}',
                        'title': plan['title'], 'status': 'COMPLETED',
-                       'screen_completed': False, 'plan_completed': True}
+                       'screen_completed': False, 'plan_completed': True,
+                       'assigned_to_requester': bool(existing and existing.get('assigned_to_requester'))}
     return list(result.values())
 
 
@@ -135,17 +200,20 @@ def answer(item, provider=None, today=None):
             if row.get('period') != f'{year}-H{half}' or row.get('status') not in {'COMPLETED', 'IN_PROGRESS', 'NOT_STARTED', 'UNVERIFIED'} or type(row.get('screen_completed')) is not bool or not isinstance(row.get('title'), str) or row['public_id'] in seen:
                 raise ValueError('REVIEW_SCOPE_UNVERIFIED')
             seen.add(row['public_id'])
+            own_only = selected.get('scope') == 'mine' or selected['mode'] == 'incomplete' and selected.get('scope') != 'all'
+            if own_only and row.get('assigned_to_requester') is False:
+                continue
             complete = row['status'] == 'COMPLETED' or row['screen_completed']
             if selected['mode'] == 'completed' and not complete or selected['mode'] == 'incomplete' and (complete or row['status'] == 'UNVERIFIED'):
                 continue
-            status = ('최종본 등록 완료' if row.get('paper_completion') else '점검 완료 등록' if row.get('plan_completed') else '완료 등록' if row.get('reported_completion') else '완료') if row['status'] == 'COMPLETED' else '전자평가 4종 완료' if row['screen_completed'] else '작성 중' if row['status'] == 'IN_PROGRESS' else '평가 상태 확인 필요' if row['status'] == 'UNVERIFIED' else '미작성'
+            status = row.get('public_state') or (('최종본 등록 완료' if row.get('paper_completion') else '점검 완료 등록' if row.get('plan_completed') else '완료 등록' if row.get('reported_completion') else '완료') if row['status'] == 'COMPLETED' else '전자평가 4종 완료' if row['screen_completed'] else '작성 중' if row['status'] == 'IN_PROGRESS' else '평가 상태 확인 필요' if row['status'] == 'UNVERIFIED' else '전자평가 미작성')
             selected_rows.append((row['title'].removeprefix('[점검] ').strip(), status))
         # Multiple plans may refer to one shared site/period; never inflate site counts.
         selected_rows = sorted(set(selected_rows), key=lambda value: (value[1] == '평가 상태 확인 필요', value))
         if not selected_rows:
             reply = label + ('에 등록된 점검·평가 계획이 없습니다.' if not rows else ' 완료 현장은 등록된 평가 원장에서 확인되지 않습니다.' if selected['mode'] == 'completed' else ' 미완료 현장은 등록된 평가 원장에서 확인되지 않습니다.')
         else:
-            heading = {'completed':'완료 현장', 'incomplete':'내 담당 미완료 현장', 'all':'평가 현황'}[selected['mode']]
+            heading = {'completed':'내 담당 완료 현장' if selected.get('scope') == 'mine' else '완료 현장', 'incomplete':'미완료 현장' if selected.get('scope') == 'all' else '내 담당 미완료 현장', 'all':'내 담당 평가 현황' if selected.get('scope') == 'mine' else '평가 현황'}[selected['mode']]
             reply = label + ' ' + heading + '\n' + '\n'.join('· '+name+' — '+status for name, status in selected_rows[:40])
             if len(selected_rows) > 40:
                 reply += f'\n외 {len(selected_rows)-40}개 항목은 팀 점검계획에서 확인할 수 있습니다.'
