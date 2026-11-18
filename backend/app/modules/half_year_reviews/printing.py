@@ -166,7 +166,9 @@ def document(form,snapshot,site,period,blind=True):
     snapshot['data']['summary']=compact_for_print(snapshot['data'].get('summary',''),360)
     summary=snapshot['data']['summary']
     if form=='report':body,css=pptx(exports.pptx(snapshot,site,snapshot['inspector'],[],period,blind=blind))
-    elif form=='law':body,css=hwpx(exports.hwpx(snapshot,site,snapshot['inspector']),summary)
+    elif form=='law':
+        from .law_original import document as original_law
+        body,css=original_law(snapshot,site,summary)
     else:body,css=xlsx(exports.xlsx(form,snapshot,site,snapshot['inspector']),snapshot.get('site_manager',''))
     if form=='report'and not blind:
         from .report_radar import page
