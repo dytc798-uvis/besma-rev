@@ -497,13 +497,20 @@ def map_pending(db:DbDep,user:Current,response:Response,from_date:date,to_date:d
 
 @router.get('/aggregate-scores')
 def aggregate_scores(db:DbDep,user:Current,response:Response,period:str='2026-H2'):
-    from app.modules.safety_features.team_schedule_routes import list_team_schedule_items
+    from app.modules.safety_features.team_schedule_routes import list_team_schedule_items, _member_or_403
     from .aggregate_scores import summary
     enabled(db,user);period_value(period)
+    full_scope=False
+    role=str(getattr(user.role,'value',user.role))
+    if getattr(user,'is_active',False) and role in {'HQ_SAFE','HQ_SAFE_ADMIN','SUPER_ADMIN'}:
+        try:_member_or_403(db,user)
+        except HTTPException as error:
+            if error.status_code!=403:raise
+        else:full_scope=True
     start=date(int(period[:4]),7 if period.endswith('H2')else 1,1);end=date(start.year,12 if period.endswith('H2')else 6,31 if period.endswith('H2')else 30)
-    if mobile_pilot.allowed(user):rows=mobile_pilot.rows(db,user,start,end)
+    if mobile_pilot.allowed(user) and not full_scope:rows=mobile_pilot.rows(db,user,start,end)
     else:
-        value=list_team_schedule_items(db,user,start,end,False,False,True,user.id!=96)
+        value=list_team_schedule_items(db,user,start,end,False,False,True,not full_scope)
         from app.modules.safety_features.team_schedule_models import TeamScheduleItem
         visible={item['public_id']for item in value['items']}
         rows=db.query(TeamScheduleItem).filter(TeamScheduleItem.public_id.in_(visible)).all()if visible else[]
@@ -514,5 +521,5 @@ def aggregate_scores(db:DbDep,user:Current,response:Response,period:str='2026-H2
     annual_path=store().root/('annual-ranking-'+period[:4]+'.json')
     if period.endswith('H2')and annual_path.exists():
         from .annual_scores import summary as annual_summary
-        result['annual']=annual_summary(result['items'],json.loads(annual_path.read_text('utf8')),user.id==96)
-    return {**result,'scope':'전체 현장'if user.id==96 else'내 담당 현장'}
+        result['annual']=annual_summary(result['items'],json.loads(annual_path.read_text('utf8')),full_scope)
+    return {**result,'scope':'전체 현장'if full_scope else'내 담당 현장'}
