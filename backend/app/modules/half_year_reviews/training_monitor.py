@@ -251,10 +251,11 @@ def workbook_bytes(value):
     from openpyxl import load_workbook
     workbook = load_workbook(Path(__file__).parent / 'assets/training-monitor-template.xlsx')
     sheet = workbook.active
-    last = 5 + len(value['items'])
+    first = 5 if sheet['B3'].value == '현장명' else 6
+    last = first - 1 + len(value['items'])
     columns = ((5,None),(6,None),(7,8),(9,10))
-    for n, item in enumerate(value['items'], 6):
-        sheet.cell(n, 1, n - 5)
+    for n, item in enumerate(value['items'], first):
+        sheet.cell(n, 1, n - first + 1)
         sheet.cell(n, 2, item['site'])
         for col,key in [(3,'start_date'),(4,'completion_date')]:
             sheet.cell(n,col,date.fromisoformat(item[key])if item.get(key)else None).number_format='yy"/"mm"/"dd'
@@ -273,29 +274,31 @@ def workbook_bytes(value):
             if grade_col:
                 sheet.cell(n,grade_col,cell['suitability'] or None)
     from openpyxl.styles import Alignment
-    for row in sheet.iter_rows(min_row=6, max_row=last, max_col=10):
+    for row in sheet.iter_rows(min_row=first, max_row=last, max_col=10):
         for cell in row:
             from copy import copy as copied
-            cell._style = copied(sheet.cell(6, cell.column)._style)
+            cell._style = copied(sheet.cell(first, cell.column)._style)
             cell.alignment = Alignment(horizontal='left' if cell.column == 2 else 'center', vertical='center', wrap_text=True)
         import math, unicodedata
         name = str(sheet.cell(row[0].row, 2).value or '')
         width = sum(2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in name)
         sheet.row_dimensions[row[0].row].height = max(31, 16 * math.ceil(width / 33))
     sheet['A2'] = '기준일 ' + datetime.fromisoformat(value['as_of']).astimezone(__import__('datetime').timezone(__import__('datetime').timedelta(hours=9))).strftime('%Y-%m-%d %H:%M')
-    for i, label in enumerate(PERIOD_LABELS):
-        from openpyxl.utils import get_column_letter
-        col,_=columns[i];a=get_column_letter(col)
-        sheet.cell(3,col,f'="O "&COUNTIF({a}6:{a}{last},"O")&" / X "&COUNTIF({a}6:{a}{last},"X")')
+    if first == 6:
+        for i, label in enumerate(PERIOD_LABELS):
+            from openpyxl.utils import get_column_letter
+            col,_=columns[i];a=get_column_letter(col)
+            sheet.cell(3,col,f'="O "&COUNTIF({a}{first}:{a}{last},"O")&" / X "&COUNTIF({a}{first}:{a}{last},"X")')
+    from openpyxl.utils import get_column_letter
     from openpyxl.formatting.rule import FormulaRule
     from openpyxl.styles import PatternFill
     sheet.conditional_formatting._cf_rules.clear()
     for i,period in enumerate(PERIODS):
         a,b=period_bounds(period);col,grade_col=columns[i];left=get_column_letter(col);right=get_column_letter(grade_col or col)
-        formula=f'AND(ISNUMBER($C6),ISNUMBER($D6),$C6<=$D6,$C6<=DATE({b.year},{b.month},{b.day}),$D6>=DATE({a.year},{a.month},{a.day}))'
-        sheet.conditional_formatting.add(f'{left}6:{right}{last}',FormulaRule(formula=[formula],fill=PatternFill('solid',fgColor='FFFCE4D6',bgColor='FFFCE4D6')))
-    sheet.conditional_formatting.add(f'E6:J{last}',FormulaRule(formula=['TRUE'],fill=PatternFill('solid',fgColor='FFEDEDED',bgColor='FFEDEDED')))
-    sheet.auto_filter.ref = f'A5:J{last}'
+        formula=f'AND(ISNUMBER($C{first}),ISNUMBER($D{first}),$C{first}<=$D{first},$C{first}<=DATE({b.year},{b.month},{b.day}),$D{first}>=DATE({a.year},{a.month},{a.day}))'
+        sheet.conditional_formatting.add(f'{left}{first}:{right}{last}',FormulaRule(formula=[formula],fill=PatternFill('solid',fgColor='FFFCE4D6',bgColor='FFFCE4D6')))
+    sheet.conditional_formatting.add(f'E{first}:J{last}',FormulaRule(formula=['TRUE'],fill=PatternFill('solid',fgColor='FFEDEDED',bgColor='FFEDEDED')))
+    sheet.auto_filter.ref = f'A{first-1}:J{last}'
     sheet.print_area = f'A1:J{last}'
     workbook.calculation.fullCalcOnLoad = True
     output = io.BytesIO()
