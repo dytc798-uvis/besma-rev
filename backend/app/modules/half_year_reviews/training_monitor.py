@@ -81,6 +81,33 @@ def lifecycle_rank(row, today):
     return 3 if end < today else 1
 
 
+def nonconformity_details(period, cell, data, judgment):
+    if cell['suitability'] != '부적합':
+        return None
+    completed = (data or {}).get('assessments', {}).get('report:site', {}).get('completed') or {}
+    answer = completed.get('data', {}).get('answers', {}).get('p13') or {}
+    value = answer.get('value')
+    score = value if type(value) in (int,float) and 0 <= value <= 7 else {'EXCELLENT':7,'NORMAL':3.5,'POOR':0}.get(value) if isinstance(value,str) else None
+    note = str(answer.get('note') or '').strip()
+    evidence = (data or {}).get('evidence', {}).get('emergency_drill') or {}
+    if score is not None:
+        basis = f'비상사태훈련보고서 및 교육일지 항목: 7점 만점 중 {score:g}점.'
+        missing = '이 평가 항목의 비고는 비어 있습니다.' if not note else None
+    elif judgment:
+        value = judgment.get('source_value')
+        basis = f'상반기 최종평가표의 비상사태훈련 실시 항목: {value}.'
+        missing = '종합점수표에는 이 항목의 판정값만 표시돼 있습니다.'
+    else:
+        basis = '기존 검토기록에 비상훈련 미실시 또는 부적합으로 기재돼 있습니다.'
+        missing = None
+    return {'criterion':'비상사태훈련보고서 및 교육일지','basis':basis,
+            'evaluation_value':value,'score':score,'max_score':7 if score is not None else None,
+            'evaluation_note':note,'note_status':missing,
+            'evidence_note':str(evidence.get('note') or '').strip(),
+            'evaluated_at':completed.get('at') if score is not None else None,
+            'review_notes':cell['reasons'],'sources':cell['sources']}
+
+
 def matrix(seed, states, visible_ids, full_scope, current_sites=None):
     if seed.get('schema') != 1 or seed.get('periods') != list(PERIODS):
         raise ValueError('TRAINING_HISTORY_INVALID')
@@ -174,6 +201,7 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
                         source_suitability=source_grade,conducted=conducted if applicable else '—',suitability=suitability)
             cell['reasons'] = list(dict.fromkeys(cell['reasons']))
             cell['sources'] = list(dict.fromkeys(cell['sources']))
+            cell['nonconformity_detail'] = nonconformity_details(period, cell, data, judgment)
             cells[period] = cell
         items.append({'id': site['id'], 'site': site['site'], 'public_id': site['public_id'],
                       'start_date':dates.get('start_date'),'completion_date':dates.get('completion_date'),
