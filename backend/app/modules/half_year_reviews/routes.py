@@ -532,7 +532,18 @@ def emergency_training(db:DbDep,user:Current,response:Response):
     scope=aggregate_scores(db,user,response,'2026-H2')
     visible={r['public_id']for r in scope['items']}
     current=[{'id':context_key(row,'2026-H2').split('|')[0],'site':row.title.removeprefix('[점검] ').strip(),'public_id':row.public_id,'assessment_complete':next((bool(r.get('written'))for r in scope['items']if r['public_id']==row.public_id),False)}for row in db.query(TeamScheduleItem).filter(TeamScheduleItem.public_id.in_(visible)).all()if context_key(row,'2026-H2').startswith('site-')]
-    try:return summary(store().root,visible,scope['scope']=='전체 현장',current)
+    try:
+        value=summary(store().root,visible,scope['scope']=='전체 현장',current)
+        for item in value['items']:
+            for period,cell in item['periods'].items():
+                if not cell.get('files'):continue
+                allowed=False
+                if item.get('public_id'):
+                    try:selected(db,user,item['public_id'],period);allowed=True
+                    except HTTPException as error:
+                        if error.status_code not in (403,404):raise
+                for file in cell['files']:file['can_open']=allowed
+        return value
     except(OSError,ValueError,KeyError,TypeError):raise HTTPException(503,'비상훈련 현황을 불러오지 못했습니다. 다시 확인해 주세요.')
 
 
@@ -542,3 +553,17 @@ def emergency_training_export(db:DbDep,user:Current,response:Response):
     value=emergency_training(db,user,response)
     if not value['can_export']:raise HTTPException(403,'전체 현장 엑셀 저장 권한을 확인해 주세요.')
     return export(value)
+
+
+@router.get('/emergency-training/files/{public_id}/{file_id}')
+def emergency_training_file(public_id:str,file_id:str,period:str,db:DbDep,user:Current,response:Response):
+    import base64
+    try:
+        row,key=selected(db,user,public_id,period)
+        content,meta=store().file(key,file_id)
+        if meta.get('evidence_id')!='emergency_drill':raise HTTPException(404,'해당 반기의 비상훈련 자료를 찾을 수 없습니다.')
+        if len(content)>40*1024*1024:raise HTTPException(413,'파일이 커서 반기평가 자료 화면에서 받아 주세요.')
+    except(ValueError,KeyError,OSError,TypeError)as error:fail(error)
+    media='application/pdf'if content.startswith(b'%PDF-')else'image/jpeg'if content.startswith(b'\xff\xd8\xff')else'image/png'if content.startswith(b'\x89PNG\r\n\x1a\n')else'application/octet-stream'
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization';response.headers['X-Content-Type-Options']='nosniff'
+    return {'filename':meta['filename'],'content_type':media,'content_base64':base64.b64encode(content).decode('ascii'),'sha256':meta['sha256']}
