@@ -1,0 +1,17 @@
+{
+  "source_file": "map-search-release/assets/company-home-6ddec4553de8.js",
+  "source_normalized_sha256": "6ddec4553de897f6561be198a76d8040b367e72690070c96abb63f0f171c90ff",
+  "files": [
+    {
+      "path": "assets/company-home-6ddec4553de8.js",
+      "size": 55544,
+      "sha256": "6ddec4553de897f6561be198a76d8040b367e72690070c96abb63f0f171c90ff"
+    },
+    {
+      "path": "company.html",
+      "size": 12358,
+      "sha256": "97e13c82f38b1063e1615bc457a83e52915627ffda44b07ac24b319a074a0ddd",
+      "before_sha256": "3d9c5584d09a956e2b21c472a7bbd3ea103d2620689d3ffbbfe6ad91c7d64684"
+    }
+  ]
+}

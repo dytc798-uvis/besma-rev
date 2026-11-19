@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
-const root=path.dirname(fileURLToPath(import.meta.url)),source=path.join(root,'monthly-source-names-release');
+const root=path.dirname(fileURLToPath(import.meta.url)),source=path.join(root,'map-search-release');
 const baseline=JSON.parse(fs.readFileSync(path.join(source,'baseline.json'),'utf8')),overlay=JSON.parse(fs.readFileSync(path.join(source,'overlay.json'),'utf8'));
 const sha=data=>crypto.createHash('sha256').update(data).digest('hex');
 assert.equal(baseline.origin,'https://www.besma.co.kr');assert.equal(baseline.schema,1);assert(baseline.files.length>800&&baseline.files.length<5000);
@@ -32,15 +32,15 @@ async function obtain(row){
  verified++;if(verified%100===0)console.log(`Verified baseline files: ${verified}/${baseline.files.length}`);
 }
 await Promise.all(Array.from({length:6},async()=>{while(next<baseline.files.length)await obtain(baseline.files[next++]);}));
-assert.equal(overlay.files.length,3);let added=0,changed=0;
+assert.equal(overlay.files.length,2);let added=0,changed=0;
 for(const row of overlay.files){
- assert(row.path==='workspace.html'||/^assets\/(monthly-collection|workspace)-[a-f0-9]{12}\.js$/.test(row.path));
+ assert(row.path==='company.html'||/^assets\/company-home-[a-f0-9]{12}\.js$/.test(row.path));
  const raw=fs.readFileSync(path.join(source,row.path));assert.equal(raw.length,row.size);assert.equal(sha(raw),row.sha256);
  const dest=path.join(output,'static',row.path);
  if(row.before_sha256){assert.equal(sha(fs.readFileSync(dest)),row.before_sha256);changed++;}else{assert(!fs.existsSync(dest));added++;}
  fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,raw);
 }
-assert.equal(added,2);assert.equal(changed,1);
+assert.equal(added,1);assert.equal(changed,1);
 const config=fs.readFileSync(path.join(source,'output-config.json'));assert.equal(JSON.parse(config).version,3);fs.writeFileSync(path.join(output,'config.json'),config,{flag:'wx'});
 const result={passed:true,baseline_deployment:baseline.deployment,public_baseline_verified:verified,network_baseline:local<0,baseline_static_files:baseline.files.length,added_static_files:added,changed_existing_files:changed,total_static_files:baseline.files.length+added,source_hash_verified:true};
-fs.mkdirSync(path.join(root,'.vercel'),{recursive:true});fs.writeFileSync(path.join(root,'.vercel/MONTHLY_SOURCE_NAMES_BUILD.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
+fs.mkdirSync(path.join(root,'.vercel'),{recursive:true});fs.writeFileSync(path.join(root,'.vercel/MAP_SEARCH_BUILD.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
