@@ -81,6 +81,15 @@ def lifecycle_rank(row, today):
     return 3 if end < today else 1
 
 
+def conducted_display(period, received, explicit_no, as_of=None):
+    if not period.startswith('2026'):
+        return 'X' if explicit_no else 'O'
+    if received and not explicit_no:
+        return 'O'
+    today = as_of or datetime.now(timezone(timedelta(hours=9))).date()
+    return 'X' if today > period_bounds(period)[1] else ''
+
+
 def nonconformity_details(period, cell, data, judgment):
     if cell['suitability'] != '부적합':
         return None
@@ -168,7 +177,9 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
             explicit_no = explicit_no or any(x in ('미실시','훈련 미실시','비상훈련 미실시') for x in notes)
             explicit_bad = explicit_bad or any(x == '부적합' for x in notes)
             source_grade = cell['suitability']
-            conducted = 'X' if explicit_no else 'O'
+            collection_judgment = seed.get('assessment_judgments', {}).get(key) or {}
+            received = received or str(collection_judgment.get('source_value') or '').strip().upper() == 'O'
+            conducted = conducted_display(period, received, explicit_no)
             judgment = seed.get('assessment_judgments', {}).get(key)
             assessment_grade = judgment.get('suitability') if judgment else None
             assessment_source = judgment.get('source') if judgment else None
@@ -196,7 +207,7 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
                 suitability = '—'
             if assessment_source:cell['sources'].append(assessment_source)
             cell.update(observed_conducted=observed,training_received=received,has_record=has_record,in_schedule=in_schedule is True,
-                        explicit_nonimplementation=explicit_no,explicit_nonconformity=explicit_bad,
+                        explicit_nonimplementation=explicit_no,explicit_nonconformity=explicit_bad,collection_received=received,
                         assessment_grade=assessment_grade,assessment_pending=pending,
                         source_suitability=source_grade,conducted=conducted if applicable else '—',suitability=suitability)
             cell['reasons'] = list(dict.fromkeys(cell['reasons']))
@@ -254,7 +265,11 @@ def workbook_bytes(value):
             overlap=f'AND(ISNUMBER($C{n}),ISNUMBER($D{n}),$C{n}<={bound(b)},$D{n}>={bound(a)})'
             eligible=f'IF(AND(ISNUMBER($C{n}),ISNUMBER($D{n}),$C{n}<=$D{n}),{overlap},{"TRUE"if cell["has_record"]else"FALSE"})'
             col,grade_col=columns[i]
-            sheet.cell(n,col,f'=IF({eligible},"'+('X'if cell['explicit_nonimplementation']else'O')+'","—")')
+            if period.startswith('2026'):
+                state = '"O"' if cell['collection_received'] and not cell['explicit_nonimplementation'] else f'IF(TODAY()>{bound(b)},"X","")'
+                sheet.cell(n,col,f'=IF({eligible},{state},"—")')
+            else:
+                sheet.cell(n,col,f'=IF({eligible},"'+('X'if cell['explicit_nonimplementation']else'O')+'","—")')
             if grade_col:
                 sheet.cell(n,grade_col,cell['suitability'] or None)
     from openpyxl.styles import Alignment
