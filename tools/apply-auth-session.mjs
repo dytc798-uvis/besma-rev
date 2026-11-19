@@ -1,0 +1,2 @@
+import path from 'node:path';import{fileURLToPath}from'node:url';import{applyAuthSession}from'../frontend/auth-session-release/apply.mjs';
+const[baseline,output]=process.argv.slice(2);if(!baseline||!output)throw Error('Usage: node tools/apply-auth-session.mjs <baseline-static> <new-output-static>');const source=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../frontend/auth-session-release');console.log(JSON.stringify(applyAuthSession(baseline,output,source)));
