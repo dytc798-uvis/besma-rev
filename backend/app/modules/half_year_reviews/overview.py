@@ -43,7 +43,8 @@ def summarize(data):
         done_kind=sum(bool(a.get('completed'))and a.get('draft',{}).get('data')==a['completed']['data']for a in records)
         prior_kind=kind=='law'and prior is not None
         form_status[kind]={'completed':bool(paper or reported or prior_kind or done_kind==required_kind),'required':required_kind,'written':done_kind,'started':bool(prior_kind or any(a.get('draft')for a in records))}
-    return {'status':'COMPLETED'if paper or reported else'IN_PROGRESS'if active else'NOT_STARTED',
+    from .signature_completion import completed as signatures_completed
+    return {'signature_completed':signatures_completed(data),'status':'COMPLETED'if paper or reported else'IN_PROGRESS'if active else'NOT_STARTED',
         'form_status':form_status,'completed':completed,'required':required,'forms':forms,'paper_completion':paper,'reported_completion':reported,'prior_assessments':{'law':prior}if prior else{},'screen_completed':bool(completed==required and required and not any(f.get('source_type')=='PRIOR_PDF'for f in forms))}
 
 def summaries(root,rows):
