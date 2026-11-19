@@ -68,7 +68,8 @@ def row_scores(data,monthly):
  confirmed=confirmation_status(data)if all_written else None
  if confirmed=='CONFIRMED':state='점수 확정'
  elif confirmed=='PARTIAL':state='법령점검표 서명 보완'
- return {'scores':scores,'adjustments':adjusted,'state':state,'score_confirmed':confirmed=='CONFIRMED','written':all_written,'headquarters_pending':headquarters_pending,'monthly':{'received':monthly['received'],'required':monthly['required']}if monthly else None}
+ from .signature_completion import completed as signatures_completed
+ return {'signature_completed':signatures_completed(data),'scores':scores,'adjustments':adjusted,'state':state,'score_confirmed':confirmed=='CONFIRMED','written':all_written,'headquarters_pending':headquarters_pending,'monthly':{'received':monthly['received'],'required':monthly['required']}if monthly else None}
 
 def rank(items,key,out):
  scores=[r['scores'][key]for r in items if r['scores'][key]is not None]

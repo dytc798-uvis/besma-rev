@@ -4,8 +4,8 @@ const signatureStates=new Map();
 async function signedState({origin,token,session,context,force=false}){
  const c=context(),key=origin+'|'+token+'|'+c.period,now=Date.now();let entry=signatureStates.get(key);
  if(force||!entry||now-entry.at>1000){
-  const year=c.period.slice(0,4),second=c.period.endsWith('H2'),query=new URLSearchParams({from_date:year+(second?'-07-01':'-01-01'),to_date:year+(second?'-12-31':'-06-30')});
-  session();entry={at:now,promise:fetch(origin+'/safety-features/half-year-reviews/overview?'+query,{cache:'no-store',headers:{Authorization:'Bearer '+token}}).then(async r=>{session();if(!r.ok)throw Error('SIGNATURE_STATUS_UNAVAILABLE');const value=await r.json();return new Map(value.items.map(row=>[row.public_id,row.signature_completed===true]));})};signatureStates.set(key,entry);
+  const query=new URLSearchParams({period:c.period});
+  session();entry={at:now,promise:fetch(origin+'/safety-features/half-year-reviews/aggregate-scores?'+query,{cache:'no-store',headers:{Authorization:'Bearer '+token}}).then(async r=>{session();if(!r.ok)throw Error('SIGNATURE_STATUS_UNAVAILABLE');const value=await r.json();return new Map(value.items.map(row=>[row.public_id,row.signature_completed===true]));})};signatureStates.set(key,entry);
  }
  const states=await entry.promise;session();return states.get(c.plan)===true;
 }
