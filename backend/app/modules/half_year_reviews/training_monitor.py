@@ -101,6 +101,7 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
             by_id[site['id']].update(site)
         key=site['id']+'|2026-H2'
         records.setdefault(key,{'conducted':'미확인','suitability':'미확인','reasons':[],'sources':[]})
+    current_target_ids = {s['id'] for s in current_sites or []}
     items = []
     for site in sites:
         if not full_scope and site['public_id'] not in visible_ids:
@@ -141,11 +142,34 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
             explicit_bad = explicit_bad or any(x == '부적합' for x in notes)
             source_grade = cell['suitability']
             conducted = 'X' if explicit_no else 'O'
-            suitability = '부적합' if explicit_no or explicit_bad else '적합'
+            judgment = seed.get('assessment_judgments', {}).get(key)
+            assessment_grade = judgment.get('suitability') if judgment else None
+            assessment_source = judgment.get('source') if judgment else None
+            if data:
+                answer = relevant(data)['answers']['completed']
+                if answer and answer.get('value') is not None:
+                    score = answer['value']
+                    if score == 'EXCELLENT' or type(score) in (int,float) and score == 7:
+                        assessment_grade = '적합'
+                    elif score in ('NORMAL','POOR') or type(score) in (int,float) and 0 <= score < 7:
+                        assessment_grade = '부적합'
+                    else:
+                        assessment_grade = None
+                    assessment_source = 'BESMA 완료 반기평가 · 비상사태훈련보고서 및 교육일지'
+            if explicit_no or not assessment_grade and explicit_bad:
+                assessment_grade = '부적합'
+                assessment_source = '기존 비상훈련 검토기록 · 명시 미실시/부적합'
+            pending = period == '2026-H2' and site['id'] in current_target_ids
+            suitability = '' if pending or not assessment_grade else assessment_grade
+            if not applicable and not judgment and not pending:
+                suitability = '—'
+            if not period.startswith('2026'):
+                suitability = '—'
+            if assessment_source:cell['sources'].append(assessment_source)
             cell.update(observed_conducted=observed,training_received=received,has_record=has_record,in_schedule=in_schedule is True,
                         explicit_nonimplementation=explicit_no,explicit_nonconformity=explicit_bad,
-                        source_suitability=source_grade,conducted=conducted if applicable else '—',
-                        suitability=suitability if applicable and period.startswith('2026') else '—')
+                        assessment_grade=assessment_grade,assessment_pending=pending,
+                        source_suitability=source_grade,conducted=conducted if applicable else '—',suitability=suitability)
             cell['reasons'] = list(dict.fromkeys(cell['reasons']))
             cell['sources'] = list(dict.fromkeys(cell['sources']))
             cells[period] = cell
@@ -164,7 +188,7 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
                           'recheck': sum(c['suitability'] == '재확인' or c['conducted'] == '재확인' for c in cells)}
     return {'periods': list(PERIODS), 'period_labels': list(PERIOD_LABELS), 'items': items,
             'counts': counts, 'as_of': datetime.now(timezone.utc).isoformat(),
-            'display_policy': '기본 O·적합, 명확한 미실시·부적합만 X·부적합',
+            'display_policy': '실시 O/X 유지, 적합성은 반기평가 반영, 하반기 평가 대상은 공란',
             'history_as_of': seed['as_of'], 'scope': '전체 현장' if full_scope else '내 담당 현장',
             'can_export': full_scope, 'current_target': len(current_sites) if current_sites is not None else None}
 
@@ -200,8 +224,7 @@ def workbook_bytes(value):
             col,grade_col=columns[i]
             sheet.cell(n,col,f'=IF({eligible},"'+('X'if cell['explicit_nonimplementation']else'O')+'","—")')
             if grade_col:
-                grade='부적합'if cell['explicit_nonimplementation']or cell['explicit_nonconformity']else'적합'
-                sheet.cell(n,grade_col,f'=IF({eligible},"'+grade+'","—")')
+                sheet.cell(n,grade_col,cell['suitability'] or None)
     from openpyxl.styles import Alignment
     for row in sheet.iter_rows(min_row=6, max_row=last, max_col=10):
         for cell in row:
