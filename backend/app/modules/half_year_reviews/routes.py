@@ -523,3 +523,22 @@ def aggregate_scores(db:DbDep,user:Current,response:Response,period:str='2026-H2
         from .annual_scores import summary as annual_summary
         result['annual']=annual_summary(result['items'],json.loads(annual_path.read_text('utf8')),full_scope)
     return {**result,'scope':'전체 현장'if full_scope else'내 담당 현장'}
+
+
+@router.get('/emergency-training')
+def emergency_training(db:DbDep,user:Current,response:Response):
+    from .training_monitor import summary
+    from app.modules.safety_features.team_schedule_models import TeamScheduleItem
+    scope=aggregate_scores(db,user,response,'2026-H2')
+    visible={r['public_id']for r in scope['items']}
+    current=[{'id':context_key(row,'2026-H2').split('|')[0],'site':row.title.removeprefix('[점검] ').strip(),'public_id':row.public_id}for row in db.query(TeamScheduleItem).filter(TeamScheduleItem.public_id.in_(visible)).all()if context_key(row,'2026-H2').startswith('site-')]
+    try:return summary(store().root,visible,scope['scope']=='전체 현장',current)
+    except(OSError,ValueError,KeyError,TypeError):raise HTTPException(503,'비상훈련 현황을 불러오지 못했습니다. 다시 확인해 주세요.')
+
+
+@router.get('/emergency-training/export')
+def emergency_training_export(db:DbDep,user:Current,response:Response):
+    from .training_monitor import export
+    value=emergency_training(db,user,response)
+    if not value['can_export']:raise HTTPException(403,'전체 현장 엑셀 저장 권한을 확인해 주세요.')
+    return export(value)
