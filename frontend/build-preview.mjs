@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { applyAuthSession } from './auth-session-release/apply.mjs';
+import { applySiteNames } from './site-name-release/apply.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const source = path.join(root, 'auth-session-release');
@@ -69,6 +70,8 @@ await Promise.all(Array.from({ length: 6 }, async () => {
 const config = fs.readFileSync(path.join(source, 'output-config.json'));
 assert.equal(JSON.parse(config).version, 3);
 const result = applyAuthSession(baseline, path.join(output, 'static'), source);
+const siteNames = applySiteNames(path.join(output, 'static'));
+Object.assign(result,siteNames,{total_files:result.total_files+1,changed_baseline:[...result.changed_baseline,'company.html'],unchanged_baseline_files:result.unchanged_baseline_files-1});
 fs.writeFileSync(path.join(output, 'config.json'), config, { flag: 'wx' });
 // Receipts remain outside the deployable output tree.
 fs.mkdirSync(path.join(root, '.vercel'), { recursive: true });

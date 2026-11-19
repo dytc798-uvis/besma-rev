@@ -1,0 +1,11 @@
+{
+  "original_asset": "/assets/company-home-6578ec99f32b.js",
+  "original_sha256": "6578ec99f32b57b882560aaddc98a1d72e3d949e625a71cd7c87d8c11212a6bb",
+  "company_html_sha256": "d002070528283985e54eb73ffbe826dbe22f2ed2f95a135541b2dacf9d8c4738",
+  "asset": "/assets/company-home-fff478a2f49f.js",
+  "sha256": "fff478a2f49f2a344d7d07b2e51bf2fd0c5d635a1853bb24691f962c419b13e3",
+  "before": "const a=o.value;",
+  "after": "const a={...o.value,sites:o.value.sites.filter(site=>/\\p{L}/u.test(String(site.name??\"\").normalize(\"NFKC\")))};",
+  "display_only": true,
+  "source_rows_removed": false
+}
