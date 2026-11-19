@@ -4,7 +4,7 @@ from typing import Annotated
 from urllib.parse import quote
 import os,json
 from datetime import date
-from fastapi import APIRouter,Depends,HTTPException,Form,File,UploadFile
+from fastapi import APIRouter,Depends,HTTPException,Form,File,UploadFile,Header
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel,Field,ConfigDict
@@ -566,4 +566,56 @@ def emergency_training_file(public_id:str,file_id:str,period:str,db:DbDep,user:C
     except(ValueError,KeyError,OSError,TypeError)as error:fail(error)
     media='application/pdf'if content.startswith(b'%PDF-')else'image/jpeg'if content.startswith(b'\xff\xd8\xff')else'image/png'if content.startswith(b'\x89PNG\r\n\x1a\n')else'application/octet-stream'
     response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization';response.headers['X-Content-Type-Options']='nosniff'
+    return {'filename':meta['filename'],'content_type':media,'content_base64':base64.b64encode(content).decode('ascii'),'sha256':meta['sha256']}
+
+
+def training_share_grant(authorization):
+    import hashlib,hmac
+    if os.environ.get('BESMA_HALF_YEAR_REVIEWS_ENABLED','').casefold()not in {'1','true'}:raise HTTPException(404,'조회 화면을 준비하고 있습니다.')
+    path=store().root/'training-monitor-share.json'
+    try:grant=json.loads(path.read_text('utf8'))
+    except(OSError,ValueError):raise HTTPException(401,'조회 링크를 확인해 주세요.')
+    value=authorization or ''
+    token=value.removeprefix('TrainingShare ')if value.startswith('TrainingShare ')else''
+    if not grant.get('active') or not 32<=len(token)<=128 or not hmac.compare_digest(hashlib.sha256(token.encode()).hexdigest(),grant.get('token_sha256','')):raise HTTPException(401,'조회 링크를 확인해 주세요.')
+    return grant
+
+
+@router.get('/emergency-training/shared')
+def emergency_training_shared(response:Response,authorization:Annotated[str|None,Header()]=None):
+    from contextlib import closing
+    import sqlite3
+    from . import training_monitor
+    from .aggregate_scores import row_scores
+    from .supervisor_group import project_data
+    grant=training_share_grant(authorization);root=store().root
+    seed=json.loads((root/'training-monitor-history.json').read_text('utf8'));allowed=set(grant['site_ids']);periods=set(grant['periods']);states={}
+    with closing(sqlite3.connect((root/'reviews.sqlite3').resolve().as_uri()+'?mode=ro',uri=True,timeout=10))as connection:
+        for key,raw in connection.execute('select id,data from contexts'):
+            if key.split('|')[0]in allowed and key.split('|')[-1]in periods:states[key]=project_data(json.loads(raw))
+    current=[{**site,'assessment_complete':row_scores(states.get(site['id']+'|2026-H2',{}),None)['written']}for site in seed['sites']if site['id']in set(grant['current_site_ids'])and site['id']in allowed]
+    seed['sites']=[site for site in seed['sites']if site['id']in allowed];seed['records']=[record for record in seed['records']if record['site_id']in allowed and record['period']in periods]
+    value=training_monitor.matrix(seed,states,set(),True,current);value['scope']='공유된 비상훈련 현장';value['can_export']=False
+    for item in value['items']:
+        item['public_id']=item.get('public_id')or item['id']
+        for cell in item['periods'].values():
+            for file in cell.get('files',[]):file['can_open']=True
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization';response.headers['X-Content-Type-Options']='nosniff';response.headers['Referrer-Policy']='no-referrer'
+    return value
+
+
+@router.get('/emergency-training/shared/files/{public_id}/{file_id}')
+def emergency_training_shared_file(public_id:str,file_id:str,period:str,response:Response,authorization:Annotated[str|None,Header()]=None):
+    import base64
+    grant=training_share_grant(authorization)
+    if period not in grant['periods']:raise HTTPException(404,'공유된 비상훈련 자료를 찾을 수 없습니다.')
+    seed=json.loads((store().root/'training-monitor-history.json').read_text('utf8'));site=next((site for site in seed['sites']if site['id']in grant['site_ids']and (site.get('public_id')==public_id or site['id']==public_id)),None)
+    if not site:raise HTTPException(404,'공유된 비상훈련 자료를 찾을 수 없습니다.')
+    try:
+        content,meta=store().file(site['id']+'|'+period,file_id)
+        if meta.get('evidence_id')!='emergency_drill':raise HTTPException(404,'공유된 비상훈련 자료를 찾을 수 없습니다.')
+        if len(content)>40*1024*1024:raise HTTPException(413,'파일이 커서 담당자에게 원본 확인을 요청해 주세요.')
+    except(ValueError,KeyError,OSError,TypeError)as error:fail(error)
+    media='application/pdf'if content.startswith(b'%PDF-')else'image/jpeg'if content.startswith(b'\xff\xd8\xff')else'image/png'if content.startswith(b'\x89PNG\r\n\x1a\n')else'application/octet-stream'
+    response.headers['Cache-Control']='private, no-store';response.headers['Vary']='Authorization';response.headers['X-Content-Type-Options']='nosniff';response.headers['Referrer-Policy']='no-referrer'
     return {'filename':meta['filename'],'content_type':media,'content_base64':base64.b64encode(content).decode('ascii'),'sha256':meta['sha256']}

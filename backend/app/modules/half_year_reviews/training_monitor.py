@@ -262,10 +262,25 @@ def summary(root, visible_ids, full_scope, current_sites=None):
     return matrix(seed, states, visible_ids, full_scope, current_sites)
 
 
+def training_view_link(site_id=None):
+    from urllib.parse import urlencode
+    root=Path(__file__).parent
+    # Production shared-link state is private and intentionally excluded from the repository.
+    path=Path('/srv/besma/half-year-reviews-private/training-monitor-share.json')
+    try:grant=json.loads(path.read_text('utf8'))
+    except(OSError,ValueError):grant={}
+    query={'view':'emergency-training'}
+    if site_id:query.update(training_site=site_id,training_files='1')
+    if grant.get('active')and grant.get('token'):
+        return 'https://www.besma.co.kr/emergency-training-view.html?'+urlencode(query)+'#share='+grant['token']
+    return 'https://www.besma.co.kr/inspection-plan.html?'+urlencode(query)
+
+
 def workbook_bytes(value):
     from openpyxl import load_workbook
     workbook = load_workbook(Path(__file__).parent / 'assets/training-monitor-template.xlsx')
     sheet = workbook.active
+    sheet['G2'].hyperlink = training_view_link()
     first = 5 if sheet['B3'].value == '현장명' else 6
     last = first - 1 + len(value['items'])
     columns = ((5,None),(6,None),(7,8),(9,10))
@@ -289,7 +304,7 @@ def workbook_bytes(value):
             if grade_col:
                 sheet.cell(n,grade_col,cell['suitability'] or None)
         sheet.cell(n,11,item.get('remarks') or None)
-        if item.get('remarks'):sheet.cell(n,11).hyperlink = 'https://www.besma.co.kr/inspection-plan.html?view=emergency-training&training_site='+item['id']+'&training_files=1'
+        if item.get('remarks'):sheet.cell(n,11).hyperlink = training_view_link(item['id'])
     from openpyxl.styles import Alignment
     for row in sheet.iter_rows(min_row=first, max_row=last, max_col=11):
         for cell in row:
