@@ -145,6 +145,7 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
             judgment = seed.get('assessment_judgments', {}).get(key)
             assessment_grade = judgment.get('suitability') if judgment else None
             assessment_source = judgment.get('source') if judgment else None
+            completed_grade = False
             if data:
                 answer = relevant(data)['answers']['completed']
                 if answer and answer.get('value') is not None:
@@ -155,11 +156,12 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
                         assessment_grade = '부적합'
                     else:
                         assessment_grade = None
+                    completed_grade = assessment_grade in ('적합','부적합')
                     assessment_source = 'BESMA 완료 반기평가 · 비상사태훈련보고서 및 교육일지'
-            if explicit_no or not assessment_grade and explicit_bad:
+            if not assessment_grade and (explicit_no or explicit_bad):
                 assessment_grade = '부적합'
                 assessment_source = '기존 비상훈련 검토기록 · 명시 미실시/부적합'
-            pending = period == '2026-H2' and site['id'] in current_target_ids
+            pending = period == '2026-H2' and site['id'] in current_target_ids and not (site.get('assessment_complete') and completed_grade)
             suitability = '' if pending or not assessment_grade else assessment_grade
             if not applicable and not judgment and not pending:
                 suitability = '—'
@@ -188,7 +190,7 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
                           'recheck': sum(c['suitability'] == '재확인' or c['conducted'] == '재확인' for c in cells)}
     return {'periods': list(PERIODS), 'period_labels': list(PERIOD_LABELS), 'items': items,
             'counts': counts, 'as_of': datetime.now(timezone.utc).isoformat(),
-            'display_policy': '실시 O/X 유지, 적합성은 반기평가 반영, 하반기 평가 대상은 공란',
+            'display_policy': '실시 O/X 유지, 적합성은 완료 반기평가 반영, 미완료는 공란',
             'history_as_of': seed['as_of'], 'scope': '전체 현장' if full_scope else '내 담당 현장',
             'can_export': full_scope, 'current_target': len(current_sites) if current_sites is not None else None}
 
@@ -201,6 +203,8 @@ def summary(root, visible_ids, full_scope, current_sites=None):
         for key, raw in db.execute('select id,data from contexts'):
             if key.split('|')[-1] in PERIODS and key.split('|')[0] in {s['id'] for s in seed['sites']+(current_sites or [])}:
                 states[key] = json.loads(raw)
+    from .supervisor_group import project_data
+    states = {key:project_data(data) for key,data in states.items()}
     return matrix(seed, states, visible_ids, full_scope, current_sites)
 
 
