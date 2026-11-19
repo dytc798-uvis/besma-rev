@@ -104,8 +104,9 @@ def nonconformity_details(period, cell, data, judgment):
         missing = '이 평가 항목의 비고는 비어 있습니다.' if not note else None
     elif judgment:
         value = judgment.get('source_value')
+        note = str(judgment.get('note') or '').strip()
         basis = f'상반기 최종평가표의 비상사태훈련 실시 항목: {value}.'
-        missing = '종합점수표에는 이 항목의 판정값만 표시돼 있습니다.'
+        missing = '종합점수표에는 이 항목의 판정값만 표시돼 있습니다.' if not note else None
     else:
         basis = '기존 검토기록에 비상훈련 미실시 또는 부적합으로 기재돼 있습니다.'
         missing = None
