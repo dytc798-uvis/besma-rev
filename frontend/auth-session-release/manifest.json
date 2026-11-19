@@ -1,0 +1,74 @@
+{
+  "schema": "besma.auth-session-overlay.v1",
+  "baseline_index_sha256": "714e6dd1b972030a19c5c8020b437af36e6466fb1d24b2edc23c8c3096ddc923",
+  "source_baseline_commit": "5cd156eccbc1866ba13a01d680a0210ab6b123e4",
+  "public_baseline_deployment": "dpl_Hd4qpybYcMksHRcPe9MEqwLRsCc3",
+  "mapping": {
+    "index-workspace-1b9d7dd898ce.js": "index-workspace-1b9d7dd898ce-login-a60fe7675580-profile-457529c8928d-session-1be4efbc9815.js",
+    "LawRegisterPage-S5I_OeWG-workspace-1b9d7dd898ce.js": "LawRegisterPage-S5I_OeWG-workspace-1b9d7dd898ce-login-a60fe7675580-profile-457529c8928d-session-1be4efbc9815.js",
+    "ServiceEntryPage-D6PI_M8c-workspace-1b9d7dd898ce.js": "ServiceEntryPage-D6PI_M8c-workspace-1b9d7dd898ce-login-a60fe7675580-profile-457529c8928d-session-1be4efbc9815.js"
+  },
+  "files": [
+    {
+      "operating_asset": "/assets/index-workspace-1b9d7dd898ce.js",
+      "operating_sha256": "b32ffa1a45b6137cc0135a2097ff0a22071bfeb448081670ccbb3567e5f3fbed",
+      "same_pre_fix_baseline": true,
+      "candidate_asset": "/assets/index-workspace-1b9d7dd898ce-login-a60fe7675580-profile-457529c8928d-session-1be4efbc9815.js",
+      "candidate_sha256": "3f2b95143019bdfa39dd886cb640da8c47aef2ecfb5232f7ce8223c9f472ed80",
+      "candidate_bytes": 1453547
+    },
+    {
+      "operating_asset": "/assets/LawRegisterPage-S5I_OeWG-workspace-1b9d7dd898ce.js",
+      "operating_sha256": "30afd5c08b00631746324968f70068b913260ad1db3c8bc906e659b7a6df08ac",
+      "same_pre_fix_baseline": true,
+      "candidate_asset": "/assets/LawRegisterPage-S5I_OeWG-workspace-1b9d7dd898ce-login-a60fe7675580-profile-457529c8928d-session-1be4efbc9815.js",
+      "candidate_sha256": "7c3a93355a24cce1a94bdd4117912a596d71726f8f988f0b3305a69a7cf33ae3",
+      "candidate_bytes": 9793
+    },
+    {
+      "operating_asset": "/assets/ServiceEntryPage-D6PI_M8c-workspace-1b9d7dd898ce.js",
+      "operating_sha256": "28708bc8907b63ba33e2a74c8f18f7d0253641561df4e30df25de6a9a670fac2",
+      "same_pre_fix_baseline": true,
+      "candidate_asset": "/assets/ServiceEntryPage-D6PI_M8c-workspace-1b9d7dd898ce-login-a60fe7675580-profile-457529c8928d-session-1be4efbc9815.js",
+      "candidate_sha256": "e333266f3fa7b17d3dc4d3f1824007ef36ca43502f682f9c331ff13c71fa5eb8",
+      "candidate_bytes": 1203
+    }
+  ],
+  "protected_current_release_files": [
+    {
+      "host": "www.besma.co.kr",
+      "path": "/assets/aggregate-scores-d8dea560be97.js",
+      "sha256": "d8dea560be97c88cb2cb42aef08d34d360899b582ae2b003db2e63c0b381840c"
+    },
+    {
+      "host": "www.besma.co.kr",
+      "path": "/assets/half-year-editor-17c778565098.js",
+      "sha256": "17c7785650985d722a32d52266602dfa71f7c739706f8eb5542dbb6ead1bd568"
+    },
+    {
+      "host": "www.besma.co.kr",
+      "path": "/assets/inspection-plan-9519649ea31a.js",
+      "sha256": "9519649ea31a6f821b34c49d6773ad15b79f6d30a3042a5825eeb1518b00c90a"
+    },
+    {
+      "host": "www.besma.co.kr",
+      "path": "/assets/inspection-review-dashboard-930dda5eb297.js",
+      "sha256": "930dda5eb297f70d9ae85932f7d95bfd59fad5a5641bde93070bd813ba63fa00"
+    },
+    {
+      "host": "www.besma.co.kr",
+      "path": "/assets/signature-bundle-9e6c242e68d3.js",
+      "sha256": "9e6c242e68d3f02573704a5351d745bfbc35b08bf837a971d1d973011aa010a1"
+    },
+    {
+      "host": "www.besma.co.kr",
+      "path": "/inspection-plan.html",
+      "sha256": "d435d587354466036c83eacb44e5cb89c4841653d0ac7070f99b004e5566ec1a"
+    }
+  ],
+  "existing_source_regressions": "D:\\JSI\\work\\integration-resume-20261118\\login-profile-recovery\\CHECK.json",
+  "existing_compiled_main_regressions": "D:\\JSI\\work\\integration-resume-20261118\\session-probe-alignment\\CHECK.json",
+  "public_law_register_stays_available": true,
+  "explicit_logout_expiry_and_roles_unchanged": true,
+  "standalone_legacy_graph_not_added": true
+}
