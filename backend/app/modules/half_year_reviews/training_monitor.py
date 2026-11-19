@@ -6,7 +6,7 @@ import base64, copy, hashlib, io, json, sqlite3
 
 PERIODS = ('2025-H1', '2025-H2', '2026-H1', '2026-H2')
 PERIOD_LABELS = ('2025 상반기', '2025 하반기', '2026 상반기', '2026 하반기')
-STATES = {'실시', '미실시', '미확인', '재확인', '적합', '보완', '—'}
+STATES = {'실시', '미실시', '미확인', '재확인', '적합', '보완', '부적합', '—'}
 
 
 def relevant(data):
@@ -131,13 +131,21 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
             if cell['conducted'] not in STATES or cell['suitability'] not in STATES:
                 raise ValueError('TRAINING_STATE_INVALID')
             observed=cell['conducted'];received=collected(historical,data,observed)
-            applicable=not before_start and (in_schedule is True or has_record)
-            suitability=cell['suitability'] if cell['suitability']!='—' else '미확인'
-            if not received and suitability=='적합':
-                suitability='재확인';cell['reasons'].append('기존 평가판정과 실시자료 취합현황이 달라 재확인이 필요합니다.')
+            applicable = in_schedule if in_schedule is not None else has_record
+            explicit_no = bool(historical and historical.get('conducted') == '미실시')
+            explicit_bad = bool(historical and historical.get('suitability') == '부적합')
+            current = relevant(data) if data else {}
+            notes = [str((current.get('evidence') or {}).get('note') or '').strip()]
+            notes += [str((x or {}).get('note') or '').strip() for x in current.get('answers', {}).values()]
+            explicit_no = explicit_no or any(x in ('미실시','훈련 미실시','비상훈련 미실시') for x in notes)
+            explicit_bad = explicit_bad or any(x == '부적합' for x in notes)
+            source_grade = cell['suitability']
+            conducted = 'X' if explicit_no else 'O'
+            suitability = '부적합' if explicit_no or explicit_bad else '적합'
             cell.update(observed_conducted=observed,training_received=received,has_record=has_record,in_schedule=in_schedule is True,
-                        source_suitability=suitability,conducted=('실시'if received else'미실시')if applicable else'—',suitability=suitability if applicable else'—')
-            if applicable and not received:cell['reasons'].append('실시자료 미취합으로 미실시 집계합니다.')
+                        explicit_nonimplementation=explicit_no,explicit_nonconformity=explicit_bad,
+                        source_suitability=source_grade,conducted=conducted if applicable else '—',
+                        suitability=suitability if applicable and period.startswith('2026') else '—')
             cell['reasons'] = list(dict.fromkeys(cell['reasons']))
             cell['sources'] = list(dict.fromkeys(cell['sources']))
             cells[period] = cell
@@ -150,12 +158,13 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
     for period in PERIODS:
         cells = [r['periods'][period] for r in items]
         counts[period] = {'records': sum(c['conducted'] != '—' for c in cells),
-                          'conducted': sum(c['conducted'] == '실시' for c in cells),
-                          'not_conducted': sum(c['conducted'] == '미실시' for c in cells),
-                          'supplement': sum(c['suitability'] == '보완' for c in cells),
+                          'conducted': sum(c['conducted'] == 'O' for c in cells),
+                          'not_conducted': sum(c['conducted'] == 'X' for c in cells),
+                          'supplement': sum(c['suitability'] == '부적합' for c in cells),
                           'recheck': sum(c['suitability'] == '재확인' or c['conducted'] == '재확인' for c in cells)}
     return {'periods': list(PERIODS), 'period_labels': list(PERIOD_LABELS), 'items': items,
             'counts': counts, 'as_of': datetime.now(timezone.utc).isoformat(),
+            'display_policy': '기본 O·적합, 명확한 미실시·부적합만 X·부적합',
             'history_as_of': seed['as_of'], 'scope': '전체 현장' if full_scope else '내 담당 현장',
             'can_export': full_scope, 'current_target': len(current_sites) if current_sites is not None else None}
 
@@ -176,6 +185,7 @@ def workbook_bytes(value):
     workbook = load_workbook(Path(__file__).parent / 'assets/training-monitor-template.xlsx')
     sheet = workbook.active
     last = 5 + len(value['items'])
+    columns = ((5,None),(6,None),(7,8),(9,10))
     for n, item in enumerate(value['items'], 6):
         sheet.cell(n, 1, n - 5)
         sheet.cell(n, 2, item['site'])
@@ -186,11 +196,14 @@ def workbook_bytes(value):
             a,b=period_bounds(period)
             bound=lambda d:f'DATE({d.year},{d.month},{d.day})'
             overlap=f'AND(ISNUMBER($C{n}),ISNUMBER($D{n}),$C{n}<={bound(b)},$D{n}>={bound(a)})'
-            eligible=f'AND(NOT(AND(ISNUMBER($C{n}),$C{n}>{bound(b)})),OR({overlap},{"TRUE"if cell["has_record"]else"FALSE"}))'
-            sheet.cell(n, 5 + i * 2, f'=IF({eligible},"'+('실시'if cell['training_received']else'미실시')+'","—")')
-            sheet.cell(n, 6 + i * 2, f'=IF({eligible},"'+cell['source_suitability']+'","—")')
+            eligible=f'IF(AND(ISNUMBER($C{n}),ISNUMBER($D{n}),$C{n}<=$D{n}),{overlap},{"TRUE"if cell["has_record"]else"FALSE"})'
+            col,grade_col=columns[i]
+            sheet.cell(n,col,f'=IF({eligible},"'+('X'if cell['explicit_nonimplementation']else'O')+'","—")')
+            if grade_col:
+                grade='부적합'if cell['explicit_nonimplementation']or cell['explicit_nonconformity']else'적합'
+                sheet.cell(n,grade_col,f'=IF({eligible},"'+grade+'","—")')
     from openpyxl.styles import Alignment
-    for row in sheet.iter_rows(min_row=6, max_row=last, max_col=12):
+    for row in sheet.iter_rows(min_row=6, max_row=last, max_col=10):
         for cell in row:
             from copy import copy as copied
             cell._style = copied(sheet.cell(6, cell.column)._style)
@@ -202,18 +215,18 @@ def workbook_bytes(value):
     sheet['A2'] = '기준일 ' + datetime.fromisoformat(value['as_of']).astimezone(__import__('datetime').timezone(__import__('datetime').timedelta(hours=9))).strftime('%Y-%m-%d %H:%M')
     for i, label in enumerate(PERIOD_LABELS):
         from openpyxl.utils import get_column_letter
-        a=get_column_letter(5+2*i)
-        sheet.cell(3,5+2*i,f'="실시 "&COUNTIF({a}6:{a}{last},"실시")&" / 미실시 "&COUNTIF({a}6:{a}{last},"미실시")')
+        col,_=columns[i];a=get_column_letter(col)
+        sheet.cell(3,col,f'="O "&COUNTIF({a}6:{a}{last},"O")&" / X "&COUNTIF({a}6:{a}{last},"X")')
     from openpyxl.formatting.rule import FormulaRule
     from openpyxl.styles import PatternFill
     sheet.conditional_formatting._cf_rules.clear()
     for i,period in enumerate(PERIODS):
-        a,b=period_bounds(period);left=get_column_letter(5+2*i);right=get_column_letter(6+2*i)
-        formula=f'AND(ISNUMBER($C6),ISNUMBER($D6),$C6<=DATE({b.year},{b.month},{b.day}),$D6>=DATE({a.year},{a.month},{a.day}))'
+        a,b=period_bounds(period);col,grade_col=columns[i];left=get_column_letter(col);right=get_column_letter(grade_col or col)
+        formula=f'AND(ISNUMBER($C6),ISNUMBER($D6),$C6<=$D6,$C6<=DATE({b.year},{b.month},{b.day}),$D6>=DATE({a.year},{a.month},{a.day}))'
         sheet.conditional_formatting.add(f'{left}6:{right}{last}',FormulaRule(formula=[formula],fill=PatternFill('solid',fgColor='FFFCE4D6',bgColor='FFFCE4D6')))
-    sheet.conditional_formatting.add(f'E6:L{last}',FormulaRule(formula=['TRUE'],fill=PatternFill('solid',fgColor='FFEDEDED',bgColor='FFEDEDED')))
-    sheet.auto_filter.ref = f'A5:L{last}'
-    sheet.print_area = f'A1:L{last}'
+    sheet.conditional_formatting.add(f'E6:J{last}',FormulaRule(formula=['TRUE'],fill=PatternFill('solid',fgColor='FFEDEDED',bgColor='FFEDEDED')))
+    sheet.auto_filter.ref = f'A5:J{last}'
+    sheet.print_area = f'A1:J{last}'
     workbook.calculation.fullCalcOnLoad = True
     output = io.BytesIO()
     workbook.save(output)
