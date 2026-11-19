@@ -1,6 +1,6 @@
 """Emergency training matrix. Existing evaluations and historical ledgers stay intact."""
 from contextlib import closing
-from datetime import datetime, timezone, date
+from datetime import datetime, timezone, date, timedelta
 from pathlib import Path
 import base64, copy, hashlib, io, json, sqlite3
 
@@ -68,6 +68,19 @@ def collected(historical, data, observed):
     return False
 
 
+def lifecycle_rank(row, today):
+    try:
+        start = date.fromisoformat(row.get('start_date') or '')
+        end = date.fromisoformat(row.get('completion_date') or '')
+    except ValueError:
+        return 2
+    if end < start:
+        return 2
+    if start <= today <= end:
+        return 0
+    return 3 if end < today else 1
+
+
 def matrix(seed, states, visible_ids, full_scope, current_sites=None):
     if seed.get('schema') != 1 or seed.get('periods') != list(PERIODS):
         raise ValueError('TRAINING_HISTORY_INVALID')
@@ -131,7 +144,8 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
         items.append({'id': site['id'], 'site': site['site'], 'public_id': site['public_id'],
                       'start_date':dates.get('start_date'),'completion_date':dates.get('completion_date'),
                       'date_source':dates.get('source'),'periods': cells})
-    items.sort(key=lambda r: r['site'])
+    today = datetime.now(timezone(timedelta(hours=9))).date()
+    items.sort(key=lambda r: (lifecycle_rank(r, today), r['site']))
     counts = {}
     for period in PERIODS:
         cells = [r['periods'][period] for r in items]
@@ -196,7 +210,8 @@ def workbook_bytes(value):
     for i,period in enumerate(PERIODS):
         a,b=period_bounds(period);left=get_column_letter(5+2*i);right=get_column_letter(6+2*i)
         formula=f'AND(ISNUMBER($C6),ISNUMBER($D6),$C6<=DATE({b.year},{b.month},{b.day}),$D6>=DATE({a.year},{a.month},{a.day}))'
-        sheet.conditional_formatting.add(f'{left}6:{right}{last}',FormulaRule(formula=[formula],fill=PatternFill('solid',fgColor='FFEDEDED',bgColor='FFEDEDED')))
+        sheet.conditional_formatting.add(f'{left}6:{right}{last}',FormulaRule(formula=[formula],fill=PatternFill('solid',fgColor='FFFCE4D6',bgColor='FFFCE4D6')))
+    sheet.conditional_formatting.add(f'E6:L{last}',FormulaRule(formula=['TRUE'],fill=PatternFill('solid',fgColor='FFEDEDED',bgColor='FFEDEDED')))
     sheet.auto_filter.ref = f'A5:L{last}'
     sheet.print_area = f'A1:L{last}'
     workbook.calculation.fullCalcOnLoad = True
