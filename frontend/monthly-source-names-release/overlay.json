@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "source_file": "monthly-collection.js",
+  "source_normalized_sha256": "f0183f8f8d2052c7c9dd6987b1a12df3c8f62253cb5ec68fac96a6d64f6304f4",
+  "parent_module": "/assets/monthly-collection-12b79639727f.js",
+  "parent_entry": "/assets/workspace-3761f7c33e95.js",
+  "helper_preserved": "/assets/monthly-source-flow-ccb02f174398.js",
+  "files": [
+    {
+      "path": "assets/monthly-collection-89f727faf2ed.js",
+      "sha256": "89f727faf2ed6f7ada6b0d49ac5170badeca8bb59d6cc91725b6699de6b017f7",
+      "size": 16488
+    },
+    {
+      "path": "assets/workspace-6eff9af26220.js",
+      "sha256": "6eff9af2622070b9042b48c68ec68e94e5d4c75167144d071695ab10abc3fcd2",
+      "size": 59677
+    },
+    {
+      "path": "workspace.html",
+      "sha256": "a532ed0de27cf72b16f64968dad660e3d89909d4eaec7bf255c13459a4763ca5",
+      "size": 2234,
+      "before_sha256": "b3fd174e401545aa59a47f877430f1c3a4b96f525038cb849efed7baf04f6e47"
+    }
+  ]
+}
