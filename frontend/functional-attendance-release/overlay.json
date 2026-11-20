@@ -1,0 +1,27 @@
+{
+  "source_file": "functional-attendance-release/assets/company-home-7d1c538618db.js",
+  "source_normalized_sha256": "7d1c538618dbe33dd4ac0922f6fcd5ef7e00834b9db51af58e4cbbdcd23bf2e9",
+  "files": [
+    {
+      "path": "assets/attendance-summary-8da0b4d32df9.js",
+      "size": 2027,
+      "sha256": "8da0b4d32df9bcbc55f50e82285395aa9bbd1b46ad10e87ba6139843b4ccb721"
+    },
+    {
+      "path": "assets/home-evaluation-tasks-9eba10452f61.js",
+      "size": 7548,
+      "sha256": "9eba10452f61f11e4b6e47c5d2f897ce7fbae8cf63bbd936f92055af748b2087"
+    },
+    {
+      "path": "assets/company-home-7d1c538618db.js",
+      "size": 76199,
+      "sha256": "7d1c538618dbe33dd4ac0922f6fcd5ef7e00834b9db51af58e4cbbdcd23bf2e9"
+    },
+    {
+      "path": "company.html",
+      "size": 14035,
+      "sha256": "da79de020c31ab7acd2ebb79e3e503c659bd2a798f19f6c6c1e83582868af12c",
+      "before_sha256": "e0e4df076d4a0582360be9a8289e742bbf309f21e3752204df752f8aa5100cc8"
+    }
+  ]
+}
