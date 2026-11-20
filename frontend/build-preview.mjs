@@ -32,7 +32,7 @@ async function obtain(row){
  verified++;if(verified%100===0)console.log(`Verified baseline files: ${verified}/${baseline.files.length}`);
 }
 await Promise.all(Array.from({length:6},async()=>{while(next<baseline.files.length)await obtain(baseline.files[next++]);}));
-assert.equal(overlay.files.length,1);let added=0,changed=0;
+assert.equal(overlay.files.length,2);let added=0,changed=0;
 for(const row of overlay.files){
  assert(row.path==='company.html'||/^assets\/(company-home|company-map|company-office|home-layout)-[a-f0-9]{12}\.(js|css)$/.test(row.path));
  const raw=fs.readFileSync(path.join(source,row.path));assert.equal(raw.length,row.size);assert.equal(sha(raw),row.sha256);
@@ -40,7 +40,7 @@ for(const row of overlay.files){
  if(row.before_sha256){assert.equal(sha(fs.readFileSync(dest)),row.before_sha256);changed++;}else{assert(!fs.existsSync(dest));added++;}
  fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,raw);
 }
-assert.equal(added,0);assert.equal(changed,1);
+assert.equal(added,1);assert.equal(changed,1);
 const config=fs.readFileSync(path.join(source,'output-config.json'));assert.equal(JSON.parse(config).version,3);fs.writeFileSync(path.join(output,'config.json'),config,{flag:'wx'});
 const result={passed:true,baseline_deployment:baseline.deployment,public_baseline_verified:verified,network_baseline:local<0,baseline_static_files:baseline.files.length,added_static_files:added,changed_existing_files:changed,total_static_files:baseline.files.length+added,source_hash_verified:true};
 fs.mkdirSync(path.join(root,'.vercel'),{recursive:true});fs.writeFileSync(path.join(root,'.vercel/HOME_LAYOUT_BUILD.json'),JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));

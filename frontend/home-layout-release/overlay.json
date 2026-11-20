@@ -1,11 +1,16 @@
 {
-  "source_file": "home-layout-release/company.html",
-  "source_normalized_sha256": "7a7008a585b5daa609f9da636a9a0e5b14e3259fe9e34980e98b05eb2acaf321",
+  "source_file": "home-layout-release/assets/company-home-38bd14c20912.js",
+  "source_normalized_sha256": "38bd14c209122d756f5e0f1e76a80aa9b3fc40f92270507c95e457d6e7de4e37",
   "files": [
+    {
+      "path": "assets/company-home-38bd14c20912.js",
+      "size": 70768,
+      "sha256": "38bd14c209122d756f5e0f1e76a80aa9b3fc40f92270507c95e457d6e7de4e37"
+    },
     {
       "path": "company.html",
       "size": 13610,
-      "sha256": "7a7008a585b5daa609f9da636a9a0e5b14e3259fe9e34980e98b05eb2acaf321",
+      "sha256": "7eb3e68817864bee517c06f6f7bf7910d74bff834d506932ef69b9e719beef8c",
       "before_sha256": "6ff52003a01bb31bbf52862b88793f1d1c332a52e9aaac3a2508dc24861143db"
     }
   ]
