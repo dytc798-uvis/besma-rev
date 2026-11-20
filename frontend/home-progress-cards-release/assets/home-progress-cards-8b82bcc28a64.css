@@ -67,3 +67,5 @@
 .personal-weekly-todos button:focus-visible,.personal-weekly-todos summary:focus-visible,.personal-weekly-todos a:focus-visible{outline:2px solid #c87930;outline-offset:3px}
 .personal-weekly-todos[hidden]{display:none!important}
 @media(max-width:740px){.personal-weekly-todos{left:8px;bottom:12px}.home-progress-panel #home-monthly-value{grid-template-columns:minmax(85px,.8fr) minmax(130px,1.2fr)}}
+
+.company-header .seoul-weather-source{display:block!important;position:absolute;top:100%;left:0;right:0;margin:3px 0 0!important;max-width:none;text-align:center;font-size:0!important;line-height:11px;white-space:nowrap}.company-header .seoul-weather-source::before{content:""!important}.company-header .seoul-weather-source a{font-size:9px!important;margin:0 3px;color:#d6e4ed}

@@ -8,14 +8,14 @@
       "sha256": "641099b198495e8a660648ea3d157503f15b246ba75d894e41ef2f0420f3e785"
     },
     {
-      "path": "assets/home-progress-cards-74b3decbb758.css",
-      "size": 11260,
-      "sha256": "74b3decbb758b7a8cb7e69c2ae73f61062df1037baf8ca5beabae59ae7b9e556"
+      "path": "assets/home-progress-cards-8b82bcc28a64.css",
+      "size": 11640,
+      "sha256": "8b82bcc28a649920037f571e860773db620c433c44734dc67d837808d8f3c1d6"
     },
     {
       "path": "company.html",
       "size": 14030,
-      "sha256": "7ffe0f8309e0ca259eee9d8d63e8a30bb729e48471ff07cd17a7000fbdbd3585",
+      "sha256": "e0e4df076d4a0582360be9a8289e742bbf309f21e3752204df752f8aa5100cc8",
       "before_sha256": "9bb6e11e4092d5b5ea7556c5cc34f6b3d969b73756db64b4e948343c504dd31b"
     }
   ]
