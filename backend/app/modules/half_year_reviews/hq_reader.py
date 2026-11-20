@@ -4,6 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 import hashlib,json,os,re,sqlite3
 from typing import Annotated
+from datetime import date
 from fastapi import APIRouter,Depends,HTTPException,Response
 from app.core.auth import DbDep,get_current_user
 from app.config.settings import settings
@@ -65,6 +66,27 @@ def private(response):
 def capabilities(user:Current,response:Response):
     authorize(user);private(response)
     return {'can_read':True,'can_write':False,'headquarters_reader':True}
+
+@router.get('/calendar')
+def calendar(db:DbDep,user:Current,response:Response,from_date:date,to_date:date):
+    authorize(user)
+    if to_date<from_date or (to_date-from_date).days>62:
+        raise HTTPException(400,'달력 조회기간을 확인해 주세요.')
+    # hq01 can read official inspections and this verified shared evaluation period.
+    # Personal requests, team work and other meeting text retain their original ACL.
+    rows=db.query(TeamScheduleItem).filter(TeamScheduleItem.archived_at.is_(None),
+        TeamScheduleItem.scheduled_date<=to_date).order_by(TeamScheduleItem.scheduled_date,TeamScheduleItem.id).all()
+    items=[]
+    for row in rows:
+        is_period=(row.public_id=='51b34f1a-d783-4745-aee7-d101f784469a' and row.source=='WEEKLY_MEETING'
+            and row.title=='26년 하반기 현장소장, 관리감독자 평가 및 반기평가 점검 : 안전보건실')
+        if not (registered(row)or is_period)or (row.due_date or row.scheduled_date)<from_date:continue
+        if not _linked_schedule_access(db,row,user.id):continue
+        items.append({'public_id':row.public_id,'title':row.title,'scheduled_date':row.scheduled_date.isoformat(),
+            'due_date':row.due_date.isoformat()if row.due_date else None,'source':row.source,
+            'status':row.status,'owner_user_id':row.assigned_user_id if row.source=='INSPECTION_PLAN'else row.created_by_user_id})
+    private(response)
+    return {'can_read':True,'can_write':False,'items':items}
 
 @router.get('/overview')
 def overview(db:DbDep,user:Current,response:Response,period:str='2026-H2'):

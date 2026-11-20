@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
-const root=path.dirname(fileURLToPath(import.meta.url)),source=path.join(root,'hq01-half-year-reader-release');
+const root=path.dirname(fileURLToPath(import.meta.url)),source=path.join(root,'calendar-period-lines-release');
 const baseline=JSON.parse(fs.readFileSync(path.join(source,'baseline.json'),'utf8')),overlay=JSON.parse(fs.readFileSync(path.join(source,'overlay.json'),'utf8'));
 const sha=data=>crypto.createHash('sha256').update(data).digest('hex');
 assert.equal(baseline.origin,'https://www.besma.co.kr');assert.equal(baseline.schema,1);assert(baseline.files.length>800&&baseline.files.length<5000);
@@ -35,7 +35,7 @@ async function obtain(row){
 await Promise.all(Array.from({length:6},async()=>{while(next<baseline.files.length)await obtain(baseline.files[next++]);}));
 assert.equal(overlay.files.length,8);let added=0,changed=0;
 for(const row of overlay.files){
- assert((row.path.endsWith('.html')&&!row.path.includes('/'))||/^assets\/(company-home|company-map|company-office|home-layout|home-search-weather|home-progress-cards|attendance-summary|home-evaluation-tasks|home-auth-weather|login-lookup-entry|global-auth-nav|heat-stress|half-year-reader|half-year-reader-entry|inspection-plan-nav)-[a-f0-9]{12}\.(js|css)$/.test(row.path));
+ assert((row.path.endsWith('.html')&&!row.path.includes('/'))||/^assets\/(company-home|company-map|company-office|home-layout|home-search-weather|home-progress-cards|attendance-summary|home-evaluation-tasks|home-auth-weather|login-lookup-entry|global-auth-nav|heat-stress|half-year-reader|half-year-reader-entry|inspection-plan-nav|inspection-calendar|calendar-entry)-[a-f0-9]{12}\.(js|css)$/.test(row.path));
  const raw=fs.readFileSync(path.join(source,row.path));assert.equal(raw.length,row.size);assert.equal(sha(raw),row.sha256);
  const dest=path.join(output,'static',row.path);
  if(row.before_sha256){assert.equal(sha(fs.readFileSync(dest)),row.before_sha256);changed++;}else{assert(!fs.existsSync(dest));added++;}

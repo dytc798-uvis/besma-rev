@@ -1,0 +1,49 @@
+{
+  "source_file": "calendar-period-lines-release/assets/inspection-calendar-ce8d5409b142.js",
+  "source_normalized_sha256": "ce8d5409b1424a8073af203bb243f127b5e6264d21537c3b6b913a5ed02fb5cf",
+  "files": [
+    {
+      "path": "assets/inspection-calendar-ce8d5409b142.js",
+      "size": 6216,
+      "sha256": "ce8d5409b1424a8073af203bb243f127b5e6264d21537c3b6b913a5ed02fb5cf"
+    },
+    {
+      "path": "assets/inspection-calendar-b91a34c57612.css",
+      "size": 2747,
+      "sha256": "b91a34c576122de1f4c76f32d2ca64fd872efacf946e0a64f235ee816fe5181f"
+    },
+    {
+      "path": "assets/calendar-entry-825950ea180a.js",
+      "size": 1569,
+      "sha256": "825950ea180a074ea6119d9c1144c706be683e232e422b15069be6d408f59fc2"
+    },
+    {
+      "path": "assets/calendar-entry-61ce72216c10.css",
+      "size": 712,
+      "sha256": "61ce72216c10b73983b24f5956236c669d5bcbf153170bda1cff47d53d7353da"
+    },
+    {
+      "path": "inspection-calendar.html",
+      "size": 1431,
+      "sha256": "abeb993301a1688038b56f67152415e8ea94697f16d9f6e0f3709e0c713bc6a9"
+    },
+    {
+      "path": "company.html",
+      "size": 14732,
+      "sha256": "f58bb78be332e5ef32974093b4acf9be579909427d393c593a3fd36c7859c1e2",
+      "before_sha256": "6b4d0d6c2949945c404ca4aac05622512d3a9c55e75d116c0c6ae45fd72efc5c"
+    },
+    {
+      "path": "inspection-plan.html",
+      "size": 4265,
+      "sha256": "dd172e55db1383c3af3dcbc772c1659f8d8524876665e9696f5f29361c34b60b",
+      "before_sha256": "98fea59604e70f8b4f194c77ba4e5c74d6629b5796f35c4da08daf5fb86af246"
+    },
+    {
+      "path": "half-year-reader.html",
+      "size": 1889,
+      "sha256": "bcfedc476b5600e195b24a99344509f0921bac57dcfffb3815a1bf3999fcad28",
+      "before_sha256": "7e7ba0341340a9fc199e6318e2f97fc02ce98b890f97378643e304863573e68a"
+    }
+  ]
+}
