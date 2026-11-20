@@ -1,22 +1,22 @@
 {
-  "source_file": "home-progress-cards-release/assets/company-home-625fc3840044.js",
-  "source_normalized_sha256": "625fc3840044da28bfa00e615eaff8e68baaff48524a3c28566b5ce043cf9692",
+  "source_file": "home-progress-cards-release/assets/company-home-641099b19849.js",
+  "source_normalized_sha256": "641099b198495e8a660648ea3d157503f15b246ba75d894e41ef2f0420f3e785",
   "files": [
     {
-      "path": "assets/company-home-625fc3840044.js",
-      "size": 72651,
-      "sha256": "625fc3840044da28bfa00e615eaff8e68baaff48524a3c28566b5ce043cf9692"
+      "path": "assets/company-home-641099b19849.js",
+      "size": 76199,
+      "sha256": "641099b198495e8a660648ea3d157503f15b246ba75d894e41ef2f0420f3e785"
     },
     {
-      "path": "assets/home-progress-cards-77a2e7150e24.css",
-      "size": 5214,
-      "sha256": "77a2e7150e2474d5145a40111bee7718aa1e021513eaa29de17463cb08542579"
+      "path": "assets/home-progress-cards-74b3decbb758.css",
+      "size": 11260,
+      "sha256": "74b3decbb758b7a8cb7e69c2ae73f61062df1037baf8ca5beabae59ae7b9e556"
     },
     {
       "path": "company.html",
-      "size": 14156,
-      "sha256": "9bb6e11e4092d5b5ea7556c5cc34f6b3d969b73756db64b4e948343c504dd31b",
-      "before_sha256": "7142ebbcddefe5b6c36e3c1c661abe19478d7dac01ad67de231008ff37a0a056"
+      "size": 14030,
+      "sha256": "7ffe0f8309e0ca259eee9d8d63e8a30bb729e48471ff07cd17a7000fbdbd3585",
+      "before_sha256": "9bb6e11e4092d5b5ea7556c5cc34f6b3d969b73756db64b4e948343c504dd31b"
     }
   ]
 }
