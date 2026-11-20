@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+  <head><style>.besma-route-gate #app,.besma-login-preparing #app{visibility:hidden!important}#besma-route-status{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;gap:12px;background:#173544;color:#fff;font:15px sans-serif;z-index:9999}</style><script>(()=>{const u=["/assets/evaluation-entry-2db7ecf99dd7.js","/assets/index-workspace-1b9d7dd898ce-login-a60fe7675580-profile-457529c8928d-session-1be4efbc9815.js","/assets/collection-monitor-e3435367173d.js","/assets/government-workspace-949e91e9347d.js","/assets/site-scope-redirect-863575f8fbcb.js","/assets/photo-share-nav-99a5f4810beb.js","/assets/site-directory-nav-13c50d0b302e.js"],p="/assets/workspace-nav-e6bedbe6f0d9.js",a=document.documentElement,n=location.pathname,c=/^\/hq-(?:safe|other)(?:\/|$)/.test(n),b=/^\/hq-safe\/(functional-eval(?:-monitoring|-rewards-sanctions|\/grade-report)?|documents(?:\/.*)?|document-explorer|document-instances\/.*|government-contact|communications|safety-policy-goals|user-guide|google-feedback|worker-voice)\/?$/,r=document.readyState==="loading"?new Promise(e=>document.addEventListener("DOMContentLoaded",e,{once:!0})):Promise.resolve();function l(){a.classList.remove("besma-route-gate","besma-login-preparing"),document.getElementById("besma-route-status")?.remove()}c?a.classList.add("besma-route-gate"):n.startsWith("/login")&&a.classList.add("besma-login-preparing"),r.then(()=>{if(a.classList.contains("besma-route-gate")||a.classList.contains("besma-login-preparing")){const e=document.createElement("div");e.id="besma-route-status",e.setAttribute("role","status"),e.textContent="BESMA \uC5C5\uBB34\uACF5\uAC04\uC744 \uC5F4\uACE0 \uC788\uC2B5\uB2C8\uB2E4.",document.body.append(e)}});let m=!1;const i=e=>new Promise((t,s)=>{const o=document.createElement("script");o.type="module",o.async=!1,o.src=e,o.onload=t,o.onerror=s,document.head.append(o)});async function d(){if(!m){m=!0,await r,await i(p),/^\/site(?:\/|$)/.test(location.pathname)&&await i("/assets/site-inspection-notice-6140fd1b06e4.js");for(const e of u)await i(e)}}async function g(){const e=localStorage.getItem("besma_token")||"";if(!c||!e)return c&&l(),d();try{const t=await fetch("https://api.besma.co.kr/workspace/bootstrap",{headers:{Authorization:"Bearer "+e},cache:"no-store",signal:AbortSignal.timeout(8e3)});if(e!==localStorage.getItem("besma_token"))return location.replace("/login");if(!t.ok)return l(),d();const s=await t.json();if(window.__BESMA_READ_BOOTSTRAP__=()=>localStorage.getItem("besma_token")===e?s:null,!b.test(n)){location.replace("/workspace.html");return}await d()}catch{await r;const t=document.getElementById("besma-route-status");if(t){t.textContent="\uC5F0\uACB0\uC744 \uD655\uC778\uD55C \uB4A4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694. ";const s=document.createElement("button");s.textContent="\uB2E4\uC2DC \uC2DC\uB3C4",s.onclick=()=>location.reload(),t.append(s)}}}g()})();
+</script><link rel="stylesheet" href="/assets/workspace-legacy-d47988d64eff.css">
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>BESMA CSMS 안전보건플랫폼</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    
+    <link rel="stylesheet" crossorigin href="/assets/index-vvTH4Ve3.css">
+  
+  <link rel="stylesheet" href="/assets/collection-monitor-28f5cc8e07d2.css">
+  
+  <link rel="stylesheet" href="/assets/government-workspace-1058cf4b0c3e.css">
+  <link rel="stylesheet" href="/assets/document-task-view-b41c0b5cf740.css"><link rel="stylesheet" href="/assets/functional-eval-layout-0984e19babd0.css"></head>
+  <body>
+    <div id="app">
+      <p style="margin: 0; padding: 24px; text-align: center; color: #64748b; font-family: system-ui, sans-serif">
+        BESMA 불러오는 중…
+      </p>
+    </div>
+
+  </body>
+</html>
