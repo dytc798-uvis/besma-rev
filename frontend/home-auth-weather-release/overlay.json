@@ -51,15 +51,15 @@
     },
     {
       "path": "document-sign.html",
-      "size": 2982,
-      "sha256": "22be167f9c8c803a66a118355112cddee1d9127fe6f7787d410565928276a19d",
+      "size": 2983,
+      "sha256": "d7a541bd4d978f654281a9fec76c96d8d7483d65ccb6101f44575c2de85970da",
       "before_sha256": "9e613c06e84ac74efae671ebb1d398a692651dfa05840298691320f4d8f39932"
     },
     {
       "path": "emergency-training-view.html",
-      "size": 1010,
-      "sha256": "c4c7b111fb3249dd14d6d82a76366905ea13aa917588fcde0def0beae07d54a3",
-      "before_sha256": "c0d77076073358ec16ce9646e07c9877d5ce999b1028f96b4cfe473ad9d5a27b"
+      "size": 1011,
+      "sha256": "89e61e4615e52e30ebfedaf4613cb075e0bb22b43c0058782ccb0949f42e7e03",
+      "before_sha256": "fbeb7d0d9f077153f461ca5732e8f4d84e854a6452c3e36d0706c7ac373b93df"
     },
     {
       "path": "hrd.html",
@@ -75,14 +75,14 @@
     },
     {
       "path": "inspection-plan.html",
-      "size": 4035,
-      "sha256": "6d6033d828bfc451afb0082898545fd1380de5a3a5af36c757af75c498fcd630",
-      "before_sha256": "67c38ca21c37fad019b3e78c89744c04143ca610d241d7190176dc7cf4ee223a"
+      "size": 4084,
+      "sha256": "7b99583ae7fc9209965445f39982d2fcf7ec4d87437e8b291eef3d184fe2a4dc",
+      "before_sha256": "fcf0f849dcd853090f7c2d5d630522c79d75eb2902899385ee27e3c07ee5b321"
     },
     {
       "path": "page-share.html",
-      "size": 1886,
-      "sha256": "40deca3f449eeed450ae65618d5ea08938f0e2699811dcd0e7faded0b2af168c",
+      "size": 1896,
+      "sha256": "bf466d9991a78e544b1de1cfaef35b5bc19d499830626b0daf118df633c007a3",
       "before_sha256": "c82c22764f26588804968f8c880558af017a6695423c9d931fb43dc7a6c708d7"
     },
     {
@@ -117,8 +117,8 @@
     },
     {
       "path": "workspace.html",
-      "size": 2380,
-      "sha256": "8ecbd4e32c26e9ff3c1c3ec5b6e820ee8eb532a8ecd3980791c0fdddd8c74bd0",
+      "size": 2382,
+      "sha256": "ec381c44d9f4cfdffc29d6f9b8deaf5e2e81efa7c1879b26de0157f9de0bfb8a",
       "before_sha256": "a532ed0de27cf72b16f64968dad660e3d89909d4eaec7bf255c13459a4763ca5"
     },
     {
