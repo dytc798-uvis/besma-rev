@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "origin": "https://www.besma.co.kr",
-  "deployment": "dpl_A5NvGLcSo9KDQaWKGtx9JTyYqCLX",
+  "deployment": "dpl_7njaBQx8pmjNBRfyJHpD8Wn553rd",
   "files": [
     {
       "path": "artifact-vault.css",
@@ -492,6 +492,11 @@
       "path": "assets/company-home-625fc3840044.js",
       "size": 72651,
       "sha256": "625fc3840044da28bfa00e615eaff8e68baaff48524a3c28566b5ce043cf9692"
+    },
+    {
+      "path": "assets/company-home-641099b19849.js",
+      "size": 76199,
+      "sha256": "641099b198495e8a660648ea3d157503f15b246ba75d894e41ef2f0420f3e785"
     },
     {
       "path": "assets/company-home-64211d010ac7.js",
@@ -1367,6 +1372,11 @@
       "path": "assets/home-progress-cards-77a2e7150e24.css",
       "size": 5214,
       "sha256": "77a2e7150e2474d5145a40111bee7718aa1e021513eaa29de17463cb08542579"
+    },
+    {
+      "path": "assets/home-progress-cards-8b82bcc28a64.css",
+      "size": 11640,
+      "sha256": "8b82bcc28a649920037f571e860773db620c433c44734dc67d837808d8f3c1d6"
     },
     {
       "path": "assets/home-search-weather-14d8b8680345.css",
@@ -3370,8 +3380,8 @@
     },
     {
       "path": "company.html",
-      "size": 14156,
-      "sha256": "9bb6e11e4092d5b5ea7556c5cc34f6b3d969b73756db64b4e948343c504dd31b"
+      "size": 14030,
+      "sha256": "e0e4df076d4a0582360be9a8289e742bbf309f21e3752204df752f8aa5100cc8"
     },
     {
       "path": "criterion-confirmation.js",
