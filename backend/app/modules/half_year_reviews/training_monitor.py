@@ -217,19 +217,15 @@ def matrix(seed, states, visible_ids, full_scope, current_sites=None):
             if applicable and cell['completed_nonconformity']:cell['conducted'] = 'X'
             cell['files'] = [{'id':f['id'],'filename':f.get('filename') or f.get('name') or '비상훈련 자료','extension':f.get('extension',''),'caption':f.get('caption') or ''} for f in (data or {}).get('files',[]) if f.get('evidence_id') == 'emergency_drill']
             cell['nonconformity_detail'] = nonconformity_details(period, cell, data, judgment)
-            cells[period] = cell
-        remarks = []
-        for half in ('2026-H1','2026-H2'):
-            cell = cells[half]
-            if cell['suitability'] != '부적합':continue
-            detail = cell['nonconformity_detail'] or {}
-            text = detail.get('evaluation_note') or detail.get('evidence_note')
-            if not text:
-                if detail.get('score') is not None:text = f"비상훈련보고서·교육일지 {detail['score']:g}/7점(세부 사유 미기재)."
+            cell['simple_reason'] = ''
+            if cell['suitability'] == '부적합':
+                detail = cell['nonconformity_detail'] or {}
+                if cell['explicit_nonimplementation'] or cell['conducted'] == 'X' and not cell['files']:
+                    cell['simple_reason'] = '미실시'
                 else:
-                    notes = [x for x in cell['reasons'] if not x.startswith('현재 반기평가') and any(term in x for term in ('미제출','미실시','없음','비어','불일치','누락','미비'))]
-                    text = '최종평가 X. ' + (notes[0] if notes else '세부 사유 미기재.')
-            remarks.append(('26상: ' if half.endswith('H1') else '26하: ') + text)
+                    cell['simple_reason'] = str(detail.get('evaluation_note') or detail.get('evidence_note') or '부적합 사유 미기재').strip()
+            cells[period] = cell
+        remarks = [('26상: ' if half.endswith('H1') else '26하: ') + cells[half]['simple_reason'] for half in ('2026-H1','2026-H2') if cells[half]['simple_reason']]
         items.append({'id': site['id'], 'site': site['site'], 'public_id': site['public_id'],
                       'start_date':dates.get('start_date'),'completion_date':dates.get('completion_date'),
                       'date_source':dates.get('source'),'remarks':'\n'.join(remarks),'periods': cells})
@@ -304,14 +300,21 @@ def workbook_bytes(value):
                 sheet.cell(n,col,f'=IF({eligible},"'+('X'if cell['explicit_nonimplementation']else'O')+'","—")')
             if grade_col:
                 sheet.cell(n,grade_col,cell['suitability'] or None)
-        sheet.cell(n,11,item.get('remarks') or None)
-        if item.get('remarks'):sheet.cell(n,11).hyperlink = training_view_link(item['id'])
+        sheet.cell(n,11,item.get('remarks') or None).hyperlink = None
+        has_files = any(cell.get('files') for cell in item['periods'].values())
+        file_cell = sheet.cell(n,12,'파일 확인하기' if has_files else '파일 없음')
+        file_cell.hyperlink = training_view_link(item['id']) if has_files else None
     from openpyxl.styles import Alignment
-    for row in sheet.iter_rows(min_row=first, max_row=last, max_col=11):
+    for row in sheet.iter_rows(min_row=first, max_row=last, max_col=12):
         for cell in row:
             from copy import copy as copied
             if not cell.has_style:cell._style = copied(sheet.cell(first, cell.column)._style)
             cell.alignment = Alignment(horizontal='left' if cell.column in (2,11) else 'center', vertical='center', wrap_text=True)
+        if sheet.cell(row[0].row,12).value == '파일 확인하기':
+            from openpyxl.styles import PatternFill
+            button = sheet.cell(row[0].row,12)
+            font = copied(button.font);font.bold=True;font.underline='single';button.font=font
+            button.fill=PatternFill('solid',fgColor='FFF2F2F2')
         import math, unicodedata
         name = str(sheet.cell(row[0].row, 2).value or '')
         width = sum(2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1 for c in name)
@@ -331,8 +334,8 @@ def workbook_bytes(value):
         formula=f'AND(ISNUMBER($C{first}),ISNUMBER($D{first}),$C{first}<=$D{first},$C{first}<=DATE({b.year},{b.month},{b.day}),$D{first}>=DATE({a.year},{a.month},{a.day}))'
         sheet.conditional_formatting.add(f'{left}{first}:{right}{last}',FormulaRule(formula=[formula],fill=PatternFill('solid',fgColor='FFFCE4D6',bgColor='FFFCE4D6')))
     sheet.conditional_formatting.add(f'E{first}:J{last}',FormulaRule(formula=['TRUE'],fill=PatternFill('solid',fgColor='FFEDEDED',bgColor='FFEDEDED')))
-    sheet.auto_filter.ref = f'A{first-1}:K{last}'
-    sheet.print_area = f'A1:K{last}'
+    sheet.auto_filter.ref = f'A{first-1}:L{last}'
+    sheet.print_area = f'A1:L{last}'
     workbook.calculation.fullCalcOnLoad = True
     output = io.BytesIO()
     workbook.save(output)
