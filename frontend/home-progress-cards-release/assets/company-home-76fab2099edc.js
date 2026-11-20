@@ -1060,3 +1060,21 @@ function mountPersonalWeeklyTodos() {
   void refresh();
 }
 mountPersonalWeeklyTodos();
+
+function mountHomeLoginGate() {
+  const login='/login?form=1';
+  function needsLogin(){return !C||localStorage.getItem('besma_token')!==C||!v;}
+  function intercept(event){
+    if(!needsLogin())return;
+    if(event.type==='keydown'&&!['Enter',' '].includes(event.key))return;
+    const target=event.target?.closest?.('a,button,input,select,summary,[role="button"],.home-progress-card,.business-list article,.rating-card,.contractor-card');
+    if(!target||target.closest('[data-home-auth],.company-logo'))return;
+    if(target.matches('a[href^="#about"],a[href^="#business"]'))return;
+    if(!target.closest('.field-dashboard,.business-list,.rating-grid,.contractor-grid,.home-notices,.workspace-entry,.hero-actions,.company-header'))return;
+    event.preventDefault();event.stopImmediatePropagation();location.assign(login);
+  }
+  document.addEventListener('click',intercept,true);
+  document.addEventListener('keydown',intercept,true);
+  document.addEventListener('input',intercept,true);
+}
+mountHomeLoginGate();

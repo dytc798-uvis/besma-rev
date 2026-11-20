@@ -1,22 +1,33 @@
 {
-  "source_file": "home-progress-cards-release/assets/company-home-029b6bbf042a.js",
-  "source_normalized_sha256": "029b6bbf042a4c0f373427d72b32eea321578e01230fb795ac892913a16c5031",
+  "source_file": "home-progress-cards-release/assets/company-home-76fab2099edc.js",
+  "source_normalized_sha256": "76fab2099edca67f9cbeea913ee423414bd4fdf2e8607a45b4e117096846b687",
   "files": [
     {
-      "path": "assets/company-home-029b6bbf042a.js",
-      "size": 76977,
-      "sha256": "029b6bbf042a4c0f373427d72b32eea321578e01230fb795ac892913a16c5031"
+      "path": "assets/company-home-76fab2099edc.js",
+      "size": 77993,
+      "sha256": "76fab2099edca67f9cbeea913ee423414bd4fdf2e8607a45b4e117096846b687"
     },
     {
-      "path": "assets/home-progress-cards-7a7eb5da8739.css",
-      "size": 12009,
-      "sha256": "7a7eb5da87396d9501e44159202d215d8be78597537cd6ba610fa5d8f1d154f7"
+      "path": "assets/home-progress-cards-b2660f9438ea.css",
+      "size": 12686,
+      "sha256": "b2660f9438ea51e5ad78f6431646162007e73fa9789bf1d092645db405d043a0"
+    },
+    {
+      "path": "assets/login-lookup-entry-7a26540574d8.js",
+      "size": 647,
+      "sha256": "7a26540574d8c8e04dd6c3339ca8cc70e29252f23b630548e482cc6cc98e1d84"
     },
     {
       "path": "company.html",
-      "size": 14128,
-      "sha256": "dc9c5ddefd54f0691466f498542f67feb2ea668a6cdfc384b06927bcbf59f92f",
+      "size": 14351,
+      "sha256": "f74875d7bb4ae3705a50d4b2d0a143b34882a51d8587bf3a8ec38724e522b95f",
       "before_sha256": "e0e4df076d4a0582360be9a8289e742bbf309f21e3752204df752f8aa5100cc8"
+    },
+    {
+      "path": "index.html",
+      "size": 4002,
+      "sha256": "71026275331d115d23c686a5b3dfe9ea9ee943f15ab90331b5cfcac6336431fd",
+      "before_sha256": "84c8f77b8a18b5f4113cbb1f82706c2ca35ac5426d2460f3d3a30a2b6ff64335"
     }
   ]
 }
