@@ -1,0 +1,49 @@
+{
+  "source_file": "hq01-half-year-reader-release/assets/half-year-reader-6e6d3894e7e7.js",
+  "source_normalized_sha256": "6e6d3894e7e74b48cca9102c0ff324ee749490886dcbb4995a8b6bc528d49437",
+  "files": [
+    {
+      "path": "assets/half-year-reader-6e6d3894e7e7.js",
+      "size": 8631,
+      "sha256": "6e6d3894e7e74b48cca9102c0ff324ee749490886dcbb4995a8b6bc528d49437"
+    },
+    {
+      "path": "assets/half-year-reader-78cf2869dd0b.css",
+      "size": 3388,
+      "sha256": "78cf2869dd0b02800a1271b909384388e0bac2a7a3d3cfdda579cb14974d764b"
+    },
+    {
+      "path": "assets/inspection-plan-nav-262235b1dbfe.js",
+      "size": 1843,
+      "sha256": "262235b1dbfe6facd4c1de2d1b5228bbf8dfa9183415a80fd7c9f2faeaa74e2b"
+    },
+    {
+      "path": "assets/half-year-reader-entry-439e5fd4199a.js",
+      "size": 1072,
+      "sha256": "439e5fd4199a2a77f1c6f6f28f2db8b0da54f30db6ab886a211251170ed30c18"
+    },
+    {
+      "path": "half-year-reader.html",
+      "size": 1743,
+      "sha256": "7e7ba0341340a9fc199e6318e2f97fc02ce98b890f97378643e304863573e68a"
+    },
+    {
+      "path": "company.html",
+      "size": 14586,
+      "sha256": "6b4d0d6c2949945c404ca4aac05622512d3a9c55e75d116c0c6ae45fd72efc5c",
+      "before_sha256": "8e57c4a696baabf80e3515b93d1bdebb75da930bc5e28a50be762c058e1f326c"
+    },
+    {
+      "path": "inspection-plan.html",
+      "size": 4119,
+      "sha256": "98fea59604e70f8b4f194c77ba4e5c74d6629b5796f35c4da08daf5fb86af246",
+      "before_sha256": "7b99583ae7fc9209965445f39982d2fcf7ec4d87437e8b291eef3d184fe2a4dc"
+    },
+    {
+      "path": "workspace.html",
+      "size": 2385,
+      "sha256": "c65e3537e5ced89164eb45c340fa4241bc207825046c5375c8d0bcc758d65c8d",
+      "before_sha256": "ec381c44d9f4cfdffc29d6f9b8deaf5e2e81efa7c1879b26de0157f9de0bfb8a"
+    }
+  ]
+}
