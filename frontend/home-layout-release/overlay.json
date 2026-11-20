@@ -1,17 +1,12 @@
 {
-  "source_file": "home-layout-release/assets/home-layout-67f3be500bf3.css",
-  "source_normalized_sha256": "67f3be500bf375dadd6d903f8b2bf671aee5cc11e9e16b019049186b1caab913",
+  "source_file": "home-layout-release/company.html",
+  "source_normalized_sha256": "7a7008a585b5daa609f9da636a9a0e5b14e3259fe9e34980e98b05eb2acaf321",
   "files": [
     {
-      "path": "assets/home-layout-67f3be500bf3.css",
-      "size": 8374,
-      "sha256": "67f3be500bf375dadd6d903f8b2bf671aee5cc11e9e16b019049186b1caab913"
-    },
-    {
       "path": "company.html",
-      "size": 13614,
-      "sha256": "6ff52003a01bb31bbf52862b88793f1d1c332a52e9aaac3a2508dc24861143db",
-      "before_sha256": "8d7f38f871e098fa42fe77cf191d32fd2100035c215b71d848ad42711c380e6c"
+      "size": 13610,
+      "sha256": "7a7008a585b5daa609f9da636a9a0e5b14e3259fe9e34980e98b05eb2acaf321",
+      "before_sha256": "6ff52003a01bb31bbf52862b88793f1d1c332a52e9aaac3a2508dc24861143db"
     }
   ]
 }

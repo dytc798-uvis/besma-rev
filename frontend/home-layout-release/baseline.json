@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "origin": "https://www.besma.co.kr",
-  "deployment": "dpl_C5yTk6F1U8doxMun6dCqBa6qKNCv",
-  "source_commit": "525e6334db63dba235a0aecfe81c35f193655b23",
+  "deployment": "dpl_DrULGMKne5zeJWmfnof4b6BPwFmH",
+  "source_commit": "072f6cc3dd9d8fad34c39124f1e9e0285cefa371",
   "files": [
     {
       "path": "artifact-vault.css",
@@ -32,7 +32,7 @@
     {
       "path": "company.html",
       "size": 13614,
-      "sha256": "8d7f38f871e098fa42fe77cf191d32fd2100035c215b71d848ad42711c380e6c"
+      "sha256": "6ff52003a01bb31bbf52862b88793f1d1c332a52e9aaac3a2508dc24861143db"
     },
     {
       "path": "criterion-confirmation.js",
@@ -1548,6 +1548,11 @@
       "path": "assets/home-layout-32ba2d9ac49f.css",
       "size": 8240,
       "sha256": "32ba2d9ac49f1b1593933359a9e6ff6347139e926f3320a82676ce48dabe153a"
+    },
+    {
+      "path": "assets/home-layout-67f3be500bf3.css",
+      "size": 8374,
+      "sha256": "67f3be500bf375dadd6d903f8b2bf671aee5cc11e9e16b019049186b1caab913"
     },
     {
       "path": "assets/home-opinion-tasks-b14640863cea.js",
