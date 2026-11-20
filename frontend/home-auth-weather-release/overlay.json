@@ -1,0 +1,130 @@
+{
+  "source_file": "home-auth-weather-release/assets/company-home-8b53dba242a1.js",
+  "source_normalized_sha256": "8b53dba242a1e03787f27e38ad48b29530fd01d45657490a547304d54eaf71a0",
+  "files": [
+    {
+      "path": "assets/company-home-8b53dba242a1.js",
+      "size": 78387,
+      "sha256": "8b53dba242a1e03787f27e38ad48b29530fd01d45657490a547304d54eaf71a0"
+    },
+    {
+      "path": "assets/home-auth-weather-72940cfeaa2a.css",
+      "size": 13171,
+      "sha256": "72940cfeaa2a161f94004ec72dc271413831ee90f7a4cbc9e7e07e42e6e5539e"
+    },
+    {
+      "path": "assets/login-lookup-entry-7a26540574d8.js",
+      "size": 647,
+      "sha256": "7a26540574d8c8e04dd6c3339ca8cc70e29252f23b630548e482cc6cc98e1d84"
+    },
+    {
+      "path": "assets/global-auth-nav-725d677ddf36.js",
+      "size": 2720,
+      "sha256": "725d677ddf3606a0e6e9688a705e2e6abb4f4a7d83ad6db764675be240550a2e"
+    },
+    {
+      "path": "assets/global-auth-nav-bfb555f40b84.css",
+      "size": 760,
+      "sha256": "bfb555f40b8476cdf34851e80824b5e1745a32a0aa364cce459803130ac65372"
+    },
+    {
+      "path": "assets/heat-stress-2192f880cb6b.js",
+      "size": 12818,
+      "sha256": "2192f880cb6b85af54d23130a008083f87a7ec290fc57fc88418357bbaebbf69"
+    },
+    {
+      "path": "assets/heat-stress-f916f3483296.css",
+      "size": 3848,
+      "sha256": "f916f3483296f7a3a69532045e2315dc84a685a594886b944b9c04520e60c552"
+    },
+    {
+      "path": "artifact-vault.html",
+      "size": 1726,
+      "sha256": "1f56991491d50d3aa099de15425e58e56b7a0aea2b2920d90d7c1ca78bf10e2f",
+      "before_sha256": "daadee8d9f5208e652b16f08c10d1444da24f3ac00d61abd7821629598a6c030"
+    },
+    {
+      "path": "company.html",
+      "size": 14502,
+      "sha256": "8e57c4a696baabf80e3515b93d1bdebb75da930bc5e28a50be762c058e1f326c",
+      "before_sha256": "da79de020c31ab7acd2ebb79e3e503c659bd2a798f19f6c6c1e83582868af12c"
+    },
+    {
+      "path": "document-sign.html",
+      "size": 2982,
+      "sha256": "22be167f9c8c803a66a118355112cddee1d9127fe6f7787d410565928276a19d",
+      "before_sha256": "9e613c06e84ac74efae671ebb1d398a692651dfa05840298691320f4d8f39932"
+    },
+    {
+      "path": "emergency-training-view.html",
+      "size": 1010,
+      "sha256": "c4c7b111fb3249dd14d6d82a76366905ea13aa917588fcde0def0beae07d54a3",
+      "before_sha256": "c0d77076073358ec16ce9646e07c9877d5ce999b1028f96b4cfe473ad9d5a27b"
+    },
+    {
+      "path": "hrd.html",
+      "size": 839,
+      "sha256": "2d77762b4d1c4a3c357bf4b36a5f9be1c17a849f89dc48a3b4fb6a96524621c3",
+      "before_sha256": "84b178bfc28ba49dc4c911e940b8970bcfb43cfd0346395f968c9269c0aa8344"
+    },
+    {
+      "path": "index.html",
+      "size": 4126,
+      "sha256": "85c40af03005a3bfae9712a4a7dc83bb0fcc40eb5026e9ca4f79dbf6b69c56b1",
+      "before_sha256": "84c8f77b8a18b5f4113cbb1f82706c2ca35ac5426d2460f3d3a30a2b6ff64335"
+    },
+    {
+      "path": "inspection-plan.html",
+      "size": 4035,
+      "sha256": "6d6033d828bfc451afb0082898545fd1380de5a3a5af36c757af75c498fcd630",
+      "before_sha256": "67c38ca21c37fad019b3e78c89744c04143ca610d241d7190176dc7cf4ee223a"
+    },
+    {
+      "path": "page-share.html",
+      "size": 1886,
+      "sha256": "40deca3f449eeed450ae65618d5ea08938f0e2699811dcd0e7faded0b2af168c",
+      "before_sha256": "c82c22764f26588804968f8c880558af017a6695423c9d931fb43dc7a6c708d7"
+    },
+    {
+      "path": "photo-share.html",
+      "size": 635,
+      "sha256": "cd77d5a032957538878494b3da447fa8e673d236af7bd1247ae6a75cb79b1cbf",
+      "before_sha256": "6069c97f2cd69cc5f0e4e78ac25f33f2dcbebe9bfd3700e5c76fc4844f5e025a"
+    },
+    {
+      "path": "site-invitations.html",
+      "size": 631,
+      "sha256": "432186d1b702bb71aa15eee4f71d1211c5a06ab578d764165ff02f78a1e3c1c7",
+      "before_sha256": "9e674c46c4764b11da209210736e440ca6b0952543947c469a7023aacf95af4c"
+    },
+    {
+      "path": "site-search.html",
+      "size": 1597,
+      "sha256": "1ea38069a95210532b4ef6558245f8fe7a62dcbbbd37c91b6d9f02d41144a573",
+      "before_sha256": "b1a89b96e222b628d733369eda696238d336d01877f84613ea84d43acccd1c02"
+    },
+    {
+      "path": "site-setup.html",
+      "size": 621,
+      "sha256": "1ffc3ab681a7dce245e85c2d583032e77a59f18e921531d146c805e109b95dbb",
+      "before_sha256": "521cbae480370c6373d41410ea71843c2ad54573cb1c1060e6d34ed689814f9b"
+    },
+    {
+      "path": "site-workspace.html",
+      "size": 617,
+      "sha256": "fb6a5226d06af04ee93c1c1fb62a92d9b6fe4e05a61511747e04821749f388ab",
+      "before_sha256": "e6e90175b839f63eb76a96bb8ead54b87c2a3eee04d40c486e5b8efe2bbc745f"
+    },
+    {
+      "path": "workspace.html",
+      "size": 2380,
+      "sha256": "8ecbd4e32c26e9ff3c1c3ec5b6e820ee8eb532a8ecd3980791c0fdddd8c74bd0",
+      "before_sha256": "a532ed0de27cf72b16f64968dad660e3d89909d4eaec7bf255c13459a4763ca5"
+    },
+    {
+      "path": "heat-stress.html",
+      "size": 4338,
+      "sha256": "db8092cac97229712062f96b53a45dadabc207b597eb5dd45a1f8ba1a741eb5d"
+    }
+  ]
+}

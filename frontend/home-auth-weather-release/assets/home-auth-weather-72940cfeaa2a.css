@@ -1,0 +1,74 @@
+
+.home-progress-panel{scroll-margin-top:100px}.home-progress-panel #home-progress-overview{display:grid;gap:14px}.home-progress-panel #home-progress-overview[hidden]{display:none!important}
+.home-progress-panel .home-progress-card{--card-bg:#eef6ff;--card-accent:#286da8;background:var(--card-bg);border:1px solid #bfd7ee;border-left:5px solid var(--card-accent);border-radius:12px;padding:17px 18px;margin:0;box-shadow:0 3px 9px #071b2721;color:#19394e}
+.home-progress-panel .progress-evaluation{--card-bg:#edf8f2;--card-accent:#20845c;border-color:#b8ddca}.home-progress-panel .progress-functional{--card-bg:#f4effd;--card-accent:#7550a5;border-color:#d8c8ec}
+.home-progress-panel .home-progress-card h3{color:var(--card-accent);font-size:17px;line-height:1.4;margin:0 0 10px}.home-progress-panel .home-progress-card p{color:#39596a;font-size:14px;line-height:1.55;margin:8px 0}.home-progress-panel .home-progress-card strong{color:#183b4b;font-size:26px}.home-progress-panel .home-progress-card a{color:var(--card-accent);font-size:14px;font-weight:700}.home-progress-panel .home-progress-card a:focus-visible{outline:2px solid var(--card-accent);outline-offset:4px}
+.home-progress-panel .progress-source{display:inline-block;background:#d9eafa;border-radius:5px;padding:4px 7px;font-size:12px;color:#255478;margin:0 0 12px;font-weight:600}.home-progress-panel .home-progress-categories{gap:6px 12px;margin:12px 0;font-size:14px}.home-progress-panel .home-progress-categories dt{color:#365d79}.home-progress-panel .home-progress-categories dd{color:#173d58;font-weight:700}
+.home-progress-panel .home-progress-ring{background:conic-gradient(var(--card-accent) var(--progress),#cfe3d9 0);width:88px;height:88px}.home-progress-panel .home-progress-ring span{width:66px;height:66px;background:var(--card-bg);color:#1b6649;font-size:20px}.home-progress-panel .home-progress-metric{gap:18px}
+.home-progress-panel .progress-functional>strong{display:inline-block;background:#e4d8f6;color:#60378b;font-size:16px;border-radius:5px;padding:5px 9px}.home-progress-panel .progress-functional #today-evaluation-tasks{color:#293e50;border-color:#cdbfe1;padding:10px 0 0;margin-top:12px}.home-progress-panel .progress-functional #today-evaluation-tasks summary{font-size:14px;color:#59347e}.home-progress-panel .progress-functional #today-evaluation-tasks p,.home-progress-panel .progress-functional #today-evaluation-tasks small{color:#4b5c68}.home-progress-panel .progress-retry{background:#fff;color:#266348;border:1px solid #93bba6;border-radius:5px;padding:7px 12px;font:inherit;cursor:pointer}
+@media(max-width:740px){.home-progress-panel{scroll-margin-top:90px}.home-progress-panel .home-progress-card{padding:16px}.home-progress-panel:focus{outline:none}}
+
+.map-legend-overlay.single-map-legend{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:5px!important;width:auto!important;max-width:calc(100% - 58px)!important;pointer-events:none}
+.single-map-legend .map-legend-toggle{pointer-events:auto;display:block;min-height:30px;border:1px solid #a9bfce;border-radius:6px;background:#fff;color:#203d50;padding:5px 12px;font-size:13px;font-weight:700;box-shadow:0 2px 6px #0002;cursor:pointer}
+.single-map-legend .map-legend-panel{pointer-events:auto;width:174px!important;min-width:174px!important;max-width:174px!important;padding:9px!important;max-height:330px;overflow:auto;background:#fffffff5;color:#203d50;border:1px solid #bdceda;border-radius:7px;box-shadow:0 2px 8px #0002}
+.single-map-legend .map-legend-panel h3{font-size:13px;line-height:1.4;margin:0 0 7px;color:#203d50}.single-map-legend .map-legend-options{display:grid;gap:2px}.single-map-legend .team-legend-button{width:100%;text-align:left;font-size:12px;min-height:26px;background:transparent;color:#203d50;border:1px solid transparent;border-radius:4px;cursor:pointer}.single-map-legend .team-legend-button[aria-pressed=true]{background:#ffead8;border-color:#dd9e68}.single-map-legend .team-legend-button i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.single-map-legend .legend-site-heading{display:flex;align-items:center;justify-content:space-between;gap:5px}.single-map-legend .legend-site-heading h3{margin:0}.single-map-legend .legend-back{font-size:11px;white-space:nowrap;min-height:26px;border:1px solid #bfd0dc;background:#f2f6f9;color:#34556b;border-radius:4px;padding:3px 6px;cursor:pointer}.single-map-legend .legend-site-count{display:block;color:#657b89;font-size:11px;margin:5px 0}.single-map-legend .legend-site-list{display:grid;gap:0}.single-map-legend .legend-site-button{width:100%;background:none;color:#203d50;text-align:left;border:0;border-top:1px solid #dbe5eb;font-size:12px;line-height:1.5;padding:8px 3px;cursor:pointer}.single-map-legend .legend-site-button small{display:block;font-size:10px;color:#657b89;line-height:1.4;margin-top:3px}.single-map-legend button:focus-visible{outline:2px solid #386f93;outline-offset:1px}
+@media(max-width:740px){.single-map-legend .map-legend-panel{max-height:280px}}
+
+.single-map-legend[data-legend-level="root"] .map-legend-panel{width:136px!important;min-width:136px!important;max-width:136px!important}
+
+/* Compact, vertically divided monthly summary. */
+.home-progress-panel .home-progress-card{padding:13px 14px}
+.home-progress-panel .home-progress-card h3{font-size:16px;margin:0 0 8px}
+.home-progress-panel .home-progress-card p{font-size:12px;margin:5px 0}
+.home-progress-panel #home-monthly-value{display:grid;grid-template-columns:minmax(90px,.8fr) minmax(130px,1.2fr);gap:0 14px;align-items:start}
+.home-progress-panel #home-monthly-value>strong{grid-column:1;grid-row:1;font-size:25px}
+.home-progress-panel #home-monthly-value>p{grid-column:1;grid-row:2;font-size:12px}
+.home-progress-panel #home-monthly-value>.home-progress-categories{grid-column:2;grid-row:1/span 4;display:grid;grid-template-columns:minmax(0,1fr) auto;border-left:1px solid #b7d1e5;padding-left:13px;margin:0;gap:5px 8px;font-size:12px}
+.home-progress-panel #home-monthly-value>p:nth-of-type(n+2){grid-row:auto;grid-column:1/-1;font-size:11px}
+.home-progress-panel .progress-source{margin:0 0 9px;font-size:11px;padding:3px 6px}
+.home-progress-panel .home-progress-card>a{display:inline-block;font-size:12px;margin-top:7px}
+.home-progress-panel .home-progress-ring{width:70px;height:70px}
+.home-progress-panel .home-progress-ring span{width:52px;height:52px;font-size:16px}
+.evaluation-statuses{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}
+.evaluation-status{padding:7px 4px;border-radius:6px;background:#e1e8eb;color:#49616d;text-align:center;font-size:11px}
+.evaluation-status b{display:block;font-size:17px;margin-top:2px}
+.evaluation-status.in-progress{background:#fff0cf;color:#815400}.evaluation-status.completed{background:#d5efdf;color:#17653f}
+.home-progress-panel .progress-functional>strong{font-size:14px;padding:4px 8px}
+.home-progress-panel .progress-functional #today-evaluation-tasks{display:none!important}
+/* Explicit current / forecast cells, with room for all temperatures and icons. */
+.company-header>#seoul-weather{width:380px;max-width:380px;display:flex!important;flex-wrap:nowrap!important;align-items:center;gap:0!important;justify-content:center}
+.company-header .seoul-current{display:grid!important;grid-template-columns:25px 1fr!important;grid-template-rows:16px 26px 14px;gap:1px 5px;width:112px;min-width:112px;padding:0 12px 0 0;box-sizing:content-box}
+.company-header .seoul-current-source,.company-header .seoul-current-time{grid-column:1/-1;line-height:14px}
+.company-header .seoul-current-temperature{font-size:19px;line-height:26px;margin:0}
+.company-header .seoul-current svg{width:25px!important;height:25px!important;grid-column:1;grid-row:2}
+.company-header .seoul-current-temperature{grid-column:2;grid-row:2}
+.company-header .seoul-current-time{grid-row:3}
+.company-header .seoul-forecast{display:flex!important;gap:0!important;width:auto;flex:none}
+.company-header .seoul-forecast-day{display:grid!important;grid-template-columns:24px minmax(42px,1fr)!important;grid-template-rows:16px 26px 14px;column-gap:5px!important;row-gap:1px!important;width:106px!important;min-width:106px!important;padding:0 10px!important;border-left:1px solid #ffffff40!important;box-sizing:content-box}
+.company-header .seoul-forecast-day .seoul-weather-date{grid-column:1/-1;grid-row:1;line-height:16px}
+.company-header .seoul-forecast-day svg{grid-column:1;grid-row:2;width:24px!important;height:24px!important}
+.company-header .seoul-forecast-day .seoul-weather-temperature{grid-column:2;grid-row:2;font-size:16px!important;line-height:26px}
+.company-header .seoul-forecast-day .seoul-weather-time{grid-column:1/-1;grid-row:3;line-height:14px;font-size:10px!important;display:block!important}
+.company-header .seoul-weather-source{display:none!important}
+@media(max-width:1250px){.company-header>#seoul-weather{width:252px;max-width:252px}.company-header .seoul-forecast-day:nth-child(n+2){display:none!important}}
+@media(max-width:1000px){.company-header>#seoul-weather{display:none!important}}
+/* Personal weekly tasks remain at the left edge without occupying a dashboard column. */
+.personal-weekly-todos{position:fixed;left:12px;bottom:16px;z-index:80;max-width:calc(100vw - 24px);font-size:13px;color:#193b50}
+.personal-weekly-todos>summary{list-style:none;display:block;width:max-content;border:1px solid #f2ba81;background:#fff5e6;color:#794011;box-shadow:0 3px 12px #0003;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer}
+.personal-weekly-todos>summary::-webkit-details-marker{display:none}
+.personal-weekly-todos[open]>summary{border-radius:0 0 9px 9px}
+.personal-todo-body{position:absolute;bottom:100%;left:0;width:320px;max-width:calc(100vw - 24px);max-height:min(65vh,510px);overflow:auto;box-sizing:border-box;padding:16px;background:#fff;border:1px solid #bfd1dc;border-radius:10px 10px 10px 0;box-shadow:0 4px 24px #0003}
+.personal-todo-body h3{margin:0 0 4px;font-size:15px}.personal-todo-period{margin:0 0 10px;color:#647786;font-size:11px}
+.personal-todo-row{display:grid;grid-template-columns:auto 1fr;gap:5px 8px;padding:11px 0;border-top:1px solid #e1e8ed}
+.personal-todo-row>a{grid-column:1/-1;color:#214960;font-weight:600;line-height:1.55;text-decoration:none}.personal-todo-row>a:hover{text-decoration:underline}.personal-todo-row time{font-size:11px;color:#70828b;justify-self:end}
+.personal-todo-state{width:max-content;border-radius:4px;padding:3px 6px;font-size:11px;background:#e7edf1;color:#4b6475}.personal-todo-state.in-progress{background:#fff0c7;color:#805200}
+.personal-todo-completed{font-size:12px;color:#287852}.personal-todo-refresh{padding:6px 10px;border:1px solid #bacdd9;background:#f3f7fa;border-radius:5px;color:#264b62;cursor:pointer}
+.personal-weekly-todos button:focus-visible,.personal-weekly-todos summary:focus-visible,.personal-weekly-todos a:focus-visible{outline:2px solid #c87930;outline-offset:3px}
+.personal-weekly-todos[hidden]{display:none!important}
+@media(max-width:740px){.personal-weekly-todos{left:8px;bottom:12px}.home-progress-panel #home-monthly-value{grid-template-columns:minmax(85px,.8fr) minmax(130px,1.2fr)}}
+
+.company-header .seoul-weather-source{display:block!important;position:absolute;top:100%;left:0;right:0;margin:3px 0 0!important;max-width:none;text-align:center;font-size:0!important;line-height:11px;white-space:nowrap}.company-header .seoul-weather-source::before{content:""!important}.company-header .seoul-weather-source a{font-size:9px!important;margin:0 3px;color:#d6e4ed}
+
+.home-progress-panel .monthly-card-heading{display:flex;align-items:baseline;justify-content:space-between;gap:6px 10px;flex-wrap:wrap;margin-bottom:8px}.home-progress-panel .monthly-card-heading h3{margin:0;flex:1 1 auto}.home-progress-panel .monthly-card-heading time{margin-left:auto;color:#597181;font-size:11px;font-weight:400;line-height:1.4;white-space:nowrap}
+.company-header nav{gap:18px}.home-auth-links{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}.company-header .home-auth-links a{font-size:12px;padding:5px 0}.home-auth-links>span{opacity:.45;font-size:11px}.home-feels-entry{position:absolute;left:calc(50% - 346px);top:50%;transform:translateY(-50%);width:144px;text-align:center;padding:10px 8px;border:1px solid #bcd0db;border-radius:6px;color:#fff;font-size:13px;font-weight:600;text-decoration:none;background:#354f5e}.home-feels-entry:hover{background:#496574}@media(max-width:1400px)and(min-width:1151px){.company-header>#seoul-weather{position:static;transform:none;width:252px;max-width:252px}.company-header .seoul-forecast-day:nth-child(n+2){display:none!important}}@media(max-width:1400px){.home-feels-entry{position:static;transform:none;flex:none}}@media(max-width:1250px){.company-header>#seoul-weather{display:none!important}}@media(max-width:740px){.company-header{flex-wrap:wrap}.company-header nav{gap:10px;flex-wrap:wrap}.company-header .home-auth-links a{font-size:12px}.company-header .login{padding:9px 12px}.home-feels-entry{font-size:12px;width:auto;padding:8px 10px}}
