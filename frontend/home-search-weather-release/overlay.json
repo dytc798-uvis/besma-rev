@@ -1,0 +1,22 @@
+{
+  "source_file": "home-search-weather-release/assets/company-home-ea3c5e77baba.js",
+  "source_normalized_sha256": "ea3c5e77babaa33270b9490c621e989997df30b6522ec47b5338d0a1dc01835b",
+  "files": [
+    {
+      "path": "assets/company-home-ea3c5e77baba.js",
+      "size": 71822,
+      "sha256": "ea3c5e77babaa33270b9490c621e989997df30b6522ec47b5338d0a1dc01835b"
+    },
+    {
+      "path": "assets/home-search-weather-14d8b8680345.css",
+      "size": 3375,
+      "sha256": "14d8b8680345de0dabd1813cf787b9cf0230742c772e5fe83b02aae1fa5a9916"
+    },
+    {
+      "path": "company.html",
+      "size": 13783,
+      "sha256": "6ecfabd543454859f6b23ca332d6290b1b4ddde513aa77c1601f58b53dbd03d5",
+      "before_sha256": "7eb3e68817864bee517c06f6f7bf7910d74bff834d506932ef69b9e719beef8c"
+    }
+  ]
+}
