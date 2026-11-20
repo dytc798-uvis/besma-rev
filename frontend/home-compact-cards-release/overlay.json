@@ -1,0 +1,22 @@
+{
+  "source_file": "home-compact-cards-release/assets/company-home-0fe2531ad06c.js",
+  "source_normalized_sha256": "0fe2531ad06c1f843b2279155d88ad385f3b823edc2b6c79c064830d59e729b3",
+  "files": [
+    {
+      "path": "assets/company-home-0fe2531ad06c.js",
+      "size": 78552,
+      "sha256": "0fe2531ad06c1f843b2279155d88ad385f3b823edc2b6c79c064830d59e729b3"
+    },
+    {
+      "path": "assets/home-compact-cards-defe4fdee37d.css",
+      "size": 2906,
+      "sha256": "defe4fdee37d9d27a777a4b9b280cfdbd7200e13385a24894a1c4f2cede8c4e3"
+    },
+    {
+      "path": "company.html",
+      "size": 14866,
+      "sha256": "461d088ff4076cf45ad46f8021f4d95c35c2279b5d8d25e03980d795ed1a4e31",
+      "before_sha256": "f58bb78be332e5ef32974093b4acf9be579909427d393c593a3fd36c7859c1e2"
+    }
+  ]
+}
