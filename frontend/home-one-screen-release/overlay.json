@@ -1,0 +1,17 @@
+{
+  "source_file": "home-one-screen-release/assets/home-one-screen-792890ca2ef2.css",
+  "source_normalized_sha256": "792890ca2ef27b52943064ef5b461a429f45b9a0bf13a3b392d79920880efe51",
+  "files": [
+    {
+      "path": "assets/home-one-screen-792890ca2ef2.css",
+      "size": 3126,
+      "sha256": "792890ca2ef27b52943064ef5b461a429f45b9a0bf13a3b392d79920880efe51"
+    },
+    {
+      "path": "company.html",
+      "size": 14937,
+      "sha256": "7f82bb7ff9c84bb427ddd046d47157bd78668ef2a0a07afe8f3ab39143fd0fd3",
+      "before_sha256": "461d088ff4076cf45ad46f8021f4d95c35c2279b5d8d25e03980d795ed1a4e31"
+    }
+  ]
+}
