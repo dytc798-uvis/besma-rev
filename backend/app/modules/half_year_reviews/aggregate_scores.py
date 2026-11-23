@@ -15,9 +15,11 @@ def points(q,value):
 def saved(data,kind):
  if kind=='supervisor':key=kind+':'+subject(data)['id'];items=[data.get('assessments',{}).get(key,{})]
  else:items=[v for k,v in data.get('assessments',{}).items()if k.startswith(kind+':')]
- complete=[v for v in items if v.get('completed')]
- if not complete:return None,False
- record=max(complete,key=lambda r:r['completed']['at']);return record['completed'],record.get('draft',{}).get('data')==record['completed']['data']
+ available=[v for v in items if v.get('draft') or v.get('completed')]
+ if not available:return None,False
+ record=max(available,key=lambda r:(r.get('draft')or r.get('completed'))['at'])
+ latest=record.get('draft')or record['completed']
+ return latest,bool(record.get('completed') and record.get('draft',{}).get('data')==record['completed']['data'])
 
 def confirmation_status(data):
  confirmation=data.get('score_confirmation')or{};snapshots=confirmation.get('snapshot_ids')or{}
@@ -50,26 +52,38 @@ def adjustments(record=None):
  return {'items':items,'bonus':bonus,'deduction':deduction,'net':rounded(bonus-deduction)}
 
 def row_scores(data,monthly):
- data=project_data(data);scores={};states=[];headquarters_pending=False
+ data=project_data(data);scores={};states=[];headquarters_pending=False;has_grades=False
  for kind in ['report','manager','supervisor','law']:
   snap,unchanged=saved(data,kind);states.append(bool(snap and unchanged))
   if not snap:scores[kind]=None;continue
+  answers=snap.get('data',{}).get('answers',{});schema=CATALOG['forms'][kind]['criteria']
   if kind=='law':
-   answers=snap['data']['answers'];yes=sum(a.get('value')=='PASS'for a in answers.values());no=sum(a.get('value')=='FAIL'for a in answers.values());na=sum(a.get('value')=='NA'for a in answers.values());scores['law_counts']={'pass':yes,'fail':no,'na':na};scores[kind]=rounded(yes/(yes+no)*20)if yes+no else None
-  elif kind=='manager':
-   schema=CATALOG['forms'][kind]['criteria'];values={q['id']:points(q,snap['data']['answers'].get(q['id'],{}).get('value'))for q in schema};field=[v for k,v in values.items()if k!='m10'];scores['manager_field']=sum(field)if all(v is not None for v in field)else None;scores['headquarters']=values.get('m10');headquarters_pending=values.get('m10')is None;scores[kind]=rounded(sum(values.values())*.2)if all(v is not None for v in values.values())else None
+   values=[answers.get(q['id'],{}).get('value')for q in schema]
+   yes=values.count('PASS');no=values.count('FAIL');na=values.count('NA');pending=len(values)-yes-no-na
+   scores['law_counts']={'pass':yes,'fail':no,'na':na,'pending':pending}
+   scores[kind]=rounded(yes/(len(values)-na)*20)if yes+no and len(values)>na else None
+   has_grades=has_grades or bool(yes+no)
   else:
-   score=snap.get('result',{}).get('score');scores[kind]=rounded(score*(.4 if kind=='report'else .1),0 if kind=='report'else 2)if score is not None else None
+   values={q['id']:points(q,answers.get(q['id'],{}).get('value'))for q in schema}
+   known=[v for v in values.values()if v is not None];has_grades=has_grades or bool(known)
+   if kind=='manager':
+    field=[v for k,v in values.items()if k!='m10' and v is not None]
+    scores['manager_field']=sum(field)if field else None;scores['headquarters']=values.get('m10');headquarters_pending=values.get('m10')is None
+   scores[kind]=rounded(sum(known)*({'report':.4,'manager':.2,'supervisor':.1}[kind]),0 if kind=='report'else 2)if known else None
  scores['monthly']=rounded(monthly['received']/monthly['required']*10,0)if monthly and monthly['required']else None
- adjusted=adjustments();all_written=all(states);components=[scores.get(k)for k in ['report','monthly','manager','supervisor','law']];scores['total']=rounded(sum(components))if all_written and all(v is not None for v in components)else None
- field=[scores.get(k)for k in ['report','monthly','supervisor','law']]+[scores.get('manager_field')*.2 if scores.get('manager_field')is not None else None];scores['field_total']=rounded(sum(field))if all_written and all(v is not None for v in field)else None
- reported=bool(data.get('paper_completion')or data.get('reported_completion'));started=any(v.get('draft',{}).get('result',{}).get('graded',0)>0 for v in data.get('assessments',{}).values())
- state='평가 완료'if all_written else'법규 판정 확인'if data.get('paper_review_pending')else'완료·점수 미등록'if reported else'평가 중'if started else'평가 전'
+ adjusted=adjustments();all_written=all(states)
+ components=[scores.get(k)for k in ['report','monthly','manager','supervisor','law']]
+ scores['total']=rounded(sum(v for v in components if v is not None))if has_grades else None
+ field=[scores.get(k)for k in ['report','monthly','supervisor','law']]+[scores.get('manager_field')*.2 if scores.get('manager_field')is not None else None]
+ scores['field_total']=rounded(sum(v for v in field if v is not None))if has_grades else None
+ reported=bool(data.get('paper_completion')or data.get('reported_completion'))
+ state='평가 완료'if all_written else'법규 판정 확인'if data.get('paper_review_pending')else'완료·점수 미등록'if reported else'평가 중'if has_grades else'평가 전'
  confirmed=confirmation_status(data)if all_written else None
  if confirmed=='CONFIRMED':state='점수 확정'
  elif confirmed=='PARTIAL':state='법령점검표 서명 보완'
  from .signature_completion import completed as signatures_completed
- return {'signature_completed':signatures_completed(data),'scores':scores,'adjustments':adjusted,'state':state,'score_confirmed':confirmed=='CONFIRMED','written':all_written,'headquarters_pending':headquarters_pending,'monthly':{'received':monthly['received'],'required':monthly['required']}if monthly else None}
+ signed=signatures_completed(data)
+ return {'signature_completed':signed,'signature_state':('서명 완료'if signed else'서명전')if has_grades else None,'provisional':bool(has_grades and (not all_written or not signed)),'scores':scores,'adjustments':adjusted,'state':state,'score_confirmed':confirmed=='CONFIRMED','written':all_written,'headquarters_pending':headquarters_pending,'monthly':{'received':monthly['received'],'required':monthly['required']}if monthly else None}
 
 def rank(items,key,out):
  scores=[r['scores'][key]for r in items if r['scores'][key]is not None]
@@ -86,5 +100,5 @@ def summary(store,rows,period,monthly_source):
  items=[]
  for row in rows:
   key=context_key(row,period);monthly=monthly_source.get('sites',{}).get(key);items.append({'public_id':row.public_id,'site':row.title.removeprefix('[점검] ').strip(),**row_scores(states.get(key,{}),monthly)})
- rank(items,'total','rank');rank(items,'field_total','field_rank');items.sort(key=lambda r:(r['field_rank']is None,r['field_rank']or 0,r['site']))
- return {'period':period,'monthly_as_of':monthly_source.get('as_of'),'monthly_period':monthly_source.get('period_label'),'items':items,'counts':{'sites':len(items),'graded':sum(r['written']for r in items),'headquarters_pending':sum(r['headquarters_pending']for r in items),'total_scored':sum(r['scores']['total']is not None for r in items)}}
+ rank(items,'total','rank');rank(items,'field_total','field_rank');items.sort(key=lambda r:(r['rank']is None,r['rank']or 0,r['site']))
+ return {'period':period,'monthly_as_of':monthly_source.get('as_of'),'monthly_period':monthly_source.get('period_label'),'items':items,'counts':{'sites':len(items),'graded':sum(r['written']for r in items),'headquarters_pending':sum(r['headquarters_pending']for r in items),'total_scored':sum(r['scores']['total']is not None for r in items),'provisional':sum(r['provisional']for r in items)}}

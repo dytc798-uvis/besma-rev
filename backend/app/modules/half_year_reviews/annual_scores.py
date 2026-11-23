@@ -13,7 +13,7 @@ def summary(current, config, include_first_half_only=False):
         included = adjustments(prior.get('included_adjustments')) if prior else adjustments()
         first_base = rounded(published-included['net']) if published is not None else None
         key = row['public_id'] or ('h1:'+prior['id'])
-        return {'site':row['site'],'public_id':row['public_id'],'first_half':first_base,'first_half_reported':published,'second_half':row['scores']['total'],'state':row['state'],'adjustments':adjustments(annual.get(key))}
+        return {'site':row['site'],'public_id':row['public_id'],'first_half':first_base,'first_half_reported':published,'second_half':row['scores']['total'],'state':row['state'],'signature_state':row.get('signature_state'),'provisional':row.get('provisional',False),'adjustments':adjustments(annual.get(key))}
     items = [entry(row,first.get(row['public_id'])) for row in current]
     if include_first_half_only:
         items.extend(entry({'site':r['site'],'public_id':None,'scores':{'total':None},'state':'상반기 평가'},r) for r in config.get('h1',[]) if not r.get('public_id'))
