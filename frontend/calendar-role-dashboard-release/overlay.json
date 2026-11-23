@@ -1,0 +1,28 @@
+{
+  "source_file": "calendar-role-dashboard-release/assets/company-home-d9e44599c2f6.js",
+  "source_normalized_sha256": "d9e44599c2f67a724c0791c1f710bade301e9c6c475c3d5ec37dc51e74806863",
+  "files": [
+    {
+      "path": "assets/inspection-calendar-85c0c4b1fb26.js",
+      "size": 7859,
+      "sha256": "85c0c4b1fb26d2d86b6d650ef3a5bd3fc6edf2c622873bacc18885368ea73e10"
+    },
+    {
+      "path": "assets/company-home-d9e44599c2f6.js",
+      "size": 78541,
+      "sha256": "d9e44599c2f67a724c0791c1f710bade301e9c6c475c3d5ec37dc51e74806863"
+    },
+    {
+      "path": "inspection-calendar.html",
+      "size": 1582,
+      "sha256": "69e7fca3b60767c52c295dc02a28f15be8e3c2d52780062ac41801c6971f7ef0",
+      "before_sha256": "abeb993301a1688038b56f67152415e8ea94697f16d9f6e0f3709e0c713bc6a9"
+    },
+    {
+      "path": "company.html",
+      "size": 14926,
+      "sha256": "a4976c541290c1b80948bd82b5e25935fb16511d821713d339a31116805996ad",
+      "before_sha256": "7f82bb7ff9c84bb427ddd046d47157bd78668ef2a0a07afe8f3ab39143fd0fd3"
+    }
+  ]
+}
