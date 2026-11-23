@@ -1,11 +1,11 @@
 {
-  "source_file": "weekly-home-release/assets/company-home-3881c6b6bf8b.js",
-  "source_normalized_sha256": "3881c6b6bf8b6521a36744e7f940b6d3bd70e56143a489b51bb5bf6fba2e62ca",
+  "source_file": "weekly-home-release/assets/company-home-54f01b1524d5.js",
+  "source_normalized_sha256": "54f01b1524d5d8dda4ebd11018bac8325d2ca20597239b36616fd27cfdc2d00e",
   "files": [
     {
-      "path": "assets/company-home-3881c6b6bf8b.js",
-      "size": 84111,
-      "sha256": "3881c6b6bf8b6521a36744e7f940b6d3bd70e56143a489b51bb5bf6fba2e62ca"
+      "path": "assets/company-home-54f01b1524d5.js",
+      "size": 84226,
+      "sha256": "54f01b1524d5d8dda4ebd11018bac8325d2ca20597239b36616fd27cfdc2d00e"
     },
     {
       "path": "assets/home-layout-b0b968dadbbe.css",
@@ -15,7 +15,7 @@
     {
       "path": "company.html",
       "size": 14993,
-      "sha256": "f3a3d79a51857c6df6f53558673b98874a5d59f0b2fe601ecdc4bcbc89ac70c6",
+      "sha256": "6e7eb3345316be2865ffe42f94a9a8f3a9cc1bacdde8c6cd6dbd352034864f81",
       "before_sha256": "a4976c541290c1b80948bd82b5e25935fb16511d821713d339a31116805996ad"
     }
   ]

@@ -1092,11 +1092,11 @@ function mountHomeWeeklyVisits(){
  const government=i('section',null,'home-government-ready');government.append(i('h3','관급현장 · 운영 준비'),i('p','시행일 검토 중 · 서류 취합·점검·요청 회신'));const govtLink=i('a','관급현장 업무공간 ↗');govtLink.href='/workspace.html#government';government.append(govtLink);status.after(government);
  const detail=i('dialog',null,'home-weekly-dialog'),detailTitle=i('h3'),detailBody=i('div'),close=B('닫기',()=>detail.close());detail.setAttribute('aria-label','주간 점검·방문 상세');detail.append(detailTitle,detailBody,close);document.body.append(detail);
  let sequence=0;
- const login=()=>{body.replaceChildren(i('p','로그인 후 금주 일정을 확인할 수 있습니다.'));period.textContent='';government.dataset.siteCount='';};login();
+ const login=()=>{body.replaceChildren(i('p','로그인 후 금주 일정을 확인할 수 있습니다.'));period.textContent='';government.dataset.siteCount='';government.querySelector('h3').textContent='관급현장 · 운영 준비';};login();
  function draw(rows,range){body.replaceChildren();period.textContent=range.from.slice(5).replace('-','.')+'–'+range.to.slice(5).replace('-','.');
   if(!rows.length){body.append(i('p','이 주간에 등록된 점검·방문 계획이 없습니다.'));return;}
   for(const date of [...new Set(rows.map(row=>row.scheduled_date))]){const day=i('div',null,'home-weekly-day'),when=i('time',date.slice(5).replace('-','.')),list=i('div');when.dateTime=date;day.append(when,list);for(const row of rows.filter(row=>row.scheduled_date===date)){const entry=B('',()=>{detailTitle.textContent=row.scheduled_date+' · '+row.who;detailBody.replaceChildren(i('p',row.visitTitle),i('p','주간회의록 기준 · '+({PLANNED:'예정',IN_PROGRESS:'진행 중',COMPLETED:'완료',ON_HOLD:'보류'}[row.status]||'확인 필요')));const all=i('a','전체 점검 캘린더');all.href='/inspection-calendar.html';detailBody.append(all);detail.showModal();},'home-weekly-entry');entry.title=row.who+' · '+row.visitTitle;entry.append(i('i'),i('b',row.who),i('span',row.visitTitle));entry.dataset.status=row.status;list.append(entry);}body.append(day);}
-  body.append(i('small','주간회의록 기준 · 별도 점검계획과 다를 수 있습니다.'));
+  body.append(i('small',range.from==='2026-11-23'?'11.23 발표된 금주 확정 일정 · 주간회의록 기준':'주간회의록 기준'));
  }
  async function refresh(home){const run=++sequence;if(!C||localStorage.getItem('besma_token')!==C){login();return;}const range=homeWeekRange(home.date);body.replaceChildren(i('p','금주 일정 확인 중'));
   const count=(home.sites||[]).filter(site=>site.is_government===true).length;government.querySelector('h3').textContent='관급현장 '+count+'곳 · 운영 준비';
