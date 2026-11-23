@@ -1090,6 +1090,7 @@ function mountHomeWeeklyVisits(){
  const visits=i('section',null,'home-weekly-visits'),heading=i('div',null,'home-weekly-heading'),title=i('h3','금주 점검·방문'),period=i('span'),body=i('div',null,'home-weekly-body');heading.append(title,period);visits.append(heading,body);
  const status=i('details',null,'home-status-fold'),summary=i('summary','문서취합 · 반기평가 · 기능인인정제');overview.before(visits,status);status.append(summary,overview);
  const government=i('section',null,'home-government-ready');government.append(i('h3','관급현장 · 운영 준비'),i('p','시행일 검토 중 · 서류 취합·점검·요청 회신'));const govtLink=i('a','관급현장 업무공간 ↗');govtLink.href='/workspace.html#government';government.append(govtLink);status.after(government);
+ const selection=()=>{for(const box of [visits,status,government])box.hidden=!!h;};window.addEventListener('besma-home-selection',selection);selection();
  const detail=i('dialog',null,'home-weekly-dialog'),detailTitle=i('h3'),detailBody=i('div'),close=B('닫기',()=>detail.close());detail.setAttribute('aria-label','주간 점검·방문 상세');detail.append(detailTitle,detailBody,close);document.body.append(detail);
  let sequence=0;
  const login=()=>{body.replaceChildren(i('p','로그인 후 금주 일정을 확인할 수 있습니다.'));period.textContent='';government.dataset.siteCount='';government.querySelector('h3').textContent='관급현장 · 운영 준비';};login();
