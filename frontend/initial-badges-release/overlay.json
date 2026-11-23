@@ -1,0 +1,22 @@
+{
+  "source_file": "initial-badges-release/assets/inspection-calendar-578f9c29119d.js",
+  "source_normalized_sha256": "578f9c29119d60510ae18e51a0afcba78ad18364274e79abbf98499670efba06",
+  "files": [
+    {
+      "path": "assets/inspection-calendar-578f9c29119d.js",
+      "size": 10187,
+      "sha256": "578f9c29119d60510ae18e51a0afcba78ad18364274e79abbf98499670efba06"
+    },
+    {
+      "path": "assets/inspection-calendar-a7f638ffafb0.css",
+      "size": 1242,
+      "sha256": "a7f638ffafb08104e978e222c7a48712e64ce40a59a8bae341682cf3b1c69c73"
+    },
+    {
+      "path": "inspection-calendar.html",
+      "size": 1657,
+      "sha256": "96eaf63878a377e1cd5899ae8c386c3561369595854c938bfa064fefd8795b69",
+      "before_sha256": "f8e562f86f94eccbeddac6f6bb5142fcfa35bf80d3b70c45211922c525ac8547"
+    }
+  ]
+}
