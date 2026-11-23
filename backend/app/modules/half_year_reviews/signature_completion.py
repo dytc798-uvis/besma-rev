@@ -10,6 +10,14 @@ VERIFIED_FOUR_FORM_RETURNS = frozenset({
 })
 
 
+# The owner confirmed this historical handwritten assessment as signed and
+# complete. Preserve the actual two-form receipt coverage; do not invent
+# signatures for forms whose signing requirements changed afterwards.
+VERIFIED_LEGACY_SIGNED_COMPLETIONS = frozenset({
+    'bd1949170786b289c8e4ff63e3bc6cf8961e21391bae20725226fe479e3c0392',
+})
+
+
 def completed(data):
     if confirmation_status(data) != 'CONFIRMED':
         return False
@@ -24,6 +32,10 @@ def completed(data):
         if receipt.get('pending_signatures'):
             continue
         forms = receipt.get('site_manager_signed_forms', receipt.get('signed_forms', []))
+        if (file.get('sha256') in VERIFIED_LEGACY_SIGNED_COMPLETIONS
+                and set(forms) >= {'report', 'law'}
+                and receipt.get('source_bundle_sha256') == '611b002ebe0e3c28432f620ccae63bc1d7f758b25ff4065f029b16c3c3966d9b'):
+            return True
         if set(forms) >= {'report', 'law', 'manager', 'supervisor'}:
             return True
         if (receipt.get('source_kind') == 'SIGNED_PAPER_EVALUATION'
