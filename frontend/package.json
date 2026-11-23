@@ -1,0 +1,9 @@
+{
+  "name": "besma-safety-site",
+  "private": true,
+  "version": "2026.11.23.3",
+  "type": "module",
+  "scripts": {
+    "build": "node build-preview.mjs"
+  }
+}

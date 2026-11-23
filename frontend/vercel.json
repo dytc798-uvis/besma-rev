@@ -1,0 +1,5 @@
+{
+  "framework": null,
+  "buildCommand": "node build-preview.mjs",
+  "installCommand": "npm ci --ignore-scripts"
+}
