@@ -1,0 +1,33 @@
+{
+  "source_file": "weekly-collection-release/assets/inspection-calendar-5e1c525ea0c7.js",
+  "source_normalized_sha256": "5e1c525ea0c7a1daea332ffc2404d193b9403eb64accca198ab1a48e5ee3b7fb",
+  "files": [
+    {
+      "path": "assets/inspection-calendar-5e1c525ea0c7.js",
+      "size": 8788,
+      "sha256": "5e1c525ea0c7a1daea332ffc2404d193b9403eb64accca198ab1a48e5ee3b7fb"
+    },
+    {
+      "path": "assets/monthly-collection-0d5a999654aa.js",
+      "size": 17682,
+      "sha256": "0d5a999654aaeeda2b250b4531bc04380459a1103fa7673cec0a367f37337066"
+    },
+    {
+      "path": "assets/workspace-03c3c27d046f.js",
+      "size": 61266,
+      "sha256": "03c3c27d046f5a2d6edc1d7e1c680e8e687a0ea521eb80eada5a7cad4f113a71"
+    },
+    {
+      "path": "inspection-calendar.html",
+      "size": 1582,
+      "sha256": "f8e562f86f94eccbeddac6f6bb5142fcfa35bf80d3b70c45211922c525ac8547",
+      "before_sha256": "8acf07124d12fc580bca38696b96e41762a506e6ca77ae1e7e53d7f84a033db8"
+    },
+    {
+      "path": "workspace.html",
+      "size": 2385,
+      "sha256": "9db68e3bf32e76cce403ae94a684d07c6aae9b691f5ac71b3921f075877b297d",
+      "before_sha256": "c65e3537e5ced89164eb45c340fa4241bc207825046c5375c8d0bcc758d65c8d"
+    }
+  ]
+}
