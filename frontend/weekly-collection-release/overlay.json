@@ -13,9 +13,9 @@
       "sha256": "0d5a999654aaeeda2b250b4531bc04380459a1103fa7673cec0a367f37337066"
     },
     {
-      "path": "assets/workspace-03c3c27d046f.js",
-      "size": 61266,
-      "sha256": "03c3c27d046f5a2d6edc1d7e1c680e8e687a0ea521eb80eada5a7cad4f113a71"
+      "path": "assets/workspace-6f7e23847007.js",
+      "size": 61265,
+      "sha256": "6f7e23847007a415f232c64dba77d4bf9c2e5cbcd8e430e3f9f4d1c44bc37171"
     },
     {
       "path": "inspection-calendar.html",
@@ -26,7 +26,7 @@
     {
       "path": "workspace.html",
       "size": 2385,
-      "sha256": "9db68e3bf32e76cce403ae94a684d07c6aae9b691f5ac71b3921f075877b297d",
+      "sha256": "7cb7a43d1002f65706ccb022502057fc59c9b6f0f4abb830c1f98703933744aa",
       "before_sha256": "c65e3537e5ced89164eb45c340fa4241bc207825046c5375c8d0bcc758d65c8d"
     }
   ]
