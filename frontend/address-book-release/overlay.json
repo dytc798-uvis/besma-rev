@@ -1,0 +1,44 @@
+{
+  "source_file": "address-book-release/assets/address-book-baec3ba8c382.js",
+  "source_normalized_sha256": "baec3ba8c382242fa135e71a7dccb8f46883458c21caf9b85ff01b3b7bccc88c",
+  "files": [
+    {
+      "path": "assets/address-book-baec3ba8c382.js",
+      "size": 7009,
+      "sha256": "baec3ba8c382242fa135e71a7dccb8f46883458c21caf9b85ff01b3b7bccc88c"
+    },
+    {
+      "path": "assets/address-book-24b9d67bc56d.css",
+      "size": 3003,
+      "sha256": "24b9d67bc56dbee703e3bd63aff50be148b4be2d812f8a3ac869ddcbb00c006d"
+    },
+    {
+      "path": "assets/address-book-entry-fd94a67dbaea.js",
+      "size": 789,
+      "sha256": "fd94a67dbaea266319ddc39f9aee8734e25dd4f8bf9fb0fb15ab2844eb141f3d"
+    },
+    {
+      "path": "address-book.html",
+      "size": 2034,
+      "sha256": "81b3b98de978ddf4370072cc47aad129ce86f60ff00fb3b8a8bf3a6846c96de1"
+    },
+    {
+      "path": "workspace.html",
+      "size": 2465,
+      "sha256": "f23b9162134a1c75d1b90f832de88263197ba810b85076f69b5a84077d71b420",
+      "before_sha256": "7cb7a43d1002f65706ccb022502057fc59c9b6f0f4abb830c1f98703933744aa"
+    },
+    {
+      "path": "site-workspace.html",
+      "size": 697,
+      "sha256": "232b2fa814418db92025d60cf477644cb60b514ab5657bc92e3b250a29fb3eda",
+      "before_sha256": "fb6a5226d06af04ee93c1c1fb62a92d9b6fe4e05a61511747e04821749f388ab"
+    },
+    {
+      "path": "index.html",
+      "size": 4206,
+      "sha256": "0d3d584aa3f0e719609d3dc3e539956c4627026cb37f4e9f27421b95f2b60b23",
+      "before_sha256": "85c40af03005a3bfae9712a4a7dc83bb0fcc40eb5026e9ca4f79dbf6b69c56b1"
+    }
+  ]
+}
