@@ -159,3 +159,6 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+from app.modules.address_book.routes import router as address_book_router
+app.include_router(address_book_router)
