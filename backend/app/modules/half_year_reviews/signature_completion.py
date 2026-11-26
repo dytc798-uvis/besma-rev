@@ -15,6 +15,7 @@ VERIFIED_FOUR_FORM_RETURNS = frozenset({
 # signatures for forms whose signing requirements changed afterwards.
 VERIFIED_LEGACY_SIGNED_COMPLETIONS = frozenset({
     'bd1949170786b289c8e4ff63e3bc6cf8961e21391bae20725226fe479e3c0392',
+    '3a120dc5300d878d7704fabbf85e36f72d36364832299f58a392b675f09c7b85',
 })
 
 
