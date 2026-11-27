@@ -1,5 +1,6 @@
 """Annual assessment average followed by one annual adjustment per site."""
 from .aggregate_scores import rounded, rank, adjustments
+from decimal import Decimal
 
 
 def summary(current, config, include_first_half_only=False):
@@ -21,8 +22,9 @@ def summary(current, config, include_first_half_only=False):
         values=[item[k] for k in ['first_half','second_half'] if item[k] is not None]
         item['periods']=len(values)
         valid=bool(values) and (method=='AVAILABLE_PERIOD_AVERAGE' or len(values)==2)
-        item['base_average']=rounded(sum(values)/len(values)) if valid else None
-        item['average']=rounded(sum(values)/len(values)+item['adjustments']['net']) if valid else None
+        average=sum((Decimal(str(v))for v in values),Decimal(0))/Decimal(len(values)) if valid else None
+        item['base_average']=rounded(average) if valid else None
+        item['average']=rounded(average+Decimal(str(item['adjustments']['net']))) if valid else None
         item['annual_score']=item['average']
         item['scores']={'average':item['average']}
     rank(items,'average','rank')
